@@ -23,6 +23,10 @@ build/
 .vscode/settings.json
 *.swp
 
+# 工具目录
+.claude/
+.design/
+
 # 系统
 .DS_Store
 Thumbs.db

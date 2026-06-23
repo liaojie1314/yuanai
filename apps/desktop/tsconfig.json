@@ -6,5 +6,5 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx"
   },
-  "include": ["src"]
+  "include": ["src", "electron.vite.config.ts"]
 }

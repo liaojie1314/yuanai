@@ -11,8 +11,9 @@ function createWindow(): void {
     },
   })
 
-  if (process.env['VITE_DEV_SERVER_URL'] !== undefined) {
-    void win.loadURL(process.env['VITE_DEV_SERVER_URL'])
+  // electron-vite 在开发模式下注入 ELECTRON_RENDERER_URL
+  if (process.env['ELECTRON_RENDERER_URL'] !== undefined) {
+    void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     void win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
