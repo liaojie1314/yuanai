@@ -1,0 +1,9 @@
+#!/bin/sh
+
+echo "⏳ Running type check..."
+pnpm typecheck || { echo "❌ Type check failed. Push aborted."; exit 1; }
+
+echo "⏳ Running unit tests..."
+pnpm test:unit || { echo "❌ Unit tests failed. Push aborted."; exit 1; }
+
+echo "✅ All checks passed. Pushing..."

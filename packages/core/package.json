@@ -1,0 +1,40 @@
+{
+  "name": "@yuanai/core",
+  "version": "0.0.1",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./stores": "./src/stores/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./api": "./src/api/index.ts",
+    "./utils": "./src/utils/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run src",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@yuanai/types": "workspace:*",
+    "@tanstack/react-query": "^5.0.0",
+    "axios": "^1.7.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "react": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "msw": "^2.0.0",
+    "jsdom": "^25.0.0",
+    "@types/react": "^19.0.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  }
+}
