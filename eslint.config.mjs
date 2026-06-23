@@ -15,6 +15,8 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.expo/**',
       'backend/**',
+      // Next.js 自动生成的声明文件，不参与 lint
+      '**/next-env.d.ts',
     ],
   },
   js.configs.recommended,

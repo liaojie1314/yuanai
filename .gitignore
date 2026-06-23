@@ -13,6 +13,9 @@ out/
 build/
 *.egg-info/
 
+# TypeScript 增量编译缓存（运行时自动生成，不提交）
+*.tsbuildinfo
+
 # 环境变量
 .env
 .env.local

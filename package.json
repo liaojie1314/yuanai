@@ -2,6 +2,10 @@
   "name": "yuanai",
   "private": true,
   "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
