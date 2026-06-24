@@ -113,7 +113,13 @@ export default function LoginPage(): JSX.Element {
   return (
     <div className="auth-wrap">
       <AuthPanel
-        bubbles={['你好，今天想聊什么？', '帮我写一段 Python 排序算法', '解释一下量子纠缠']}
+        bubbles={[
+          '你好，今天想聊什么？',
+          '帮我写一段 Python 排序算法',
+          '解释一下量子纠缠',
+          '帮我分析这段代码的问题',
+          '翻译并润色这篇英文邮件',
+        ]}
       />
 
       <main className="auth-right">

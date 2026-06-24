@@ -47,7 +47,7 @@ const MOON = (
 export default function AuthPanel({
   bubbles,
 }: {
-  bubbles: [string, string?, string?]
+  bubbles: [string, string?, string?, string?, string?]
 }): JSX.Element {
   const [dark, setDark] = useState(false)
   const asideRef = useRef<HTMLElement>(null)
@@ -72,7 +72,7 @@ export default function AuthPanel({
     document.documentElement.style.userSelect = 'none'
 
     const onMove = (ev: MouseEvent): void => {
-      const w = Math.max(280, Math.min(window.innerWidth - 500, startW + ev.clientX - startX))
+      const w = Math.max(360, Math.min(window.innerWidth - 560, startW + ev.clientX - startX))
       document.documentElement.style.setProperty('--auth-left-w', `${w}px`)
     }
     const onUp = (): void => {
@@ -104,6 +104,8 @@ export default function AuthPanel({
       {bubbles[0] && <div className="bubble b1">{bubbles[0]}</div>}
       {bubbles[1] && <div className="bubble b2">{bubbles[1]}</div>}
       {bubbles[2] && <div className="bubble b3">{bubbles[2]}</div>}
+      {bubbles[3] && <div className="bubble b4">{bubbles[3]}</div>}
+      {bubbles[4] && <div className="bubble b5">{bubbles[4]}</div>}
       <div className="auth-resizer" onMouseDown={onDragStart} />
     </aside>
   )

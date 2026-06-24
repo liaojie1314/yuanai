@@ -137,7 +137,13 @@ export default function ForgotPasswordPage(): JSX.Element {
   return (
     <div className="auth-wrap">
       <AuthPanel
-        bubbles={['验证码已发送到你的邮箱', '请在 10 分钟内完成验证', '若未收到，请检查垃圾邮件']}
+        bubbles={[
+          '验证码已发送到你的邮箱',
+          '请在 10 分钟内完成验证',
+          '若未收到，请检查垃圾邮件',
+          '重置后请妥善保管新密码',
+          '遇到问题？联系在线客服',
+        ]}
       />
 
       <main className="auth-right">

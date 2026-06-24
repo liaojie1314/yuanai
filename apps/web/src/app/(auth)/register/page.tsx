@@ -90,6 +90,8 @@ export default function RegisterPage(): JSX.Element {
           '创建账号，解锁所有 AI 功能',
           '支持 GPT-4o · Claude · DeepSeek',
           '多设备无缝同步对话记录',
+          '每月免费额度，随时按需升级',
+          '支持图片与文件多模态输入',
         ]}
       />
 
