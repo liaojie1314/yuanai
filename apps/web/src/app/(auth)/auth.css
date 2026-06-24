@@ -127,7 +127,7 @@
 
 .form-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 440px;
   position: relative;
 }
 
@@ -827,6 +827,11 @@
   display: none;
 }
 
+/* Large decorative watermark — hidden on mobile */
+.auth-left-deco {
+  display: none;
+}
+
 /* ── Desktop ── */
 @media (min-width: 1024px) {
   .auth-wrap {
@@ -834,8 +839,9 @@
   }
   .auth-left {
     flex: none;
-    width: var(--auth-left-w, 45%);
+    width: var(--auth-left-w, 40%);
     min-width: 360px;
+    max-width: 560px;
     height: auto;
     min-height: 100vh;
     padding: 48px;
@@ -878,25 +884,40 @@
   .bubble {
     display: block;
   }
+  /* Two-column stagger: left col ~6-10%, right col ~36-42% */
   .b1 {
     bottom: 70%;
-    left: 6%;
+    left: 7%;
   }
   .b2 {
-    bottom: 56%;
-    left: 20%;
+    bottom: 57%;
+    left: 38%;
   }
   .b3 {
-    bottom: 42%;
+    bottom: 44%;
     left: 8%;
   }
   .b4 {
-    bottom: 28%;
-    left: 18%;
+    bottom: 30%;
+    left: 36%;
   }
   .b5 {
-    bottom: 14%;
-    left: 6%;
+    bottom: 16%;
+    left: 9%;
+  }
+  .auth-left-deco {
+    display: block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 260px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.06);
+    pointer-events: none;
+    user-select: none;
+    line-height: 1;
+    letter-spacing: -0.05em;
   }
 }
 @media (max-width: 380px) {

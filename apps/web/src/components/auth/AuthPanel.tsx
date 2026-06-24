@@ -72,7 +72,7 @@ export default function AuthPanel({
     document.documentElement.style.userSelect = 'none'
 
     const onMove = (ev: MouseEvent): void => {
-      const w = Math.max(360, Math.min(window.innerWidth - 560, startW + ev.clientX - startX))
+      const w = Math.max(360, Math.min(560, window.innerWidth - 560, startW + ev.clientX - startX))
       document.documentElement.style.setProperty('--auth-left-w', `${w}px`)
     }
     const onUp = (): void => {
@@ -101,6 +101,9 @@ export default function AuthPanel({
       >
         {dark ? SUN : MOON}
       </button>
+      <div className="auth-left-deco" aria-hidden="true">
+        元
+      </div>
       {bubbles[0] && <div className="bubble b1">{bubbles[0]}</div>}
       {bubbles[1] && <div className="bubble b2">{bubbles[1]}</div>}
       {bubbles[2] && <div className="bubble b3">{bubbles[2]}</div>}
