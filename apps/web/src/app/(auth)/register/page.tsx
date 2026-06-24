@@ -130,7 +130,7 @@ export default function RegisterPage(): JSX.Element {
                   value={username}
                   onChange={(e) => handleUsername(e.target.value)}
                 />
-                <span className={`status-ico${checkStatus !== 'idle' ? 'on' : ''}`}>
+                <span className={checkStatus !== 'idle' ? 'status-ico on' : 'status-ico'}>
                   {checkStatus === 'checking' && (
                     <svg
                       viewBox="0 0 24 24"
@@ -170,7 +170,7 @@ export default function RegisterPage(): JSX.Element {
                   )}
                 </span>
               </div>
-              {unameErr && <p className="ferr on">{unameErr}</p>}
+              <p className={unameErr ? 'ferr on' : 'ferr'}>{unameErr}</p>
             </div>
 
             {/* Email */}
@@ -196,7 +196,7 @@ export default function RegisterPage(): JSX.Element {
                 </span>
                 <input
                   id="remail"
-                  className={`fi${emailErr ? 'err' : ''}`}
+                  className={emailErr ? 'fi err' : 'fi'}
                   type="email"
                   placeholder="your@email.com"
                   autoComplete="email"
@@ -209,7 +209,7 @@ export default function RegisterPage(): JSX.Element {
                   }}
                 />
               </div>
-              {emailErr && <p className="ferr on">{emailErr}</p>}
+              <p className={emailErr ? 'ferr on' : 'ferr'}>{emailErr}</p>
             </div>
 
             {/* Password */}
@@ -235,7 +235,7 @@ export default function RegisterPage(): JSX.Element {
                 </span>
                 <input
                   id="rpwd"
-                  className={`fi${pwdErr ? 'err' : ''}`}
+                  className={pwdErr ? 'fi err' : 'fi'}
                   type="password"
                   placeholder="至少 8 位，含大写、数字、特殊字符"
                   autoComplete="new-password"
@@ -248,7 +248,7 @@ export default function RegisterPage(): JSX.Element {
                 />
               </div>
               <StrengthBar password={pwd} />
-              {pwdErr && <p className="ferr on">{pwdErr}</p>}
+              <p className={pwdErr ? 'ferr on' : 'ferr'}>{pwdErr}</p>
             </div>
 
             {/* Confirm password */}
@@ -273,7 +273,7 @@ export default function RegisterPage(): JSX.Element {
                 </span>
                 <input
                   id="cpwd"
-                  className={`fi${confirmErr ? 'err' : ''}`}
+                  className={confirmErr ? 'fi err' : 'fi'}
                   type="password"
                   placeholder="再次输入密码"
                   autoComplete="new-password"
@@ -285,7 +285,7 @@ export default function RegisterPage(): JSX.Element {
                   }}
                 />
               </div>
-              {confirmErr && <p className="ferr on">{confirmErr}</p>}
+              <p className={confirmErr ? 'ferr on' : 'ferr'}>{confirmErr}</p>
             </div>
 
             {/* Terms */}
@@ -313,11 +313,12 @@ export default function RegisterPage(): JSX.Element {
                 </a>
               </label>
             </div>
-            {termsErr && (
-              <p className="ferr on" style={{ marginTop: '-12px', marginBottom: '14px' }}>
-                请先阅读并同意服务协议
-              </p>
-            )}
+            <p
+              className={termsErr ? 'ferr on' : 'ferr'}
+              style={{ marginTop: '-12px', marginBottom: '14px' }}
+            >
+              请先阅读并同意服务协议
+            </p>
 
             <button type="submit" className="btn" disabled={loading}>
               {loading ? (
@@ -332,7 +333,10 @@ export default function RegisterPage(): JSX.Element {
           </form>
 
           <p className="login-cta">
-            已有账号？<Link href="/login">立即登录</Link>
+            已有账号？
+            <Link href="/login" replace>
+              立即登录
+            </Link>
           </p>
         </div>
       </main>

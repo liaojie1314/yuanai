@@ -195,7 +195,7 @@
 
 /* Form fields */
 .fg {
-  margin-bottom: 18px;
+  margin-bottom: 22px;
 }
 .fl {
   display: block;
@@ -428,10 +428,13 @@
   font-size: 12px;
   color: var(--error);
   margin-top: 5px;
-  display: none;
+  min-height: 18px;
+  display: block;
+  opacity: 0;
+  transition: opacity 100ms;
 }
 .ferr.on {
-  display: block;
+  opacity: 1;
 }
 
 /* Divider */
@@ -690,7 +693,8 @@
 }
 .otp-cell {
   flex: 1;
-  height: 56px;
+  min-width: 0;
+  height: 52px;
   border: 1px solid var(--brand-b);
   border-radius: var(--r);
   text-align: center;

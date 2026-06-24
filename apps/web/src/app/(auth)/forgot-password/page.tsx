@@ -128,7 +128,7 @@ export default function ForgotPasswordPage(): JSX.Element {
         setAutoCount(s)
         if (s <= 0) {
           if (autoRef.current) clearInterval(autoRef.current)
-          router.push('/login')
+          router.replace('/login')
         }
       }, 1000)
     }, 1400)
@@ -145,7 +145,7 @@ export default function ForgotPasswordPage(): JSX.Element {
           {/* Step 1 */}
           {step === 1 && (
             <div>
-              <Link href="/login" className="back-link">
+              <Link href="/login" className="back-link" replace>
                 <svg
                   width="14"
                   height="14"
@@ -193,7 +193,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                     </span>
                     <input
                       id="femail"
-                      className={`fi${emailErr ? 'err' : ''}`}
+                      className={emailErr ? 'fi err' : 'fi'}
                       type="email"
                       placeholder="your@email.com"
                       autoComplete="email"
@@ -201,7 +201,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                       onChange={(e) => setEmail(e.target.value)}
                     />
                   </div>
-                  {emailErr && <p className="ferr on">{emailErr}</p>}
+                  <p className={emailErr ? 'ferr on' : 'ferr'}>{emailErr}</p>
                 </div>
                 <button type="submit" className="btn" disabled={sendLoading}>
                   {sendLoading ? (
@@ -232,14 +232,14 @@ export default function ForgotPasswordPage(): JSX.Element {
               <form onSubmit={handleStep2} noValidate>
                 <div className="fg">
                   <label className="fl">验证码</label>
-                  <div className={`otp-row${otpShake ? 'shake' : ''}`}>
+                  <div className={otpShake ? 'otp-row shake' : 'otp-row'}>
                     {otp.map((v, i) => (
                       <input
                         key={i}
                         ref={(el) => {
                           otpRefs.current[i] = el
                         }}
-                        className={`otp-cell${otpErr ? 'err' : ''}`}
+                        className={otpErr ? 'otp-cell err' : 'otp-cell'}
                         type="text"
                         maxLength={1}
                         inputMode="numeric"
@@ -250,7 +250,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                       />
                     ))}
                   </div>
-                  {otpErr && <p className="ferr on">请输入 6 位验证码</p>}
+                  <p className={otpErr ? 'ferr on' : 'ferr'}>请输入 6 位验证码</p>
                   <div
                     style={{
                       marginTop: '10px',
@@ -303,7 +303,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                     </span>
                     <input
                       id="npwd"
-                      className={`fi${newPwdErr ? 'err' : ''}`}
+                      className={newPwdErr ? 'fi err' : 'fi'}
                       type="password"
                       placeholder="至少 8 位，含大写、数字和特殊字符"
                       autoComplete="new-password"
@@ -312,7 +312,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                     />
                   </div>
                   <StrengthBar password={newPwd} />
-                  {newPwdErr && <p className="ferr on">{newPwdErr}</p>}
+                  <p className={newPwdErr ? 'ferr on' : 'ferr'}>{newPwdErr}</p>
                 </div>
 
                 <div className="fg">
@@ -336,7 +336,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                     </span>
                     <input
                       id="ncpwd"
-                      className={`fi${confirmErr ? 'err' : ''}`}
+                      className={confirmErr ? 'fi err' : 'fi'}
                       type="password"
                       placeholder="再次输入新密码"
                       autoComplete="new-password"
@@ -344,7 +344,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                       onChange={(e) => setConfirmPwd(e.target.value)}
                     />
                   </div>
-                  {confirmErr && <p className="ferr on">{confirmErr}</p>}
+                  <p className={confirmErr ? 'ferr on' : 'ferr'}>{confirmErr}</p>
                 </div>
 
                 <button type="submit" className="btn" disabled={resetLoading}>
@@ -383,7 +383,7 @@ export default function ForgotPasswordPage(): JSX.Element {
               <p className="countdown-note">
                 <span>{autoCount}</span> 秒后自动跳转登录页…
               </p>
-              <Link href="/login" className="btn-outline">
+              <Link href="/login" className="btn-outline" replace>
                 立即登录
               </Link>
             </div>

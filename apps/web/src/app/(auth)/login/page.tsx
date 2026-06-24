@@ -254,7 +254,7 @@ export default function LoginPage(): JSX.Element {
                       </button>
                       <input
                         id="phone"
-                        className={`fi phone-fi${phoneErr ? 'err' : ''}`}
+                        className={phoneErr ? 'fi phone-fi err' : 'fi phone-fi'}
                         type="tel"
                         placeholder="请输入手机号"
                         maxLength={11}
@@ -268,7 +268,7 @@ export default function LoginPage(): JSX.Element {
                         }}
                       />
                     </div>
-                    {phoneErr && <p className="ferr on">{phoneErr}</p>}
+                    <p className={phoneErr ? 'ferr on' : 'ferr'}>{phoneErr}</p>
                   </div>
 
                   <div className="fg">
@@ -294,7 +294,7 @@ export default function LoginPage(): JSX.Element {
                         </span>
                         <input
                           id="sms"
-                          className={`fi${smsErr ? 'err' : ''}`}
+                          className={smsErr ? 'fi err' : 'fi'}
                           type="text"
                           placeholder="输入 6 位验证码"
                           maxLength={6}
@@ -312,7 +312,7 @@ export default function LoginPage(): JSX.Element {
                         {smsCount > 0 ? `重新发送 (${smsCount}s)` : '发送验证码'}
                       </button>
                     </div>
-                    {smsErr && <p className="ferr on">{smsErr}</p>}
+                    <p className={smsErr ? 'ferr on' : 'ferr'}>{smsErr}</p>
                   </div>
 
                   <button type="submit" className="btn" disabled={phoneLoading}>
@@ -353,7 +353,7 @@ export default function LoginPage(): JSX.Element {
                       </span>
                       <input
                         id="email"
-                        className={`fi${emailErr ? 'err' : ''}`}
+                        className={emailErr ? 'fi err' : 'fi'}
                         type="email"
                         placeholder="your@email.com"
                         autoComplete="email"
@@ -366,7 +366,7 @@ export default function LoginPage(): JSX.Element {
                         }}
                       />
                     </div>
-                    {emailErr && <p className="ferr on">{emailErr}</p>}
+                    <p className={emailErr ? 'ferr on' : 'ferr'}>{emailErr}</p>
                   </div>
 
                   <div className="fg">
@@ -391,7 +391,7 @@ export default function LoginPage(): JSX.Element {
                       </span>
                       <input
                         id="pwd"
-                        className={`fi${pwdErr ? 'err' : ''}`}
+                        className={pwdErr ? 'fi err' : 'fi'}
                         type={showPwd ? 'text' : 'password'}
                         placeholder="请输入密码"
                         autoComplete="current-password"
@@ -441,7 +441,7 @@ export default function LoginPage(): JSX.Element {
                         )}
                       </button>
                     </div>
-                    {pwdErr && <p className="ferr on">{pwdErr}</p>}
+                    <p className={pwdErr ? 'ferr on' : 'ferr'}>{pwdErr}</p>
                   </div>
 
                   <div className="helper">
@@ -453,7 +453,7 @@ export default function LoginPage(): JSX.Element {
                       />
                       <span className="rm-lbl">记住我 7 天</span>
                     </label>
-                    <Link href="/forgot-password" className="fl-link">
+                    <Link href="/forgot-password" className="fl-link" replace>
                       忘记密码？
                     </Link>
                   </div>
@@ -521,7 +521,10 @@ export default function LoginPage(): JSX.Element {
           </div>
 
           <p className="signup-cta">
-            还没有账号？<Link href="/register">立即注册</Link>
+            还没有账号？
+            <Link href="/register" replace>
+              立即注册
+            </Link>
           </p>
         </div>
       </main>
