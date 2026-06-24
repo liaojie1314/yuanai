@@ -1,10 +1,9 @@
-import type { JSX } from 'react'
+import { redirect } from 'next/navigation'
 
-export default function HomePage(): JSX.Element {
-  return (
-    <main>
-      <h1>元AI — 智能对话助手</h1>
-      <p>Web 端开发中...</p>
-    </main>
-  )
+/**
+ * 根路由 `/` → 重定向到 `/login`
+ * 待 Phase 2 完整实现后，登录态检测将在此处处理
+ */
+export default function HomePage(): never {
+  redirect('/login')
 }
