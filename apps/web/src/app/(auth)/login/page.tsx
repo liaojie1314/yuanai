@@ -216,14 +216,14 @@ export default function LoginPage(): JSX.Element {
 
               <div className="auth-tabs" role="tablist">
                 <button
-                  className={`a-tab${tab === 'phone' ? 'on' : ''}`}
+                  className={tab === 'phone' ? 'a-tab on' : 'a-tab'}
                   role="tab"
                   onClick={() => setTab('phone')}
                 >
                   手机号
                 </button>
                 <button
-                  className={`a-tab${tab === 'email' ? 'on' : ''}`}
+                  className={tab === 'email' ? 'a-tab on' : 'a-tab'}
                   role="tab"
                   onClick={() => setTab('email')}
                 >
