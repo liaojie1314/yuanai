@@ -195,7 +195,7 @@
 
 /* Form fields */
 .fg {
-  margin-bottom: 22px;
+  margin-bottom: 2px;
 }
 .fl {
   display: block;
@@ -814,13 +814,20 @@
   -webkit-text-fill-color: var(--fg) !important;
 }
 
+/* Resizer handle — hidden on mobile, shown on desktop */
+.auth-resizer {
+  display: none;
+}
+
 /* ── Desktop ── */
 @media (min-width: 1024px) {
   .auth-wrap {
     flex-direction: row;
   }
   .auth-left {
-    flex: 0 0 45%;
+    flex: none;
+    width: var(--auth-left-w, 45%);
+    min-width: 280px;
     height: auto;
     min-height: 100vh;
     padding: 48px;
@@ -828,10 +835,34 @@
   }
   .auth-right {
     flex: 1;
+    min-width: 500px;
     border-radius: 0;
     margin-top: 0;
     padding: 48px 64px;
     justify-content: center;
+  }
+  .auth-resizer {
+    display: block;
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 8px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 10;
+  }
+  .auth-resizer::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.18);
+    transition: background 200ms;
+  }
+  .auth-resizer:hover::after {
+    background: rgba(255, 255, 255, 0.5);
   }
   .qr-toggle {
     display: flex;

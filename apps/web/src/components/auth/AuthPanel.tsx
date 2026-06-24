@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, type JSX } from 'react'
+import { useState, useRef, useCallback, useEffect, type JSX } from 'react'
 
 function isDark(): boolean {
   const t = document.documentElement.getAttribute('data-theme')
@@ -50,6 +50,7 @@ export default function AuthPanel({
   bubbles: [string, string?, string?]
 }): JSX.Element {
   const [dark, setDark] = useState(false)
+  const asideRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     setDark(isDark())
@@ -62,8 +63,30 @@ export default function AuthPanel({
     setDark(!dark)
   }
 
+  const onDragStart = useCallback((e: React.MouseEvent): void => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = asideRef.current?.offsetWidth ?? 0
+
+    document.documentElement.style.cursor = 'col-resize'
+    document.documentElement.style.userSelect = 'none'
+
+    const onMove = (ev: MouseEvent): void => {
+      const w = Math.max(280, Math.min(window.innerWidth - 500, startW + ev.clientX - startX))
+      document.documentElement.style.setProperty('--auth-left-w', `${w}px`)
+    }
+    const onUp = (): void => {
+      document.documentElement.style.cursor = ''
+      document.documentElement.style.userSelect = ''
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [])
+
   return (
-    <aside className="auth-left">
+    <aside className="auth-left" ref={asideRef}>
       <div>
         <div className="brand-row">
           <div className="brand-logo">元</div>
@@ -81,6 +104,7 @@ export default function AuthPanel({
       {bubbles[0] && <div className="bubble b1">{bubbles[0]}</div>}
       {bubbles[1] && <div className="bubble b2">{bubbles[1]}</div>}
       {bubbles[2] && <div className="bubble b3">{bubbles[2]}</div>}
+      <div className="auth-resizer" onMouseDown={onDragStart} />
     </aside>
   )
 }
