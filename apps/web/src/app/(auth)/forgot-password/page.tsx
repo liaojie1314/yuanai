@@ -1,11 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, type JSX } from 'react'
+import { useState, useRef, useCallback, useEffect, type JSX } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
-import PasswordInput from '@/components/auth/PasswordInput'
 import StrengthBar from '@/components/auth/StrengthBar'
 
 type Step = 1 | 2 | 'success'
@@ -13,49 +11,42 @@ type Step = 1 | 2 | 'success'
 export default function ForgotPasswordPage(): JSX.Element {
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
-
-  /* ─── Step 1 ─── */
   const [email, setEmail] = useState('')
   const [emailErr, setEmailErr] = useState('')
   const [sendLoading, setSendLoading] = useState(false)
 
-  /* ─── Step 2 ─── */
-  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', ''])
+  const [otp, setOtp] = useState(['', '', '', '', '', ''])
   const [otpErr, setOtpErr] = useState(false)
-  const [newPwd, setNewPwd] = useState('')
-  const [confirmPwd, setConfirmPwd] = useState('')
-  const [newPwdErr, setNewPwdErr] = useState('')
-  const [confirmPwdErr, setConfirmPwdErr] = useState('')
-  const [resetLoading, setResetLoading] = useState(false)
   const [otpShake, setOtpShake] = useState(false)
-
-  /* ─── 重发倒计时 ─── */
-  const [resendCount, setResendCount] = useState(0)
-  const resendTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  /* ─── 成功后自动跳转 ─── */
-  const [autoCount, setAutoCount] = useState(3)
-  const autoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  /* ─── OTP 单元格 refs ─── */
   const otpRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  const isValidEmail = (v: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)
+  const [newPwd, setNewPwd] = useState('')
+  const [newPwdErr, setNewPwdErr] = useState('')
+  const [confirmPwd, setConfirmPwd] = useState('')
+  const [confirmErr, setConfirmErr] = useState('')
+  const [resetLoading, setResetLoading] = useState(false)
 
-  const maskEmail = (e: string): string => {
-    const parts = e.split('@')
-    const local = parts[0] ?? ''
-    const domain = parts[1] ?? ''
-    return `${local.slice(0, 4)}**@${domain}`
-  }
+  const [resendCount, setResendCount] = useState(0)
+  const resendRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const startResend = useCallback((seconds = 60): void => {
-    if (resendTimerRef.current) clearInterval(resendTimerRef.current)
-    setResendCount(seconds)
-    resendTimerRef.current = setInterval(() => {
+  const [autoCount, setAutoCount] = useState(3)
+  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (resendRef.current) clearInterval(resendRef.current)
+      if (autoRef.current) clearInterval(autoRef.current)
+    },
+    []
+  )
+
+  const startResend = useCallback((s = 60): void => {
+    if (resendRef.current) clearInterval(resendRef.current)
+    setResendCount(s)
+    resendRef.current = setInterval(() => {
       setResendCount((c) => {
         if (c <= 1) {
-          if (resendTimerRef.current) clearInterval(resendTimerRef.current)
+          if (resendRef.current) clearInterval(resendRef.current)
           return 0
         }
         return c - 1
@@ -63,16 +54,20 @@ export default function ForgotPasswordPage(): JSX.Element {
     }, 1000)
   }, [])
 
-  /* ─── Step 1 提交 ─── */
+  const maskEmail = (e: string): string => {
+    const parts = e.split('@')
+    return `${(parts[0] ?? '').slice(0, 4)}**@${parts[1] ?? ''}`
+  }
+
   const handleStep1 = (e: React.FormEvent): void => {
     e.preventDefault()
-    if (!isValidEmail(email)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setEmailErr('请输入正确的邮箱地址')
       return
     }
     setEmailErr('')
     setSendLoading(true)
-    // TODO: 调用发送验证码 API
+    // TODO: 调用 API
     setTimeout(() => {
       setSendLoading(false)
       setStep(2)
@@ -81,19 +76,16 @@ export default function ForgotPasswordPage(): JSX.Element {
     }, 1200)
   }
 
-  /* ─── OTP 输入自动跳转 ─── */
-  const handleOtpInput = (idx: number, value: string): void => {
-    const digit = value.replace(/\D/g, '')
+  const handleOtpInput = (idx: number, val: string): void => {
+    const digit = val.replace(/\D/g, '')
     const next = [...otp]
     next[idx] = digit.charAt(0)
     setOtp(next)
     if (digit && idx < 5) otpRefs.current[idx + 1]?.focus()
   }
 
-  const handleOtpKeyDown = (idx: number, e: React.KeyboardEvent): void => {
-    if (e.key === 'Backspace' && !otp[idx] && idx > 0) {
-      otpRefs.current[idx - 1]?.focus()
-    }
+  const handleOtpKey = (idx: number, e: React.KeyboardEvent): void => {
+    if (e.key === 'Backspace' && !otp[idx] && idx > 0) otpRefs.current[idx - 1]?.focus()
   }
 
   const handleOtpPaste = (e: React.ClipboardEvent): void => {
@@ -105,115 +97,86 @@ export default function ForgotPasswordPage(): JSX.Element {
     otpRefs.current[Math.min(data.length, 5)]?.focus()
   }
 
-  /* ─── Step 2 提交 ─── */
   const handleStep2 = (e: React.FormEvent): void => {
     e.preventDefault()
     let ok = true
-    const otpValue = otp.join('')
-
-    if (otpValue.length < 6) {
+    if (otp.join('').length < 6) {
       setOtpErr(true)
       setOtpShake(true)
       setTimeout(() => setOtpShake(false), 350)
       ok = false
     } else setOtpErr(false)
-
     if (newPwd.length < 8) {
       setNewPwdErr('密码至少 8 位')
       ok = false
     } else setNewPwdErr('')
-
     if (confirmPwd !== newPwd) {
-      setConfirmPwdErr('两次输入的密码不一致')
+      setConfirmErr('两次输入的密码不一致')
       ok = false
-    } else setConfirmPwdErr('')
-
+    } else setConfirmErr('')
     if (!ok) return
     setResetLoading(true)
-    // TODO: 调用重置密码 API
+    // TODO: 调用 API
     setTimeout(() => {
       setResetLoading(false)
       setStep('success')
-      if (resendTimerRef.current) clearInterval(resendTimerRef.current)
-      // 3s 后自动跳转
+      if (resendRef.current) clearInterval(resendRef.current)
       let s = 3
       setAutoCount(s)
-      autoTimerRef.current = setInterval(() => {
+      autoRef.current = setInterval(() => {
         s--
         setAutoCount(s)
         if (s <= 0) {
-          if (autoTimerRef.current) clearInterval(autoTimerRef.current)
+          if (autoRef.current) clearInterval(autoRef.current)
           router.push('/login')
         }
       }, 1000)
     }, 1400)
   }
 
-  useEffect(() => {
-    return () => {
-      if (resendTimerRef.current) clearInterval(resendTimerRef.current)
-      if (autoTimerRef.current) clearInterval(autoTimerRef.current)
-    }
-  }, [])
-
-  /* ─── 步骤指示器 ─── */
-  function StepDots({ current }: { current: 1 | 2 }): JSX.Element {
-    return (
-      <div className="mb-7 flex items-center gap-2">
-        <div
-          className="h-2 w-2 rounded-full transition-all duration-300"
-          style={{
-            background: current === 1 ? 'var(--brand)' : 'var(--brand-b)',
-            transform: current === 1 ? 'scale(1.25)' : 'none',
-          }}
-        />
-        <div className="h-px w-8" style={{ background: 'var(--brand-b)' }} />
-        <div
-          className="h-2 w-2 rounded-full transition-all duration-300"
-          style={{
-            background: current === 2 ? 'var(--brand)' : 'var(--brand-b)',
-            transform: current === 2 ? 'scale(1.25)' : 'none',
-          }}
-        />
-      </div>
-    )
-  }
-
   return (
-    <div className="auth-layout">
+    <div className="auth-wrap">
       <AuthPanel
         bubbles={['验证码已发送到你的邮箱', '请在 10 分钟内完成验证', '若未收到，请检查垃圾邮件']}
       />
 
       <main className="auth-right">
         <div className="form-card">
-          {/* ── Step 1: 发送验证码 ── */}
+          {/* Step 1 */}
           {step === 1 && (
-            <>
-              <Link
-                href="/login"
-                className="mb-5 inline-flex items-center gap-1 text-[13px] transition-colors"
-                style={{ color: 'var(--fg2)' }}
-              >
-                <ChevronLeft size={14} />
+            <div>
+              <Link href="/login" className="back-link">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
                 返回登录
               </Link>
 
-              <StepDots current={1} />
+              <div className="step-dots">
+                <div className="dot on" />
+                <div className="step-line" />
+                <div className="dot" />
+              </div>
 
-              <h1 className="auth-title">重置密码</h1>
-              <p className="auth-sub">输入注册邮箱，我们将发送验证码</p>
+              <h1 className="page-title">重置密码</h1>
+              <p className="page-sub">输入注册邮箱，我们将发送验证码</p>
 
               <form onSubmit={handleStep1} noValidate>
-                <div className="form-group">
-                  <label className="form-label" htmlFor="femail">
+                <div className="fg">
+                  <label className="fl" htmlFor="femail">
                     注册邮箱
                   </label>
-                  <div className="relative flex items-center">
-                    <span
-                      className="pointer-events-none absolute left-[14px] flex transition-colors"
-                      style={{ color: 'var(--fg3)' }}
-                    >
+                  <div className="iw">
+                    <span className="ii">
                       <svg
                         width="16"
                         height="16"
@@ -230,127 +193,134 @@ export default function ForgotPasswordPage(): JSX.Element {
                     </span>
                     <input
                       id="femail"
+                      className={`fi${emailErr ? 'err' : ''}`}
                       type="email"
                       placeholder="your@email.com"
                       autoComplete="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      onBlur={() => {
-                        if (email && !isValidEmail(email)) setEmailErr('请输入正确的邮箱地址')
-                        else setEmailErr('')
-                      }}
-                      className={`auth-input w-full ${emailErr ? 'auth-input-error' : ''}`}
-                      style={{ paddingLeft: 42 }}
                     />
                   </div>
-                  {emailErr && <p className="form-error">{emailErr}</p>}
+                  {emailErr && <p className="ferr on">{emailErr}</p>}
                 </div>
-
-                <button type="submit" disabled={sendLoading} className="auth-btn">
+                <button type="submit" className="btn" disabled={sendLoading}>
                   {sendLoading ? (
                     <>
-                      <span className="btn-spinner" />
-                      <span>发送中...</span>
+                      <span className="spin" />
+                      发送中...
                     </>
                   ) : (
                     '发送验证码'
                   )}
                 </button>
               </form>
-            </>
+            </div>
           )}
 
-          {/* ── Step 2: OTP + 新密码 ── */}
+          {/* Step 2 */}
           {step === 2 && (
-            <>
-              <StepDots current={2} />
+            <div>
+              <div className="step-dots">
+                <div className="dot" />
+                <div className="step-line" />
+                <div className="dot on" />
+              </div>
 
-              <h1 className="auth-title">设置新密码</h1>
-              <p className="auth-sub" style={{ color: 'var(--fg2)' }}>
-                验证码已发送至 {maskEmail(email)}
-              </p>
+              <h1 className="page-title">设置新密码</h1>
+              <p className="page-sub">验证码已发送至 {maskEmail(email)}</p>
 
               <form onSubmit={handleStep2} noValidate>
-                {/* OTP */}
-                <div className="form-group">
-                  <label className="form-label">验证码</label>
-                  <div
-                    className="flex gap-2"
-                    style={otpShake ? { animation: 'otpShake 300ms ease' } : undefined}
-                  >
-                    {otp.map((digit, idx) => (
+                <div className="fg">
+                  <label className="fl">验证码</label>
+                  <div className={`otp-row${otpShake ? 'shake' : ''}`}>
+                    {otp.map((v, i) => (
                       <input
-                        key={idx}
+                        key={i}
                         ref={(el) => {
-                          otpRefs.current[idx] = el
+                          otpRefs.current[i] = el
                         }}
+                        className={`otp-cell${otpErr ? 'err' : ''}`}
                         type="text"
-                        inputMode="numeric"
                         maxLength={1}
-                        value={digit}
-                        onChange={(e) => handleOtpInput(idx, e.target.value)}
-                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                        onPaste={idx === 0 ? handleOtpPaste : undefined}
-                        className={`otp-cell ${otpErr ? 'otp-cell-error' : ''}`}
-                        aria-label={`验证码第 ${idx + 1} 位`}
+                        inputMode="numeric"
+                        value={v}
+                        onChange={(e) => handleOtpInput(i, e.target.value)}
+                        onKeyDown={(e) => handleOtpKey(i, e)}
+                        onPaste={handleOtpPaste}
                       />
                     ))}
                   </div>
-                  {otpErr && <p className="form-error">请输入 6 位验证码</p>}
-
-                  <div className="mt-2.5 flex items-center justify-between">
-                    <span className="text-[13px]" style={{ color: 'var(--fg3)' }}>
+                  {otpErr && <p className="ferr on">请输入 6 位验证码</p>}
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', color: 'var(--fg3)' }}>
                       {resendCount > 0 ? `重新发送 (${resendCount}s)` : '未收到验证码？'}
                     </span>
                     <button
                       type="button"
-                      disabled={resendCount > 0}
-                      onClick={() => startResend()}
-                      className="text-[13px] transition-colors"
                       style={{
+                        fontSize: '13px',
+                        color: resendCount > 0 ? 'var(--fg3)' : 'var(--brand)',
                         background: 'none',
                         border: 'none',
                         padding: 0,
                         cursor: resendCount > 0 ? 'not-allowed' : 'pointer',
-                        color: resendCount > 0 ? 'var(--fg3)' : 'var(--brand)',
+                        fontFamily: 'inherit',
                       }}
+                      disabled={resendCount > 0}
+                      onClick={() => startResend()}
                     >
                       重新发送
                     </button>
                   </div>
                 </div>
 
-                {/* 新密码 */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="newPwd">
+                <div className="fg">
+                  <label className="fl" htmlFor="npwd">
                     新密码
                   </label>
-                  <PasswordInput
-                    id="newPwd"
-                    placeholder="至少 8 位，含大写、数字和特殊字符"
-                    autoComplete="new-password"
-                    value={newPwd}
-                    onChange={(e) => setNewPwd(e.target.value)}
-                    onBlur={() => {
-                      if (newPwd && newPwd.length < 8) setNewPwdErr('密码至少 8 位')
-                      else setNewPwdErr('')
-                    }}
-                    hasError={!!newPwdErr}
-                  />
+                  <div className="iw">
+                    <span className="ii">
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect width="18" height="11" x="3" y="11" rx="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    </span>
+                    <input
+                      id="npwd"
+                      className={`fi${newPwdErr ? 'err' : ''}`}
+                      type="password"
+                      placeholder="至少 8 位，含大写、数字和特殊字符"
+                      autoComplete="new-password"
+                      value={newPwd}
+                      onChange={(e) => setNewPwd(e.target.value)}
+                    />
+                  </div>
                   <StrengthBar password={newPwd} />
-                  {newPwdErr && <p className="form-error">{newPwdErr}</p>}
+                  {newPwdErr && <p className="ferr on">{newPwdErr}</p>}
                 </div>
 
-                {/* 确认新密码 */}
-                <div className="form-group">
-                  <label className="form-label" htmlFor="confirmNewPwd">
+                <div className="fg">
+                  <label className="fl" htmlFor="ncpwd">
                     确认新密码
                   </label>
-                  <div className="relative flex items-center">
-                    <span
-                      className="pointer-events-none absolute left-[14px] flex transition-colors"
-                      style={{ color: 'var(--fg3)' }}
-                    >
+                  <div className="iw">
+                    <span className="ii">
                       <svg
                         width="16"
                         height="16"
@@ -365,63 +335,42 @@ export default function ForgotPasswordPage(): JSX.Element {
                       </svg>
                     </span>
                     <input
-                      id="confirmNewPwd"
+                      id="ncpwd"
+                      className={`fi${confirmErr ? 'err' : ''}`}
                       type="password"
                       placeholder="再次输入新密码"
                       autoComplete="new-password"
                       value={confirmPwd}
                       onChange={(e) => setConfirmPwd(e.target.value)}
-                      onBlur={() => {
-                        if (confirmPwd && confirmPwd !== newPwd)
-                          setConfirmPwdErr('两次输入的密码不一致')
-                        else setConfirmPwdErr('')
-                      }}
-                      className={`auth-input w-full ${confirmPwdErr ? 'auth-input-error' : ''}`}
-                      style={{ paddingLeft: 42 }}
                     />
                   </div>
-                  {confirmPwdErr && <p className="form-error">{confirmPwdErr}</p>}
+                  {confirmErr && <p className="ferr on">{confirmErr}</p>}
                 </div>
 
-                <button type="submit" disabled={resetLoading} className="auth-btn">
+                <button type="submit" className="btn" disabled={resetLoading}>
                   {resetLoading ? (
                     <>
-                      <span className="btn-spinner" />
-                      <span>重置中...</span>
+                      <span className="spin" />
+                      重置中...
                     </>
                   ) : (
                     '重置密码'
                   )}
                 </button>
               </form>
-
-              <Link
-                href="/login"
-                className="mt-4 block text-center text-[13px] transition-colors hover:underline"
-                style={{ color: 'var(--brand)' }}
-              >
-                返回登录
-              </Link>
-            </>
+            </div>
           )}
 
-          {/* ── 成功状态 ── */}
+          {/* Success */}
           {step === 'success' && (
-            <div className="py-6 text-center">
-              <div
-                className="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-full"
-                style={{
-                  background: 'linear-gradient(135deg,rgba(16,185,129,.12),rgba(16,185,129,.08))',
-                  border: '2px solid rgba(16,185,129,.25)',
-                  animation: 'pop .5s cubic-bezier(0.34,1.56,0.64,1) both',
-                }}
-              >
+            <div className="success-view">
+              <div className="check-ring">
                 <svg
                   width="36"
                   height="36"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#10B981"
+                  stroke="#10b981"
                   strokeWidth="2.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -429,33 +378,12 @@ export default function ForgotPasswordPage(): JSX.Element {
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
               </div>
-
-              <p className="mb-2 text-2xl font-bold" style={{ color: 'var(--fg)' }}>
-                密码已重置
+              <p className="success-title">密码已重置</p>
+              <p className="success-sub">你的密码已成功更新，请使用新密码登录</p>
+              <p className="countdown-note">
+                <span>{autoCount}</span> 秒后自动跳转登录页…
               </p>
-              <p className="mb-7 text-sm" style={{ color: 'var(--fg2)' }}>
-                你的密码已成功更新，请使用新密码登录
-              </p>
-              <p className="mb-5 text-[13px]" style={{ color: 'var(--fg3)' }}>
-                <span
-                  style={{
-                    color: autoCount <= 1 ? 'var(--brand)' : 'inherit',
-                    fontWeight: autoCount <= 1 ? 600 : 'normal',
-                  }}
-                >
-                  {autoCount}
-                </span>{' '}
-                秒后自动跳转登录页…
-              </p>
-
-              <Link
-                href="/login"
-                className="flex h-12 w-full items-center justify-center rounded-[var(--r)] text-[15px] font-semibold transition-colors hover:bg-[var(--brand-light)]"
-                style={{
-                  border: '1px solid var(--brand)',
-                  color: 'var(--brand)',
-                }}
-              >
+              <Link href="/login" className="btn-outline">
                 立即登录
               </Link>
             </div>
