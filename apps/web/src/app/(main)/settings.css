@@ -205,14 +205,6 @@
   background: rgba(59, 130, 246, 0.15);
   border-radius: 2px;
 }
-/* hide scrollbar arrow buttons everywhere */
-*::-webkit-scrollbar-button,
-*::-webkit-scrollbar-button:start,
-*::-webkit-scrollbar-button:end {
-  display: none !important;
-  height: 0 !important;
-  width: 0 !important;
-}
 .st-sec-title {
   font-size: 20px;
   font-weight: 700;
