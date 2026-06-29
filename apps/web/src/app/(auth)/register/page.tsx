@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, type JSX } from 'react'
 import Link from 'next/link'
+import { User, Loader2, CheckCircle, XCircle, Mail, Lock, Shield } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import StrengthBar from '@/components/auth/StrengthBar'
 
@@ -108,19 +109,7 @@ export default function RegisterPage(): JSX.Element {
               </label>
               <div className="iw">
                 <span className="ii">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
+                  <User size={16} />
                 </span>
                 <input
                   id="uname"
@@ -134,42 +123,10 @@ export default function RegisterPage(): JSX.Element {
                 />
                 <span className={checkStatus !== 'idle' ? 'status-ico on' : 'status-ico'}>
                   {checkStatus === 'checking' && (
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#9babc5"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                      style={{ animation: 'spin .7s linear infinite', transformOrigin: 'center' }}
-                    >
-                      <path d="M21 12a9 9 0 1 1-6.22-8.56" />
-                    </svg>
+                    <Loader2 size={16} style={{ animation: 'spin .7s linear infinite' }} />
                   )}
-                  {checkStatus === 'ok' && (
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#10b981"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <polyline points="9 12 11 14 15 10" />
-                    </svg>
-                  )}
-                  {checkStatus === 'taken' && (
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#ef4444"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    >
-                      <circle cx="12" cy="12" r="9" />
-                      <line x1="15" y1="9" x2="9" y2="15" />
-                      <line x1="9" y1="9" x2="15" y2="15" />
-                    </svg>
-                  )}
+                  {checkStatus === 'ok' && <CheckCircle size={16} color="#10b981" />}
+                  {checkStatus === 'taken' && <XCircle size={16} color="#ef4444" />}
                 </span>
               </div>
               <p className={unameErr ? 'ferr on' : 'ferr'}>{unameErr}</p>
@@ -182,19 +139,7 @@ export default function RegisterPage(): JSX.Element {
               </label>
               <div className="iw">
                 <span className="ii">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect width="20" height="16" x="2" y="4" rx="2" />
-                    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-                  </svg>
+                  <Mail size={16} />
                 </span>
                 <input
                   id="remail"
@@ -221,19 +166,7 @@ export default function RegisterPage(): JSX.Element {
               </label>
               <div className="iw">
                 <span className="ii">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect width="18" height="11" x="3" y="11" rx="2" />
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                  </svg>
+                  <Lock size={16} />
                 </span>
                 <input
                   id="rpwd"
@@ -260,18 +193,7 @@ export default function RegisterPage(): JSX.Element {
               </label>
               <div className="iw">
                 <span className="ii">
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
+                  <Shield size={16} />
                 </span>
                 <input
                   id="cpwd"

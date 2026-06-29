@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21">
+  <rect width="21" height="21" fill="white"/>
+  <rect x="1" y="1" width="7" height="7" fill="none" stroke="#1A2540" stroke-width=".8"/>
+  <rect x="2.5" y="2.5" width="4" height="4" fill="#1A2540" rx=".3"/>
+  <rect x="13" y="1" width="7" height="7" fill="none" stroke="#1A2540" stroke-width=".8"/>
+  <rect x="14.5" y="2.5" width="4" height="4" fill="#1A2540" rx=".3"/>
+  <rect x="1" y="13" width="7" height="7" fill="none" stroke="#1A2540" stroke-width=".8"/>
+  <rect x="2.5" y="14.5" width="4" height="4" fill="#1A2540" rx=".3"/>
+  <rect x="9" y="1" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="9" y="5" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="1" y="9" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="5" y="9" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="9" y="9" width="3" height="3" fill="#EFF6FF" rx=".6"/>
+  <text x="10.5" y="11.4" text-anchor="middle" font-size="2.6" font-weight="700" fill="#3B82F6" font-family="sans-serif">元</text>
+  <rect x="13" y="9" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="17" y="9" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="13" y="13" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="17" y="13" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="13" y="17" width="7" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="1" y="17" width="3" height="3" fill="#1A2540" rx=".3"/>
+  <rect x="5" y="17" width="3" height="3" fill="#1A2540" rx=".3"/>
+</svg>

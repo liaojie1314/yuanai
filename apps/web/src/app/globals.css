@@ -3,6 +3,7 @@
 /* ── Design tokens ── */
 :root {
   --bg: #f4f8ff;
+  --sidebar-bg: #f0f6ff;
   --surface: #ffffff;
   --elevated: #ebf3ff;
   --fg: #1a2540;
@@ -18,6 +19,7 @@
   --warn: #f59e0b;
   --r: 8px;
   --auth-grad: linear-gradient(145deg, #1e3a8a 0%, #1d4ed8 40%, #3b82f6 100%);
+  --shadow-popup: 0 8px 24px rgba(30, 64, 175, 0.12);
 }
 
 body {
@@ -48,32 +50,36 @@ html::-webkit-scrollbar {
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --bg: #0d1117;
-    --surface: #161b22;
-    --elevated: #21262d;
-    --fg: #e6edf3;
-    --fg2: #8b949e;
-    --fg3: #6e7681;
-    --brand: #58a6ff;
-    --brand-h: #79c0ff;
-    --brand-a: #388bfd;
-    --brand-light: #0c1f3b;
-    --brand-b: #30363d;
+    --bg: #111827;
+    --sidebar-bg: #141822;
+    --surface: #1f2937;
+    --elevated: #374151;
+    --fg: #f1f5f9;
+    --fg2: #94a3b8;
+    --fg3: #64748b;
+    --brand: #60a5fa;
+    --brand-h: #93c5fd;
+    --brand-a: #3b82f6;
+    --brand-light: #1e3a5f;
+    --brand-b: #1e3a5f;
+    --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
   }
 }
 
 /* ── Dark mode (explicit attribute) ── */
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg: #0d1117;
-  --surface: #161b22;
-  --elevated: #21262d;
-  --fg: #e6edf3;
-  --fg2: #8b949e;
-  --fg3: #6e7681;
-  --brand: #58a6ff;
-  --brand-h: #79c0ff;
-  --brand-a: #388bfd;
-  --brand-light: #0c1f3b;
-  --brand-b: #30363d;
+  --bg: #111827;
+  --sidebar-bg: #141822;
+  --surface: #1f2937;
+  --elevated: #374151;
+  --fg: #f1f5f9;
+  --fg2: #94a3b8;
+  --fg3: #64748b;
+  --brand: #60a5fa;
+  --brand-h: #93c5fd;
+  --brand-a: #3b82f6;
+  --brand-light: #1e3a5f;
+  --brand-b: #1e3a5f;
+  --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
