@@ -300,172 +300,173 @@ export default function SettingsModal({
                 <h2 className="st-sec-title">个人资料</h2>
                 <p className="st-sec-sub">管理你的基本信息和公开展示内容</p>
               </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">头像与昵称</span>
-                </div>
-                <div className="st-avatar-row">
-                  <div className="st-avatar-area">
-                    <div className="st-avatar-wrap">
-                      <div className="st-avatar-circle">{username.charAt(0)}</div>
-                      <div className="st-av-ov">
-                        <Camera size={16} />
-                        更换
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">头像与昵称</span>
+                  </div>
+                  <div className="st-avatar-row">
+                    <div className="st-avatar-area">
+                      <div className="st-avatar-wrap">
+                        <div className="st-avatar-circle">{username.charAt(0)}</div>
+                        <div className="st-av-ov">
+                          <Camera size={16} />
+                          更换
+                        </div>
                       </div>
+                      <button className="st-btn-sm">
+                        <Upload size={12} />
+                        上传头像
+                      </button>
                     </div>
-                    <button className="st-btn-sm">
-                      <Upload size={12} />
-                      上传头像
-                    </button>
+                    <div className="st-user-meta">
+                      <div className="st-user-name">{username}</div>
+                      <div className="st-user-email">zh**@gmail.com</div>
+                      <span className="st-badge st-badge-free" style={{ marginTop: '4px' }}>
+                        免费版
+                      </span>
+                    </div>
                   </div>
-                  <div className="st-user-meta">
-                    <div className="st-user-name">{username}</div>
-                    <div className="st-user-email">zh**@gmail.com</div>
-                    <span className="st-badge st-badge-free" style={{ marginTop: '4px' }}>
-                      免费版
+                </div>
+
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">基本信息</span>
+                  </div>
+                  <div className="st-row">
+                    <span className="st-row-label" style={{ flexShrink: 0, width: '80px' }}>
+                      用户名
                     </span>
+                    <div className="st-row-r" style={{ flex: 1, justifyContent: 'flex-end' }}>
+                      {!editingUsername ? (
+                        <div className="st-ie-view">
+                          <span className="st-row-val">{username}</span>
+                          <button
+                            className="st-btn-icon"
+                            onClick={() => {
+                              setUsernameInput(username)
+                              setEditingUsername(true)
+                            }}
+                            title="编辑"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="st-ie-edit">
+                          <input
+                            className="st-ie-input"
+                            value={usernameInput}
+                            onChange={(e) => setUsernameInput(e.target.value)}
+                            maxLength={20}
+                            placeholder="2-20 位"
+                            autoFocus
+                          />
+                          <button
+                            className="st-btn st-btn-ghost"
+                            style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
+                            onClick={() => setEditingUsername(false)}
+                          >
+                            取消
+                          </button>
+                          <button
+                            className="st-btn st-btn-primary"
+                            style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
+                            onClick={saveUsername}
+                          >
+                            保存
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="st-row">
+                    <span className="st-row-label" style={{ flexShrink: 0, width: '80px' }}>
+                      个性签名
+                    </span>
+                    <div className="st-row-r" style={{ flex: 1, justifyContent: 'flex-end' }}>
+                      {!editingBio ? (
+                        <div className="st-ie-view">
+                          <span className={bio ? 'st-row-val' : 'st-row-muted'}>
+                            {bio || '未填写'}
+                          </span>
+                          <button
+                            className="st-btn-icon"
+                            onClick={() => {
+                              setBioInput(bio)
+                              setEditingBio(true)
+                            }}
+                            title="编辑"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="st-ie-edit">
+                          <input
+                            className="st-ie-input"
+                            value={bioInput}
+                            onChange={(e) => setBioInput(e.target.value)}
+                            maxLength={100}
+                            placeholder="最多 100 字"
+                            autoFocus
+                          />
+                          <button
+                            className="st-btn st-btn-ghost"
+                            style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
+                            onClick={() => setEditingBio(false)}
+                          >
+                            取消
+                          </button>
+                          <button
+                            className="st-btn st-btn-primary"
+                            style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
+                            onClick={saveBio}
+                          >
+                            保存
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="st-row">
+                    <span className="st-row-label">注册时间</span>
+                    <span className="st-row-muted">2025 年 8 月 15 日</span>
                   </div>
                 </div>
-              </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">基本信息</span>
-                </div>
-                <div className="st-row">
-                  <span className="st-row-label" style={{ flexShrink: 0, width: '80px' }}>
-                    用户名
-                  </span>
-                  <div className="st-row-r" style={{ flex: 1, justifyContent: 'flex-end' }}>
-                    {!editingUsername ? (
-                      <div className="st-ie-view">
-                        <span className="st-row-val">{username}</span>
-                        <button
-                          className="st-btn-icon"
-                          onClick={() => {
-                            setUsernameInput(username)
-                            setEditingUsername(true)
-                          }}
-                          title="编辑"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="st-ie-edit">
-                        <input
-                          className="st-ie-input"
-                          value={usernameInput}
-                          onChange={(e) => setUsernameInput(e.target.value)}
-                          maxLength={20}
-                          placeholder="2-20 位"
-                          autoFocus
-                        />
-                        <button
-                          className="st-btn st-btn-ghost"
-                          style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
-                          onClick={() => setEditingUsername(false)}
-                        >
-                          取消
-                        </button>
-                        <button
-                          className="st-btn st-btn-primary"
-                          style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
-                          onClick={saveUsername}
-                        >
-                          保存
-                        </button>
-                      </div>
-                    )}
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">本月使用情况</span>
+                    <span className="st-blk-sub">每月 1 日重置</span>
                   </div>
-                </div>
-                <div className="st-row">
-                  <span className="st-row-label" style={{ flexShrink: 0, width: '80px' }}>
-                    个性签名
-                  </span>
-                  <div className="st-row-r" style={{ flex: 1, justifyContent: 'flex-end' }}>
-                    {!editingBio ? (
-                      <div className="st-ie-view">
-                        <span className={bio ? 'st-row-val' : 'st-row-muted'}>
-                          {bio || '未填写'}
-                        </span>
-                        <button
-                          className="st-btn-icon"
-                          onClick={() => {
-                            setBioInput(bio)
-                            setEditingBio(true)
-                          }}
-                          title="编辑"
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="st-ie-edit">
-                        <input
-                          className="st-ie-input"
-                          value={bioInput}
-                          onChange={(e) => setBioInput(e.target.value)}
-                          maxLength={100}
-                          placeholder="最多 100 字"
-                          autoFocus
-                        />
-                        <button
-                          className="st-btn st-btn-ghost"
-                          style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
-                          onClick={() => setEditingBio(false)}
-                        >
-                          取消
-                        </button>
-                        <button
-                          className="st-btn st-btn-primary"
-                          style={{ height: '32px', padding: '0 10px', fontSize: '12px' }}
-                          onClick={saveBio}
-                        >
-                          保存
-                        </button>
-                      </div>
-                    )}
+                  <div className="st-stats-grid">
+                    <div className="st-stat-it">
+                      <MessageSquare size={18} color="var(--brand)" />
+                      <span className="st-stat-val">128</span>
+                      <span className="st-stat-label">次对话</span>
+                    </div>
+                    <div className="st-stat-it">
+                      <Zap size={18} color="var(--brand)" />
+                      <span className="st-stat-val">42.3k</span>
+                      <span className="st-stat-label">Token 消耗</span>
+                    </div>
+                    <div className="st-stat-it">
+                      <Paperclip size={18} color="var(--brand)" />
+                      <span className="st-stat-val">17</span>
+                      <span className="st-stat-label">上传文件</span>
+                    </div>
                   </div>
-                </div>
-                <div className="st-row">
-                  <span className="st-row-label">注册时间</span>
-                  <span className="st-row-muted">2025 年 8 月 15 日</span>
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">本月使用情况</span>
-                  <span className="st-blk-sub">每月 1 日重置</span>
-                </div>
-                <div className="st-stats-grid">
-                  <div className="st-stat-it">
-                    <MessageSquare size={18} color="var(--brand)" />
-                    <span className="st-stat-val">128</span>
-                    <span className="st-stat-label">次对话</span>
+                  <div className="st-usage-area">
+                    <div className="st-usage-hd">
+                      <span>本月免费额度</span>
+                      <button className="st-btn-link">升级 Pro 解锁无限制 →</button>
+                    </div>
+                    <div className="st-prog-track">
+                      <div className="st-prog-fill" style={{ width: '42%' }} />
+                    </div>
+                    <span className="st-usage-text">已用 42,312 / 100,000 Token</span>
                   </div>
-                  <div className="st-stat-it">
-                    <Zap size={18} color="var(--brand)" />
-                    <span className="st-stat-val">42.3k</span>
-                    <span className="st-stat-label">Token 消耗</span>
-                  </div>
-                  <div className="st-stat-it">
-                    <Paperclip size={18} color="var(--brand)" />
-                    <span className="st-stat-val">17</span>
-                    <span className="st-stat-label">上传文件</span>
-                  </div>
-                </div>
-                <div className="st-usage-area">
-                  <div className="st-usage-hd">
-                    <span>本月免费额度</span>
-                    <button className="st-btn-link">升级 Pro 解锁无限制 →</button>
-                  </div>
-                  <div className="st-prog-track">
-                    <div className="st-prog-fill" style={{ width: '42%' }} />
-                  </div>
-                  <span className="st-usage-text">已用 42,312 / 100,000 Token</span>
                 </div>
               </div>
             </section>
@@ -476,122 +477,123 @@ export default function SettingsModal({
                 <h2 className="st-sec-title">账号安全</h2>
                 <p className="st-sec-sub">管理你的登录凭证和账号保护设置</p>
               </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">登录邮箱</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">当前邮箱</span>
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">登录邮箱</span>
                   </div>
-                  <div className="st-row-r">
-                    <span className="st-row-val">zh**@gmail.com</span>
-                    <button className="st-btn-link" onClick={() => setSubModal('change-email')}>
-                      更换邮箱
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">登录密码</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">当前密码</span>
-                  </div>
-                  <div className="st-row-r">
-                    <span className="st-row-muted">••••••••</span>
-                    <button className="st-btn-link" onClick={() => setSubModal('change-pw')}>
-                      修改密码
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">关联登录方式</span>
-                  <span className="st-blk-sub">通过第三方账号快速登录</span>
-                </div>
-                <div className="st-row">
-                  <div
-                    className="st-row-r"
-                    style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
-                  >
-                    <div className="st-sl st-sl-wechat">
-                      <img src="/icons/wechat.svg" width={14} height={14} alt="" />
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">当前邮箱</span>
                     </div>
-                    <span className="st-row-val">微信</span>
-                  </div>
-                  <div className="st-row-r">
-                    <span className="st-badge st-badge-ok">已关联</span>
-                    <button
-                      className="st-btn-err-link"
-                      onClick={() => setSubModal('unlink-wechat')}
-                    >
-                      解除关联
-                    </button>
-                  </div>
-                </div>
-                <div className="st-row">
-                  <div
-                    className="st-row-r"
-                    style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
-                  >
-                    <div className="st-sl st-sl-google">
-                      <img src="/icons/google.svg" width={14} height={14} alt="" />
+                    <div className="st-row-r">
+                      <span className="st-row-val">zh**@gmail.com</span>
+                      <button className="st-btn-link" onClick={() => setSubModal('change-email')}>
+                        更换邮箱
+                      </button>
                     </div>
-                    <span className="st-row-val">Google</span>
-                  </div>
-                  <div className="st-row-r">
-                    <span className="st-badge st-badge-muted">未关联</span>
-                    <button
-                      className="st-btn-link"
-                      onClick={() => showToast('Google 授权功能即将上线', 'ok')}
-                    >
-                      立即关联
-                    </button>
                   </div>
                 </div>
-                <div className="st-row">
-                  <div
-                    className="st-row-r"
-                    style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
-                  >
-                    <div className="st-sl st-sl-github">
-                      <img src="/icons/github.svg" width={14} height={14} alt="" />
-                    </div>
-                    <span className="st-row-val">GitHub</span>
-                  </div>
-                  <div className="st-row-r">
-                    <span className="st-badge st-badge-muted">未关联</span>
-                    <button
-                      className="st-btn-link"
-                      onClick={() => showToast('GitHub 授权功能即将上线', 'ok')}
-                    >
-                      立即关联
-                    </button>
-                  </div>
-                </div>
-              </div>
 
-              <div className="st-blk danger">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title" style={{ color: '#ef4444' }}>
-                    危险操作
-                  </span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">注销账号</span>
-                    <span className="st-row-desc">永久删除账号及所有对话数据，不可恢复</span>
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">登录密码</span>
                   </div>
-                  <button className="st-btn-danger" onClick={() => setSubModal('delete-account')}>
-                    注销账号
-                  </button>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">当前密码</span>
+                    </div>
+                    <div className="st-row-r">
+                      <span className="st-row-muted">••••••••</span>
+                      <button className="st-btn-link" onClick={() => setSubModal('change-pw')}>
+                        修改密码
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">关联登录方式</span>
+                    <span className="st-blk-sub">通过第三方账号快速登录</span>
+                  </div>
+                  <div className="st-row">
+                    <div
+                      className="st-row-r"
+                      style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
+                    >
+                      <div className="st-sl st-sl-wechat">
+                        <img src="/icons/wechat.svg" width={14} height={14} alt="" />
+                      </div>
+                      <span className="st-row-val">微信</span>
+                    </div>
+                    <div className="st-row-r">
+                      <span className="st-badge st-badge-ok">已关联</span>
+                      <button
+                        className="st-btn-err-link"
+                        onClick={() => setSubModal('unlink-wechat')}
+                      >
+                        解除关联
+                      </button>
+                    </div>
+                  </div>
+                  <div className="st-row">
+                    <div
+                      className="st-row-r"
+                      style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
+                    >
+                      <div className="st-sl st-sl-google">
+                        <img src="/icons/google.svg" width={14} height={14} alt="" />
+                      </div>
+                      <span className="st-row-val">Google</span>
+                    </div>
+                    <div className="st-row-r">
+                      <span className="st-badge st-badge-muted">未关联</span>
+                      <button
+                        className="st-btn-link"
+                        onClick={() => showToast('Google 授权功能即将上线', 'ok')}
+                      >
+                        立即关联
+                      </button>
+                    </div>
+                  </div>
+                  <div className="st-row">
+                    <div
+                      className="st-row-r"
+                      style={{ flex: 1, justifyContent: 'flex-start', gap: '10px' }}
+                    >
+                      <div className="st-sl st-sl-github">
+                        <img src="/icons/github.svg" width={14} height={14} alt="" />
+                      </div>
+                      <span className="st-row-val">GitHub</span>
+                    </div>
+                    <div className="st-row-r">
+                      <span className="st-badge st-badge-muted">未关联</span>
+                      <button
+                        className="st-btn-link"
+                        onClick={() => showToast('GitHub 授权功能即将上线', 'ok')}
+                      >
+                        立即关联
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="st-blk danger">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title" style={{ color: '#ef4444' }}>
+                      危险操作
+                    </span>
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">注销账号</span>
+                      <span className="st-row-desc">永久删除账号及所有对话数据，不可恢复</span>
+                    </div>
+                    <button className="st-btn-danger" onClick={() => setSubModal('delete-account')}>
+                      注销账号
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
@@ -602,84 +604,85 @@ export default function SettingsModal({
                 <h2 className="st-sec-title">外观与主题</h2>
                 <p className="st-sec-sub">调整界面的视觉风格和阅读体验</p>
               </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">主题</span>
-                </div>
-                <div className="st-theme-cards">
-                  {(
-                    [
-                      { key: 'auto', label: '跟随系统', cls: 'st-tp-auto' },
-                      { key: 'light', label: '浅色模式', cls: 'st-tp-light' },
-                      { key: 'dark', label: '深色模式', cls: 'st-tp-dark' },
-                    ] as Array<{ key: ThemeChoice; label: string; cls: string }>
-                  ).map(({ key, label, cls }) => (
-                    <div
-                      key={key}
-                      className={`st-theme-card ${themeChoice === key ? 'sel' : ''}`}
-                      onClick={() => applyTheme(key)}
-                    >
-                      <div className={`st-tp ${cls}`} />
-                      <div className="st-tp-detail">
-                        <span className="st-tp-name">{label}</span>
-                        {themeChoice === key && <Check size={13} color="var(--brand)" />}
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">主题</span>
+                  </div>
+                  <div className="st-theme-cards">
+                    {(
+                      [
+                        { key: 'auto', label: '跟随系统', cls: 'st-tp-auto' },
+                        { key: 'light', label: '浅色模式', cls: 'st-tp-light' },
+                        { key: 'dark', label: '深色模式', cls: 'st-tp-dark' },
+                      ] as Array<{ key: ThemeChoice; label: string; cls: string }>
+                    ).map(({ key, label, cls }) => (
+                      <div
+                        key={key}
+                        className={`st-theme-card ${themeChoice === key ? 'sel' : ''}`}
+                        onClick={() => applyTheme(key)}
+                      >
+                        <div className={`st-tp ${cls}`} />
+                        <div className="st-tp-detail">
+                          <span className="st-tp-name">{label}</span>
+                          {themeChoice === key && <Check size={13} color="var(--brand)" />}
+                        </div>
                       </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">字体大小</span>
+                    <span className="st-blk-sub">影响对话内容的文字大小</span>
+                  </div>
+                  <div className="st-slider-wrap">
+                    <div className="st-slider-labels">
+                      <span>小 A</span>
+                      <span>A</span>
+                      <span>大 A</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">字体大小</span>
-                  <span className="st-blk-sub">影响对话内容的文字大小</span>
-                </div>
-                <div className="st-slider-wrap">
-                  <div className="st-slider-labels">
-                    <span>小 A</span>
-                    <span>A</span>
-                    <span>大 A</span>
-                  </div>
-                  <input
-                    type="range"
-                    className="st-slider"
-                    min={0}
-                    max={2}
-                    step={1}
-                    value={fontSizeIdx}
-                    onChange={(e) => {
-                      const v = Number(e.target.value)
-                      if (v === 0 || v === 1 || v === 2) setFontSizeIdx(v)
-                    }}
-                  />
-                  <div className="st-slider-preview" style={{ fontSize: `${fontSize}px` }}>
-                    预览效果：今天帮我分析一下这份财务报告，找出关键数据和异常趋势。
+                    <input
+                      type="range"
+                      className="st-slider"
+                      min={0}
+                      max={2}
+                      step={1}
+                      value={fontSizeIdx}
+                      onChange={(e) => {
+                        const v = Number(e.target.value)
+                        if (v === 0 || v === 1 || v === 2) setFontSizeIdx(v)
+                      }}
+                    />
+                    <div className="st-slider-preview" style={{ fontSize: `${fontSize}px` }}>
+                      预览效果：今天帮我分析一下这份财务报告，找出关键数据和异常趋势。
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">消息密度</span>
-                  <span className="st-blk-sub">控制消息之间的间距</span>
-                </div>
-                <div className="st-radio-grp">
-                  {(
-                    [
-                      { key: 'compact', label: '紧凑' },
-                      { key: 'standard', label: '标准' },
-                      { key: 'loose', label: '宽松' },
-                    ] as Array<{ key: Density; label: string }>
-                  ).map(({ key, label }) => (
-                    <button
-                      key={key}
-                      className={`st-radio-btn ${density === key ? 'sel' : ''}`}
-                      onClick={() => setDensity(key)}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">消息密度</span>
+                    <span className="st-blk-sub">控制消息之间的间距</span>
+                  </div>
+                  <div className="st-radio-grp">
+                    {(
+                      [
+                        { key: 'compact', label: '紧凑' },
+                        { key: 'standard', label: '标准' },
+                        { key: 'loose', label: '宽松' },
+                      ] as Array<{ key: Density; label: string }>
+                    ).map(({ key, label }) => (
+                      <button
+                        key={key}
+                        className={`st-radio-btn ${density === key ? 'sel' : ''}`}
+                        onClick={() => setDensity(key)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </section>
@@ -690,105 +693,106 @@ export default function SettingsModal({
                 <h2 className="st-sec-title">通知设置</h2>
                 <p className="st-sec-sub">管理元AI 向你发送通知的方式</p>
               </div>
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">推送通知</span>
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">浏览器通知</span>
+                      <span className="st-row-desc">允许在桌面收到 AI 回复提醒</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifBrowser ? 'on' : ''}`}
+                      onClick={() => {
+                        setNotifBrowser((v) => !v)
+                        showToast(notifBrowser ? '浏览器通知已关闭' : '浏览器通知已开启', 'ok')
+                      }}
+                    />
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">声音提示</span>
+                      <span className="st-row-desc">收到回复时播放提示音</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifSound ? 'on' : ''}`}
+                      onClick={() => setNotifSound((v) => !v)}
+                    />
+                  </div>
+                </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">推送通知</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">浏览器通知</span>
-                    <span className="st-row-desc">允许在桌面收到 AI 回复提醒</span>
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">消息通知</span>
                   </div>
-                  <button
-                    className={`st-toggle ${notifBrowser ? 'on' : ''}`}
-                    onClick={() => {
-                      setNotifBrowser((v) => !v)
-                      showToast(notifBrowser ? '浏览器通知已关闭' : '浏览器通知已开启', 'ok')
-                    }}
-                  />
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">声音提示</span>
-                    <span className="st-row-desc">收到回复时播放提示音</span>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">AI 回复提醒</span>
+                      <span className="st-row-desc">长任务完成后发送通知</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifAI ? 'on' : ''}`}
+                      onClick={() => setNotifAI((v) => !v)}
+                    />
                   </div>
-                  <button
-                    className={`st-toggle ${notifSound ? 'on' : ''}`}
-                    onClick={() => setNotifSound((v) => !v)}
-                  />
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">新功能公告</span>
+                      <span className="st-row-desc">重大功能上线时提醒</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifFeature ? 'on' : ''}`}
+                      onClick={() => setNotifFeature((v) => !v)}
+                    />
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">系统维护提醒</span>
+                      <span className="st-row-desc">计划维护前 24 小时通知</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifMaint ? 'on' : ''}`}
+                      onClick={() => setNotifMaint((v) => !v)}
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">消息通知</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">AI 回复提醒</span>
-                    <span className="st-row-desc">长任务完成后发送通知</span>
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">邮件通知</span>
                   </div>
-                  <button
-                    className={`st-toggle ${notifAI ? 'on' : ''}`}
-                    onClick={() => setNotifAI((v) => !v)}
-                  />
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">新功能公告</span>
-                    <span className="st-row-desc">重大功能上线时提醒</span>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">每周使用摘要</span>
+                      <span className="st-row-desc">每周一发送本周使用报告</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifWeekly ? 'on' : ''}`}
+                      onClick={() => setNotifWeekly((v) => !v)}
+                    />
                   </div>
-                  <button
-                    className={`st-toggle ${notifFeature ? 'on' : ''}`}
-                    onClick={() => setNotifFeature((v) => !v)}
-                  />
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">系统维护提醒</span>
-                    <span className="st-row-desc">计划维护前 24 小时通知</span>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">产品更新通知</span>
+                      <span className="st-row-desc">新版本发布时邮件告知</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifUpdate ? 'on' : ''}`}
+                      onClick={() => setNotifUpdate((v) => !v)}
+                    />
                   </div>
-                  <button
-                    className={`st-toggle ${notifMaint ? 'on' : ''}`}
-                    onClick={() => setNotifMaint((v) => !v)}
-                  />
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">邮件通知</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">每周使用摘要</span>
-                    <span className="st-row-desc">每周一发送本周使用报告</span>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">安全警报</span>
+                      <span className="st-row-desc">账号异常登录时立即通知</span>
+                    </div>
+                    <button
+                      className={`st-toggle ${notifSecurity ? 'on' : ''}`}
+                      onClick={() => setNotifSecurity((v) => !v)}
+                    />
                   </div>
-                  <button
-                    className={`st-toggle ${notifWeekly ? 'on' : ''}`}
-                    onClick={() => setNotifWeekly((v) => !v)}
-                  />
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">产品更新通知</span>
-                    <span className="st-row-desc">新版本发布时邮件告知</span>
-                  </div>
-                  <button
-                    className={`st-toggle ${notifUpdate ? 'on' : ''}`}
-                    onClick={() => setNotifUpdate((v) => !v)}
-                  />
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">安全警报</span>
-                    <span className="st-row-desc">账号异常登录时立即通知</span>
-                  </div>
-                  <button
-                    className={`st-toggle ${notifSecurity ? 'on' : ''}`}
-                    onClick={() => setNotifSecurity((v) => !v)}
-                  />
                 </div>
               </div>
             </section>
@@ -799,110 +803,111 @@ export default function SettingsModal({
                 <h2 className="st-sec-title">语言与地区</h2>
                 <p className="st-sec-sub">设置界面语言、时区和时间格式</p>
               </div>
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">界面语言</span>
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">显示语言</span>
+                    </div>
+                    <div className="st-row-r">
+                      <select
+                        className="st-select"
+                        onChange={() => showToast('语言已切换，刷新后生效', 'ok')}
+                      >
+                        <option>简体中文</option>
+                        <option>繁體中文</option>
+                        <option>English</option>
+                        <option>日本語</option>
+                        <option>한국어</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">界面语言</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">显示语言</span>
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">地区与时区</span>
                   </div>
-                  <div className="st-row-r">
-                    <select
-                      className="st-select"
-                      onChange={() => showToast('语言已切换，刷新后生效', 'ok')}
-                    >
-                      <option>简体中文</option>
-                      <option>繁體中文</option>
-                      <option>English</option>
-                      <option>日本語</option>
-                      <option>한국어</option>
-                    </select>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">地区</span>
+                    </div>
+                    <div className="st-row-r">
+                      <select className="st-select">
+                        <option>中国大陆</option>
+                        <option>港澳台地区</option>
+                        <option>日本</option>
+                        <option>美国</option>
+                        <option>其他</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">时区</span>
+                    </div>
+                    <div className="st-row-r">
+                      <select className="st-select">
+                        <option>UTC+8 亚洲/上海</option>
+                        <option>UTC+9 亚洲/东京</option>
+                        <option>UTC+0 格林威治</option>
+                        <option>UTC-5 美国东部</option>
+                        <option>UTC-8 美国西部</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">地区与时区</span>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">地区</span>
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">时间与日期格式</span>
                   </div>
-                  <div className="st-row-r">
-                    <select className="st-select">
-                      <option>中国大陆</option>
-                      <option>港澳台地区</option>
-                      <option>日本</option>
-                      <option>美国</option>
-                      <option>其他</option>
-                    </select>
+                  <div className="st-row">
+                    <span className="st-row-label" style={{ flexShrink: 0, width: '60px' }}>
+                      时间制
+                    </span>
+                    <div className="st-radio-grp" style={{ padding: 0, flex: 1 }}>
+                      <button
+                        className={`st-radio-btn ${timeFmt === '24h' ? 'sel' : ''}`}
+                        onClick={() => setTimeFmt('24h')}
+                      >
+                        24 小时制
+                      </button>
+                      <button
+                        className={`st-radio-btn ${timeFmt === '12h' ? 'sel' : ''}`}
+                        onClick={() => setTimeFmt('12h')}
+                      >
+                        12 小时制
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <div className="st-row">
-                  <div className="st-row-l">
-                    <span className="st-row-label">时区</span>
-                  </div>
-                  <div className="st-row-r">
-                    <select className="st-select">
-                      <option>UTC+8 亚洲/上海</option>
-                      <option>UTC+9 亚洲/东京</option>
-                      <option>UTC+0 格林威治</option>
-                      <option>UTC-5 美国东部</option>
-                      <option>UTC-8 美国西部</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">时间与日期格式</span>
-                </div>
-                <div className="st-row">
-                  <span className="st-row-label" style={{ flexShrink: 0, width: '60px' }}>
-                    时间制
-                  </span>
-                  <div className="st-radio-grp" style={{ padding: 0, flex: 1 }}>
-                    <button
-                      className={`st-radio-btn ${timeFmt === '24h' ? 'sel' : ''}`}
-                      onClick={() => setTimeFmt('24h')}
-                    >
-                      24 小时制
-                    </button>
-                    <button
-                      className={`st-radio-btn ${timeFmt === '12h' ? 'sel' : ''}`}
-                      onClick={() => setTimeFmt('12h')}
-                    >
-                      12 小时制
-                    </button>
-                  </div>
-                </div>
-                <div className="st-row">
-                  <span className="st-row-label" style={{ flexShrink: 0, width: '60px' }}>
-                    日期格式
-                  </span>
-                  <div className="st-radio-grp" style={{ padding: 0, flex: 1 }}>
-                    <button
-                      className={`st-radio-btn ${dateFmt === 'ymd' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('ymd')}
-                    >
-                      2026/06/28
-                    </button>
-                    <button
-                      className={`st-radio-btn ${dateFmt === 'mdy' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('mdy')}
-                    >
-                      06/28/2026
-                    </button>
-                    <button
-                      className={`st-radio-btn ${dateFmt === 'dmy' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('dmy')}
-                    >
-                      28/06/2026
-                    </button>
+                  <div className="st-row">
+                    <span className="st-row-label" style={{ flexShrink: 0, width: '60px' }}>
+                      日期格式
+                    </span>
+                    <div className="st-radio-grp" style={{ padding: 0, flex: 1 }}>
+                      <button
+                        className={`st-radio-btn ${dateFmt === 'ymd' ? 'sel' : ''}`}
+                        onClick={() => setDateFmt('ymd')}
+                      >
+                        2026/06/28
+                      </button>
+                      <button
+                        className={`st-radio-btn ${dateFmt === 'mdy' ? 'sel' : ''}`}
+                        onClick={() => setDateFmt('mdy')}
+                      >
+                        06/28/2026
+                      </button>
+                      <button
+                        className={`st-radio-btn ${dateFmt === 'dmy' ? 'sel' : ''}`}
+                        onClick={() => setDateFmt('dmy')}
+                      >
+                        28/06/2026
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -910,36 +915,38 @@ export default function SettingsModal({
 
             {/* ────────── 关于与帮助 ────────── */}
             <section className={`st-sec ${section === 'about' ? 'active' : ''}`}>
-              <div className="st-about-brand">
-                <div className="st-about-logo">元</div>
-                <div className="st-about-name">元AI</div>
-                <div className="st-about-ver">v1.0.0（构建 2026.06.28）</div>
-              </div>
-
-              <div className="st-blk">
-                <div className="st-blk-hd">
-                  <span className="st-blk-title">帮助与文档</span>
+              <div className="st-sec-body">
+                <div className="st-about-brand">
+                  <div className="st-about-logo">元</div>
+                  <div className="st-about-name">元AI</div>
+                  <div className="st-about-ver">v1.0.0（构建 2026.06.28）</div>
                 </div>
-                {[
-                  { label: '使用说明', desc: '新手入门指南' },
-                  { label: '更新日志', desc: '查看最新功能与修复' },
-                  { label: '服务协议', desc: '查看完整用户协议' },
-                  { label: '隐私政策', desc: '了解数据处理方式' },
-                  { label: '问题反馈', desc: '提交 Bug 或功能建议' },
-                ].map(({ label, desc }) => (
-                  <div key={label} className="st-link-row">
-                    <div>
-                      <div className="st-link-name">{label}</div>
-                      <div className="st-link-desc">{desc}</div>
-                    </div>
-                    <ExternalLink size={13} color="var(--fg3)" />
-                  </div>
-                ))}
-              </div>
 
-              <div className="st-about-credit">
-                由 Anthropic Claude · OpenAI · DeepSeek 提供 AI 能力
-                <br />© 2026 元AI. All rights reserved.
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">帮助与文档</span>
+                  </div>
+                  {[
+                    { label: '使用说明', desc: '新手入门指南' },
+                    { label: '更新日志', desc: '查看最新功能与修复' },
+                    { label: '服务协议', desc: '查看完整用户协议' },
+                    { label: '隐私政策', desc: '了解数据处理方式' },
+                    { label: '问题反馈', desc: '提交 Bug 或功能建议' },
+                  ].map(({ label, desc }) => (
+                    <div key={label} className="st-link-row">
+                      <div>
+                        <div className="st-link-name">{label}</div>
+                        <div className="st-link-desc">{desc}</div>
+                      </div>
+                      <ExternalLink size={13} color="var(--fg3)" />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="st-about-credit">
+                  由 Anthropic Claude · OpenAI · DeepSeek 提供 AI 能力
+                  <br />© 2026 元AI. All rights reserved.
+                </div>
               </div>
             </section>
           </div>
