@@ -6,7 +6,7 @@
 
 ```
 Content-Type: application/json
-Authorization: Bearer <access_token>   （除登录/注册外必须携带）
+Authorization: Bearer <access_token>   （除登录/注册/OAuth 外必须携带）
 ```
 
 ---
@@ -37,29 +37,184 @@ Authorization: Bearer <access_token>   （除登录/注册外必须携带）
     "email": "user@example.com",
     "username": "yuanai_user",
     "avatar_url": null,
+    "bio": null,
+    "phone": null,
+    "plan": "free",
+    "linked_providers": [],
     "created_at": "2026-01-01T00:00:00Z"
   }
 }
 ```
 
-**Error 409:** 邮箱/用户名已存在
+**Error 409:** `AUTH_EMAIL_EXISTS` 或 `AUTH_USERNAME_EXISTS`
 
 ---
 
-### POST `/auth/login` — 登录
+### GET `/auth/check-username` — 检查用户名是否可用（无需认证）
+
+注册页面在输入框失焦时实时调用，防止提交后才报错。
+
+**Query params:**
+
+- `username`: string（必须）
+
+**Response 200:**
+
+```json
+{
+  "available": true
+}
+```
+
+```json
+{
+  "available": false
+}
+```
+
+---
+
+### POST `/auth/login` — 邮箱密码登录
 
 **Request:**
 
 ```json
 {
   "email": "user@example.com",
-  "password": "Abcd1234!"
+  "password": "Abcd1234!",
+  "remember_me": false
+}
+```
+
+`remember_me` 为 `true` 时，`access_token` 有效期延长至 7 天（默认 2 小时）。
+
+**Response 200:** 同注册 201 结构
+
+**Error 401:** `AUTH_INVALID_CREDENTIALS`
+
+---
+
+### POST `/auth/login/phone` — 手机号验证码登录
+
+手机验证码登录，需先调用 `POST /auth/phone/send-code` 获取验证码。
+
+**Request:**
+
+```json
+{
+  "phone": "13812345678",
+  "code": "123456"
 }
 ```
 
 **Response 200:** 同注册 201 结构
 
-**Error 401:** 邮箱或密码错误
+**Error 401:** `AUTH_CODE_INVALID` 或 `AUTH_CODE_EXPIRED`
+
+---
+
+### POST `/auth/phone/send-code` — 发送手机验证码（无需认证）
+
+登录页和绑定手机场景均使用此接口。
+
+**Request:**
+
+```json
+{
+  "phone": "13812345678",
+  "purpose": "login"
+}
+```
+
+`purpose` 枚举：`"login"` | `"bind"`
+
+**Response 200:**
+
+```json
+{
+  "expires_in": 60
+}
+```
+
+验证码 60 秒内有效，前端据此显示倒计时按钮。
+
+**Error 429:** `RATE_LIMIT_EXCEEDED`
+
+---
+
+### POST `/auth/qr/create` — 生成扫码登录二维码（无需认证）
+
+Web 端点击二维码登录按钮时调用，轮询扫码状态。
+
+**Response 201:**
+
+```json
+{
+  "token": "qr_abc123",
+  "expires_in": 60
+}
+```
+
+二维码内容为 `yuanai://qr-login?token=qr_abc123`，由前端渲染为二维码图片。
+
+---
+
+### GET `/auth/qr/:token/status` — 轮询二维码扫描状态（无需认证）
+
+前端每 2 秒轮询一次，直到扫描成功或过期。
+
+**Response 200:**
+
+```json
+{
+  "status": "pending"
+}
+```
+
+`status` 枚举：
+
+| 值          | 含义                 |
+| ----------- | -------------------- |
+| `pending`   | 等待用户扫码         |
+| `scanned`   | 用户已扫码，等待确认 |
+| `confirmed` | 确认完成，携带 token |
+| `expired`   | 已过期               |
+
+`status` 为 `confirmed` 时额外返回认证数据：
+
+```json
+{
+  "status": "confirmed",
+  "access_token": "eyJ...",
+  "refresh_token": "eyJ...",
+  "token_type": "bearer",
+  "user": { "...": "同注册结构" }
+}
+```
+
+**Error 404:** `AUTH_QR_EXPIRED`（token 不存在或已过期）
+
+---
+
+### GET `/auth/oauth/:provider` — 发起 OAuth 登录（无需认证）
+
+`:provider` 枚举：`wechat` | `google` | `apple`
+
+**Response 302:** 重定向到对应 OAuth 授权页
+
+---
+
+### GET `/auth/oauth/:provider/callback` — OAuth 回调处理（无需认证）
+
+由 OAuth 提供商重定向至此，后端完成 token 换取后重定向回前端。
+
+**成功时重定向到：**
+
+```
+https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
+```
+
+**账号不存在时**（首次 OAuth 登录自动注册）直接返回新用户的认证数据。
 
 ---
 
@@ -86,7 +241,7 @@ Authorization: Bearer <access_token>   （除登录/注册外必须携带）
 
 ### POST `/auth/logout` — 登出（需认证）
 
-吊销 refresh_token（从 Redis 删除）
+吊销 refresh_token（从 Redis 删除）。
 
 **Response 200:** `{ "message": "已退出登录" }`
 
@@ -102,24 +257,201 @@ Authorization: Bearer <access_token>   （除登录/注册外必须携带）
   "email": "user@example.com",
   "username": "yuanai_user",
   "avatar_url": "https://...",
+  "bio": "这里是个人简介",
+  "phone": "138****5678",
+  "plan": "free",
+  "linked_providers": ["wechat"],
   "created_at": "2026-01-01T00:00:00Z"
+}
+```
+
+字段说明：
+
+| 字段               | 类型           | 说明                                                 |
+| ------------------ | -------------- | ---------------------------------------------------- |
+| `phone`            | string \| null | 已绑定手机号（脱敏展示），未绑定为 null              |
+| `bio`              | string \| null | 个人简介，最多 100 字                                |
+| `plan`             | string         | 订阅计划：`free` \| `pro` \| `enterprise`            |
+| `linked_providers` | string[]       | 已绑定的第三方登录：`wechat` \| `google` \| `github` |
+
+---
+
+### PATCH `/auth/me` — 更新用户基本信息（需认证）
+
+**Request:**（字段均可选）
+
+```json
+{
+  "username": "new_name",
+  "avatar_url": "https://...",
+  "bio": "新的个人简介"
+}
+```
+
+**Response 200:** 更新后的用户对象（同 `GET /auth/me` 结构）
+
+---
+
+### GET `/auth/me/stats` — 获取使用统计（需认证）
+
+个人资料页「使用统计」卡片数据来源。
+
+**Response 200:**
+
+```json
+{
+  "conversations": 128,
+  "tokens_used": 42300,
+  "files": 17
 }
 ```
 
 ---
 
-### PATCH `/auth/me` — 更新用户信息（需认证）
+### POST `/auth/me/email-code` — 发送邮箱更换验证码（需认证）
+
+在设置页「更换邮箱」弹窗中，用户输入新邮箱后点击「发送验证码」调用。
 
 **Request:**
 
 ```json
 {
-  "username": "new_name", // 可选
-  "avatar_url": "https://..." // 可选
+  "new_email": "newemail@example.com"
+}
+```
+
+**Response 200:**
+
+```json
+{
+  "expires_in": 60
+}
+```
+
+**Error 409:** `AUTH_EMAIL_EXISTS`（新邮箱已被其他账号使用）
+
+---
+
+### PATCH `/auth/me/email` — 更换邮箱（需认证）
+
+**Request:**
+
+```json
+{
+  "new_email": "newemail@example.com",
+  "code": "123456"
 }
 ```
 
 **Response 200:** 更新后的用户对象
+
+**Error 401:** `AUTH_CODE_INVALID` 或 `AUTH_CODE_EXPIRED`
+
+---
+
+### PATCH `/auth/me/password` — 修改密码（需认证）
+
+设置页「修改密码」弹窗，需提供当前密码。
+
+**Request:**
+
+```json
+{
+  "old_password": "OldPass123!",
+  "new_password": "NewPass456!"
+}
+```
+
+**Response 200:** `{ "message": "密码已修改" }`
+
+**Error 401:** `AUTH_INVALID_CREDENTIALS`（旧密码错误）
+
+---
+
+### POST `/auth/me/phone-code` — 发送手机绑定验证码（需认证）
+
+设置页绑定手机号流程。
+
+**Request:**
+
+```json
+{
+  "phone": "13812345678"
+}
+```
+
+**Response 200:**
+
+```json
+{
+  "expires_in": 60
+}
+```
+
+**Error 409:** `AUTH_PHONE_EXISTS`
+
+---
+
+### POST `/auth/me/phone` — 绑定手机号（需认证）
+
+**Request:**
+
+```json
+{
+  "phone": "13812345678",
+  "code": "123456"
+}
+```
+
+**Response 200:** 更新后的用户对象
+
+**Error 401:** `AUTH_CODE_INVALID` 或 `AUTH_CODE_EXPIRED`
+
+---
+
+### POST `/auth/oauth/:provider/link` — 绑定第三方登录（需认证）
+
+设置页「账号安全」-「第三方登录」绑定按钮。`:provider` 枚举：`wechat` | `google` | `github`
+
+**Response 302:** 重定向到对应 OAuth 授权页（携带 `access_token` 参数以关联当前用户）
+
+绑定成功后重定向回：
+
+```
+https://yuanai.app/settings?linked=:provider
+```
+
+**Error 409:** `AUTH_PROVIDER_ALREADY_LINKED`
+
+---
+
+### DELETE `/auth/oauth/:provider` — 解绑第三方登录（需认证）
+
+设置页「账号安全」-「第三方登录」解绑按钮。
+
+**Response 200:** `{ "message": "已解绑" }`
+
+**Error 400:** `AUTH_PROVIDER_NOT_LINKED`
+
+---
+
+### DELETE `/auth/me` — 注销账号（需认证）
+
+设置页「危险操作」区域，用户输入「删除账号」确认文字后提交。后端永久删除所有用户数据（会话、消息、文件）。
+
+**Request:**
+
+```json
+{
+  "confirmation": "delete account"
+}
+```
+
+`confirmation` 的合法值：`"delete account"`（英文）或 `"删除账号"`（中文），服务端任意接受。
+
+**Response 204:** No Content
+
+**Error 400:** `AUTH_DELETE_CONFIRMATION_INVALID`（确认文本不匹配）
 
 ---
 
@@ -205,9 +537,11 @@ Authorization: Bearer <access_token>   （除登录/注册外必须携带）
 ```json
 {
   "model": "gpt-4o",
-  "title": "新对话" // 可选，默认"新对话"
+  "title": "新对话"
 }
 ```
+
+`title` 可选，默认 `"新对话"`。
 
 **Response 201:**
 
@@ -297,14 +631,16 @@ Authorization: Bearer <access_token>   （除登录/注册外必须携带）
 
 ```json
 {
-  "conversation_id": "uuid", // 已有会话 ID
-  "model": "gpt-4o", // 本次使用的模型（可覆盖会话默认）
+  "conversation_id": "uuid",
+  "model": "gpt-4o",
   "message": {
     "content": "请解释什么是 RAG",
-    "file_ids": ["uuid1", "uuid2"] // 可选，本次消息附带的文件
+    "file_ids": ["uuid1", "uuid2"]
   }
 }
 ```
+
+`file_ids` 可选，引用已通过 `POST /files/upload` 上传的文件 ID。
 
 **Response Headers:**
 
@@ -340,7 +676,7 @@ data: {"code":"MODEL_QUOTA_EXCEEDED","message":"模型调用额度不足"}
 data: [DONE]
 ```
 
-**Error 400:** conversation_id 不存在或不属于当前用户
+**Error 400:** `CONVERSATION_NOT_FOUND` 或 `CONVERSATION_ACCESS_DENIED`
 
 ---
 
@@ -406,28 +742,39 @@ data: [DONE]
 
 ### 错误码列表
 
-| Code                         | HTTP | 描述             |
-| ---------------------------- | ---- | ---------------- |
-| `AUTH_TOKEN_INVALID`         | 401  | Token 无效       |
-| `AUTH_TOKEN_EXPIRED`         | 401  | Token 已过期     |
-| `AUTH_EMAIL_EXISTS`          | 409  | 邮箱已注册       |
-| `AUTH_USERNAME_EXISTS`       | 409  | 用户名已注册     |
-| `AUTH_INVALID_CREDENTIALS`   | 401  | 邮箱或密码错误   |
-| `CONVERSATION_NOT_FOUND`     | 404  | 会话不存在       |
-| `CONVERSATION_ACCESS_DENIED` | 403  | 无权访问该会话   |
-| `MODEL_NOT_AVAILABLE`        | 400  | 模型不可用       |
-| `MODEL_QUOTA_EXCEEDED`       | 429  | 模型调用额度超限 |
-| `FILE_TOO_LARGE`             | 400  | 文件超过大小限制 |
-| `FILE_TYPE_NOT_SUPPORTED`    | 400  | 文件类型不支持   |
-| `RATE_LIMIT_EXCEEDED`        | 429  | 请求频率超限     |
-| `INTERNAL_ERROR`             | 500  | 服务器内部错误   |
+| Code                               | HTTP | 描述                         |
+| ---------------------------------- | ---- | ---------------------------- |
+| `AUTH_TOKEN_INVALID`               | 401  | Token 无效                   |
+| `AUTH_TOKEN_EXPIRED`               | 401  | Token 已过期                 |
+| `AUTH_EMAIL_EXISTS`                | 409  | 邮箱已注册                   |
+| `AUTH_USERNAME_EXISTS`             | 409  | 用户名已注册                 |
+| `AUTH_PHONE_EXISTS`                | 409  | 手机号已绑定其他账号         |
+| `AUTH_INVALID_CREDENTIALS`         | 401  | 邮箱或密码错误               |
+| `AUTH_CODE_INVALID`                | 401  | 验证码错误                   |
+| `AUTH_CODE_EXPIRED`                | 401  | 验证码已过期                 |
+| `AUTH_QR_EXPIRED`                  | 404  | 二维码不存在或已过期         |
+| `AUTH_PROVIDER_ALREADY_LINKED`     | 409  | 该第三方账号已绑定其他用户   |
+| `AUTH_PROVIDER_NOT_LINKED`         | 400  | 该第三方账号未绑定，无法解绑 |
+| `AUTH_DELETE_CONFIRMATION_INVALID` | 400  | 注销确认文本不匹配           |
+| `CONVERSATION_NOT_FOUND`           | 404  | 会话不存在                   |
+| `CONVERSATION_ACCESS_DENIED`       | 403  | 无权访问该会话               |
+| `MODEL_NOT_AVAILABLE`              | 400  | 模型不可用                   |
+| `MODEL_QUOTA_EXCEEDED`             | 429  | 模型调用额度超限             |
+| `FILE_TOO_LARGE`                   | 400  | 文件超过大小限制             |
+| `FILE_TYPE_NOT_SUPPORTED`          | 400  | 文件类型不支持               |
+| `RATE_LIMIT_EXCEEDED`              | 429  | 请求频率超限                 |
+| `INTERNAL_ERROR`                   | 500  | 服务器内部错误               |
 
 ### 频率限制
 
-| 接口             | 限制             |
-| ---------------- | ---------------- |
-| `/auth/login`    | 10 次/分钟/IP    |
-| `/auth/register` | 5 次/小时/IP     |
-| `/chat/stream`   | 30 次/分钟/用户  |
-| `/files/upload`  | 20 次/分钟/用户  |
-| 其他 GET 接口    | 120 次/分钟/用户 |
+| 接口                    | 限制             |
+| ----------------------- | ---------------- |
+| `/auth/login`           | 10 次/分钟/IP    |
+| `/auth/login/phone`     | 10 次/分钟/IP    |
+| `/auth/register`        | 5 次/小时/IP     |
+| `/auth/phone/send-code` | 3 次/分钟/手机号 |
+| `/auth/me/email-code`   | 3 次/分钟/用户   |
+| `/auth/me/phone-code`   | 3 次/分钟/用户   |
+| `/chat/stream`          | 30 次/分钟/用户  |
+| `/files/upload`         | 20 次/分钟/用户  |
+| 其他 GET 接口           | 120 次/分钟/用户 |
