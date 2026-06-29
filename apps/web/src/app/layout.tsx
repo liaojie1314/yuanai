@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import type { JSX } from 'react'
+import { NextIntlClientProvider } from 'next-intl'
+import { getMessages } from 'next-intl/server'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -7,11 +9,13 @@ export const metadata: Metadata = {
   description: '多端 AI 聊天应用，支持 GPT-4o、Claude、DeepSeek 等多种模型',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   readonly children: React.ReactNode
-}): JSX.Element {
+}): Promise<JSX.Element> {
+  const messages = await getMessages()
+
   return (
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
@@ -22,7 +26,9 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <NextIntlClientProvider messages={messages}>{children}</NextIntlClientProvider>
+      </body>
     </html>
   )
 }

@@ -1065,6 +1065,39 @@
   background: #ef4444;
 }
 
+/* ── Language selector grid ── */
+.st-lang-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+  padding: 4px 0;
+}
+.st-lang-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--fg2);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+}
+.st-lang-btn:hover {
+  background: var(--bg2);
+  color: var(--fg1);
+}
+.st-lang-btn.sel {
+  border-color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--brand);
+  font-weight: 500;
+}
+
 /* ── Responsive ── */
 @media (max-width: 700px) {
   .st-overlay {

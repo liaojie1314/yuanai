@@ -2,14 +2,16 @@
 
 import { useState, useRef, useEffect, type JSX } from 'react'
 import Link from 'next/link'
-import { QrCode, ChevronDown, Smartphone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { QrCode, Smartphone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
+import { useTranslations } from '@/i18n/client'
 
 export default function LoginPage(): JSX.Element {
+  const t = useTranslations('auth')
+
   const [tab, setTab] = useState<'phone' | 'email'>('phone')
   const [showQr, setShowQr] = useState(false)
 
-  // Phone form
   const [phone, setPhone] = useState('')
   const [sms, setSms] = useState('')
   const [phoneErr, setPhoneErr] = useState('')
@@ -18,7 +20,6 @@ export default function LoginPage(): JSX.Element {
   const smsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
   const [phoneLoading, setPhoneLoading] = useState(false)
 
-  // Email form
   const [email, setEmail] = useState('')
   const [pwd, setPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -27,7 +28,6 @@ export default function LoginPage(): JSX.Element {
   const [pwdErr, setPwdErr] = useState('')
   const [emailLoading, setEmailLoading] = useState(false)
 
-  // QR countdown
   const [qrCount, setQrCount] = useState(60)
   const qrTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -60,7 +60,7 @@ export default function LoginPage(): JSX.Element {
 
   const sendSms = (): void => {
     if (!/^1[3-9]\d{9}$/.test(phone.trim())) {
-      setPhoneErr('请输入有效的手机号码')
+      setPhoneErr(t('errors.invalidPhone'))
       return
     }
     setPhoneErr('')
@@ -81,16 +81,15 @@ export default function LoginPage(): JSX.Element {
     e.preventDefault()
     let ok = true
     if (!/^1[3-9]\d{9}$/.test(phone.trim())) {
-      setPhoneErr('请输入有效的手机号码')
+      setPhoneErr(t('errors.invalidPhone'))
       ok = false
     } else setPhoneErr('')
     if (sms.trim().length < 6) {
-      setSmsErr('请输入 6 位验证码')
+      setSmsErr(t('errors.codeRequired'))
       ok = false
     } else setSmsErr('')
     if (!ok) return
     setPhoneLoading(true)
-    // TODO: 调用 API
     setTimeout(() => setPhoneLoading(false), 1600)
   }
 
@@ -98,16 +97,15 @@ export default function LoginPage(): JSX.Element {
     e.preventDefault()
     let ok = true
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setEmailErr('请输入正确的邮箱地址')
+      setEmailErr(t('errors.invalidEmail'))
       ok = false
     } else setEmailErr('')
     if (!pwd) {
-      setPwdErr('密码不能为空')
+      setPwdErr(t('errors.passwordRequired'))
       ok = false
     } else setPwdErr('')
     if (!ok) return
     setEmailLoading(true)
-    // TODO: 调用 API
     setTimeout(() => setEmailLoading(false), 1600)
   }
 
@@ -115,52 +113,45 @@ export default function LoginPage(): JSX.Element {
     <div className="auth-wrap">
       <AuthPanel
         bubbles={[
-          '你好，今天想聊什么？',
-          '帮我写一段 Python 排序算法',
-          '解释一下量子纠缠',
-          '帮我分析这段代码的问题',
-          '翻译并润色这篇英文邮件',
+          t('bubbles.login1'),
+          t('bubbles.login2'),
+          t('bubbles.login3'),
+          t('bubbles.login4'),
+          t('bubbles.login5'),
         ]}
       />
 
       <main className="auth-right">
         <div className="form-card">
-          {/* QR toggle (desktop only via CSS) */}
           <button
             className="qr-toggle"
-            title="扫码登录"
-            aria-label="切换扫码登录"
+            title={t('qrLogin')}
+            aria-label={t('qrLogin')}
             onClick={startQr}
           >
             <QrCode size={18} />
           </button>
 
           {showQr ? (
-            /* QR view */
             <div className="qr-view">
               <div className="qr-box">
                 <img
                   src="/icons/qr-demo.svg"
-                  alt="扫码登录"
+                  alt={t('qrLogin')}
                   style={{ width: '100%', height: '100%' }}
                 />
               </div>
-              <h3>扫码登录</h3>
-              <p>打开元AI App，扫描二维码登录</p>
-              <p className="qr-exp">
-                二维码将在{' '}
-                <span style={{ color: qrCount <= 10 ? 'var(--error)' : undefined }}>{qrCount}</span>{' '}
-                秒后失效
-              </p>
+              <h3>{t('qrLogin')}</h3>
+              <p>{t('qrLoginDesc')}</p>
+              <p className="qr-exp">{t('qrExpires', { seconds: qrCount })}</p>
               <button className="qr-back" onClick={closeQr}>
-                ← 使用账号密码登录
+                ← {t('backToPassword')}
               </button>
             </div>
           ) : (
-            /* Main content */
             <div>
-              <h1 className="page-title">欢迎回来</h1>
-              <p className="page-sub">登录你的元AI账号继续对话</p>
+              <h1 className="page-title">{t('welcomeBack')}</h1>
+              <p className="page-sub">{t('loginSubtitle')}</p>
 
               <div className="auth-tabs" role="tablist">
                 <button
@@ -168,75 +159,67 @@ export default function LoginPage(): JSX.Element {
                   role="tab"
                   onClick={() => setTab('phone')}
                 >
-                  手机号
+                  {t('phone')}
                 </button>
                 <button
                   className={tab === 'email' ? 'a-tab on' : 'a-tab'}
                   role="tab"
                   onClick={() => setTab('email')}
                 >
-                  邮箱密码
+                  {t('email')}
+                  {t('password')}
                 </button>
               </div>
 
-              {/* Phone form */}
-              {tab === 'phone' && (
+              {tab === 'phone' ? (
                 <form onSubmit={handlePhone} noValidate>
                   <div className="fg">
-                    <label className="fl" htmlFor="phone">
-                      手机号
+                    <label className="fl" htmlFor="ph">
+                      {t('phone')}
                     </label>
-                    <div className="phone-row">
-                      <button type="button" className="cc-btn">
-                        +86
-                        <ChevronDown size={12} />
-                      </button>
+                    <div className="iw">
+                      <span className="ii">
+                        <Smartphone size={16} />
+                      </span>
                       <input
-                        id="phone"
-                        className={phoneErr ? 'fi phone-fi err' : 'fi phone-fi'}
+                        id="ph"
+                        className={phoneErr ? 'fi err' : 'fi'}
                         type="tel"
-                        placeholder="请输入手机号"
+                        placeholder={t('placeholders.phone')}
                         maxLength={11}
-                        inputMode="numeric"
+                        autoComplete="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        onBlur={() => {
-                          if (phone && !/^1[3-9]\d{9}$/.test(phone))
-                            setPhoneErr('请输入有效的手机号码')
-                          else setPhoneErr('')
-                        }}
                       />
                     </div>
                     <p className={phoneErr ? 'ferr on' : 'ferr'}>{phoneErr}</p>
                   </div>
 
                   <div className="fg">
-                    <label className="fl" htmlFor="sms">
-                      验证码
+                    <label className="fl" htmlFor="code">
+                      {t('verificationCode')}
                     </label>
-                    <div className="sms-row">
-                      <div className="iw sms-fi">
-                        <span className="ii">
-                          <Smartphone size={16} />
-                        </span>
+                    <div className="code-row">
+                      <div className="iw" style={{ flex: 1 }}>
                         <input
-                          id="sms"
+                          id="code"
                           className={smsErr ? 'fi err' : 'fi'}
                           type="text"
-                          placeholder="输入 6 位验证码"
-                          maxLength={6}
                           inputMode="numeric"
+                          placeholder={t('placeholders.code')}
+                          maxLength={6}
+                          autoComplete="one-time-code"
                           value={sms}
-                          onChange={(e) => setSms(e.target.value)}
+                          onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
                       <button
                         type="button"
-                        className="sms-btn"
+                        className="code-btn"
                         disabled={smsCount > 0}
                         onClick={sendSms}
                       >
-                        {smsCount > 0 ? `重新发送 (${smsCount}s)` : '发送验证码'}
+                        {smsCount > 0 ? t('resendIn', { seconds: smsCount }) : t('sendCode')}
                       </button>
                     </div>
                     <p className={smsErr ? 'ferr on' : 'ferr'}>{smsErr}</p>
@@ -246,88 +229,76 @@ export default function LoginPage(): JSX.Element {
                     {phoneLoading ? (
                       <>
                         <span className="spin" />
-                        登录中...
+                        {t('loggingIn')}
                       </>
                     ) : (
-                      '登录'
+                      t('login')
                     )}
                   </button>
                 </form>
-              )}
-
-              {/* Email form */}
-              {tab === 'email' && (
+              ) : (
                 <form onSubmit={handleEmail} noValidate>
                   <div className="fg">
-                    <label className="fl" htmlFor="email">
-                      邮箱
+                    <label className="fl" htmlFor="em">
+                      {t('email')}
                     </label>
                     <div className="iw">
                       <span className="ii">
                         <Mail size={16} />
                       </span>
                       <input
-                        id="email"
+                        id="em"
                         className={emailErr ? 'fi err' : 'fi'}
                         type="email"
-                        placeholder="your@email.com"
+                        placeholder={t('placeholders.email')}
                         autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        onBlur={() => {
-                          if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-                            setEmailErr('请输入正确的邮箱地址')
-                          else setEmailErr('')
-                        }}
                       />
                     </div>
                     <p className={emailErr ? 'ferr on' : 'ferr'}>{emailErr}</p>
                   </div>
 
                   <div className="fg">
-                    <label className="fl" htmlFor="pwd">
-                      密码
+                    <label className="fl" htmlFor="pw">
+                      {t('password')}
                     </label>
                     <div className="iw">
                       <span className="ii">
                         <Lock size={16} />
                       </span>
                       <input
-                        id="pwd"
+                        id="pw"
                         className={pwdErr ? 'fi err' : 'fi'}
                         type={showPwd ? 'text' : 'password'}
-                        placeholder="请输入密码"
+                        placeholder={t('placeholders.password')}
                         autoComplete="current-password"
                         value={pwd}
                         onChange={(e) => setPwd(e.target.value)}
-                        onBlur={() => {
-                          if (pwd && pwd.length < 8) setPwdErr('密码至少 8 位')
-                          else setPwdErr('')
-                        }}
                       />
                       <button
                         type="button"
-                        className="eye"
-                        aria-label="显示/隐藏密码"
-                        onClick={() => setShowPwd((s) => !s)}
+                        className="eye-btn"
+                        onClick={() => setShowPwd(!showPwd)}
+                        aria-label={showPwd ? 'Hide password' : 'Show password'}
                       >
-                        {showPwd ? <Eye size={18} /> : <EyeOff size={18} />}
+                        {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
                     <p className={pwdErr ? 'ferr on' : 'ferr'}>{pwdErr}</p>
                   </div>
 
-                  <div className="helper">
-                    <label className="rm-wrap">
+                  <div className="flex-row">
+                    <label className="rm-chk">
                       <input
                         type="checkbox"
                         checked={remember}
                         onChange={(e) => setRemember(e.target.checked)}
                       />
-                      <span className="rm-lbl">记住我 7 天</span>
+                      <span className="rm-lbl">{t('rememberMe')}</span>
                     </label>
                     <Link href="/forgot-password" className="fl-link" replace>
-                      忘记密码？
+                      {t('forgotPassword')}
                     </Link>
                   </div>
 
@@ -335,10 +306,10 @@ export default function LoginPage(): JSX.Element {
                     {emailLoading ? (
                       <>
                         <span className="spin" />
-                        登录中...
+                        {t('loggingIn')}
                       </>
                     ) : (
-                      '登录'
+                      t('login')
                     )}
                   </button>
                 </form>
@@ -347,28 +318,28 @@ export default function LoginPage(): JSX.Element {
           )}
 
           <div className="divider">
-            <span>或使用以下方式登录</span>
+            <span>{t('orLoginWith')}</span>
           </div>
 
           <div className="social-row">
-            <button className="soc-btn" aria-label="微信登录">
+            <button className="soc-btn" aria-label={`${t('wechat')} ${t('login')}`}>
               <img src="/icons/wechat.svg" alt="" className="soc-icon" />
-              <span>微信</span>
+              <span>{t('wechat')}</span>
             </button>
-            <button className="soc-btn" aria-label="Google 登录">
+            <button className="soc-btn" aria-label={`${t('google')} ${t('login')}`}>
               <img src="/icons/google.svg" alt="" className="soc-icon" />
-              <span>Google</span>
+              <span>{t('google')}</span>
             </button>
-            <button className="soc-btn" aria-label="Apple 登录">
+            <button className="soc-btn" aria-label={`${t('apple')} ${t('login')}`}>
               <img src="/icons/apple.svg" alt="" className="soc-icon" />
-              <span>Apple</span>
+              <span>{t('apple')}</span>
             </button>
           </div>
 
           <p className="signup-cta">
-            还没有账号？
+            {t('noAccount')}
             <Link href="/register" replace>
-              立即注册
+              {t('signUpNow')}
             </Link>
           </p>
         </div>

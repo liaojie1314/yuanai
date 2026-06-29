@@ -2,6 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect, type JSX } from 'react'
 import { Sun, Moon } from 'lucide-react'
+import { useTranslations } from '@/i18n/client'
 
 function isDark(): boolean {
   const t = document.documentElement.getAttribute('data-theme')
@@ -13,6 +14,8 @@ export default function AuthPanel({
 }: {
   bubbles: [string, string?, string?, string?, string?]
 }): JSX.Element {
+  const t = useTranslations('common')
+  const tTheme = useTranslations('theme')
   const [dark, setDark] = useState(false)
   const asideRef = useRef<HTMLElement>(null)
 
@@ -54,13 +57,13 @@ export default function AuthPanel({
       <div>
         <div className="brand-row">
           <div className="brand-logo">元</div>
-          <span className="brand-name">yuanai</span>
+          <span className="brand-name">{t('appName')}</span>
         </div>
-        <p className="brand-tag">你的智能对话伙伴</p>
+        <p className="brand-tag">{t('tagline')}</p>
       </div>
       <button
         className="theme-toggle"
-        aria-label={dark ? '切换浅色模式' : '切换深色模式'}
+        aria-label={dark ? tTheme('toggleLight') : tTheme('toggleDark')}
         onClick={toggle}
       >
         {dark ? <Sun size={18} /> : <Moon size={18} />}

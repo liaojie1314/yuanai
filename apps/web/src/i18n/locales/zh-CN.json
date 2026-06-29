@@ -1,0 +1,216 @@
+{
+  "common": {
+    "appName": "元AI",
+    "tagline": "你的智能对话伙伴",
+    "loading": "加载中...",
+    "confirm": "确认",
+    "cancel": "取消",
+    "save": "保存",
+    "delete": "删除",
+    "edit": "编辑",
+    "close": "关闭",
+    "back": "返回",
+    "next": "下一步",
+    "submit": "提交",
+    "send": "发送",
+    "copy": "复制",
+    "copied": "已复制",
+    "error": "错误",
+    "success": "成功"
+  },
+  "auth": {
+    "welcomeBack": "欢迎回来",
+    "loginSubtitle": "登录你的元AI账号继续对话",
+    "createAccount": "创建账号",
+    "registerSubtitle": "注册元AI账号，开启 AI 对话之旅",
+    "phone": "手机号",
+    "email": "邮箱",
+    "password": "密码",
+    "confirmPassword": "确认密码",
+    "username": "用户名",
+    "verificationCode": "验证码",
+    "sendCode": "发送验证码",
+    "resendIn": "{seconds} 秒后重发",
+    "login": "登录",
+    "loggingIn": "登录中...",
+    "register": "注册",
+    "registering": "创建中...",
+    "rememberMe": "记住我 7 天",
+    "forgotPassword": "忘记密码？",
+    "noAccount": "还没有账号？",
+    "hasAccount": "已有账号？",
+    "signUpNow": "立即注册",
+    "loginNow": "立即登录",
+    "orLoginWith": "或使用以下方式登录",
+    "wechat": "微信",
+    "google": "Google",
+    "apple": "Apple",
+    "qrLogin": "扫码登录",
+    "qrLoginDesc": "打开元AI App，扫描二维码登录",
+    "qrExpires": "二维码将在 {seconds} 秒后失效",
+    "backToPassword": "使用账号密码登录",
+    "termsAgree": "我已阅读并同意",
+    "termsService": "《服务协议》",
+    "termsPrivacy": "《隐私政策》",
+    "and": "和",
+    "errors": {
+      "invalidPhone": "请输入有效的手机号码",
+      "invalidEmail": "请输入正确的邮箱地址",
+      "passwordRequired": "密码不能为空",
+      "passwordTooShort": "密码至少 8 位",
+      "passwordMismatch": "两次输入的密码不一致",
+      "codeRequired": "请输入 6 位验证码",
+      "usernameRequired": "请输入 2-20 位用户名",
+      "usernameTaken": "该用户名已被注册",
+      "termsRequired": "请先阅读并同意服务协议"
+    },
+    "placeholders": {
+      "phone": "请输入手机号",
+      "email": "your@email.com",
+      "password": "至少 8 位，包含字母和数字",
+      "confirmPassword": "再次输入密码",
+      "username": "2-20 位，支持中英文和数字",
+      "code": "请输入验证码"
+    },
+    "bubbles": {
+      "login1": "你好，今天想聊什么？",
+      "login2": "帮我写一段 Python 排序算法",
+      "login3": "解释一下量子纠缠",
+      "login4": "帮我分析这段代码的问题",
+      "login5": "翻译并润色这篇英文邮件",
+      "register1": "创建账号，解锁所有 AI 功能",
+      "register2": "支持 GPT-4o · Claude · DeepSeek",
+      "register3": "多设备无缝同步对话记录",
+      "register4": "每月免费额度，随时按需升级",
+      "register5": "支持图片与文件多模态输入"
+    },
+    "passwordStrength": {
+      "weak": "弱 — 建议包含大小写、数字、特殊字符",
+      "medium": "中 — 可以更强",
+      "strong": "强 — 不错",
+      "veryStrong": "很强 — 安全密码",
+      "prompt": "输入密码后显示强度"
+    }
+  },
+  "settings": {
+    "title": "设置",
+    "sections": {
+      "profile": "个人资料",
+      "security": "账号安全",
+      "appearance": "外观与主题",
+      "notifications": "通知设置",
+      "language": "语言与地区",
+      "about": "关于与帮助"
+    },
+    "groups": {
+      "personal": "个人中心",
+      "system": "系统偏好",
+      "support": "支持"
+    },
+    "profile": {
+      "username": "用户名",
+      "bio": "个人简介",
+      "avatar": "头像",
+      "uploadAvatar": "上传头像",
+      "changeAvatar": "更换头像",
+      "bioPlaceholder": "介绍一下你自己...",
+      "bioLimit": "还可以输入 {count} 字"
+    },
+    "security": {
+      "email": "邮箱",
+      "phone": "手机号",
+      "password": "密码",
+      "wechat": "微信",
+      "changeEmail": "更换邮箱",
+      "changePassword": "修改密码",
+      "bindPhone": "绑定手机",
+      "bindWechat": "绑定微信",
+      "unbindWechat": "解绑微信",
+      "deleteAccount": "注销账号",
+      "notBound": "未绑定",
+      "bound": "已绑定",
+      "lastChanged": "上次修改：{date}"
+    },
+    "appearance": {
+      "theme": "主题模式",
+      "themeAuto": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "fontSize": "字体大小",
+      "fontSmall": "小",
+      "fontMedium": "中",
+      "fontLarge": "大",
+      "density": "界面密度",
+      "densityCompact": "紧凑",
+      "densityStandard": "标准",
+      "densityLoose": "宽松",
+      "accentColor": "强调色"
+    },
+    "notifications": {
+      "browser": "浏览器通知",
+      "sound": "声音提示",
+      "aiResponse": "AI 回复通知",
+      "newFeatures": "新功能发布",
+      "maintenance": "系统维护通知",
+      "weeklyReport": "每周使用报告",
+      "updates": "版本更新",
+      "security": "安全提醒"
+    },
+    "language": {
+      "interface": "界面语言",
+      "timeFormat": "时间格式",
+      "time24h": "24 小时制",
+      "time12h": "12 小时制",
+      "dateFormat": "日期格式",
+      "dateYMD": "年/月/日",
+      "dateMDY": "月/日/年",
+      "dateDMY": "日/月/年"
+    },
+    "about": {
+      "version": "版本",
+      "changelog": "更新日志",
+      "documentation": "使用文档",
+      "community": "社区",
+      "feedback": "反馈建议",
+      "privacyPolicy": "隐私政策",
+      "termsOfService": "服务条款"
+    },
+    "dialogs": {
+      "changeEmail": {
+        "title": "更换邮箱",
+        "newEmail": "新邮箱地址",
+        "code": "验证码",
+        "sendCode": "发送验证码",
+        "codeSent": "验证码已发送"
+      },
+      "changePassword": {
+        "title": "修改密码",
+        "oldPassword": "当前密码",
+        "newPassword": "新密码",
+        "confirmPassword": "确认新密码"
+      },
+      "deleteAccount": {
+        "title": "注销账号",
+        "warning": "注销后，所有对话记录、设置将被永久删除且无法恢复。你确定要注销吗？",
+        "confirmPrompt": "请输入以下内容以确认：",
+        "confirmText": "删除账号",
+        "placeholder": "请输入\"删除账号\""
+      },
+      "unbindWechat": {
+        "title": "解绑微信",
+        "warning": "解绑后，你将无法使用微信登录此账号。确定要解绑吗？"
+      }
+    },
+    "toast": {
+      "saved": "保存成功",
+      "emailChanged": "邮箱已更新",
+      "passwordChanged": "密码已修改",
+      "accountDeleted": "账号已注销",
+      "wechatUnbound": "微信已解绑"
+    }
+  },
+  "theme": {
+    "toggleLight": "切换浅色模式",
+    "toggleDark": "切换深色模式"
+  }
+}

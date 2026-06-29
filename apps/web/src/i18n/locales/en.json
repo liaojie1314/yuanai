@@ -1,0 +1,216 @@
+{
+  "common": {
+    "appName": "YuanAI",
+    "tagline": "Your Intelligent Conversation Partner",
+    "loading": "Loading...",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "send": "Send",
+    "copy": "Copy",
+    "copied": "Copied",
+    "error": "Error",
+    "success": "Success"
+  },
+  "auth": {
+    "welcomeBack": "Welcome Back",
+    "loginSubtitle": "Sign in to your YuanAI account to continue",
+    "createAccount": "Create Account",
+    "registerSubtitle": "Sign up for YuanAI and start your AI journey",
+    "phone": "Phone",
+    "email": "Email",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "username": "Username",
+    "verificationCode": "Verification Code",
+    "sendCode": "Send Code",
+    "resendIn": "Resend in {seconds}s",
+    "login": "Sign In",
+    "loggingIn": "Signing in...",
+    "register": "Sign Up",
+    "registering": "Creating account...",
+    "rememberMe": "Remember me for 7 days",
+    "forgotPassword": "Forgot password?",
+    "noAccount": "Don't have an account?",
+    "hasAccount": "Already have an account?",
+    "signUpNow": "Sign up now",
+    "loginNow": "Sign in now",
+    "orLoginWith": "Or sign in with",
+    "wechat": "WeChat",
+    "google": "Google",
+    "apple": "Apple",
+    "qrLogin": "QR Code Login",
+    "qrLoginDesc": "Open YuanAI App and scan QR code to sign in",
+    "qrExpires": "QR code expires in {seconds}s",
+    "backToPassword": "Use email/password",
+    "termsAgree": "I have read and agree to the",
+    "termsService": "Terms of Service",
+    "termsPrivacy": "Privacy Policy",
+    "and": "and",
+    "errors": {
+      "invalidPhone": "Please enter a valid phone number",
+      "invalidEmail": "Please enter a valid email address",
+      "passwordRequired": "Password is required",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "passwordMismatch": "Passwords do not match",
+      "codeRequired": "Please enter 6-digit verification code",
+      "usernameRequired": "Username must be 2-20 characters",
+      "usernameTaken": "This username is already taken",
+      "termsRequired": "Please agree to Terms of Service"
+    },
+    "placeholders": {
+      "phone": "Enter your phone number",
+      "email": "your@email.com",
+      "password": "At least 8 characters with letters and numbers",
+      "confirmPassword": "Enter password again",
+      "username": "2-20 characters, letters and numbers",
+      "code": "Enter verification code"
+    },
+    "bubbles": {
+      "login1": "Hi, what would you like to talk about today?",
+      "login2": "Help me write a Python sorting algorithm",
+      "login3": "Explain quantum entanglement",
+      "login4": "Analyze the issues in this code",
+      "login5": "Translate and polish this email",
+      "register1": "Create account to unlock all AI features",
+      "register2": "Supports GPT-4o · Claude · DeepSeek",
+      "register3": "Seamless sync across all devices",
+      "register4": "Free monthly quota, upgrade anytime",
+      "register5": "Multimodal input with images and files"
+    },
+    "passwordStrength": {
+      "weak": "Weak — Add uppercase, numbers, special chars",
+      "medium": "Medium — Can be stronger",
+      "strong": "Strong — Good password",
+      "veryStrong": "Very Strong — Secure password",
+      "prompt": "Strength shown after typing"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "sections": {
+      "profile": "Profile",
+      "security": "Security",
+      "appearance": "Appearance",
+      "notifications": "Notifications",
+      "language": "Language & Region",
+      "about": "About & Help"
+    },
+    "groups": {
+      "personal": "Personal",
+      "system": "Preferences",
+      "support": "Support"
+    },
+    "profile": {
+      "username": "Username",
+      "bio": "Bio",
+      "avatar": "Avatar",
+      "uploadAvatar": "Upload Avatar",
+      "changeAvatar": "Change Avatar",
+      "bioPlaceholder": "Tell us about yourself...",
+      "bioLimit": "{count} characters remaining"
+    },
+    "security": {
+      "email": "Email",
+      "phone": "Phone",
+      "password": "Password",
+      "wechat": "WeChat",
+      "changeEmail": "Change Email",
+      "changePassword": "Change Password",
+      "bindPhone": "Bind Phone",
+      "bindWechat": "Bind WeChat",
+      "unbindWechat": "Unbind WeChat",
+      "deleteAccount": "Delete Account",
+      "notBound": "Not bound",
+      "bound": "Bound",
+      "lastChanged": "Last changed: {date}"
+    },
+    "appearance": {
+      "theme": "Theme",
+      "themeAuto": "Auto",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "fontSize": "Font Size",
+      "fontSmall": "Small",
+      "fontMedium": "Medium",
+      "fontLarge": "Large",
+      "density": "Density",
+      "densityCompact": "Compact",
+      "densityStandard": "Standard",
+      "densityLoose": "Loose",
+      "accentColor": "Accent Color"
+    },
+    "notifications": {
+      "browser": "Browser Notifications",
+      "sound": "Sound",
+      "aiResponse": "AI Response Notifications",
+      "newFeatures": "New Feature Announcements",
+      "maintenance": "Maintenance Alerts",
+      "weeklyReport": "Weekly Usage Report",
+      "updates": "Version Updates",
+      "security": "Security Alerts"
+    },
+    "language": {
+      "interface": "Interface Language",
+      "timeFormat": "Time Format",
+      "time24h": "24-hour",
+      "time12h": "12-hour",
+      "dateFormat": "Date Format",
+      "dateYMD": "YYYY/MM/DD",
+      "dateMDY": "MM/DD/YYYY",
+      "dateDMY": "DD/MM/YYYY"
+    },
+    "about": {
+      "version": "Version",
+      "changelog": "Changelog",
+      "documentation": "Documentation",
+      "community": "Community",
+      "feedback": "Feedback",
+      "privacyPolicy": "Privacy Policy",
+      "termsOfService": "Terms of Service"
+    },
+    "dialogs": {
+      "changeEmail": {
+        "title": "Change Email",
+        "newEmail": "New Email Address",
+        "code": "Verification Code",
+        "sendCode": "Send Code",
+        "codeSent": "Code sent"
+      },
+      "changePassword": {
+        "title": "Change Password",
+        "oldPassword": "Current Password",
+        "newPassword": "New Password",
+        "confirmPassword": "Confirm New Password"
+      },
+      "deleteAccount": {
+        "title": "Delete Account",
+        "warning": "After deletion, all conversation history and settings will be permanently removed and cannot be recovered. Are you sure?",
+        "confirmPrompt": "Type the following to confirm:",
+        "confirmText": "delete account",
+        "placeholder": "Type \"delete account\""
+      },
+      "unbindWechat": {
+        "title": "Unbind WeChat",
+        "warning": "After unbinding, you won't be able to sign in with WeChat. Continue?"
+      }
+    },
+    "toast": {
+      "saved": "Saved successfully",
+      "emailChanged": "Email updated",
+      "passwordChanged": "Password changed",
+      "accountDeleted": "Account deleted",
+      "wechatUnbound": "WeChat unbound"
+    }
+  },
+  "theme": {
+    "toggleLight": "Switch to light mode",
+    "toggleDark": "Switch to dark mode"
+  }
+}
