@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
+import SettingsModal from '@/components/settings/SettingsModal'
 import {
   SquarePen,
   Search,
@@ -176,6 +177,7 @@ export default function ChatPage(): JSX.Element {
   const [cvMenuOpen, setCvMenuOpen] = useState<string | null>(null)
   const [cvMenuPos, setCvMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const [dark, setDark] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // Input state
   const [inputValue, setInputValue] = useState('')
@@ -537,11 +539,11 @@ export default function ChatPage(): JSX.Element {
           </div>
           <button
             className="ch-sb-uset"
-            title="设置与账号"
+            title="设置"
             onClick={(e) => {
               e.stopPropagation()
-              setUserPanelOpen((o) => !o)
-              setModelDropOpen(false)
+              setUserPanelOpen(false)
+              setSettingsOpen(true)
             }}
           >
             <Settings size={15} />
@@ -1067,7 +1069,13 @@ function ProductList({ items }: { items: Item[] }) {
             <div className={`ch-toggle ${dark ? 'on' : ''}`} />
           </div>
           <div className="ch-up-sep" />
-          <div className="ch-up-row">
+          <div
+            className="ch-up-row"
+            onClick={() => {
+              setUserPanelOpen(false)
+              setSettingsOpen(true)
+            }}
+          >
             <User size={16} /> 个人设置
           </div>
           <div className="ch-up-sep" />
@@ -1076,6 +1084,9 @@ function ProductList({ items }: { items: Item[] }) {
           </div>
         </div>
       )}
+
+      {/* ── Settings modal ───────────────────────── */}
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
       {/* ── Conversation context menus ────────────── */}
       {cvMenuOpen &&

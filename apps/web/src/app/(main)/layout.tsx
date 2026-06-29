@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import './chat.css'
+import './settings.css'
 
 export default function MainLayout({
   children,
