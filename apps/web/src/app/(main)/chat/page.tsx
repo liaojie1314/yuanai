@@ -539,11 +539,11 @@ export default function ChatPage(): JSX.Element {
           </div>
           <button
             className="ch-sb-uset"
-            title="设置"
+            title="设置与账号"
             onClick={(e) => {
               e.stopPropagation()
-              setUserPanelOpen(false)
-              setSettingsOpen(true)
+              setUserPanelOpen((o) => !o)
+              setModelDropOpen(false)
             }}
           >
             <Settings size={15} />
