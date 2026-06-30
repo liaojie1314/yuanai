@@ -2,12 +2,20 @@
 
 import { useState, useRef, useEffect, type JSX } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { QrCode, Smartphone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 
+function setAuthCookie(): void {
+  const maxAge = 7 * 24 * 60 * 60
+  document.cookie = `yuanai-auth=1; path=/; max-age=${maxAge}; SameSite=Lax`
+}
+
 export default function LoginPage(): JSX.Element {
   const t = useTranslations('auth')
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   const [tab, setTab] = useState<'phone' | 'email'>('phone')
   const [showQr, setShowQr] = useState(false)
@@ -77,6 +85,11 @@ export default function LoginPage(): JSX.Element {
     }, 1000)
   }
 
+  const redirectAfterLogin = (): void => {
+    const from = searchParams.get('from') ?? '/chat'
+    router.replace(from)
+  }
+
   const handlePhone = (e: React.FormEvent): void => {
     e.preventDefault()
     let ok = true
@@ -90,7 +103,11 @@ export default function LoginPage(): JSX.Element {
     } else setSmsErr('')
     if (!ok) return
     setPhoneLoading(true)
-    setTimeout(() => setPhoneLoading(false), 1600)
+    setTimeout(() => {
+      setPhoneLoading(false)
+      setAuthCookie()
+      redirectAfterLogin()
+    }, 1200)
   }
 
   const handleEmail = (e: React.FormEvent): void => {
@@ -106,7 +123,11 @@ export default function LoginPage(): JSX.Element {
     } else setPwdErr('')
     if (!ok) return
     setEmailLoading(true)
-    setTimeout(() => setEmailLoading(false), 1600)
+    setTimeout(() => {
+      setEmailLoading(false)
+      setAuthCookie()
+      redirectAfterLogin()
+    }, 1200)
   }
 
   return (
