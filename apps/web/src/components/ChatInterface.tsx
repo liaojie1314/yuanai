@@ -149,8 +149,13 @@ function isDark(): boolean {
 }
 
 // ── Message part renderer ─────────────────────────────
+/**
+ * 将文本中的内联 Markdown 语法转换为 JSX 元素数组。
+ * 支持两种语法：`**粗体**` 渲染为 `<strong>`，`` `代码` `` 渲染为 `<code>`。
+ * 未匹配的普通文本段落以 `<span>` 包裹后追加到结果中。
+ */
 function renderInline(text: string): JSX.Element[] {
-  // Handle **bold** and `code` inline
+  // 正则同时匹配 **bold** 和 `code`，通过捕获组区分两种语法
   const parts: JSX.Element[] = []
   const re = /(\*\*(.+?)\*\*|`([^`]+)`)/g
   let last = 0
@@ -173,6 +178,7 @@ function renderInline(text: string): JSX.Element[] {
   return parts
 }
 
+/** 渲染纯文本消息内容，按空行拆分为多个段落，并对每段应用内联 Markdown 解析。 */
 function TextPart({ content }: { content: string }): JSX.Element {
   const paragraphs = content.split('\n\n').filter(Boolean)
   return (
@@ -184,6 +190,7 @@ function TextPart({ content }: { content: string }): JSX.Element {
   )
 }
 
+/** 渲染代码块消息内容，带语言标签和一键复制按钮。 */
 function CodePart({ lang, code }: { lang?: string; code?: string }): JSX.Element {
   return (
     <div className="ch-code-block">
@@ -218,6 +225,7 @@ function MessagePartRenderer({ part }: { part: MessagePart }): JSX.Element {
 }
 
 // ── Think block ───────────────────────────────────────
+/** 可折叠的 AI 思考过程展示块，点击标题栏可展开/收起推理内容。 */
 function ThinkBlock({ content }: { content: string }): JSX.Element {
   const [open, setOpen] = useState(false)
   return (
@@ -243,6 +251,7 @@ function ThinkBlock({ content }: { content: string }): JSX.Element {
 }
 
 // ── Message components ────────────────────────────────
+/** 渲染用户发送的消息气泡，附带编辑操作按钮。 */
 function UserMessage({ msg }: { msg: MockMessage }): JSX.Element {
   const text = msg.parts.find((p) => p.type === 'text')?.content ?? ''
   return (
@@ -259,6 +268,11 @@ function UserMessage({ msg }: { msg: MockMessage }): JSX.Element {
   )
 }
 
+/**
+ * 渲染 AI 回复消息。
+ * 当 `isStreaming` 为 true 时，展示来自 store 的实时 `streamingContent`（带光标动画的纯文本流）；
+ * 流式结束后则改为渲染已落盘的 `msg.parts`（支持文本/代码等多种结构化片段），并显示复制、重新生成、点赞/点踩等操作及追问建议。
+ */
 function AIMessage({
   msg,
   isStreaming,
@@ -325,11 +339,25 @@ function AIMessage({
 }
 
 // ── Props ────────────────────────────────────────────
+/** {@link ChatInterface} 组件的属性。 */
 interface ChatInterfaceProps {
+  /**
+   * 当前激活的会话 ID。
+   * - 不传（`undefined`）：展示空白欢迎态（"empty" 视图），等待用户发起新对话。
+   * - 传入具体会话 ID：直接进入该会话的聊天视图（"chat" 视图）并加载对应消息列表。
+   */
   initialConvId?: string
 }
 
 // ── Main component ────────────────────────────────────
+/**
+ * 聊天主界面，渲染整个全屏聊天 UI：左侧会话侧边栏（搜索、置顶、多选删除、用户面板）+
+ * 右侧主内容区（顶部工具栏、模型切换、消息列表流式渲染、底部输入框与附件上传、内容面板 Artifact）。
+ *
+ * 视图切换与路由强绑定：新建对话、切换会话、删除当前会话等操作均通过 `router.push`
+ * 修改 URL（`/chat` 或 `/chat/[id]`），再由 `initialConvId` 变化驱动内部 `view`/`activeConv` 状态同步，
+ * 因此本组件不直接维护"当前会话"的真相状态，而是作为路由参数的镜像。
+ */
 export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JSX.Element {
   const router = useRouter()
 
@@ -381,9 +409,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // Input state
   const [inputValue, setInputValue] = useState('')
+  // 是否正在接收 AI 流式回复；用于禁用发送、切换发送/停止按钮、驱动自动滚动
   const [isStreaming, setIsStreaming] = useState(false)
 
   // Attachment state
+  // 待发送的附件列表（图片会生成本地预览 URL，需在移除/卸载时 revoke）
   const [files, setFiles] = useState<AttachFile[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -395,6 +425,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const userTriggerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // 消息列表末尾的锚点元素，流式输出时用于自动滚动到最新内容
   const msgsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -503,6 +534,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     }
   }
 
+  /**
+   * 发送当前输入框中的消息。
+   * 若尚无激活会话（`activeConv` 为空），先以输入内容的前 20 个字符为标题创建新会话，
+   * 并通过 `router.push` 跳转到该会话路由；随后清空输入框与附件，
+   * 实际的发送与 SSE 流式接收均委托给 `useStream` 的 `stream.send`（由其更新 store 中的流式状态）。
+   */
   const sendMessage = (): void => {
     if (!inputValue.trim() || isStreaming) return
 
@@ -529,6 +566,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     })
   }
 
+  // 中止当前 SSE 流式请求并立即恢复输入区为可发送状态
   const stopStreaming = (): void => {
     stream.stop()
     setIsStreaming(false)
@@ -1286,6 +1324,7 @@ function ProductList({ items }: { items: Item[] }) {
 }
 
 // ── ConvItem sub-component ────────────────────────────────────
+/** 侧边栏单个会话列表项，支持点击进入、置顶标记、多选勾选与右键/更多按钮打开上下文菜单。 */
 function ConvItem({
   conv,
   active,
