@@ -59,6 +59,17 @@ AVAILABLE_MODELS = [
 ]
 
 
+def get_available_models() -> list[dict[str, object]]:
+    """返回已配置 API Key 的模型列表，第一个标记为默认模型。"""
+    result = [
+        m for m in AVAILABLE_MODELS
+        if API_KEYS.get(PROVIDER_CONFIG.get(str(m["id"]), {}).get("provider", ""), "")
+    ]
+    for i, m in enumerate(result):
+        result[i] = {**m, "is_default": i == 0}
+    return result
+
+
 async def stream_chat(
     model: str,
     messages: list[dict[str, object]],

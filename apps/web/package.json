@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3000",
+    "dev:mock": "NEXT_PUBLIC_MOCK=true next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

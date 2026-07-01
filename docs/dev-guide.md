@@ -20,17 +20,14 @@
 ### 启动步骤
 
 ```bash
-# 1. 创建 mock 专用 env 文件
-echo "NEXT_PUBLIC_MOCK=true" > apps/web/.env.local
-
-# 2. 安装依赖（首次）
+# 安装依赖（首次）
 pnpm install
 
-# 3. 启动 Web 开发服务器
-pnpm --filter @yuanai/web dev
-# 或从仓库根目录只启动 web
-pnpm dev --filter @yuanai/web
+# 一键启动 mock 模式
+pnpm dev:mock
 ```
+
+> 等价于 `NEXT_PUBLIC_MOCK=true pnpm --filter @yuanai/web dev`
 
 访问 [http://localhost:3000](http://localhost:3000)
 
@@ -55,7 +52,7 @@ pnpm dev --filter @yuanai/web
 ### 前提条件
 
 - Docker Desktop 已安装并运行
-- 已在 `backend/.env` 中配置 API Key（OpenAI / Anthropic / DeepSeek）
+- 已在 `backend/.env` 中配置至少一个 AI 提供商的 API Key → 详见 [AI 大模型接入指南](ai-providers.md)
 
 ### 启动步骤
 
