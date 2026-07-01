@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
+import MarkdownContent from '@/components/MarkdownContent'
 import SettingsModal from '@/components/settings/SettingsModal'
 import { useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
@@ -16,7 +17,7 @@ import {
   useLogout,
 } from '@yuanai/core/hooks'
 import type { Conversation, Message } from '@yuanai/types'
-import type { MockConversation, MockMessage, MessagePart, ConvGroup } from '@yuanai/core/stores'
+import type { MockConversation, MockMessage, ConvGroup } from '@yuanai/core/stores'
 import {
   SquarePen,
   Search,
@@ -189,72 +190,13 @@ function isDark(): boolean {
   return t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme:dark)').matches)
 }
 
-// ── Message part renderer ─────────────────────────────
-function renderInline(text: string): JSX.Element[] {
-  const parts: JSX.Element[] = []
-  const re = /(\*\*(.+?)\*\*|`([^`]+)`)/g
-  let last = 0
-  let match: RegExpExecArray | null
-  let key = 0
-  while ((match = re.exec(text)) !== null) {
-    if (match.index > last) {
-      parts.push(<span key={key++}>{text.slice(last, match.index)}</span>)
-    }
-    if (match[0].startsWith('**')) {
-      parts.push(<strong key={key++}>{match[2]}</strong>)
-    } else {
-      parts.push(<code key={key++}>{match[3]}</code>)
-    }
-    last = match.index + match[0].length
-  }
-  if (last < text.length) {
-    parts.push(<span key={key++}>{text.slice(last)}</span>)
-  }
-  return parts
-}
-
-function TextPart({ content }: { content: string }): JSX.Element {
-  const paragraphs = content.split('\n\n').filter(Boolean)
-  return (
-    <div className="ch-msg-content">
-      {paragraphs.map((para, i) => (
-        <p key={i}>{renderInline(para)}</p>
-      ))}
-    </div>
-  )
-}
-
-function CodePart({ lang, code }: { lang?: string; code?: string }): JSX.Element {
-  return (
-    <div className="ch-code-block">
-      <div className="ch-code-head">
-        <span className="ch-code-lang">{lang ?? 'Code'}</span>
-        <div className="ch-code-acts">
-          <button
-            className="ch-code-act"
-            onClick={() => {
-              void navigator.clipboard.writeText(code ?? '')
-            }}
-          >
-            <Copy size={12} /> 复制
-          </button>
-        </div>
-      </div>
-      <pre className="ch-code-body">{code}</pre>
-    </div>
-  )
-}
-
-function MessagePartRenderer({ part }: { part: MessagePart }): JSX.Element {
-  if (part.type === 'code') {
-    return (
-      <CodePart
-        {...(part.lang !== undefined ? { lang: part.lang } : {})}
-        {...(part.code !== undefined ? { code: part.code } : {})}
-      />
-    )
-  }
-  return <TextPart content={part.content ?? ''} />
+// ── Helpers ───────────────────────────────────────────
+/** Extract the raw text content from a MockMessage's parts array */
+function getMsgText(msg: MockMessage): string {
+  return msg.parts
+    .filter((p) => p.type === 'text')
+    .map((p) => p.content ?? '')
+    .join('\n')
 }
 
 // ── Think block ───────────────────────────────────────
@@ -310,32 +252,18 @@ function AIMessage({
   streamingContent: string
   onFill: (text: string) => void
 }): JSX.Element {
+  const displayContent = isStreaming ? streamingContent : getMsgText(msg)
   return (
     <div className="ch-msg ch-msg-ai">
       <div className="ch-msg-ai-av">元</div>
       <div className="ch-msg-body">
         {msg.thinkContent && <ThinkBlock content={msg.thinkContent} />}
-        {isStreaming ? (
-          <div className="ch-msg-content">
-            <p>
-              {renderInline(streamingContent)}
-              <span className="ch-cursor" />
-            </p>
-          </div>
-        ) : (
-          msg.parts.map((part, i) => <MessagePartRenderer key={i} part={part} />)
-        )}
+        <MarkdownContent content={displayContent} streaming={isStreaming} />
         {!isStreaming && (
           <div className="ch-msg-acts">
             <button
               className="ch-msg-act"
-              onClick={() => {
-                const text = msg.parts
-                  .filter((p) => p.type === 'text')
-                  .map((p) => p.content ?? '')
-                  .join('\n')
-                void navigator.clipboard.writeText(text)
-              }}
+              onClick={() => void navigator.clipboard.writeText(getMsgText(msg))}
             >
               <Copy size={12} /> 复制
             </button>
@@ -1006,21 +934,38 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           {/* Messages */}
           <div className="ch-msgs-scroll">
             <div className="ch-msgs-inner">
-              {/* Persisted messages from API */}
-              {messages.map((msg) => {
-                if (msg.role === 'user') {
-                  return <UserMessage key={msg.id} msg={msg} />
-                }
-                return (
-                  <AIMessage
-                    key={msg.id}
-                    msg={msg}
-                    isStreaming={false}
-                    streamingContent=""
-                    onFill={fill}
-                  />
-                )
-              })}
+              {/* Persisted messages from API.
+                  While streaming is active, the backend may have already saved the user message
+                  and created an empty assistant placeholder. We hide those to avoid duplicates
+                  and blank bubbles — the optimistic user message + streaming AI replace them. */}
+              {messages
+                .filter((msg) => {
+                  if (!isThisStreaming) return true
+                  // hide empty assistant placeholders created by backend at stream start
+                  if (msg.role === 'assistant' && !getMsgText(msg)) return false
+                  // hide the current user message if it's already shown as optimistic
+                  if (
+                    msg.role === 'user' &&
+                    optimisticUserMsg &&
+                    getMsgText(msg) === optimisticUserMsg
+                  )
+                    return false
+                  return true
+                })
+                .map((msg) => {
+                  if (msg.role === 'user') {
+                    return <UserMessage key={msg.id} msg={msg} />
+                  }
+                  return (
+                    <AIMessage
+                      key={msg.id}
+                      msg={msg}
+                      isStreaming={false}
+                      streamingContent=""
+                      onFill={fill}
+                    />
+                  )
+                })}
 
               {/* Optimistic user message (shown during streaming before API persists it) */}
               {isThisStreaming && optimisticUserMsg && (
