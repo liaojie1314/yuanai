@@ -107,14 +107,24 @@ const MODELS: Model[] = [
     gradient: 'linear-gradient(135deg,#7C3AED,#8B5CF6)',
   },
   {
-    id: 'deepseek-chat',
-    name: 'DeepSeek-V3',
-    desc: '中文理解强，高性价比',
+    id: 'deepseek-v4-flash',
+    name: 'DeepSeek V4 Flash',
+    desc: '快速响应，高性价比',
     provider: '国内模型',
     ctx: '64K',
     color: '#3B82F6',
     letter: 'D',
     gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)',
+  },
+  {
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek V4 Pro',
+    desc: '中文理解强，旗舰推理',
+    provider: '国内模型',
+    ctx: '128K',
+    color: '#1D4ED8',
+    letter: 'D',
+    gradient: 'linear-gradient(135deg,#1e3a8a,#1D4ED8)',
   },
 ]
 

@@ -6,7 +6,8 @@
 
 | 模型 ID                      | 名称              | 提供商    | 获取 Key                                                             |
 | ---------------------------- | ----------------- | --------- | -------------------------------------------------------------------- |
-| `deepseek-chat`              | DeepSeek V3       | DeepSeek  | [platform.deepseek.com](https://platform.deepseek.com/api_keys)      |
+| `deepseek-v4-flash`          | DeepSeek V4 Flash | DeepSeek  | [platform.deepseek.com](https://platform.deepseek.com/api_keys)      |
+| `deepseek-v4-pro`            | DeepSeek V4 Pro   | DeepSeek  | [platform.deepseek.com](https://platform.deepseek.com/api_keys)      |
 | `gpt-4o`                     | GPT-4o            | OpenAI    | [platform.openai.com](https://platform.openai.com/api-keys)          |
 | `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet | Anthropic | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 
@@ -92,7 +93,7 @@ PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     # 已有条目...
     "deepseek-reasoner": {
         "provider": "deepseek",
-        "base_url": "https://api.deepseek.com/v1",
+        "base_url": "https://api.deepseek.com",
     },
 }
 ```
