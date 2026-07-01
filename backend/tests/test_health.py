@@ -1,6 +1,5 @@
 """健康检查接口测试 — 无需数据库即可运行。"""
 
-import pytest
 from httpx import AsyncClient
 
 

@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import CurrentUser, DB
+from app.api.deps import DB, CurrentUser
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.schemas.chat import (
@@ -34,7 +34,7 @@ async def create_conversation(
 
 
 @router.get("/conversations")
-async def list_conversations(current_user: CurrentUser, db: DB) -> dict:
+async def list_conversations(current_user: CurrentUser, db: DB) -> dict[str, object]:
     result = await db.execute(
         select(Conversation)
         .where(Conversation.user_id == current_user.id)
@@ -75,7 +75,7 @@ async def delete_conversation(
 
 
 @router.get("/conversations/{conv_id}/messages")
-async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -> dict:
+async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -> dict[str, object]:
     await _get_user_conv(conv_id, current_user.id, db)
     result = await db.execute(
         select(Message)
@@ -132,22 +132,23 @@ async def stream_chat_endpoint(
 
 
 async def _generate_sse(
-    messages: list[dict],
+    messages: list[dict[str, str]],
     model: str,
     assistant_msg_id: uuid.UUID,
     user_msg_id: uuid.UUID,
     db: AsyncSession,
 ) -> AsyncGenerator[str, None]:
-    yield (
-        f"event: message_start\n"
-        f"data: {json.dumps({'user_message_id': str(user_msg_id), 'assistant_message_id': str(assistant_msg_id), 'model': model})}\n\n"
+    payload = json.dumps(
+        {"user_message_id": str(user_msg_id), "assistant_message_id": str(assistant_msg_id), "model": model}  # noqa: E501
     )
+    yield f"event: message_start\ndata: {payload}\n\n"
 
     full_content = ""
     try:
-        async for token in stream_chat(model, messages):
+        async for token in stream_chat(model, messages):  # type: ignore[arg-type]
             full_content += token
-            yield f"event: content_delta\ndata: {json.dumps({'token': token})}\n\n"
+            delta = json.dumps({"token": token}, ensure_ascii=False)
+            yield f"event: content_delta\ndata: {delta}\n\n"
 
         # 更新 assistant 消息内容
         result = await db.execute(select(Message).where(Message.id == assistant_msg_id))

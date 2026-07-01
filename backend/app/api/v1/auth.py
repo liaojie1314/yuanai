@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import CurrentUser, DB
+from app.api.deps import DB, CurrentUser
 from app.schemas.auth import (
     AuthResponse,
     LoginRequest,

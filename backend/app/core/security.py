@@ -1,47 +1,49 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 def create_access_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = datetime.now(UTC) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
-    return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "access"},
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
+    return str(
+        jwt.encode(
+            {"sub": subject, "exp": expire, "type": "access"},
+            settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
     )
 
 
 def create_refresh_token(subject: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(
+    expire = datetime.now(UTC) + timedelta(
         days=settings.refresh_token_expire_days
     )
-    return jwt.encode(
-        {"sub": subject, "exp": expire, "type": "refresh"},
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
+    return str(
+        jwt.encode(
+            {"sub": subject, "exp": expire, "type": "refresh"},
+            settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
     )
 
 
 def decode_token(token: str) -> dict[str, Any]:
     try:
-        payload = jwt.decode(
+        payload: dict[str, Any] = jwt.decode(
             token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm]
         )
     except JWTError as e:

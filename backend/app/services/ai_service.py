@@ -78,7 +78,7 @@ async def stream_chat(
         stream=True,
     )
 
-    async for chunk in stream:
+    async for chunk in stream:  # type: ignore[union-attr]
         delta = chunk.choices[0].delta if chunk.choices else None
         if delta and delta.content:
             yield delta.content

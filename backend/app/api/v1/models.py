@@ -7,5 +7,5 @@ router = APIRouter(prefix="/models", tags=["models"])
 
 
 @router.get("")
-async def list_models(current_user: CurrentUser) -> dict:
+async def list_models(current_user: CurrentUser) -> dict[str, object]:
     return {"models": AVAILABLE_MODELS}
