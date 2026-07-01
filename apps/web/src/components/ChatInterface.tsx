@@ -503,6 +503,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const streamingContent = useChatStore((s) => s.streamingContent)
   const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
 
+  // ── View state ── (declared early so isThisStreaming can use activeConv)
+  const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
+  const [activeConv, setActiveConv] = useState<string>(() => initialConvId ?? '')
+
+  /**
+   * 当前会话是否正在流式输出。
+   * 来源：Zustand store（持久跨 re-mount），比本地 useState 更可靠：
+   * router.push() 重新挂载组件时，本地 state 会被重置为 false，导致 Stop 按钮丢失。
+   */
+  const isThisStreaming = streamingConvId === activeConv
+
   // ── Server state (TanStack Query) ──
   const { data: apiConversations = [] } = useConversations()
   const conversations = apiConversations.map(apiConvToMock)
@@ -513,10 +524,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const { mutate: updateConv } = useUpdateConversation()
 
   const stream = useStream()
-
-  // ── View state ──
-  const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
-  const [activeConv, setActiveConv] = useState<string>(() => initialConvId ?? '')
 
   useEffect(() => {
     if (initialConvId) {
@@ -558,7 +565,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Input state ──
   const [inputValue, setInputValue] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
 
   // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
@@ -777,12 +783,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (inputValue.trim() && !isStreaming) void sendMessage()
+      if (inputValue.trim() && !isThisStreaming) void sendMessage()
     }
   }
 
   const sendMessage = async (): Promise<void> => {
-    if (!inputValue.trim() || isStreaming) return
+    if (!inputValue.trim() || isThisStreaming) return
 
     let convId = activeConv
     const text = inputValue.trim()
@@ -807,18 +813,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setFiles([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
-    setIsStreaming(true)
     void stream.send({
       convId,
       content: text,
       model: activeModel.id,
-      onEnd: () => setIsStreaming(false),
     })
   }
 
   const stopStreaming = (): void => {
     stream.stop()
-    setIsStreaming(false)
   }
 
   const fill = useCallback((text: string): void => {
@@ -885,27 +888,23 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const submitEditMsg = (msg: MockMessage, newText: string): void => {
     setEditingMsgId(null)
-    if (!activeConv || newText === getMsgText(msg) || isStreaming) return
-    setIsStreaming(true)
+    if (!activeConv || newText === getMsgText(msg) || isThisStreaming) return
     void stream.send({
       convId: activeConv,
       content: newText,
       model: activeModel.id,
-      onEnd: () => setIsStreaming(false),
     })
   }
 
   // ── Regenerate ───────────────────────────────────────────
   const handleRegenerate = (pair: MsgPair): void => {
-    if (isStreaming || !activeConv) return
+    if (isThisStreaming || !activeConv) return
     const userText = getMsgText(pair.userMsg)
-    setIsStreaming(true)
     void stream.send({
       convId: activeConv,
       content: userText,
       model: activeModel.id,
       skipOptimistic: true,
-      onEnd: () => setIsStreaming(false),
     })
   }
 
@@ -961,8 +960,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const userInitial = user?.username?.charAt(0).toUpperCase() ?? '?'
   const userName = user?.username ?? '未登录'
   const userEmail = user?.email ?? ''
-
-  const isThisStreaming = streamingConvId === activeConv
 
   return (
     <div className={appClass} id="app">
@@ -1528,7 +1525,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     {charCount} / 4000
                   </span>
                 )}
-                {isStreaming ? (
+                {isThisStreaming ? (
                   <button
                     className="ch-send-btn streaming on"
                     onClick={stopStreaming}

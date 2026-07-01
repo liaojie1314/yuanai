@@ -1,7 +1,11 @@
 import axios from 'axios'
 
 function getEnv(key: string): string | undefined {
-  return typeof process !== 'undefined' ? process.env[key] : undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const proc = (globalThis as any).process as
+    | { env?: Record<string, string | undefined> }
+    | undefined
+  return proc?.env?.[key]
 }
 
 export const API_BASE_URL =
