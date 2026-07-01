@@ -23,6 +23,13 @@ import {
 import { useTranslations } from '@/i18n/client'
 import { locales, localeNames, type Locale } from '@/i18n/config'
 import { getLocaleFromCookie, setLocaleCookie } from '@/i18n/client'
+import {
+  useCurrentUser,
+  useUpdateMe,
+  useMyStats,
+  useChangePassword,
+  useDeleteMe,
+} from '@yuanai/core/hooks'
 
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
@@ -66,6 +73,13 @@ export default function SettingsModal({
   const t = useTranslations('settings')
   const tc = useTranslations('common')
 
+  // Real API data
+  const { data: currentUser } = useCurrentUser()
+  const { data: stats } = useMyStats()
+  const updateMe = useUpdateMe()
+  const changePasswordMutation = useChangePassword()
+  const deleteMeMutation = useDeleteMe()
+
   // Navigation
   const [section, setSection] = useState<Section>(initialSection)
   const [subModal, setSubModal] = useState<SubModal>(null)
@@ -90,12 +104,11 @@ export default function SettingsModal({
   const [notifUpdate, setNotifUpdate] = useState(true)
   const [notifSecurity, setNotifSecurity] = useState(true)
 
-  // Profile
-  const [username, setUsername] = useState('李建明')
-  const [bio, setBio] = useState('')
+  // Profile editing state (bio is local-only until backend supports it)
   const [editingUsername, setEditingUsername] = useState(false)
   const [editingBio, setEditingBio] = useState(false)
   const [usernameInput, setUsernameInput] = useState('')
+  const [bio, setBio] = useState('')
   const [bioInput, setBioInput] = useState('')
 
   // Security sub-modal state
@@ -189,10 +202,8 @@ export default function SettingsModal({
       showToast(tc('error'), 'err')
       return
     }
-    setSubModal(null)
-    setNewEmail('')
-    setEmailCode('')
-    showToast(t('toast.emailChanged'))
+    // 更换邮箱需后端邮件验证服务支持，暂不开放
+    showToast('更换邮箱功能暂未开放', 'err')
   }
 
   const savePw = (): void => {
@@ -204,28 +215,57 @@ export default function SettingsModal({
       showToast(tc('error'), 'err')
       return
     }
-    setSubModal(null)
-    setOldPw('')
-    setNewPw('')
-    setConfPw('')
-    setShowOldPw(false)
-    setShowNewPw(false)
-    setShowConfPw(false)
-    showToast(t('toast.passwordChanged'))
+    changePasswordMutation.mutate(
+      { oldPassword: oldPw, newPassword: newPw },
+      {
+        onSuccess: () => {
+          setSubModal(null)
+          setOldPw('')
+          setNewPw('')
+          setConfPw('')
+          setShowOldPw(false)
+          setShowNewPw(false)
+          setShowConfPw(false)
+          showToast(t('toast.passwordChanged'))
+        },
+        onError: (err: unknown) => {
+          const msg =
+            (err as { response?: { data?: { detail?: { message?: string } } } })?.response?.data
+              ?.detail?.message ?? tc('error')
+          showToast(msg, 'err')
+        },
+      }
+    )
   }
 
   const doDelete = (): void => {
     if (delInput !== t('dialogs.deleteAccount.confirmText')) return
-    setSubModal(null)
-    setDelInput('')
-    showToast(t('toast.accountDeleted'))
+    deleteMeMutation.mutate(undefined, {
+      onSuccess: () => {
+        setSubModal(null)
+        setDelInput('')
+        onClose()
+        // useDeleteMe.onSuccess already calls clearAuth() + qc.clear()
+        // redirect to login
+        window.location.href = '/login'
+      },
+      onError: () => showToast(tc('error'), 'err'),
+    })
   }
 
   const saveUsername = (): void => {
-    if (usernameInput.trim()) {
-      setUsername(usernameInput.trim())
-      showToast(t('toast.saved'))
+    const trimmed = usernameInput.trim()
+    if (!trimmed) {
+      setEditingUsername(false)
+      return
     }
+    updateMe.mutate(
+      { username: trimmed },
+      {
+        onSuccess: () => showToast(t('toast.saved')),
+        onError: () => showToast(tc('error'), 'err'),
+      }
+    )
     setEditingUsername(false)
   }
 
@@ -236,6 +276,12 @@ export default function SettingsModal({
   }
 
   if (!open) return null
+
+  const displayName = currentUser?.username ?? '—'
+  const displayEmail = currentUser?.email
+    ? currentUser.email.replace(/^(.{2})(.*)(@.+)$/, (_, a, _b, c) => `${a}**${c}`)
+    : '—'
+  const avatarLetter = displayName.charAt(0).toUpperCase()
 
   const pwStrengthLabels = ['弱', '中', '强', '很强']
   const str = pwStrength(newPw, pwStrengthLabels)
@@ -337,7 +383,7 @@ export default function SettingsModal({
                   <div className="st-avatar-row">
                     <div className="st-avatar-area">
                       <div className="st-avatar-wrap">
-                        <div className="st-avatar-circle">{username.charAt(0)}</div>
+                        <div className="st-avatar-circle">{avatarLetter}</div>
                         <div className="st-av-ov">
                           <Camera size={16} />
                           {t('profile.changeAvatar')}
@@ -349,8 +395,8 @@ export default function SettingsModal({
                       </button>
                     </div>
                     <div className="st-user-meta">
-                      <div className="st-user-name">{username}</div>
-                      <div className="st-user-email">zh**@gmail.com</div>
+                      <div className="st-user-name">{displayName}</div>
+                      <div className="st-user-email">{displayEmail}</div>
                       <span className="st-badge st-badge-free" style={{ marginTop: '4px' }}>
                         Free
                       </span>
@@ -369,11 +415,11 @@ export default function SettingsModal({
                     <div className="st-row-r" style={{ flex: 1, justifyContent: 'flex-end' }}>
                       {!editingUsername ? (
                         <div className="st-ie-view">
-                          <span className="st-row-val">{username}</span>
+                          <span className="st-row-val">{displayName}</span>
                           <button
                             className="st-btn-icon"
                             onClick={() => {
-                              setUsernameInput(username)
+                              setUsernameInput(currentUser?.username ?? '')
                               setEditingUsername(true)
                             }}
                             title={tc('edit')}
@@ -467,17 +513,23 @@ export default function SettingsModal({
                   <div className="st-stats-grid">
                     <div className="st-stat-it">
                       <MessageSquare size={18} color="var(--brand)" />
-                      <span className="st-stat-val">128</span>
+                      <span className="st-stat-val">{stats?.conversationCount ?? '—'}</span>
                       <span className="st-stat-label">次对话</span>
                     </div>
                     <div className="st-stat-it">
                       <Zap size={18} color="var(--brand)" />
-                      <span className="st-stat-val">42.3k</span>
+                      <span className="st-stat-val">
+                        {stats
+                          ? stats.totalTokens >= 1000
+                            ? `${(stats.totalTokens / 1000).toFixed(1)}k`
+                            : String(stats.totalTokens)
+                          : '—'}
+                      </span>
                       <span className="st-stat-label">Token</span>
                     </div>
                     <div className="st-stat-it">
                       <Paperclip size={18} color="var(--brand)" />
-                      <span className="st-stat-val">17</span>
+                      <span className="st-stat-val">{stats?.fileCount ?? '—'}</span>
                       <span className="st-stat-label">文件</span>
                     </div>
                   </div>
@@ -500,7 +552,7 @@ export default function SettingsModal({
                       <span className="st-row-label">{t('security.email')}</span>
                     </div>
                     <div className="st-row-r">
-                      <span className="st-row-val">zh**@gmail.com</span>
+                      <span className="st-row-val">{displayEmail}</span>
                       <button className="st-btn-link" onClick={() => setSubModal('change-email')}>
                         {t('security.changeEmail')}
                       </button>

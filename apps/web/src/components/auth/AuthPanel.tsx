@@ -39,7 +39,7 @@ export default function AuthPanel({
     document.documentElement.style.userSelect = 'none'
 
     const onMove = (ev: MouseEvent): void => {
-      const w = Math.max(360, Math.min(560, window.innerWidth - 560, startW + ev.clientX - startX))
+      const w = Math.max(560, Math.min(720, window.innerWidth - 560, startW + ev.clientX - startX))
       document.documentElement.style.setProperty('--auth-left-w', `${w}px`)
     }
     const onUp = (): void => {

@@ -78,40 +78,10 @@ interface AttachFile {
 // ── Static constants ─────────────────────────────────
 const MODELS: Model[] = [
   {
-    id: 'gpt-4o',
-    name: 'GPT-4o',
-    desc: '最强大的多模态模型',
-    provider: 'OpenAI',
-    ctx: '128K',
-    color: '#10B981',
-    letter: 'G',
-    gradient: 'linear-gradient(135deg,#10B981,#3B82F6)',
-  },
-  {
-    id: 'gpt-4o-mini',
-    name: 'GPT-4o mini',
-    desc: '快速轻量，日常任务',
-    provider: 'OpenAI',
-    ctx: '128K',
-    color: '#3B82F6',
-    letter: 'G',
-    gradient: 'linear-gradient(135deg,#3B82F6,#60A5FA)',
-  },
-  {
-    id: 'claude-3-5-sonnet-20241022',
-    name: 'Claude 3.5 Sonnet',
-    desc: '代码与分析专家',
-    provider: 'Anthropic',
-    ctx: '200K',
-    color: '#8B5CF6',
-    letter: 'C',
-    gradient: 'linear-gradient(135deg,#7C3AED,#8B5CF6)',
-  },
-  {
     id: 'deepseek-v4-flash',
     name: 'DeepSeek V4 Flash',
     desc: '快速响应，高性价比',
-    provider: '国内模型',
+    provider: 'DeepSeek',
     ctx: '64K',
     color: '#3B82F6',
     letter: 'D',
@@ -121,7 +91,7 @@ const MODELS: Model[] = [
     id: 'deepseek-v4-pro',
     name: 'DeepSeek V4 Pro',
     desc: '中文理解强，旗舰推理',
-    provider: '国内模型',
+    provider: 'DeepSeek',
     ctx: '128K',
     color: '#1D4ED8',
     letter: 'D',
@@ -353,11 +323,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── UI state ──
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
-  const [activeModel, setActiveModel] = useState<Model>(() => {
-    if (typeof window === 'undefined') return MODELS[0] as Model
-    const saved = sessionStorage.getItem('yuanai-active-model')
-    return (saved ? MODELS.find((m) => m.id === saved) : null) ?? (MODELS[0] as Model)
-  })
+  // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
+  const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
   const [modelDropOpen, setModelDropOpen] = useState(false)
   const [userPanelOpen, setUserPanelOpen] = useState(false)
   const [cvMenuOpen, setCvMenuOpen] = useState<string | null>(null)
@@ -395,6 +362,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     const observer = new MutationObserver(() => setDark(isDark()))
     observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
     return () => observer.disconnect()
+  }, [])
+
+  // Hydrate active model from sessionStorage after mount (avoids SSR/client mismatch)
+  useEffect(() => {
+    const saved = sessionStorage.getItem('yuanai-active-model')
+    if (saved) {
+      const found = MODELS.find((m) => m.id === saved)
+      if (found) setActiveModel(found)
+    }
   }, [])
 
   useEffect(() => {
@@ -1222,7 +1198,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
             })(),
           }}
         >
-          {['OpenAI', 'Anthropic', '国内模型'].map((provider) => {
+          {['DeepSeek'].map((provider) => {
             const models = MODELS.filter((m) => m.provider === provider)
             if (!models.length) return null
             return (

@@ -1,4 +1,4 @@
-import type { AuthResponse, User } from '@yuanai/types'
+import type { AuthResponse, User, UserStats } from '@yuanai/types'
 import { apiClient } from './client.js'
 
 /** 邮箱登录 */
@@ -40,4 +40,31 @@ export async function getMe(): Promise<User> {
 export async function updateMe(data: { username?: string; avatarUrl?: string }): Promise<User> {
   const res = await apiClient.patch<User>('/auth/me', data)
   return res.data
+}
+
+/** 获取当前用户使用统计 */
+export async function getMyStats(): Promise<UserStats> {
+  const res = await apiClient.get<{
+    conversation_count: number
+    total_tokens: number
+    file_count: number
+  }>('/auth/me/stats')
+  return {
+    conversationCount: res.data.conversation_count,
+    totalTokens: res.data.total_tokens,
+    fileCount: res.data.file_count,
+  }
+}
+
+/** 修改密码 */
+export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+  await apiClient.patch('/auth/me/password', {
+    old_password: oldPassword,
+    new_password: newPassword,
+  })
+}
+
+/** 注销账号 */
+export async function deleteMe(): Promise<void> {
+  await apiClient.delete('/auth/me')
 }

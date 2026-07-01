@@ -1,6 +1,15 @@
 export { useStream } from './useStream'
 export type { StreamParams } from './useStream'
-export { useCurrentUser, useLogin, useLogout, useRegister, useUpdateMe } from './useAuthQueries'
+export {
+  useCurrentUser,
+  useLogin,
+  useLogout,
+  useRegister,
+  useUpdateMe,
+  useMyStats,
+  useChangePassword,
+  useDeleteMe,
+} from './useAuthQueries'
 export {
   useConversations,
   useCreateConversation,

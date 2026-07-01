@@ -3,11 +3,13 @@ from fastapi import APIRouter, HTTPException
 from app.api.deps import DB, CurrentUser
 from app.schemas.auth import (
     AuthResponse,
+    ChangePasswordRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
     UpdateUserRequest,
     UserResponse,
+    UserStatsResponse,
 )
 from app.services import auth_service
 
@@ -66,3 +68,27 @@ async def update_me(req: UpdateUserRequest, current_user: CurrentUser, db: DB) -
     await db.commit()
     await db.refresh(current_user)
     return UserResponse.model_validate(current_user)
+
+
+@router.get("/me/stats", response_model=UserStatsResponse)
+async def get_my_stats(current_user: CurrentUser, db: DB) -> UserStatsResponse:
+    return await auth_service.get_stats(current_user.id, db)
+
+
+@router.patch("/me/password", status_code=200)
+async def change_password(
+    req: ChangePasswordRequest, current_user: CurrentUser, db: DB
+) -> dict[str, str]:
+    try:
+        await auth_service.change_password(current_user, req.old_password, req.new_password, db)
+    except ValueError as e:
+        if str(e) == "OLD_PASSWORD_WRONG":
+            raise HTTPException(400, {"code": "OLD_PASSWORD_WRONG", "message": "当前密码不正确"}) from e
+        raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "修改密码失败"}) from e
+    return {"message": "密码已修改"}
+
+
+@router.delete("/me", status_code=200)
+async def delete_me(current_user: CurrentUser, db: DB) -> dict[str, str]:
+    await auth_service.delete_account(current_user, db)
+    return {"message": "账号已注销"}

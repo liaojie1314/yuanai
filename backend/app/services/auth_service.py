@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -12,8 +12,11 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.models.conversation import Conversation
+from app.models.file import File
+from app.models.message import Message, MessageRole
 from app.models.user import User
-from app.schemas.auth import AuthResponse, RegisterRequest, UserResponse
+from app.schemas.auth import AuthResponse, RegisterRequest, UserResponse, UserStatsResponse
 
 
 async def register(req: RegisterRequest, db: AsyncSession) -> AuthResponse:
@@ -61,6 +64,48 @@ async def refresh_token(token: str) -> str:
 async def logout(user_id: uuid.UUID) -> None:
     """撤销 refresh token，使当前设备会话失效。"""
     await redis_client.delete(f"refresh:{user_id!s}")
+
+
+async def get_stats(user_id: uuid.UUID, db: AsyncSession) -> UserStatsResponse:
+    """获取用户使用统计：对话数、消耗 token 总量、上传文件数。"""
+    conv_count_row = await db.execute(
+        select(func.count()).select_from(Conversation).where(Conversation.user_id == user_id)
+    )
+    conversation_count = conv_count_row.scalar_one()
+
+    token_row = await db.execute(
+        select(func.coalesce(func.sum(Message.tokens_used), 0))
+        .join(Conversation, Message.conv_id == Conversation.id)
+        .where(Conversation.user_id == user_id, Message.role == MessageRole.assistant)
+    )
+    total_tokens = token_row.scalar_one()
+
+    file_count_row = await db.execute(
+        select(func.count()).select_from(File).where(File.user_id == user_id)
+    )
+    file_count = file_count_row.scalar_one()
+
+    return UserStatsResponse(
+        conversation_count=conversation_count,
+        total_tokens=int(total_tokens),
+        file_count=file_count,
+    )
+
+
+async def change_password(
+    user: User, old_password: str, new_password: str, db: AsyncSession
+) -> None:
+    """验证旧密码后更新为新密码。"""
+    if not verify_password(old_password, user.hashed_password):
+        raise ValueError("OLD_PASSWORD_WRONG")
+    user.hashed_password = hash_password(new_password)
+    await db.commit()
+
+
+async def delete_account(user: User, db: AsyncSession) -> None:
+    """永久删除账号及所有关联数据（CASCADE 处理关联表）。"""
+    await db.delete(user)
+    await db.commit()
 
 
 async def _build_auth_response(user: User) -> AuthResponse:

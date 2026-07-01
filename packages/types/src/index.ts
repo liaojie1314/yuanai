@@ -22,6 +22,13 @@ export interface User {
   createdAt: string
 }
 
+/** 用户使用统计 */
+export interface UserStats {
+  conversationCount: number
+  totalTokens: number
+  fileCount: number
+}
+
 // ============ 认证 ============
 
 /** 登录/注册成功后的响应体 */

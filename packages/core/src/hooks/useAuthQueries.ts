@@ -1,6 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { User } from '@yuanai/types'
-import { getMe, login, logout, register, updateMe } from '../api/auth.js'
+import type { User, UserStats } from '@yuanai/types'
+import {
+  changePassword,
+  deleteMe,
+  getMe,
+  getMyStats,
+  login,
+  logout,
+  register,
+  updateMe,
+} from '../api/auth.js'
 import { useAuthStore } from '../stores/auth.store.js'
 
 /** 获取当前登录用户信息（需已有 token） */
@@ -70,6 +79,38 @@ export function useUpdateMe() {
     mutationFn: (data: { username?: string; avatarUrl?: string }) => updateMe(data),
     onSuccess: (updatedUser: User) => {
       qc.setQueryData<User>(['me'], updatedUser)
+    },
+  })
+}
+
+/** 获取当前用户使用统计 */
+export function useMyStats() {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery<UserStats>({
+    queryKey: ['me', 'stats'],
+    queryFn: getMyStats,
+    enabled: !!accessToken,
+    staleTime: 60 * 1000,
+  })
+}
+
+/** 修改密码 mutation */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: ({ oldPassword, newPassword }: { oldPassword: string; newPassword: string }) =>
+      changePassword(oldPassword, newPassword),
+  })
+}
+
+/** 注销账号 mutation */
+export function useDeleteMe() {
+  const { clearAuth } = useAuthStore()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: deleteMe,
+    onSuccess: () => {
+      clearAuth()
+      qc.clear()
     },
   })
 }

@@ -142,3 +142,77 @@ class TestProtectedRoutes:
         response = await client.post("/api/v1/auth/logout", headers=auth_headers)
         assert response.status_code == 200
         assert "已退出" in response.json()["message"]
+
+
+class TestUserSettings:
+    async def test_get_stats_unauthenticated(self, client: AsyncClient) -> None:
+        response = await client.get("/api/v1/auth/me/stats")
+        assert response.status_code in (401, 403)
+
+    async def test_get_stats_returns_zeros_for_new_user(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        response = await client.get("/api/v1/auth/me/stats", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["conversation_count"] == 0
+        assert data["total_tokens"] == 0
+        assert data["file_count"] == 0
+
+    async def test_change_password_success(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        response = await client.patch(
+            "/api/v1/auth/me/password",
+            json={"old_password": "Test1234!", "new_password": "NewPass99!"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        assert "密码" in response.json()["message"]
+
+    async def test_change_password_wrong_old_password(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        response = await client.patch(
+            "/api/v1/auth/me/password",
+            json={"old_password": "WrongOld1!", "new_password": "NewPass99!"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"]["code"] == "OLD_PASSWORD_WRONG"
+
+    async def test_change_password_weak_new_password(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        response = await client.patch(
+            "/api/v1/auth/me/password",
+            json={"old_password": "Test1234!", "new_password": "weakpw"},
+            headers=auth_headers,
+        )
+        assert response.status_code == 422
+
+    async def test_change_password_unauthenticated(self, client: AsyncClient) -> None:
+        response = await client.patch(
+            "/api/v1/auth/me/password",
+            json={"old_password": "Test1234!", "new_password": "NewPass99!"},
+        )
+        assert response.status_code in (401, 403)
+
+    async def test_delete_me_success(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        response = await client.delete("/api/v1/auth/me", headers=auth_headers)
+        assert response.status_code == 200
+        assert "注销" in response.json()["message"]
+
+    async def test_delete_me_account_no_longer_accessible(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        await client.delete("/api/v1/auth/me", headers=auth_headers)
+        # Same token should fail to access /me after deletion
+        response = await client.get("/api/v1/auth/me", headers=auth_headers)
+        assert response.status_code == 401
+
+    async def test_delete_me_unauthenticated(self, client: AsyncClient) -> None:
+        response = await client.delete("/api/v1/auth/me")
+        assert response.status_code in (401, 403)

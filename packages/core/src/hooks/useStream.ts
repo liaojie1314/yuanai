@@ -89,12 +89,12 @@ export function useStream() {
           }
         }
 
-        finalizeStream()
-        // 流结束后刷新消息列表与会话列表（更新 lastMessageAt）
+        // 先等新数据写入缓存，再清除流式 overlay，避免内容跳动
         await Promise.all([
-          qc.invalidateQueries({ queryKey: ['messages', convId] }),
-          qc.invalidateQueries({ queryKey: ['conversations'] }),
+          qc.refetchQueries({ queryKey: ['messages', convId] }),
+          qc.refetchQueries({ queryKey: ['conversations'] }),
         ])
+        finalizeStream()
       } catch (err) {
         finalizeStream()
         if (err instanceof Error && err.name !== 'AbortError') {

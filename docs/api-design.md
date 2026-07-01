@@ -37,10 +37,6 @@ Authorization: Bearer <access_token>   （除登录/注册/OAuth 外必须携带
     "email": "user@example.com",
     "username": "yuanai_user",
     "avatar_url": null,
-    "bio": null,
-    "phone": null,
-    "plan": "free",
-    "linked_providers": [],
     "created_at": "2026-01-01T00:00:00Z"
   }
 }
@@ -257,22 +253,11 @@ https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
   "email": "user@example.com",
   "username": "yuanai_user",
   "avatar_url": "https://...",
-  "bio": "这里是个人简介",
-  "phone": "138****5678",
-  "plan": "free",
-  "linked_providers": ["wechat"],
   "created_at": "2026-01-01T00:00:00Z"
 }
 ```
 
-字段说明：
-
-| 字段               | 类型           | 说明                                                 |
-| ------------------ | -------------- | ---------------------------------------------------- |
-| `phone`            | string \| null | 已绑定手机号（脱敏展示），未绑定为 null              |
-| `bio`              | string \| null | 个人简介，最多 100 字                                |
-| `plan`             | string         | 订阅计划：`free` \| `pro` \| `enterprise`            |
-| `linked_providers` | string[]       | 已绑定的第三方登录：`wechat` \| `google` \| `github` |
+> **v1 范围说明：** `bio`、`phone`、`plan`、`linked_providers` 字段已规划，将在 v2 阶段随对应功能（手机绑定、订阅、OAuth 解绑）一同实现。
 
 ---
 
@@ -283,8 +268,7 @@ https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
 ```json
 {
   "username": "new_name",
-  "avatar_url": "https://...",
-  "bio": "新的个人简介"
+  "avatar_url": "https://..."
 }
 ```
 
@@ -300,9 +284,9 @@ https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
 
 ```json
 {
-  "conversations": 128,
-  "tokens_used": 42300,
-  "files": 17
+  "conversation_count": 128,
+  "total_tokens": 42300,
+  "file_count": 17
 }
 ```
 
@@ -437,19 +421,9 @@ https://yuanai.app/settings?linked=:provider
 
 ### DELETE `/auth/me` — 注销账号（需认证）
 
-设置页「危险操作」区域，用户输入「删除账号」确认文字后提交。后端永久删除所有用户数据（会话、消息、文件）。
+设置页「危险操作」区域，用户在前端输入「删除账号」确认文字后提交（确认校验由前端完成）。后端永久删除账号及所有关联数据（会话、消息、文件，由数据库 CASCADE 处理）。
 
-**Request:**
-
-```json
-{
-  "confirmation": "delete account"
-}
-```
-
-`confirmation` 的合法值：`"delete account"`（英文）或 `"删除账号"`（中文），服务端任意接受。
-
-**Response 204:** No Content
+**Response 200:** `{ "message": "账号已注销" }`
 
 **Error 400:** `AUTH_DELETE_CONFIRMATION_INVALID`（确认文本不匹配）
 
