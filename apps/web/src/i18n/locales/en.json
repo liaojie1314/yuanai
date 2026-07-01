@@ -24,6 +24,7 @@
     "createAccount": "Create Account",
     "registerSubtitle": "Sign up for YuanAI and start your AI journey",
     "phone": "Phone",
+    "emailCode": "Email Code",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm Password",
@@ -129,7 +130,9 @@
       "deleteAccount": "Delete Account",
       "notBound": "Not bound",
       "bound": "Bound",
-      "lastChanged": "Last changed: {date}"
+      "lastChanged": "Last changed: {date}",
+      "thirdPartyLogin": "Third-Party Login",
+      "dangerousOps": "Danger Zone"
     },
     "appearance": {
       "theme": "Theme",
@@ -199,6 +202,10 @@
       "unbindWechat": {
         "title": "Unbind WeChat",
         "warning": "After unbinding, you won't be able to sign in with WeChat. Continue?"
+      },
+      "deleteConversation": {
+        "title": "Delete Conversation",
+        "message": "Are you sure you want to delete this conversation? This cannot be undone."
       }
     },
     "toast": {
@@ -212,5 +219,66 @@
   "theme": {
     "toggleLight": "Switch to light mode",
     "toggleDark": "Switch to dark mode"
+  },
+  "chat": {
+    "newChatTitle": "New chat (Ctrl+N)",
+    "searchPlaceholder": "Search conversations…",
+    "noConversations": "No conversations",
+    "inputPlaceholder": "Send a message… (Enter to send, Shift+Enter for newline)",
+    "inputPlaceholderLoggedOut": "Please log in to start chatting with AI",
+    "disclaimer": "YuanAI can make mistakes. Verify important information.",
+    "welcome": {
+      "title": "Hi, I'm YuanAI",
+      "subtitle": "Integrating top AI models to help you with any task"
+    },
+    "groups": {
+      "pinned": "Pinned",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "week": "Past 7 days"
+    },
+    "delete": {
+      "title": "Delete Conversation",
+      "message": "Are you sure you want to delete this conversation? This cannot be undone.",
+      "batchTitle": "Delete Conversations",
+      "batchMessage": "Are you sure you want to delete {count} selected conversations? This cannot be undone."
+    },
+    "sidebar": {
+      "settings": "Settings & Account",
+      "darkMode": "Dark Mode",
+      "profile": "Profile Settings",
+      "logout": "Log Out",
+      "login": "Log In"
+    },
+    "toolbar": {
+      "share": "Share conversation"
+    },
+    "actions": {
+      "edit": "Edit",
+      "copy": "Copy",
+      "regenerate": "Regenerate",
+      "like": "Like",
+      "dislike": "Dislike",
+      "rename": "Rename",
+      "pin": "Pin",
+      "unpin": "Unpin",
+      "multiSelect": "Multi-select",
+      "delete": "Delete",
+      "deleteSelected": "Delete selected",
+      "selectAll": "Select all",
+      "deselectAll": "Deselect all",
+      "selectedCount": "{count} selected",
+      "stopGeneration": "Stop generating",
+      "scrollToBottom": "Scroll to bottom",
+      "newDefaultTitle": "New conversation"
+    },
+    "caps": {
+      "webSearch": "Web Search",
+      "codeGen": "Code Generation",
+      "imageUnderstanding": "Image Understanding",
+      "fileAnalysis": "File Analysis",
+      "math": "Math & Reasoning",
+      "translation": "Translation"
+    }
   }
 }

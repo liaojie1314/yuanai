@@ -22,8 +22,23 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       accessToken: null,
       refreshToken: null,
-      setAuth: (user, accessToken, refreshToken) => set({ user, accessToken, refreshToken }),
-      clearAuth: () => set({ user: null, accessToken: null, refreshToken: null }),
+      setAuth: (user, accessToken, refreshToken) => {
+        set({ user, accessToken, refreshToken })
+        // middleware reads this cookie for route protection (SSR/RSC requests can't see localStorage)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc = (globalThis as any).document as { cookie: string } | undefined
+        if (doc) {
+          doc.cookie = `yuanai-auth=${encodeURIComponent(accessToken)}; path=/; max-age=86400; SameSite=Lax`
+        }
+      },
+      clearAuth: () => {
+        set({ user: null, accessToken: null, refreshToken: null })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const doc = (globalThis as any).document as { cookie: string } | undefined
+        if (doc) {
+          doc.cookie = 'yuanai-auth=; path=/; max-age=0; SameSite=Lax'
+        }
+      },
     }),
     {
       name: 'yuanai-auth',

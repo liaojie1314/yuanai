@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, type JSX } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { QrCode, Smartphone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { QrCode, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
@@ -15,16 +15,18 @@ export default function LoginPage(): JSX.Element {
 
   const loginMutation = useLogin()
 
-  const [tab, setTab] = useState<'phone' | 'email'>('phone')
+  const [tab, setTab] = useState<'emailCode' | 'email'>('emailCode')
   const [showQr, setShowQr] = useState(false)
 
-  const [phone, setPhone] = useState('')
-  const [sms, setSms] = useState('')
-  const [phoneErr, setPhoneErr] = useState('')
-  const [smsErr, setSmsErr] = useState('')
-  const [smsCount, setSmsCount] = useState(0)
-  const smsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Email code tab state
+  const [codeEmail, setCodeEmail] = useState('')
+  const [emailCodeVal, setEmailCodeVal] = useState('')
+  const [codeEmailErr, setCodeEmailErr] = useState('')
+  const [codeErr, setCodeErr] = useState('')
+  const [codeCount, setCodeCount] = useState(0)
+  const codeTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Email password tab state
   const [email, setEmail] = useState('')
   const [pwd, setPwd] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -33,12 +35,13 @@ export default function LoginPage(): JSX.Element {
   const [pwdErr, setPwdErr] = useState('')
   const [apiErr, setApiErr] = useState('')
 
+  // QR code state
   const [qrCount, setQrCount] = useState(60)
   const qrTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(
     () => () => {
-      if (smsTimer.current) clearInterval(smsTimer.current)
+      if (codeTimer.current) clearInterval(codeTimer.current)
       if (qrTimer.current) clearInterval(qrTimer.current)
     },
     []
@@ -63,21 +66,21 @@ export default function LoginPage(): JSX.Element {
     if (qrTimer.current) clearInterval(qrTimer.current)
   }
 
-  const sendSms = (): void => {
-    if (!/^1[3-9]\d{9}$/.test(phone.trim())) {
-      setPhoneErr(t('errors.invalidPhone'))
+  const sendEmailCode = (): void => {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(codeEmail.trim())) {
+      setCodeEmailErr(t('errors.invalidEmail'))
       return
     }
-    setPhoneErr('')
+    setCodeEmailErr('')
     let s = 60
-    setSmsCount(s)
-    if (smsTimer.current) clearInterval(smsTimer.current)
-    smsTimer.current = setInterval(() => {
+    setCodeCount(s)
+    if (codeTimer.current) clearInterval(codeTimer.current)
+    codeTimer.current = setInterval(() => {
       s--
-      setSmsCount(s)
+      setCodeCount(s)
       if (s <= 0) {
-        if (smsTimer.current) clearInterval(smsTimer.current)
-        setSmsCount(0)
+        if (codeTimer.current) clearInterval(codeTimer.current)
+        setCodeCount(0)
       }
     }, 1000)
   }
@@ -87,20 +90,20 @@ export default function LoginPage(): JSX.Element {
     router.replace(from)
   }
 
-  const handlePhone = (e: React.FormEvent): void => {
+  const handleEmailCode = (e: React.FormEvent): void => {
     e.preventDefault()
     let ok = true
-    if (!/^1[3-9]\d{9}$/.test(phone.trim())) {
-      setPhoneErr(t('errors.invalidPhone'))
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(codeEmail.trim())) {
+      setCodeEmailErr(t('errors.invalidEmail'))
       ok = false
-    } else setPhoneErr('')
-    if (sms.trim().length < 6) {
-      setSmsErr(t('errors.codeRequired'))
+    } else setCodeEmailErr('')
+    if (emailCodeVal.trim().length < 6) {
+      setCodeErr(t('errors.codeRequired'))
       ok = false
-    } else setSmsErr('')
+    } else setCodeErr('')
     if (!ok) return
-    // 手机号登录尚未对接（后端暂不支持），暂时提示用户使用邮箱登录
-    setPhoneErr('手机号登录暂未开放，请使用邮箱登录')
+    // 邮箱验证码登录暂未开放
+    setCodeEmailErr('邮箱验证码登录暂未开放，请使用邮箱密码登录')
   }
 
   const handleEmail = async (e: React.FormEvent): Promise<void> => {
@@ -177,11 +180,11 @@ export default function LoginPage(): JSX.Element {
 
               <div className="auth-tabs" role="tablist">
                 <button
-                  className={tab === 'phone' ? 'a-tab on' : 'a-tab'}
+                  className={tab === 'emailCode' ? 'a-tab on' : 'a-tab'}
                   role="tab"
-                  onClick={() => setTab('phone')}
+                  onClick={() => setTab('emailCode')}
                 >
-                  {t('phone')}
+                  {t('emailCode')}
                 </button>
                 <button
                   className={tab === 'email' ? 'a-tab on' : 'a-tab'}
@@ -193,58 +196,57 @@ export default function LoginPage(): JSX.Element {
                 </button>
               </div>
 
-              {tab === 'phone' ? (
-                <form onSubmit={handlePhone} noValidate>
+              {tab === 'emailCode' ? (
+                <form onSubmit={handleEmailCode} noValidate>
                   <div className="fg">
-                    <label className="fl" htmlFor="ph">
-                      {t('phone')}
+                    <label className="fl" htmlFor="code-email">
+                      {t('email')}
                     </label>
                     <div className="iw">
                       <span className="ii">
-                        <Smartphone size={16} />
+                        <Mail size={16} />
                       </span>
                       <input
-                        id="ph"
-                        className={phoneErr ? 'fi err' : 'fi'}
-                        type="tel"
-                        placeholder={t('placeholders.phone')}
-                        maxLength={11}
-                        autoComplete="tel"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        id="code-email"
+                        className={codeEmailErr ? 'fi err' : 'fi'}
+                        type="email"
+                        placeholder={t('placeholders.email')}
+                        autoComplete="email"
+                        value={codeEmail}
+                        onChange={(e) => setCodeEmail(e.target.value)}
                       />
                     </div>
-                    <p className={phoneErr ? 'ferr on' : 'ferr'}>{phoneErr}</p>
+                    <p className={codeEmailErr ? 'ferr on' : 'ferr'}>{codeEmailErr}</p>
                   </div>
 
                   <div className="fg">
-                    <label className="fl" htmlFor="code">
+                    <label className="fl" htmlFor="ecode">
                       {t('verificationCode')}
                     </label>
                     <div className="code-row">
                       <div className="iw" style={{ flex: 1 }}>
                         <input
-                          id="code"
-                          className={smsErr ? 'fi err' : 'fi'}
+                          id="ecode"
+                          className={codeErr ? 'fi err' : 'fi'}
                           type="text"
                           inputMode="numeric"
                           placeholder={t('placeholders.code')}
                           maxLength={6}
                           autoComplete="one-time-code"
-                          value={sms}
-                          onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
+                          value={emailCodeVal}
+                          onChange={(e) => setEmailCodeVal(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
                       <button
                         type="button"
                         className="code-btn"
-                        disabled={smsCount > 0}
-                        onClick={sendSms}
+                        disabled={codeCount > 0}
+                        onClick={sendEmailCode}
                       >
-                        {smsCount > 0 ? t('resendIn', { seconds: smsCount }) : t('sendCode')}
+                        {codeCount > 0 ? t('resendIn', { seconds: codeCount }) : t('sendCode')}
                       </button>
                     </div>
-                    <p className={smsErr ? 'ferr on' : 'ferr'}>{smsErr}</p>
+                    <p className={codeErr ? 'ferr on' : 'ferr'}>{codeErr}</p>
                   </div>
 
                   <button type="submit" className="btn">

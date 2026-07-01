@@ -527,7 +527,7 @@ export default function SettingsModal({
 
                 <div className="st-blk">
                   <div className="st-blk-hd">
-                    <span className="st-blk-title">第三方登录</span>
+                    <span className="st-blk-title">{t('security.thirdPartyLogin')}</span>
                   </div>
                   {[
                     {
@@ -586,7 +586,7 @@ export default function SettingsModal({
                 <div className="st-blk danger">
                   <div className="st-blk-hd">
                     <span className="st-blk-title" style={{ color: '#ef4444' }}>
-                      危险操作
+                      {t('security.dangerousOps')}
                     </span>
                   </div>
                   <div className="st-row">

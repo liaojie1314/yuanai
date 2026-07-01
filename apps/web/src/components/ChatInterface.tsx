@@ -2,8 +2,10 @@
 
 import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
+import { useTranslations } from 'next-intl'
 import MarkdownContent from '@/components/MarkdownContent'
 import SettingsModal from '@/components/settings/SettingsModal'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import { useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
 import { useStream } from '@yuanai/core/hooks'
@@ -28,9 +30,7 @@ import {
   CheckSquare,
   Settings,
   Globe,
-  PanelRight,
   Share2,
-  MoreHorizontal,
   ChevronDown,
   Check,
   Sparkles,
@@ -300,6 +300,8 @@ interface ChatInterfaceProps {
 // ── Main component ────────────────────────────────────
 export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JSX.Element {
   const router = useRouter()
+  const t = useTranslations('chat')
+  const tCommon = useTranslations('common')
 
   // ── Auth ──
   const user = useAuthStore((s) => s.user)
@@ -351,13 +353,22 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── UI state ──
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
-  const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
+  const [activeModel, setActiveModel] = useState<Model>(() => {
+    if (typeof window === 'undefined') return MODELS[0] as Model
+    const saved = sessionStorage.getItem('yuanai-active-model')
+    return (saved ? MODELS.find((m) => m.id === saved) : null) ?? (MODELS[0] as Model)
+  })
   const [modelDropOpen, setModelDropOpen] = useState(false)
   const [userPanelOpen, setUserPanelOpen] = useState(false)
   const [cvMenuOpen, setCvMenuOpen] = useState<string | null>(null)
   const [cvMenuPos, setCvMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const [dark, setDark] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
 
   // ── Input state ──
   const [inputValue, setInputValue] = useState('')
@@ -376,9 +387,45 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const msgsEndRef = useRef<HTMLDivElement>(null)
+  const sidebarRef = useRef<HTMLDivElement>(null)
+  const [sidebarWidth, setSidebarWidth] = useState(260)
 
   useEffect(() => {
     setDark(isDark())
+    const observer = new MutationObserver(() => setDark(isDark()))
+    observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
+    const MIN = 200,
+      MAX = 360
+    let dragging = false
+    const onMouseDown = (e: MouseEvent): void => {
+      e.preventDefault()
+      dragging = true
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+    }
+    const onMouseMove = (e: MouseEvent): void => {
+      if (!dragging) return
+      const w = Math.min(MAX, Math.max(MIN, e.clientX))
+      setSidebarWidth(w)
+    }
+    const onMouseUp = (): void => {
+      dragging = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    const handle = sidebarRef.current?.querySelector('.ch-sb-resize') as HTMLElement | null
+    handle?.addEventListener('mousedown', onMouseDown)
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      handle?.removeEventListener('mousedown', onMouseDown)
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
   }, [])
 
   useEffect(() => {
@@ -400,6 +447,19 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     }
   }, [streamingContent, isStreaming])
 
+  // 切换会话时同步该会话绑定的模型
+  useEffect(() => {
+    if (!activeConv) return
+    const apiConv = apiConversations.find((c) => c.id === activeConv)
+    if (apiConv?.model) {
+      const model = MODELS.find((m) => m.id === apiConv.model)
+      if (model) {
+        setActiveModel(model)
+        sessionStorage.setItem('yuanai-active-model', model.id)
+      }
+    }
+  }, [activeConv, apiConversations])
+
   const closeAllPanels = (): void => {
     setModelDropOpen(false)
     setUserPanelOpen(false)
@@ -407,10 +467,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   const toggleTheme = (): void => {
-    const next = dark ? 'light' : 'dark'
+    const current = document.documentElement.getAttribute('data-theme')
+    const next = current === 'dark' ? 'light' : 'dark'
     document.documentElement.setAttribute('data-theme', next)
     localStorage.setItem('theme', next)
-    setDark(!dark)
+    setDark(next === 'dark')
   }
 
   const newChat = (): void => {
@@ -420,8 +481,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   const pickConv = (id: string): void => {
+    setActiveConv(id)
+    setView('chat')
     setSidebarOpen(false)
     router.push('/chat/' + id)
+  }
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void): void => {
+    setConfirmDialog({ title, message, onConfirm })
   }
 
   const toggleCollapse = (): void => setSidebarCollapsed((c) => !c)
@@ -436,6 +503,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const selectModel = (m: Model): void => {
     setActiveModel(m)
+    sessionStorage.setItem('yuanai-active-model', m.id)
     setModelDropOpen(false)
   }
 
@@ -465,7 +533,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setCvMenuOpen(id)
   }
 
-  const toggleArtifact = (): void => setArtifactOpen((o) => !o)
+  const _toggleArtifact = (): void => setArtifactOpen((o) => !o)
 
   const onInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setInputValue(e.target.value)
@@ -574,7 +642,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     .filter(Boolean)
     .join(' ')
 
-  const convTitle = conversations.find((c) => c.id === activeConv)?.title ?? '新对话'
+  const convTitle =
+    conversations.find((c) => c.id === activeConv)?.title ?? t('actions.newDefaultTitle')
 
   const filteredConvs = search
     ? conversations.filter((c) => c.title.includes(search))
@@ -614,7 +683,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       />
 
       {/* ── Sidebar ───────────────────────────────── */}
-      <aside className={`ch-sidebar ${sidebarOpen ? 'open' : ''}`} id="sidebar">
+      <aside
+        ref={sidebarRef}
+        className={`ch-sidebar ${sidebarOpen ? 'open' : ''}`}
+        id="sidebar"
+        style={{ width: sidebarCollapsed ? undefined : sidebarWidth }}
+      >
         {/* Header */}
         <div className="ch-sb-head">
           <div className="ch-brand">
@@ -623,9 +697,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           </div>
           <button
             className="ch-sb-new"
-            title="新建对话 (Ctrl+N)"
+            title={t('newChatTitle')}
             onClick={newChat}
-            aria-label="新建对话"
+            aria-label={t('newChatTitle')}
           >
             <SquarePen size={17} />
           </button>
@@ -637,7 +711,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <Search size={14} color="var(--fg3)" />
             <input
               type="text"
-              placeholder="搜索对话…"
+              placeholder={t('searchPlaceholder')}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -654,19 +728,29 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 else setSelectedConvs(new Set(conversations.map((c) => c.id)))
               }}
             >
-              {selectedConvs.size === conversations.length ? '取消全选' : '全选'}
+              {selectedConvs.size === conversations.length
+                ? t('actions.deselectAll')
+                : t('actions.selectAll')}
             </span>
-            <span className="ch-multi-c">已选 {selectedConvs.size} 个</span>
+            <span className="ch-multi-c">
+              {t('actions.selectedCount').replace('{count}', String(selectedConvs.size))}
+            </span>
             <button
               className="ch-multi-del"
               disabled={selectedConvs.size === 0}
               onClick={() => {
-                deleteConvs([...selectedConvs])
-                setSelectedConvs(new Set())
-                setMultiSel(false)
+                showConfirm(
+                  t('delete.batchTitle'),
+                  t('delete.batchMessage').replace('{count}', String(selectedConvs.size)),
+                  () => {
+                    deleteConvs([...selectedConvs])
+                    setSelectedConvs(new Set())
+                    setMultiSel(false)
+                  }
+                )
               }}
             >
-              删除选中
+              {t('actions.deleteSelected')}
             </button>
             <span
               className="ch-multi-cancel"
@@ -675,7 +759,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 setSelectedConvs(new Set())
               }}
             >
-              取消
+              {tCommon('cancel')}
             </span>
           </div>
         )}
@@ -684,7 +768,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         <div className="ch-sb-convs">
           {groupedConvs.pinned.length > 0 && (
             <div className="ch-conv-group">
-              <div className="ch-cg-lbl">置顶</div>
+              <div className="ch-cg-lbl">{t('groups.pinned')}</div>
               {groupedConvs.pinned.map((conv) => (
                 <ConvItem
                   key={conv.id}
@@ -711,7 +795,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           )}
           {groupedConvs.today.length > 0 && (
             <div className="ch-conv-group">
-              <div className="ch-cg-lbl">今天</div>
+              <div className="ch-cg-lbl">{t('groups.today')}</div>
               {groupedConvs.today.map((conv) => (
                 <ConvItem
                   key={conv.id}
@@ -737,7 +821,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           )}
           {groupedConvs.yesterday.length > 0 && (
             <div className="ch-conv-group">
-              <div className="ch-cg-lbl">昨天</div>
+              <div className="ch-cg-lbl">{t('groups.yesterday')}</div>
               {groupedConvs.yesterday.map((conv) => (
                 <ConvItem
                   key={conv.id}
@@ -763,7 +847,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           )}
           {groupedConvs.week.length > 0 && (
             <div className="ch-conv-group">
-              <div className="ch-cg-lbl">过去 7 天</div>
+              <div className="ch-cg-lbl">{t('groups.week')}</div>
               {groupedConvs.week.map((conv) => (
                 <ConvItem
                   key={conv.id}
@@ -787,6 +871,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               ))}
             </div>
           )}
+          {filteredConvs.length === 0 && <div className="ch-sb-empty">{t('noConversations')}</div>}
         </div>
 
         {/* User section */}
@@ -798,7 +883,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           </div>
           <button
             className="ch-sb-uset"
-            title="设置与账号"
+            title={t('sidebar.settings')}
             onClick={(e) => {
               e.stopPropagation()
               setUserPanelOpen((o) => !o)
@@ -808,6 +893,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <Settings size={15} />
           </button>
         </div>
+        <div className="ch-sb-resize" />
       </aside>
 
       {/* Mobile overlay */}
@@ -852,31 +938,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             </button>
           </div>
           <div className="ch-tb-r">
-            <button
-              className={`ch-ib ${webSearch ? 'on' : ''}`}
-              title="联网搜索 (Ctrl+Shift+S)"
-              onClick={(e) => {
-                e.stopPropagation()
-                setWebSearch((w) => !w)
-              }}
-            >
-              <Globe size={16} />
-            </button>
-            <button
-              className={`ch-ib ${artifactOpen ? 'on' : ''}`}
-              title="展开内容面板"
-              onClick={(e) => {
-                e.stopPropagation()
-                toggleArtifact()
-              }}
-            >
-              <PanelRight size={16} />
-            </button>
-            <button className="ch-ib" title="分享对话">
+            <button className="ch-ib" title={t('toolbar.share')}>
               <Share2 size={16} />
-            </button>
-            <button className="ch-ib" title="更多操作">
-              <MoreHorizontal size={16} />
             </button>
           </div>
         </header>
@@ -886,8 +949,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           {/* Empty state */}
           <div className="ch-empty-state">
             <div className="ch-ai-av">元</div>
-            <h1 className="ch-e-title">你好，我是元AI</h1>
-            <p className="ch-e-sub">集成多款顶尖 AI 模型，帮你完成任何任务</p>
+            <h1 className="ch-e-title">{t('welcome.title')}</h1>
+            <p className="ch-e-sub">{t('welcome.subtitle')}</p>
             <div className="ch-caps">
               <button className="ch-cap" onClick={() => fill('联网搜索最新 AI 行业动态')}>
                 <Globe size={14} /> 联网搜索
@@ -994,7 +1057,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
             {/* Scroll FAB */}
             <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
-              <button onClick={toBottom} title="回到底部">
+              <button onClick={toBottom} title={t('actions.scrollToBottom')}>
                 <ArrowDown size={16} />
               </button>
             </div>
@@ -1038,11 +1101,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <textarea
               ref={inputRef}
               className="ch-input-ta"
-              placeholder={
-                isLoggedIn
-                  ? '发送消息…（Enter 发送，Shift+Enter 换行）'
-                  : '请先登录，开始与 AI 对话'
-              }
+              placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
               rows={1}
               value={inputValue}
               onChange={onInputChange}
@@ -1089,7 +1148,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   <button
                     className="ch-send-btn streaming on"
                     onClick={stopStreaming}
-                    title="停止生成"
+                    title={t('actions.stopGeneration')}
                   >
                     <Square size={16} fill="currentColor" />
                   </button>
@@ -1108,7 +1167,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               </div>
             </div>
           </div>
-          <p className="ch-input-hint">元AI 可能犯错，请核实重要信息</p>
+          <p className="ch-input-hint">{t('disclaimer')}</p>
         </div>
       </main>
 
@@ -1217,7 +1276,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
           }}
         >
           <div className="ch-up-theme" onClick={toggleTheme}>
-            <span className="ch-up-tlbl">深色模式</span>
+            <span className="ch-up-tlbl">{t('sidebar.darkMode')}</span>
             <div className={`ch-toggle ${dark ? 'on' : ''}`} />
           </div>
           <div className="ch-up-sep" />
@@ -1230,7 +1289,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                   setSettingsOpen(true)
                 }}
               >
-                <User size={16} /> 个人设置
+                <User size={16} /> {t('sidebar.profile')}
               </div>
               <div className="ch-up-sep" />
               <div
@@ -1240,7 +1299,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                   doLogout()
                 }}
               >
-                <LogOut size={16} /> 退出登录
+                <LogOut size={16} /> {t('sidebar.logout')}
               </div>
             </>
           ) : (
@@ -1251,7 +1310,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                 router.push('/login')
               }}
             >
-              <LogIn size={16} /> 去登录
+              <LogIn size={16} /> {t('sidebar.login')}
             </div>
           )}
         </div>
@@ -1259,6 +1318,21 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
 
       {/* ── Settings modal ───────────────────────── */}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* ── Confirm dialog ───────────────────────── */}
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title ?? ''}
+        message={confirmDialog?.message ?? ''}
+        confirmText={t('actions.delete')}
+        cancelText={tCommon('cancel')}
+        danger
+        onConfirm={() => {
+          confirmDialog?.onConfirm()
+          setConfirmDialog(null)
+        }}
+        onCancel={() => setConfirmDialog(null)}
+      />
 
       {/* ── Conversation context menus ────────────── */}
       {cvMenuOpen &&
@@ -1282,7 +1356,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                   setCvMenuOpen(null)
                 }}
               >
-                <Pencil size={14} /> 重命名
+                <Pencil size={14} /> {t('actions.rename')}
               </div>
               <div
                 className="ch-cvm-row"
@@ -1291,7 +1365,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                   setCvMenuOpen(null)
                 }}
               >
-                <Pin size={14} /> {apiConv?.isPinned ? '取消置顶' : '置顶'}
+                <Pin size={14} /> {apiConv?.isPinned ? t('actions.unpin') : t('actions.pin')}
               </div>
               <div
                 className="ch-cvm-row"
@@ -1301,20 +1375,25 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
                   setCvMenuOpen(null)
                 }}
               >
-                <CheckSquare size={14} /> 多选
+                <CheckSquare size={14} /> {t('actions.multiSelect')}
               </div>
               <div className="ch-cvm-sep" />
               <div
                 className="ch-cvm-row danger"
                 onClick={() => {
-                  deleteConv(conv.id)
+                  const targetId = conv.id
                   setCvMenuOpen(null)
-                  if (activeConv === conv.id) {
-                    router.push('/chat')
-                  }
+                  showConfirm(t('delete.title'), t('delete.message'), () => {
+                    deleteConv(targetId)
+                    if (activeConv === targetId) {
+                      setActiveConv('')
+                      setView('empty')
+                      router.push('/chat')
+                    }
+                  })
                 }}
               >
-                <Trash2 size={14} /> 删除
+                <Trash2 size={14} /> {t('actions.delete')}
               </div>
             </div>
           )

@@ -24,6 +24,7 @@
     "createAccount": "创建账号",
     "registerSubtitle": "注册元AI账号，开启 AI 对话之旅",
     "phone": "手机号",
+    "emailCode": "邮箱验证码",
     "email": "邮箱",
     "password": "密码",
     "confirmPassword": "确认密码",
@@ -129,7 +130,9 @@
       "deleteAccount": "注销账号",
       "notBound": "未绑定",
       "bound": "已绑定",
-      "lastChanged": "上次修改：{date}"
+      "lastChanged": "上次修改：{date}",
+      "thirdPartyLogin": "第三方登录",
+      "dangerousOps": "危险操作"
     },
     "appearance": {
       "theme": "主题模式",
@@ -199,6 +202,10 @@
       "unbindWechat": {
         "title": "解绑微信",
         "warning": "解绑后，你将无法使用微信登录此账号。确定要解绑吗？"
+      },
+      "deleteConversation": {
+        "title": "删除会话",
+        "message": "确定要删除这个会话吗？删除后无法恢复。"
       }
     },
     "toast": {
@@ -212,5 +219,66 @@
   "theme": {
     "toggleLight": "切换浅色模式",
     "toggleDark": "切换深色模式"
+  },
+  "chat": {
+    "newChatTitle": "新建对话 (Ctrl+N)",
+    "searchPlaceholder": "搜索对话…",
+    "noConversations": "暂无会话",
+    "inputPlaceholder": "发送消息…（Enter 发送，Shift+Enter 换行）",
+    "inputPlaceholderLoggedOut": "请先登录，开始与 AI 对话",
+    "disclaimer": "元AI 可能犯错，请核实重要信息",
+    "welcome": {
+      "title": "你好，我是元AI",
+      "subtitle": "集成多款顶尖 AI 模型，帮你完成任何任务"
+    },
+    "groups": {
+      "pinned": "置顶",
+      "today": "今天",
+      "yesterday": "昨天",
+      "week": "过去 7 天"
+    },
+    "delete": {
+      "title": "删除会话",
+      "message": "确定要删除这个会话吗？删除后无法恢复。",
+      "batchTitle": "批量删除会话",
+      "batchMessage": "确定要删除选中的 {count} 个会话吗？删除后无法恢复。"
+    },
+    "sidebar": {
+      "settings": "设置与账号",
+      "darkMode": "深色模式",
+      "profile": "个人设置",
+      "logout": "退出登录",
+      "login": "去登录"
+    },
+    "toolbar": {
+      "share": "分享对话"
+    },
+    "actions": {
+      "edit": "编辑",
+      "copy": "复制",
+      "regenerate": "重新生成",
+      "like": "点赞",
+      "dislike": "点踩",
+      "rename": "重命名",
+      "pin": "置顶",
+      "unpin": "取消置顶",
+      "multiSelect": "多选",
+      "delete": "删除",
+      "deleteSelected": "删除选中",
+      "selectAll": "全选",
+      "deselectAll": "取消全选",
+      "selectedCount": "已选 {count} 个",
+      "stopGeneration": "停止生成",
+      "scrollToBottom": "回到底部",
+      "newDefaultTitle": "新对话"
+    },
+    "caps": {
+      "webSearch": "联网搜索",
+      "codeGen": "代码生成",
+      "imageUnderstanding": "图片理解",
+      "fileAnalysis": "文件分析",
+      "math": "数学推导",
+      "translation": "多语种翻译"
+    }
   }
 }

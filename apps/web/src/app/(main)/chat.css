@@ -113,6 +113,30 @@
   z-index: 20;
 }
 
+/* Sidebar resize handle */
+.ch-sb-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s;
+}
+.ch-sb-resize:hover,
+.ch-sb-resize:active {
+  background: rgba(59, 130, 246, 0.3);
+}
+
+/* Empty conversations state */
+.ch-sb-empty {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--fg3);
+  font-size: 13px;
+}
+
 /* Collapsed sidebar */
 .ch-app.sb-col .ch-sidebar {
   width: 64px;
@@ -296,6 +320,7 @@
 }
 .ch-cv-item.active {
   background: var(--brand-light);
+  box-shadow: inset 2px 0 0 var(--brand);
 }
 .ch-cv-item.active .ch-cv-title {
   color: var(--brand);
@@ -1916,4 +1941,75 @@
 }
 .ch-send-btn.streaming:hover {
   background: #dc2626;
+}
+
+/* ── Confirm dialog ──────────────────────────────── */
+.ch-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.ch-confirm-dialog {
+  background: var(--surface);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 14px;
+  padding: 24px;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  animation: dropin 0.18s ease both;
+}
+.ch-confirm-title {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.ch-confirm-msg {
+  margin: 0 0 22px;
+  font-size: 13.5px;
+  color: var(--fg2);
+  line-height: 1.55;
+}
+.ch-confirm-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.ch-confirm-cancel {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: transparent;
+  color: var(--fg);
+  font-size: 13.5px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ch-confirm-cancel:hover {
+  background: var(--elevated);
+}
+.ch-confirm-ok {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  font-size: 13.5px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--brand);
+  color: #fff;
+  transition: opacity 0.12s;
+}
+.ch-confirm-ok.danger {
+  background: var(--error);
+}
+.ch-confirm-ok:hover {
+  opacity: 0.88;
 }

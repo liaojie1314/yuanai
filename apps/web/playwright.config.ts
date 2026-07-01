@@ -18,8 +18,9 @@ export default defineConfig({
     { name: 'Mobile Safari', use: { ...devices['iPhone 14'] } },
   ],
   webServer: {
-    command: 'pnpm dev',
+    command: 'NEXT_PUBLIC_MOCK=true pnpm dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env['CI'],
+    env: { NEXT_PUBLIC_MOCK: 'true' },
   },
 })
