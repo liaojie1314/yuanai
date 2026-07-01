@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import MarkdownContent from '@/components/MarkdownContent'
@@ -32,6 +32,8 @@ import {
   Globe,
   Share2,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Check,
   Sparkles,
   Bug,
@@ -75,6 +77,13 @@ interface AttachFile {
   type: 'image' | 'doc'
 }
 
+/** 消息对：一条用户消息 + 对应的多个 AI 回复（重新生成产生多版本） */
+interface MsgPair {
+  pairKey: string
+  userMsg: MockMessage
+  assistants: MockMessage[]
+}
+
 // ── Static constants ─────────────────────────────────
 const MODELS: Model[] = [
   {
@@ -98,6 +107,9 @@ const MODELS: Model[] = [
     gradient: 'linear-gradient(135deg,#1e3a8a,#1D4ED8)',
   },
 ]
+
+const LIKE_CATEGORIES = ['有帮助', '解释清晰', '创意出色', '回答详细', '思路新颖']
+const DISLIKE_CATEGORIES = ['信息有误', '答非所问', '内容冗余', '语言不自然', '缺乏细节']
 
 const SUGGESTION_CARDS = [
   {
@@ -169,6 +181,61 @@ function getMsgText(msg: MockMessage): string {
     .join('\n')
 }
 
+/** Strip common Markdown syntax to produce plain readable text */
+function stripMarkdown(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/~~(.+?)~~/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^>\s+/gm, '')
+    .trim()
+}
+
+/**
+ * 将消息列表分组为 (用户消息, AI回复[]) 对。
+ * 用户内容相同的相邻对合并（用于版本切换：重新生成会产生重复用户消息）。
+ */
+function buildPairs(msgs: MockMessage[]): MsgPair[] {
+  const pairs: MsgPair[] = []
+  let i = 0
+  while (i < msgs.length) {
+    const msg = msgs[i]
+    if (!msg) {
+      i++
+      continue
+    }
+    if (msg.role === 'user') {
+      const assistants: MockMessage[] = []
+      let j = i + 1
+      while (j < msgs.length && msgs[j]?.role === 'assistant') {
+        assistants.push(msgs[j] as MockMessage)
+        j++
+      }
+      pairs.push({ pairKey: msg.id, userMsg: msg, assistants })
+      i = j
+    } else {
+      i++
+    }
+  }
+  // 合并相邻的相同用户内容对（重新生成场景）
+  const merged: MsgPair[] = []
+  for (const pair of pairs) {
+    const last = merged[merged.length - 1]
+    if (last && getMsgText(last.userMsg) === getMsgText(pair.userMsg)) {
+      last.assistants.push(...pair.assistants)
+    } else {
+      merged.push(pair)
+    }
+  }
+  return merged
+}
+
 // ── Think block ───────────────────────────────────────
 function ThinkBlock({ content }: { content: string }): JSX.Element {
   const [open, setOpen] = useState(false)
@@ -195,14 +262,90 @@ function ThinkBlock({ content }: { content: string }): JSX.Element {
 }
 
 // ── Message components ────────────────────────────────
-function UserMessage({ msg }: { msg: MockMessage }): JSX.Element {
-  const text = msg.parts.find((p) => p.type === 'text')?.content ?? ''
+function UserMessage({
+  msg,
+  editing,
+  onStartEdit,
+  onSubmitEdit,
+  onCancelEdit,
+}: {
+  msg: MockMessage
+  editing: boolean
+  onStartEdit: () => void
+  onSubmitEdit: (text: string) => void
+  onCancelEdit: () => void
+}): JSX.Element {
+  const text = getMsgText(msg)
+  const editRef = useRef<HTMLTextAreaElement>(null)
+  const [localEdit, setLocalEdit] = useState(text)
+
+  useEffect(() => {
+    if (editing) {
+      setLocalEdit(text)
+      // Focus + cursor to end after textarea mounts
+      requestAnimationFrame(() => {
+        const ta = editRef.current
+        if (!ta) return
+        ta.style.height = 'auto'
+        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+        ta.focus()
+        ta.setSelectionRange(ta.value.length, ta.value.length)
+      })
+    }
+  }, [editing, text])
+
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      const trimmed = localEdit.trim()
+      if (trimmed) onSubmitEdit(trimmed)
+      else onCancelEdit()
+    }
+    if (e.key === 'Escape') onCancelEdit()
+  }
+
+  if (editing) {
+    return (
+      <div className="ch-msg ch-msg-user">
+        <div className="ch-msg-body ch-msg-body-edit">
+          <textarea
+            ref={editRef}
+            className="ch-edit-ta"
+            value={localEdit}
+            onChange={(e) => {
+              setLocalEdit(e.target.value)
+              const ta = e.currentTarget
+              ta.style.height = 'auto'
+              ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+            }}
+            onKeyDown={handleKey}
+          />
+          <div className="ch-edit-acts">
+            <span className="ch-edit-hint">Shift+Enter 换行 · Enter 提交</span>
+            <button className="ch-edit-cancel" onClick={onCancelEdit}>
+              取消
+            </button>
+            <button
+              className="ch-edit-submit"
+              onClick={() => {
+                const t = localEdit.trim()
+                if (t) onSubmitEdit(t)
+              }}
+            >
+              提交
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="ch-msg ch-msg-user">
       <div className="ch-msg-body">
         <div className="ch-msg-bubble">{text}</div>
         <div className="ch-msg-acts">
-          <button className="ch-msg-act">
+          <button className="ch-msg-act" onClick={onStartEdit}>
             <Pencil size={12} /> 编辑
           </button>
         </div>
@@ -216,13 +359,39 @@ function AIMessage({
   isStreaming,
   streamingContent,
   onFill,
+  versionCount = 1,
+  versionIdx = 0,
+  onVersionChange,
+  onRegenerate,
+  onFeedback,
+  feedbackGiven,
 }: {
   msg: MockMessage
   isStreaming: boolean
   streamingContent: string
   onFill: (text: string) => void
+  versionCount?: number
+  versionIdx?: number
+  onVersionChange?: (idx: number) => void
+  onRegenerate?: () => void
+  onFeedback?: (type: 'like' | 'dislike') => void
+  feedbackGiven?: 'like' | 'dislike' | undefined
 }): JSX.Element {
   const displayContent = isStreaming ? streamingContent : getMsgText(msg)
+  const [copyState, setCopyState] = useState<'idle' | 'md' | 'txt'>('idle')
+
+  const copyMd = (): void => {
+    void navigator.clipboard.writeText(displayContent)
+    setCopyState('md')
+    setTimeout(() => setCopyState('idle'), 2000)
+  }
+
+  const copyTxt = (): void => {
+    void navigator.clipboard.writeText(stripMarkdown(displayContent))
+    setCopyState('txt')
+    setTimeout(() => setCopyState('idle'), 2000)
+  }
+
   return (
     <div className="ch-msg ch-msg-ai">
       <div className="ch-msg-ai-av">元</div>
@@ -230,23 +399,73 @@ function AIMessage({
         {msg.thinkContent && <ThinkBlock content={msg.thinkContent} />}
         <MarkdownContent content={displayContent} streaming={isStreaming} />
         {!isStreaming && (
-          <div className="ch-msg-acts">
-            <button
-              className="ch-msg-act"
-              onClick={() => void navigator.clipboard.writeText(getMsgText(msg))}
-            >
-              <Copy size={12} /> 复制
-            </button>
-            <button className="ch-msg-act">
-              <RotateCcw size={12} /> 重新生成
-            </button>
-            <button className="ch-msg-act">
-              <ThumbsUp size={12} /> 点赞
-            </button>
-            <button className="ch-msg-act">
-              <ThumbsDown size={12} /> 点踩
-            </button>
-          </div>
+          <>
+            {versionCount > 1 && onVersionChange && (
+              <div className="ch-ver-nav">
+                <button
+                  className="ch-ver-btn"
+                  disabled={versionIdx === 0}
+                  onClick={() => onVersionChange(versionIdx - 1)}
+                  title="上一个版本"
+                >
+                  <ChevronLeft size={12} />
+                </button>
+                <span className="ch-ver-label">
+                  {versionIdx + 1} / {versionCount}
+                </span>
+                <button
+                  className="ch-ver-btn"
+                  disabled={versionIdx === versionCount - 1}
+                  onClick={() => onVersionChange(versionIdx + 1)}
+                  title="下一个版本"
+                >
+                  <ChevronRight size={12} />
+                </button>
+              </div>
+            )}
+            <div className="ch-msg-acts">
+              <button
+                className={`ch-msg-act ${copyState === 'md' ? 'copied' : ''}`}
+                onClick={copyMd}
+                title="复制 Markdown 原文"
+              >
+                {copyState === 'md' ? <Check size={12} /> : <Copy size={12} />}
+                {copyState === 'md' ? '已复制' : 'MD'}
+              </button>
+              <button
+                className={`ch-msg-act ${copyState === 'txt' ? 'copied' : ''}`}
+                onClick={copyTxt}
+                title="复制纯文本"
+              >
+                {copyState === 'txt' ? <Check size={12} /> : <Copy size={12} />}
+                {copyState === 'txt' ? '已复制' : '纯文本'}
+              </button>
+              <div className="ch-msg-act-sep" />
+              {onRegenerate && (
+                <button className="ch-msg-act" onClick={onRegenerate} title="重新生成回答">
+                  <RotateCcw size={12} /> 重新生成
+                </button>
+              )}
+              {onFeedback && (
+                <>
+                  <button
+                    className={`ch-msg-act ${feedbackGiven === 'like' ? 'active-fb' : ''}`}
+                    onClick={() => onFeedback('like')}
+                    title="有帮助"
+                  >
+                    <ThumbsUp size={12} />
+                  </button>
+                  <button
+                    className={`ch-msg-act ${feedbackGiven === 'dislike' ? 'active-fb' : ''}`}
+                    onClick={() => onFeedback('dislike')}
+                    title="有问题"
+                  >
+                    <ThumbsDown size={12} />
+                  </button>
+                </>
+              )}
+            </div>
+          </>
         )}
         {!isStreaming && msg.followUps && msg.followUps.length > 0 && (
           <div className="ch-followups">
@@ -348,6 +567,29 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
 
+  // ── User message inline edit ──
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null)
+
+  // ── Toolbar title inline rename ──
+  const [renamingTitle, setRenamingTitle] = useState(false)
+  const [renamingTitleInput, setRenamingTitleInput] = useState('')
+
+  // ── Sidebar conv inline rename ──
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
+  const [renamingConvInput, setRenamingConvInput] = useState('')
+
+  // ── Version navigation (local per pairKey) ──
+  const [versionIdxs, setVersionIdxs] = useState<Record<string, number>>({})
+
+  // ── Feedback dialog ──
+  const [feedbackDialog, setFeedbackDialog] = useState<{
+    msgId: string
+    type: 'like' | 'dislike'
+  } | null>(null)
+  const [feedbackCategory, setFeedbackCategory] = useState('')
+  const [feedbackReason, setFeedbackReason] = useState('')
+  const [msgFeedback, setMsgFeedback] = useState<Record<string, 'like' | 'dislike'>>({})
+
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const userTriggerRef = useRef<HTMLDivElement>(null)
@@ -355,6 +597,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const msgsEndRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
   const [sidebarWidth, setSidebarWidth] = useState(260)
 
   useEffect(() => {
@@ -416,12 +659,25 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 流式输出时自动滚动
+  // 流式输出时自动跟随到底部（新消息到达时滚动）
   useEffect(() => {
-    if (isStreaming && msgsEndRef.current) {
-      msgsEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
-  }, [streamingContent, isStreaming])
+    if (streamingConvId !== activeConv || !contentRef.current) return
+    contentRef.current.scrollTop = contentRef.current.scrollHeight
+  }, [streamingContent, streamingConvId, activeConv])
+
+  // 切换会话时同步滚动到底部，消除内容抖动
+  useLayoutEffect(() => {
+    if (!contentRef.current) return
+    contentRef.current.scrollTop = contentRef.current.scrollHeight
+  }, [activeConv])
+
+  // 标题重命名输入框挂载后聚焦并将光标移到末尾
+  useEffect(() => {
+    if (!renamingTitle || !titleInputRef.current) return
+    const el = titleInputRef.current
+    el.focus()
+    el.setSelectionRange(el.value.length, el.value.length)
+  }, [renamingTitle])
 
   // 切换会话时同步该会话绑定的模型
   useEffect(() => {
@@ -608,6 +864,73 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     })
   }
 
+  // ── Inline rename helpers ─────────────────────────────────
+  const saveTitleRename = (): void => {
+    const trimmed = renamingTitleInput.trim()
+    if (trimmed && activeConv) updateConv({ id: activeConv, title: trimmed })
+    setRenamingTitle(false)
+  }
+
+  const saveConvRename = (): void => {
+    const trimmed = renamingConvInput.trim()
+    if (trimmed && renamingConvId) updateConv({ id: renamingConvId, title: trimmed })
+    setRenamingConvId(null)
+    setRenamingConvInput('')
+  }
+
+  // ── User message edit ────────────────────────────────────
+  const startEditMsg = (msg: MockMessage): void => {
+    setEditingMsgId(msg.id)
+  }
+
+  const submitEditMsg = (msg: MockMessage, newText: string): void => {
+    setEditingMsgId(null)
+    if (!activeConv || newText === getMsgText(msg) || isStreaming) return
+    setIsStreaming(true)
+    void stream.send({
+      convId: activeConv,
+      content: newText,
+      model: activeModel.id,
+      onEnd: () => setIsStreaming(false),
+    })
+  }
+
+  // ── Regenerate ───────────────────────────────────────────
+  const handleRegenerate = (pair: MsgPair): void => {
+    if (isStreaming || !activeConv) return
+    const userText = getMsgText(pair.userMsg)
+    setIsStreaming(true)
+    void stream.send({
+      convId: activeConv,
+      content: userText,
+      model: activeModel.id,
+      skipOptimistic: true,
+      onEnd: () => setIsStreaming(false),
+    })
+  }
+
+  // ── Feedback ─────────────────────────────────────────────
+  const openFeedback = (msgId: string, type: 'like' | 'dislike'): void => {
+    // Toggle off if already selected
+    if (msgFeedback[msgId] === type) {
+      setMsgFeedback((prev) => {
+        const next = { ...prev }
+        delete next[msgId]
+        return next
+      })
+      return
+    }
+    setFeedbackDialog({ msgId, type })
+    setFeedbackCategory('')
+    setFeedbackReason('')
+  }
+
+  const submitFeedback = (): void => {
+    if (!feedbackDialog) return
+    setMsgFeedback((prev) => ({ ...prev, [feedbackDialog.msgId]: feedbackDialog.type }))
+    setFeedbackDialog(null)
+  }
+
   const appClass = [
     'ch-app',
     view === 'empty' ? 'v-empty' : 'v-chat',
@@ -754,6 +1077,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   menuOpen={cvMenuOpen === conv.id}
                   multiSel={multiSel}
                   selected={selectedConvs.has(conv.id)}
+                  isRenaming={renamingConvId === conv.id}
+                  renameValue={renamingConvInput}
                   onPick={() => pickConv(conv.id)}
                   onToggle={() =>
                     setSelectedConvs((prev) => {
@@ -765,6 +1090,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   }
                   onMenuOpen={(e) => openCvMenu(e, conv.id)}
                   onContextMenu={(e) => openCvMenuOnContext(e, conv.id)}
+                  onRenameChange={setRenamingConvInput}
+                  onRenameCommit={saveConvRename}
+                  onRenameCancel={() => {
+                    setRenamingConvId(null)
+                    setRenamingConvInput('')
+                  }}
                 />
               ))}
             </div>
@@ -780,6 +1111,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   menuOpen={cvMenuOpen === conv.id}
                   multiSel={multiSel}
                   selected={selectedConvs.has(conv.id)}
+                  isRenaming={renamingConvId === conv.id}
+                  renameValue={renamingConvInput}
                   onPick={() => pickConv(conv.id)}
                   onToggle={() =>
                     setSelectedConvs((prev) => {
@@ -791,6 +1124,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   }
                   onMenuOpen={(e) => openCvMenu(e, conv.id)}
                   onContextMenu={(e) => openCvMenuOnContext(e, conv.id)}
+                  onRenameChange={setRenamingConvInput}
+                  onRenameCommit={saveConvRename}
+                  onRenameCancel={() => {
+                    setRenamingConvId(null)
+                    setRenamingConvInput('')
+                  }}
                 />
               ))}
             </div>
@@ -806,6 +1145,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   menuOpen={cvMenuOpen === conv.id}
                   multiSel={multiSel}
                   selected={selectedConvs.has(conv.id)}
+                  isRenaming={renamingConvId === conv.id}
+                  renameValue={renamingConvInput}
                   onPick={() => pickConv(conv.id)}
                   onToggle={() =>
                     setSelectedConvs((prev) => {
@@ -817,6 +1158,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   }
                   onMenuOpen={(e) => openCvMenu(e, conv.id)}
                   onContextMenu={(e) => openCvMenuOnContext(e, conv.id)}
+                  onRenameChange={setRenamingConvInput}
+                  onRenameCommit={saveConvRename}
+                  onRenameCancel={() => {
+                    setRenamingConvId(null)
+                    setRenamingConvInput('')
+                  }}
                 />
               ))}
             </div>
@@ -832,6 +1179,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   menuOpen={cvMenuOpen === conv.id}
                   multiSel={multiSel}
                   selected={selectedConvs.has(conv.id)}
+                  isRenaming={renamingConvId === conv.id}
+                  renameValue={renamingConvInput}
                   onPick={() => pickConv(conv.id)}
                   onToggle={() =>
                     setSelectedConvs((prev) => {
@@ -843,6 +1192,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   }
                   onMenuOpen={(e) => openCvMenu(e, conv.id)}
                   onContextMenu={(e) => openCvMenuOnContext(e, conv.id)}
+                  onRenameChange={setRenamingConvInput}
+                  onRenameCommit={saveConvRename}
+                  onRenameCancel={() => {
+                    setRenamingConvId(null)
+                    setRenamingConvInput('')
+                  }}
                 />
               ))}
             </div>
@@ -895,11 +1250,32 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             >
               <PanelLeft size={17} />
             </button>
-            {view === 'chat' && (
-              <button className="ch-conv-name" title="点击重命名">
-                {convTitle}
-              </button>
-            )}
+            {view === 'chat' &&
+              (renamingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  className="ch-conv-name-input"
+                  value={renamingTitleInput}
+                  maxLength={60}
+                  onChange={(e) => setRenamingTitleInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveTitleRename()
+                    if (e.key === 'Escape') setRenamingTitle(false)
+                  }}
+                  onBlur={saveTitleRename}
+                />
+              ) : (
+                <button
+                  className="ch-conv-name"
+                  title="点击重命名"
+                  onClick={() => {
+                    setRenamingTitleInput(convTitle)
+                    setRenamingTitle(true)
+                  }}
+                >
+                  {convTitle}
+                </button>
+              ))}
           </div>
           <div className="ch-tb-c">
             <button className="ch-model-btn" ref={modelBtnRef} onClick={toggleModelDrop}>
@@ -973,16 +1349,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           {/* Messages */}
           <div className="ch-msgs-scroll">
             <div className="ch-msgs-inner">
-              {/* Persisted messages from API.
-                  While streaming is active, the backend may have already saved the user message
-                  and created an empty assistant placeholder. We hide those to avoid duplicates
-                  and blank bubbles — the optimistic user message + streaming AI replace them. */}
-              {messages
-                .filter((msg) => {
+              {(() => {
+                // Filter out streaming-time placeholders
+                const filteredMsgs = messages.filter((msg) => {
                   if (!isThisStreaming) return true
-                  // hide empty assistant placeholders created by backend at stream start
                   if (msg.role === 'assistant' && !getMsgText(msg)) return false
-                  // hide the current user message if it's already shown as optimistic
                   if (
                     msg.role === 'user' &&
                     optimisticUserMsg &&
@@ -991,42 +1362,79 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     return false
                   return true
                 })
-                .map((msg) => {
-                  if (msg.role === 'user') {
-                    return <UserMessage key={msg.id} msg={msg} />
-                  }
-                  return (
-                    <AIMessage
-                      key={msg.id}
-                      msg={msg}
-                      isStreaming={false}
-                      streamingContent=""
-                      onFill={fill}
-                    />
-                  )
-                })}
+                const pairs = buildPairs(filteredMsgs)
 
-              {/* Optimistic user message (shown during streaming before API persists it) */}
-              {isThisStreaming && optimisticUserMsg && (
-                <UserMessage
-                  msg={{
-                    id: '__opt_user__',
-                    role: 'user',
-                    parts: [{ type: 'text', content: optimisticUserMsg }],
-                    createdAt: Date.now(),
-                  }}
-                />
-              )}
+                return (
+                  <>
+                    {pairs.flatMap((pair) => {
+                      const rawIdx = versionIdxs[pair.pairKey] ?? pair.assistants.length - 1
+                      const vIdx = Math.max(0, Math.min(rawIdx, pair.assistants.length - 1))
+                      const currentAsst = pair.assistants[vIdx]
+                      const elems: JSX.Element[] = [
+                        <UserMessage
+                          key={`u-${pair.pairKey}`}
+                          msg={pair.userMsg}
+                          editing={editingMsgId === pair.userMsg.id}
+                          onStartEdit={() => startEditMsg(pair.userMsg)}
+                          onSubmitEdit={(text) => submitEditMsg(pair.userMsg, text)}
+                          onCancelEdit={() => setEditingMsgId(null)}
+                        />,
+                      ]
+                      if (currentAsst) {
+                        elems.push(
+                          <AIMessage
+                            key={`a-${currentAsst.id}-v${vIdx}`}
+                            msg={currentAsst}
+                            isStreaming={false}
+                            streamingContent=""
+                            onFill={fill}
+                            versionCount={pair.assistants.length}
+                            versionIdx={vIdx}
+                            onVersionChange={(i) =>
+                              setVersionIdxs((prev) => ({ ...prev, [pair.pairKey]: i }))
+                            }
+                            onRegenerate={() => handleRegenerate(pair)}
+                            onFeedback={(type) => openFeedback(currentAsst.id, type)}
+                            feedbackGiven={msgFeedback[currentAsst.id]}
+                          />
+                        )
+                      }
+                      return elems
+                    })}
 
-              {/* Streaming AI message */}
-              {isThisStreaming && (
-                <AIMessage
-                  msg={{ id: '__streaming__', role: 'assistant', parts: [], createdAt: Date.now() }}
-                  isStreaming={true}
-                  streamingContent={streamingContent}
-                  onFill={fill}
-                />
-              )}
+                    {/* Optimistic user message (new send, not regeneration) */}
+                    {isThisStreaming && optimisticUserMsg && (
+                      <UserMessage
+                        msg={{
+                          id: '__opt_user__',
+                          role: 'user',
+                          parts: [{ type: 'text', content: optimisticUserMsg }],
+                          createdAt: Date.now(),
+                        }}
+                        editing={false}
+                        onStartEdit={() => {}}
+                        onSubmitEdit={() => {}}
+                        onCancelEdit={() => {}}
+                      />
+                    )}
+
+                    {/* Streaming AI response */}
+                    {isThisStreaming && (
+                      <AIMessage
+                        msg={{
+                          id: '__streaming__',
+                          role: 'assistant',
+                          parts: [],
+                          createdAt: Date.now(),
+                        }}
+                        isStreaming={true}
+                        streamingContent={streamingContent}
+                        onFill={fill}
+                      />
+                    )}
+                  </>
+                )
+              })()}
 
               <div ref={msgsEndRef} style={{ height: '20px' }} />
             </div>
@@ -1310,6 +1718,54 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
         onCancel={() => setConfirmDialog(null)}
       />
 
+      {/* ── Feedback dialog ──────────────────────── */}
+      {feedbackDialog && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 299 }}
+            onClick={() => setFeedbackDialog(null)}
+          />
+          <div className="ch-feedback-dialog">
+            <div className="ch-fd-head">
+              <span>
+                {feedbackDialog.type === 'like' ? '👍 哪方面让你满意？' : '👎 哪里让你不满意？'}
+              </span>
+              <button className="ch-fd-close" onClick={() => setFeedbackDialog(null)}>
+                <X size={14} />
+              </button>
+            </div>
+            <div className="ch-fd-cats">
+              {(feedbackDialog.type === 'like' ? LIKE_CATEGORIES : DISLIKE_CATEGORIES).map(
+                (cat) => (
+                  <button
+                    key={cat}
+                    className={`ch-fd-cat ${feedbackCategory === cat ? 'sel' : ''}`}
+                    onClick={() => setFeedbackCategory((p) => (p === cat ? '' : cat))}
+                  >
+                    {cat}
+                  </button>
+                )
+              )}
+            </div>
+            <textarea
+              className="ch-fd-reason"
+              placeholder="写下你的建议（可选）"
+              value={feedbackReason}
+              rows={3}
+              onChange={(e) => setFeedbackReason(e.target.value)}
+            />
+            <div className="ch-fd-ft">
+              <button className="ch-fd-skip" onClick={() => setFeedbackDialog(null)}>
+                跳过
+              </button>
+              <button className="ch-fd-submit" onClick={submitFeedback}>
+                提交反馈
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
       {/* ── Conversation context menus ────────────── */}
       {cvMenuOpen &&
         (() => {
@@ -1325,11 +1781,9 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
               <div
                 className="ch-cvm-row"
                 onClick={() => {
-                  const newTitle = window.prompt('请输入新名称', conv.title)
-                  if (newTitle?.trim()) {
-                    updateConv({ id: conv.id, title: newTitle.trim() })
-                  }
                   setCvMenuOpen(null)
+                  setRenamingConvId(conv.id)
+                  setRenamingConvInput(conv.title)
                 }}
               >
                 <Pencil size={14} /> {t('actions.rename')}
@@ -1385,10 +1839,15 @@ function ConvItem({
   pinned = false,
   multiSel = false,
   selected = false,
+  isRenaming = false,
+  renameValue = '',
   onPick,
   onToggle,
   onMenuOpen,
   onContextMenu,
+  onRenameChange,
+  onRenameCommit,
+  onRenameCancel,
 }: {
   conv: MockConversation
   active: boolean
@@ -1396,30 +1855,68 @@ function ConvItem({
   menuOpen: boolean
   multiSel?: boolean
   selected?: boolean
+  isRenaming?: boolean
+  renameValue?: string
   onPick: () => void
   onToggle?: () => void
   onMenuOpen: (e: React.MouseEvent) => void
   onContextMenu: (e: React.MouseEvent) => void
+  onRenameChange?: (v: string) => void
+  onRenameCommit?: () => void
+  onRenameCancel?: () => void
 }): JSX.Element {
+  const renameRef = useRef<HTMLInputElement>(null)
   const initials = conv.title.slice(0, 2)
+
+  useEffect(() => {
+    if (isRenaming && renameRef.current) {
+      renameRef.current.focus()
+      renameRef.current.select()
+    }
+  }, [isRenaming])
+
   return (
     <div
-      className={`ch-cv-item ${active ? 'active' : ''} ${selected ? 'sel' : ''}`}
-      onClick={multiSel ? onToggle : onPick}
-      onContextMenu={onContextMenu}
-      title={conv.title}
+      className={`ch-cv-item ${active ? 'active' : ''} ${selected ? 'sel' : ''} ${isRenaming ? 'renaming' : ''}`}
+      onClick={multiSel ? onToggle : isRenaming ? undefined : onPick}
+      onContextMenu={isRenaming ? undefined : onContextMenu}
+      title={isRenaming ? undefined : conv.title}
     >
       <span className="ch-cv-chk">{selected && <Check size={10} strokeWidth={3} />}</span>
       <span className="ch-cv-av">{initials}</span>
-      {pinned && (
+      {pinned && !isRenaming && (
         <span className="ch-cv-pin">
           <Pin size={11} fill="currentColor" />
         </span>
       )}
-      <span className="ch-cv-title">{conv.title}</span>
-      <button className="ch-cv-more" onClick={onMenuOpen} aria-label="更多操作">
-        <MoreVertical size={14} />
-      </button>
+      {isRenaming ? (
+        <input
+          ref={renameRef}
+          className="ch-cv-rename-input"
+          value={renameValue}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onRenameChange?.(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              onRenameCommit?.()
+            }
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              onRenameCancel?.()
+            }
+            e.stopPropagation()
+          }}
+          onBlur={onRenameCommit}
+        />
+      ) : (
+        <span className="ch-cv-title">{conv.title}</span>
+      )}
+      {!isRenaming && (
+        <button className="ch-cv-more" onClick={onMenuOpen} aria-label="更多操作">
+          <MoreVertical size={14} />
+        </button>
+      )}
     </div>
   )
 }

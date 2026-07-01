@@ -12,6 +12,8 @@ export interface StreamParams {
   content: string
   /** 使用的 AI 模型 ID */
   model: string
+  /** 为 true 时不显示乐观用户消息（重新生成场景：原用户消息已存在） */
+  skipOptimistic?: boolean
   /** 流启动时回调 */
   onStart?: () => void
   /** 流完成时回调 */
@@ -32,11 +34,19 @@ export function useStream() {
   const abortRef = useRef<AbortController | null>(null)
 
   const send = useCallback(
-    async ({ convId, content, model, onStart, onEnd, onError }: StreamParams): Promise<void> => {
+    async ({
+      convId,
+      content,
+      model,
+      skipOptimistic,
+      onStart,
+      onEnd,
+      onError,
+    }: StreamParams): Promise<void> => {
       const token = useAuthStore.getState().accessToken
       abortRef.current = new AbortController()
 
-      startStreaming(convId, content)
+      startStreaming(convId, skipOptimistic ? null : content)
       onStart?.()
 
       try {

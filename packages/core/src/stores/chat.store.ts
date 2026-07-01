@@ -53,9 +53,9 @@ interface ChatStreamState {
   /**
    * 开始流式输出：记录目标会话 ID 并保存乐观用户消息。
    * @param convId - 目标会话 ID
-   * @param userContent - 用户发送的消息内容
+   * @param userContent - 用户发送的消息内容；传 null 表示跳过乐观占位（重新生成场景）
    */
-  startStreaming: (convId: string, userContent: string) => void
+  startStreaming: (convId: string, userContent: string | null) => void
 
   /**
    * 追加一个流式 token 到累积内容。

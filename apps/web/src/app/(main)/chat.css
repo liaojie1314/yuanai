@@ -316,11 +316,14 @@
   min-width: 0;
 }
 .ch-cv-item:hover {
-  background: var(--brand-light);
+  background: var(--elevated);
 }
 .ch-cv-item.active {
   background: var(--brand-light);
   box-shadow: inset 2px 0 0 var(--brand);
+}
+.ch-cv-item.active:hover {
+  background: var(--brand-light);
 }
 .ch-cv-item.active .ch-cv-title {
   color: var(--brand);
@@ -2011,5 +2014,286 @@
   background: var(--error);
 }
 .ch-confirm-ok:hover {
+  opacity: 0.88;
+}
+
+/* ═══════════════════════════════════════════════════
+   Interactive features — added in v2
+   Inline edit · Version nav · Copy feedback ·
+   Feedback dialog · Inline rename
+═══════════════════════════════════════════════════ */
+
+/* ── Conv inline rename ──────────────────────────── */
+.ch-cv-item.renaming {
+  background: var(--brand-light);
+}
+.ch-cv-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--brand);
+  border-radius: 4px;
+  padding: 1px 6px;
+  outline: none;
+  height: 22px;
+  font-family: inherit;
+}
+
+/* ── Toolbar title rename input ──────────────────── */
+.ch-conv-name-input {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1.5px solid var(--brand);
+  border-radius: 6px;
+  padding: 3px 10px;
+  outline: none;
+  height: 30px;
+  font-family: inherit;
+}
+
+/* ── User message inline edit ────────────────────── */
+.ch-msg-body-edit {
+  width: 100%;
+  max-width: 480px;
+  align-items: stretch !important;
+  display: flex;
+  flex-direction: column;
+}
+.ch-edit-ta {
+  width: 100%;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1.5px solid var(--brand);
+  border-radius: 10px;
+  padding: 10px 14px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  min-height: 48px;
+}
+.ch-edit-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.ch-edit-hint {
+  font-size: 11px;
+  color: var(--fg3);
+  flex: 1;
+}
+.ch-edit-cancel {
+  font-size: 12px;
+  color: var(--fg2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.ch-edit-cancel:hover {
+  background: var(--elevated);
+}
+.ch-edit-submit {
+  font-size: 12px;
+  color: #fff;
+  background: var(--brand);
+  border: none;
+  border-radius: 6px;
+  padding: 4px 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.12s;
+}
+.ch-edit-submit:hover {
+  opacity: 0.88;
+}
+
+/* ── Version navigation ──────────────────────────── */
+.ch-ver-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.ch-ver-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.ch-ver-btn:hover:not(:disabled) {
+  background: var(--elevated);
+  color: var(--fg);
+}
+.ch-ver-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.ch-ver-label {
+  font-size: 11px;
+  color: var(--fg3);
+  min-width: 36px;
+  text-align: center;
+}
+
+/* ── Copy feedback / action modifiers ───────────── */
+.ch-msg-act.copied {
+  color: var(--brand);
+}
+.ch-msg-act-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+.ch-msg-act.active-fb {
+  color: var(--brand);
+  background: var(--brand-light);
+  border-radius: 4px;
+}
+
+/* ── Feedback dialog ─────────────────────────────── */
+.ch-feedback-dialog {
+  position: fixed;
+  z-index: 300;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 340px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.18);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: dropin 0.18s ease;
+}
+.ch-fd-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.ch-fd-close {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--fg3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+}
+.ch-fd-close:hover {
+  background: var(--elevated);
+}
+.ch-fd-cats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ch-fd-cat {
+  font-size: 12px;
+  color: var(--fg2);
+  background: var(--elevated);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s;
+}
+.ch-fd-cat:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.ch-fd-cat.sel {
+  background: var(--brand-light);
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+.ch-fd-reason {
+  width: 100%;
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.ch-fd-reason:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.ch-fd-ft {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ch-fd-skip {
+  font-size: 13px;
+  color: var(--fg2);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 16px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.ch-fd-skip:hover {
+  background: var(--elevated);
+}
+.ch-fd-submit {
+  font-size: 13px;
+  color: #fff;
+  background: var(--brand);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 18px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.12s;
+}
+.ch-fd-submit:hover {
   opacity: 0.88;
 }

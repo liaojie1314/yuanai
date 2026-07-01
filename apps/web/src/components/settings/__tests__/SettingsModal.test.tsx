@@ -291,7 +291,7 @@ describe('SettingsModal', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }))
     const [oldInput, newInput, confInput] = Array.from(
       container.querySelectorAll('input.st-field-inp.pw')
-    ) as HTMLInputElement[]
+    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
     await user.type(oldInput, 'OldPass1!')
     await user.type(newInput, 'NewPass99!')
     await user.type(confInput, 'DifferentPw9!')
@@ -309,7 +309,7 @@ describe('SettingsModal', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }))
     const [oldInput, newInput, confInput] = Array.from(
       container.querySelectorAll('input.st-field-inp.pw')
-    ) as HTMLInputElement[]
+    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
     await user.type(oldInput, 'OldPass1!')
     await user.type(newInput, 'NewPass99!')
     await user.type(confInput, 'NewPass99!')
@@ -332,7 +332,7 @@ describe('SettingsModal', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }))
     const [oldInput, newInput, confInput] = Array.from(
       container.querySelectorAll('input.st-field-inp.pw')
-    ) as HTMLInputElement[]
+    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
     await user.type(oldInput, 'OldPass1!')
     await user.type(newInput, 'NewPass99!')
     await user.type(confInput, 'NewPass99!')
@@ -358,7 +358,7 @@ describe('SettingsModal', () => {
     await user.click(screen.getByRole('button', { name: '修改密码' }))
     const [oldInput, newInput, confInput] = Array.from(
       container.querySelectorAll('input.st-field-inp.pw')
-    ) as HTMLInputElement[]
+    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
     await user.type(oldInput, 'WrongOld1!')
     await user.type(newInput, 'NewPass99!')
     await user.type(confInput, 'NewPass99!')
