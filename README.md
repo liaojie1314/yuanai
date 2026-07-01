@@ -17,28 +17,40 @@
 
 ## 快速开始
 
-### 方式一：Mock 模式（无需后端，推荐新成员上手）
+### 方式一：首次克隆后初始化（推荐）
 
 ```bash
-pnpm install
+pnpm setup
+```
+
+自动完成：检查工具版本 → 安装全部依赖 → 复制 `.env` 模板 → 可选初始化数据库。  
+兼容 macOS / Linux / Windows。
+
+### 方式二：Mock 模式（无需后端，推荐日常 UI 开发）
+
+```bash
 pnpm dev:mock
 ```
 
-打开 [http://localhost:3000](http://localhost:3000)，使用 `demo@yuanai.dev` / `Demo1234!` 登录。
+打开 [http://localhost:3000](http://localhost:3000)，使用 `demo@yuanai.dev` / `Demo1234!` 登录。  
+所有 API 请求由浏览器端 MSW 拦截，无需启动任何后端服务。
 
-### 方式二：全栈模式（真实 AI 接口）
+### 方式三：全栈模式（真实 AI 接口）
 
-**前提**：已安装 Docker、[uv](https://github.com/astral-sh/uv)，并拥有至少一个 AI 提供商的 API Key（推荐 [DeepSeek](https://platform.deepseek.com/api_keys)，有免费额度）。
+**前提**：已安装 Docker 和 [uv](https://github.com/astral-sh/uv)，并在 `backend/.env` 中填写了至少一个 AI API Key。
 
 ```bash
-pnpm install
 pnpm dev:real
 ```
 
-脚本会自动完成：启动 Docker 基础设施 → 等待 PostgreSQL → 数据库迁移 → 启动后端 → 启动前端。  
-首次运行会提示填写 `backend/.env` 中的 API Key，按提示操作后按回车继续。
+自动完成：启动 Docker 基础设施 → 等待 PostgreSQL → 数据库迁移 → 启动后端 → 启动前端。  
+首次运行若 `backend/.env` 不存在，会暂停并提示填写 API Key。  
+兼容 macOS / Linux / Windows（使用 Node.js 脚本，无需 bash）。
 
-### 方式三：分步手动启动
+> **推荐 AI 提供商**：[DeepSeek](https://platform.deepseek.com/api_keys)（有免费额度，注册即用）  
+> 详见 [AI 大模型接入指南](docs/ai-providers.md)
+
+### 方式四：分步手动启动
 
 详见 [开发运行指南](docs/dev-guide.md)。
 
@@ -56,14 +68,15 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 ## 常用命令
 
-| 命令             | 说明                     |
-| ---------------- | ------------------------ |
-| `pnpm dev:mock`  | 纯前端 Mock 模式启动     |
-| `pnpm dev:real`  | 一键全栈启动（真实接口） |
-| `pnpm build`     | 构建全部应用             |
-| `pnpm lint`      | ESLint 检查              |
-| `pnpm typecheck` | TypeScript 类型检查      |
-| `pnpm test:unit` | 运行单元测试             |
+| 命令             | 说明                               |
+| ---------------- | ---------------------------------- |
+| `pnpm setup`     | 首次初始化（安装依赖 + 复制 .env） |
+| `pnpm dev:mock`  | 纯前端 Mock 模式（无需后端）       |
+| `pnpm dev:real`  | 一键全栈启动（真实 AI 接口）       |
+| `pnpm build`     | 构建全部应用                       |
+| `pnpm lint`      | ESLint 检查                        |
+| `pnpm typecheck` | TypeScript 类型检查                |
+| `pnpm test:unit` | 运行单元测试                       |
 
 ## 文档
 
@@ -90,5 +103,8 @@ yuanai/
 │   └── types/      # 前后端共享 TS 类型 (@yuanai/types)
 ├── backend/        # FastAPI 后端
 └── scripts/
-    └── dev.sh      # 全栈一键启动脚本
+    ├── _utils.mjs  # 跨平台工具函数（内部使用）
+    ├── setup.mjs   # 首次项目初始化
+    ├── dev.mjs     # 全栈一键启动（跨平台）
+    └── dev.sh      # 全栈一键启动（Unix bash 版）
 ```

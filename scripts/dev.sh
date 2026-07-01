@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# 元AI — 一键启动全栈开发环境（真实接口模式）
-# 用法：bash scripts/dev.sh
-#       或 pnpm dev:real（从仓库根目录）
+# 元AI — 一键启动全栈开发环境（真实接口模式）[仅 macOS / Linux]
+# Windows 用户请使用：pnpm dev:real（自动调用跨平台的 Node.js 版本）
+# 用法：bash scripts/dev.sh（直接调用）
+#       pnpm dev:real（等价，任何平台均可）
 
 set -euo pipefail
 
