@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { JSX } from 'react'
 import { NextIntlClientProvider } from 'next-intl'
 import { getMessages } from 'next-intl/server'
+import MockProvider from '@/providers/MockProvider'
 import QueryProvider from '@/providers/QueryProvider'
 import './globals.css'
 
@@ -29,7 +30,9 @@ export default async function RootLayout({
       </head>
       <body>
         <NextIntlClientProvider messages={messages}>
-          <QueryProvider>{children}</QueryProvider>
+          <MockProvider>
+            <QueryProvider>{children}</QueryProvider>
+          </MockProvider>
         </NextIntlClientProvider>
       </body>
     </html>
