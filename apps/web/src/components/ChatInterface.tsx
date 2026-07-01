@@ -50,6 +50,7 @@ import {
   PanelLeft,
   X,
   LogOut,
+  LogIn,
   User,
   Square,
 } from 'lucide-react'
@@ -364,6 +365,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Auth ──
   const user = useAuthStore((s) => s.user)
+  const accessToken = useAuthStore((s) => s.accessToken)
+  const isLoggedIn = !!accessToken
   const { mutate: doLogout } = useLogout()
 
   // ── Streaming state (store) ──
@@ -1080,26 +1083,33 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <textarea
               ref={inputRef}
               className="ch-input-ta"
-              placeholder="发送消息…（Enter 发送，Shift+Enter 换行）"
+              placeholder={
+                isLoggedIn
+                  ? '发送消息…（Enter 发送，Shift+Enter 换行）'
+                  : '请先登录，开始与 AI 对话'
+              }
               rows={1}
               value={inputValue}
               onChange={onInputChange}
               onKeyDown={onInputKey}
+              disabled={!isLoggedIn}
             />
             <div className="ch-input-tb">
               <button
                 className="ch-in-btn"
                 title="添加附件"
+                disabled={!isLoggedIn}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip size={18} />
               </button>
-              <button className="ch-in-btn" title="语音输入">
+              <button className="ch-in-btn" title="语音输入" disabled={!isLoggedIn}>
                 <Mic size={18} />
               </button>
               <button
                 className={`ch-in-btn ${webSearch ? 'on' : ''}`}
                 title="联网搜索"
+                disabled={!isLoggedIn}
                 onClick={() => setWebSearch((w) => !w)}
               >
                 <Globe size={18} />
@@ -1130,11 +1140,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   </button>
                 ) : (
                   <button
-                    className={`ch-send-btn ${inputValue.trim() ? 'on' : ''}`}
+                    className={`ch-send-btn ${inputValue.trim() && isLoggedIn ? 'on' : ''}`}
                     onClick={() => {
                       void sendMessage()
                     }}
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() || !isLoggedIn}
                     title="发送 (Enter)"
                   >
                     <SendHorizontal size={20} />
@@ -1256,25 +1266,39 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
             <div className={`ch-toggle ${dark ? 'on' : ''}`} />
           </div>
           <div className="ch-up-sep" />
-          <div
-            className="ch-up-row"
-            onClick={() => {
-              setUserPanelOpen(false)
-              setSettingsOpen(true)
-            }}
-          >
-            <User size={16} /> 个人设置
-          </div>
-          <div className="ch-up-sep" />
-          <div
-            className="ch-up-row danger"
-            onClick={() => {
-              setUserPanelOpen(false)
-              doLogout()
-            }}
-          >
-            <LogOut size={16} /> 退出登录
-          </div>
+          {isLoggedIn ? (
+            <>
+              <div
+                className="ch-up-row"
+                onClick={() => {
+                  setUserPanelOpen(false)
+                  setSettingsOpen(true)
+                }}
+              >
+                <User size={16} /> 个人设置
+              </div>
+              <div className="ch-up-sep" />
+              <div
+                className="ch-up-row danger"
+                onClick={() => {
+                  setUserPanelOpen(false)
+                  doLogout()
+                }}
+              >
+                <LogOut size={16} /> 退出登录
+              </div>
+            </>
+          ) : (
+            <div
+              className="ch-up-row"
+              onClick={() => {
+                setUserPanelOpen(false)
+                router.push('/login')
+              }}
+            >
+              <LogIn size={16} /> 去登录
+            </div>
+          )}
         </div>
       )}
 
