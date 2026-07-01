@@ -30,14 +30,13 @@ import {
   useChangePassword,
   useDeleteMe,
 } from '@yuanai/core/hooks'
+import { usePrefsStore } from '@yuanai/core/stores'
 
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
 type SubModal = 'change-email' | 'change-pw' | 'unlink-wechat' | 'delete-account' | null
 type ThemeChoice = 'auto' | 'light' | 'dark'
 type Density = 'compact' | 'standard' | 'loose'
-type TimeFmt = '24h' | '12h'
-type DateFmt = 'ymd' | 'mdy' | 'dmy'
 
 interface Toast {
   id: number
@@ -91,8 +90,7 @@ export default function SettingsModal({
 
   // Language
   const [currentLocale, setCurrentLocale] = useState<Locale>('zh-CN')
-  const [timeFmt, setTimeFmt] = useState<TimeFmt>('24h')
-  const [dateFmt, setDateFmt] = useState<DateFmt>('ymd')
+  const { timeFmt, dateFmt, setTimeFmt, setDateFmt } = usePrefsStore()
 
   // Notifications
   const [notifBrowser, setNotifBrowser] = useState(true)

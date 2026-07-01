@@ -845,6 +845,13 @@
 .ch-msg-user .ch-msg-acts {
   justify-content: flex-end;
 }
+.ch-msg-ts {
+  font-size: 10px;
+  color: var(--fg3);
+  white-space: nowrap;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
 
 /* AI message */
 .ch-msg-ai {
@@ -1001,11 +1008,15 @@
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  align-items: center;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
 }
-.ch-msg:hover .ch-msg-acts {
+.ch-msg:hover .ch-msg-acts,
+.ch-msg-acts:has(.ch-copy-dropdown) {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .ch-msg-act {

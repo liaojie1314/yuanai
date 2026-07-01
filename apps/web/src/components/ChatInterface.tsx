@@ -8,6 +8,7 @@ import SettingsModal from '@/components/settings/SettingsModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
+import { usePrefsStore } from '@yuanai/core/stores'
 import { useStream } from '@yuanai/core/hooks'
 import {
   useConversations,
@@ -181,6 +182,36 @@ function getMsgText(msg: MockMessage): string {
     .join('\n')
 }
 
+/** Format a message timestamp according to user's prefs */
+function formatMsgTime(ts: number, timeFmt: '24h' | '12h', dateFmt: 'ymd' | 'mdy' | 'dmy'): string {
+  const d = new Date(ts)
+  const now = new Date()
+  const todayStr = now.toDateString()
+  const yd = new Date(now)
+  yd.setDate(now.getDate() - 1)
+
+  const h = d.getHours()
+  const m = String(d.getMinutes()).padStart(2, '0')
+  const timeStr =
+    timeFmt === '24h'
+      ? `${String(h).padStart(2, '0')}:${m}`
+      : `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`
+
+  if (d.toDateString() === todayStr) return timeStr
+  if (d.toDateString() === yd.toDateString()) return `昨天 ${timeStr}`
+
+  const y = d.getFullYear()
+  const mo = d.getMonth() + 1
+  const day = d.getDate()
+  const dateStr =
+    dateFmt === 'ymd'
+      ? `${y}/${mo}/${day}`
+      : dateFmt === 'mdy'
+        ? `${mo}/${day}/${y}`
+        : `${day}/${mo}/${y}`
+  return `${dateStr} ${timeStr}`
+}
+
 /** Strip common Markdown syntax to produce plain readable text */
 function stripMarkdown(md: string): string {
   return md
@@ -265,12 +296,16 @@ function ThinkBlock({ content }: { content: string }): JSX.Element {
 function UserMessage({
   msg,
   editing,
+  timeFmt,
+  dateFmt,
   onStartEdit,
   onSubmitEdit,
   onCancelEdit,
 }: {
   msg: MockMessage
   editing: boolean
+  timeFmt: '24h' | '12h'
+  dateFmt: 'ymd' | 'mdy' | 'dmy'
   onStartEdit: () => void
   onSubmitEdit: (text: string) => void
   onCancelEdit: () => void
@@ -345,6 +380,7 @@ function UserMessage({
       <div className="ch-msg-body">
         <div className="ch-msg-bubble">{text}</div>
         <div className="ch-msg-acts">
+          <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
           <button className="ch-msg-act" onClick={onStartEdit}>
             <Pencil size={12} /> 编辑
           </button>
@@ -359,6 +395,8 @@ function AIMessage({
   isStreaming,
   streamingContent,
   onFill,
+  timeFmt,
+  dateFmt,
   versionCount = 1,
   versionIdx = 0,
   onVersionChange,
@@ -370,6 +408,8 @@ function AIMessage({
   isStreaming: boolean
   streamingContent: string
   onFill: (text: string) => void
+  timeFmt: '24h' | '12h'
+  dateFmt: 'ymd' | 'mdy' | 'dmy'
   versionCount?: number
   versionIdx?: number
   onVersionChange?: (idx: number) => void
@@ -434,6 +474,9 @@ function AIMessage({
               </div>
             )}
             <div className="ch-msg-acts">
+              {!isStreaming && (
+                <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
+              )}
               <div ref={copyWrapRef} className="ch-copy-wrap">
                 <button
                   className={`ch-msg-act ${copyState === 'md' || copyState === 'txt' ? 'copied' : ''}`}
@@ -515,6 +558,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const accessToken = useAuthStore((s) => s.accessToken)
   const isLoggedIn = !!accessToken
   const { mutate: doLogout } = useLogout()
+
+  // ── User preferences ──
+  const timeFmt = usePrefsStore((s) => s.timeFmt)
+  const dateFmt = usePrefsStore((s) => s.dateFmt)
 
   // ── Streaming state (store) ──
   const streamingConvId = useChatStore((s) => s.streamingConvId)
@@ -625,6 +672,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const msgsEndRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
+  /** 用户在流式回复中主动向上滚动时为 true，暂停自动跟随 */
+  const userScrolledUpRef = useRef(false)
   const [sidebarWidth, setSidebarWidth] = useState(260)
 
   useEffect(() => {
@@ -686,9 +735,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 流式输出时自动跟随到底部（新消息到达时滚动）
+  // 流式输出时自动跟随到底部（用户未主动上滑时）
   useEffect(() => {
     if (streamingConvId !== activeConv || !contentRef.current) return
+    if (userScrolledUpRef.current) return
     contentRef.current.scrollTop = contentRef.current.scrollHeight
   }, [streamingContent, streamingConvId, activeConv])
 
@@ -698,8 +748,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isThisStreaming])
 
-  // 切换会话时同步滚动到底部，消除内容抖动
+  // 切换会话时同步滚动到底部，消除内容抖动；同时重置上滑标记
   useLayoutEffect(() => {
+    userScrolledUpRef.current = false
     if (!contentRef.current) return
     contentRef.current.scrollTop = contentRef.current.scrollHeight
   }, [activeConv])
@@ -867,10 +918,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const onScroll = (): void => {
     if (!contentRef.current) return
     const { scrollTop, scrollHeight, clientHeight } = contentRef.current
-    setShowScrollFab(scrollHeight - scrollTop - clientHeight > 100)
+    const distFromBottom = scrollHeight - scrollTop - clientHeight
+    setShowScrollFab(distFromBottom > 100)
+    // 流式输出中：用户主动上滑则暂停自动跟随，回到底部则恢复
+    if (isThisStreaming) {
+      userScrolledUpRef.current = distFromBottom > 80
+    }
   }
 
   const toBottom = (): void => {
+    userScrolledUpRef.current = false
     contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
   }
 
@@ -1406,6 +1463,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                           key={`u-${pair.pairKey}`}
                           msg={pair.userMsg}
                           editing={editingMsgId === pair.userMsg.id}
+                          timeFmt={timeFmt}
+                          dateFmt={dateFmt}
                           onStartEdit={() => startEditMsg(pair.userMsg)}
                           onSubmitEdit={(text) => submitEditMsg(pair.userMsg, text)}
                           onCancelEdit={() => setEditingMsgId(null)}
@@ -1425,6 +1484,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                             isStreaming={true}
                             streamingContent={streamingContent}
                             onFill={fill}
+                            timeFmt={timeFmt}
+                            dateFmt={dateFmt}
                             versionCount={effectiveVersionCount}
                             versionIdx={effectiveVIdx}
                           />
@@ -1437,6 +1498,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                             isStreaming={false}
                             streamingContent=""
                             onFill={fill}
+                            timeFmt={timeFmt}
+                            dateFmt={dateFmt}
                             versionCount={effectiveVersionCount}
                             versionIdx={effectiveVIdx}
                             onVersionChange={(i) =>
@@ -1461,6 +1524,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                           createdAt: Date.now(),
                         }}
                         editing={false}
+                        timeFmt={timeFmt}
+                        dateFmt={dateFmt}
                         onStartEdit={() => {}}
                         onSubmitEdit={() => {}}
                         onCancelEdit={() => {}}
@@ -1479,6 +1544,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                         isStreaming={true}
                         streamingContent={streamingContent}
                         onFill={fill}
+                        timeFmt={timeFmt}
+                        dateFmt={dateFmt}
                       />
                     )}
                   </>
@@ -1805,7 +1872,7 @@ const ListItem = memo(({ id, label, value, onSelect }) => {
             />
             <div className="ch-fd-ft">
               <button className="ch-fd-skip" onClick={() => setFeedbackDialog(null)}>
-                跳过
+                取消
               </button>
               <button className="ch-fd-submit" onClick={submitFeedback}>
                 提交反馈
