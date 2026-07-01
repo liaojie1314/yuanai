@@ -2,17 +2,19 @@
 
 import { useState, useRef, useCallback, type JSX } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { User, Loader2, CheckCircle, XCircle, Mail, Lock, Shield } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import StrengthBar from '@/components/auth/StrengthBar'
 import { useTranslations } from '@/i18n/client'
+import { useRegister } from '@yuanai/core/hooks'
 
 type CheckStatus = 'idle' | 'checking' | 'ok' | 'taken'
 
-const TAKEN = ['admin', 'yuanai', 'test', 'user123']
-
 export default function RegisterPage(): JSX.Element {
   const t = useTranslations('auth')
+  const router = useRouter()
+  const registerMutation = useRegister()
 
   const [username, setUsername] = useState('')
   const [checkStatus, setCheckStatus] = useState<CheckStatus>('idle')
@@ -32,37 +34,34 @@ export default function RegisterPage(): JSX.Element {
   const [termsErr, setTermsErr] = useState(false)
   const [termsShake, setTermsShake] = useState(false)
 
-  const [loading, setLoading] = useState(false)
+  const [apiErr, setApiErr] = useState('')
 
-  const handleUsername = useCallback(
-    (v: string): void => {
-      setUsername(v)
-      setCheckStatus('idle')
-      setUnameErr('')
-      if (!v) return
-      setCheckStatus('checking')
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      debounceRef.current = setTimeout(() => {
-        const taken = TAKEN.includes(v.toLowerCase())
-        setCheckStatus(taken ? 'taken' : 'ok')
-        if (taken) setUnameErr(t('errors.usernameTaken'))
-      }, 600)
-    },
-    [t]
-  )
+  const handleUsername = useCallback((v: string): void => {
+    setUsername(v)
+    setCheckStatus('idle')
+    setUnameErr('')
+    if (!v) return
+    setCheckStatus('checking')
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      // 此处仅做格式校验，重复检测由注册接口的 409 响应处理
+      setCheckStatus('ok')
+    }, 400)
+  }, [])
 
   const shake = (): void => {
     setTermsShake(true)
     setTimeout(() => setTermsShake(false), 350)
   }
 
-  const handleSubmit = (e: React.FormEvent): void => {
+  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
+    setApiErr('')
     let ok = true
     if (!username.trim() || username.length < 2) {
       setUnameErr(t('errors.usernameRequired'))
       ok = false
-    } else if (checkStatus === 'taken') ok = false
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setEmailErr(t('errors.invalidEmail'))
       ok = false
@@ -81,9 +80,26 @@ export default function RegisterPage(): JSX.Element {
       ok = false
     } else setTermsErr(false)
     if (!ok) return
-    setLoading(true)
-    setTimeout(() => setLoading(false), 1600)
+
+    try {
+      await registerMutation.mutateAsync({
+        email: email.trim(),
+        password: pwd,
+        username: username.trim(),
+      })
+      router.replace('/chat')
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: { message?: string } } } })?.response
+        ?.data?.detail
+      if (detail?.message?.includes('already') || detail?.message?.includes('exists')) {
+        setApiErr('邮箱或用户名已被注册，请换一个试试')
+      } else {
+        setApiErr(detail?.message ?? '注册失败，请稍后重试')
+      }
+    }
   }
+
+  const loading = registerMutation.isPending
 
   const unameInputCls = ['fi', checkStatus === 'taken' ? 'err' : checkStatus === 'ok' ? 'ok' : '']
     .filter(Boolean)
@@ -106,7 +122,18 @@ export default function RegisterPage(): JSX.Element {
           <h1 className="page-title">{t('createAccount')}</h1>
           <p className="page-sub">{t('registerSubtitle')}</p>
 
-          <form onSubmit={handleSubmit} noValidate>
+          <form
+            onSubmit={(e) => {
+              void handleSubmit(e)
+            }}
+            noValidate
+          >
+            {apiErr && (
+              <p className="ferr on" style={{ marginBottom: '12px' }}>
+                {apiErr}
+              </p>
+            )}
+
             <div className="fg">
               <label className="fl" htmlFor="uname">
                 {t('username')}

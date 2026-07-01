@@ -1,5 +1,8 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
-import { useChatStore, MOCK_RESPONSES } from '../stores/chat.store'
+import { API_BASE_URL } from '../api/client.js'
+import { useAuthStore } from '../stores/auth.store.js'
+import { useChatStore } from '../stores/chat.store.js'
 
 /** `useStream().send` 的参数 */
 export interface StreamParams {
@@ -7,72 +10,106 @@ export interface StreamParams {
   convId: string
   /** 用户发送的消息内容 */
   content: string
-  /**
-   * 流启动时回调
-   * @param msgId - 占位 AI 消息的 ID（可用于滚动定位）
-   */
-  onStart?: (msgId: string) => void
+  /** 使用的 AI 模型 ID */
+  model: string
+  /** 流启动时回调 */
+  onStart?: () => void
   /** 流完成时回调 */
   onEnd?: () => void
+  /** 流出错时回调 */
+  onError?: (err: Error) => void
 }
 
 /**
  * 流式消息发送 hook
  *
- * **当前实现（mock）**：以 18ms/字符 的固定速率追加随机预设回复，
- * 模拟 SSE token-by-token 推送效果。
- *
- * **后端接入后替换**：改为调用 `POST /api/v1/chat/stream`，
- * 通过 `ReadableStream` 解析 SSE 事件并调用 store 的 `appendToken`。
- *
- * @example
- * ```tsx
- * const { send, stop } = useStream()
- * send({ convId, content: '你好', onStart: () => setStreaming(true), onEnd: () => setStreaming(false) })
- * ```
- *
- * @returns
- * - `send` — 写入用户消息并启动流式输出
- * - `stop` — 中断流，保留已生成内容并写入 store
+ * 调用 `POST /api/v1/chat/stream` 并通过 `ReadableStream` 解析 SSE 事件，
+ * 将 token 增量写入 `useChatStore`，流结束后通过 TanStack Query 刷新消息列表。
  */
 export function useStream() {
-  const { addUserMessage, startStreaming, appendToken, finalizeStream } = useChatStore()
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const { startStreaming, appendToken, finalizeStream } = useChatStore()
+  const qc = useQueryClient()
+  const abortRef = useRef<AbortController | null>(null)
 
   const send = useCallback(
-    ({ convId, content, onStart, onEnd }: StreamParams) => {
-      addUserMessage(convId, content)
+    async ({ convId, content, model, onStart, onEnd, onError }: StreamParams): Promise<void> => {
+      const token = useAuthStore.getState().accessToken
+      abortRef.current = new AbortController()
 
-      const msgId = startStreaming(convId)
-      onStart?.(msgId)
+      startStreaming(convId, content)
+      onStart?.()
 
-      const response = MOCK_RESPONSES[Math.floor(Math.random() * MOCK_RESPONSES.length)] ?? ''
-      let index = 0
+      try {
+        const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            conversation_id: convId,
+            model,
+            message: { content, fileIds: [] },
+          }),
+          signal: abortRef.current.signal,
+        })
 
-      if (timerRef.current) clearInterval(timerRef.current)
-
-      timerRef.current = setInterval(() => {
-        if (index < response.length) {
-          appendToken(response[index] ?? '')
-          index++
-        } else {
-          if (timerRef.current) clearInterval(timerRef.current)
-          finalizeStream(response)
-          onEnd?.()
+        if (!response.ok || !response.body) {
+          throw new Error(`HTTP ${String(response.status)}`)
         }
-      }, 18)
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let currentEvent = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          // 保留最后一段不完整的行继续等待后续数据
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              currentEvent = line.slice(7).trim()
+            } else if (line.startsWith('data: ') && currentEvent) {
+              try {
+                const data = JSON.parse(line.slice(6)) as Record<string, unknown>
+                if (currentEvent === 'content_delta' && typeof data.token === 'string') {
+                  appendToken(data.token)
+                }
+              } catch {
+                // 忽略无效 JSON
+              }
+              currentEvent = ''
+            }
+          }
+        }
+
+        finalizeStream()
+        // 流结束后刷新消息列表与会话列表（更新 lastMessageAt）
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: ['messages', convId] }),
+          qc.invalidateQueries({ queryKey: ['conversations'] }),
+        ])
+      } catch (err) {
+        finalizeStream()
+        if (err instanceof Error && err.name !== 'AbortError') {
+          onError?.(err)
+        }
+      } finally {
+        onEnd?.()
+      }
     },
-    [addUserMessage, startStreaming, appendToken, finalizeStream]
+    [startStreaming, appendToken, finalizeStream, qc]
   )
 
   const stop = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current)
-      timerRef.current = null
-    }
-    // 保留已生成的内容写入 store
-    const { streamingContent } = useChatStore.getState()
-    finalizeStream(streamingContent)
+    abortRef.current?.abort()
+    finalizeStream()
   }, [finalizeStream])
 
   return { send, stop }

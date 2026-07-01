@@ -4,8 +4,19 @@ import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
 import SettingsModal from '@/components/settings/SettingsModal'
 import { useChatStore } from '@yuanai/core/stores'
+import { useAuthStore } from '@yuanai/core/stores'
 import { useStream } from '@yuanai/core/hooks'
-import type { MockConversation, MockMessage, MessagePart } from '@yuanai/core/stores'
+import {
+  useConversations,
+  useCreateConversation,
+  useDeleteConversation,
+  useDeleteConversations,
+  useUpdateConversation,
+  useMessages,
+  useLogout,
+} from '@yuanai/core/hooks'
+import type { Conversation, Message } from '@yuanai/types'
+import type { MockConversation, MockMessage, MessagePart, ConvGroup } from '@yuanai/core/stores'
 import {
   SquarePen,
   Search,
@@ -85,7 +96,7 @@ const MODELS: Model[] = [
     gradient: 'linear-gradient(135deg,#3B82F6,#60A5FA)',
   },
   {
-    id: 'claude-3-5',
+    id: 'claude-3-5-sonnet-20241022',
     name: 'Claude 3.5 Sonnet',
     desc: '代码与分析专家',
     provider: 'Anthropic',
@@ -95,7 +106,7 @@ const MODELS: Model[] = [
     gradient: 'linear-gradient(135deg,#7C3AED,#8B5CF6)',
   },
   {
-    id: 'deepseek',
+    id: 'deepseek-chat',
     name: 'DeepSeek-V3',
     desc: '中文理解强，高性价比',
     provider: '国内模型',
@@ -103,16 +114,6 @@ const MODELS: Model[] = [
     color: '#3B82F6',
     letter: 'D',
     gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)',
-  },
-  {
-    id: 'qwen',
-    name: '通义千问 Max',
-    desc: '阿里大模型，多语言',
-    provider: '国内模型',
-    ctx: '32K',
-    color: '#F59E0B',
-    letter: 'Q',
-    gradient: 'linear-gradient(135deg,#D97706,#F59E0B)',
   },
 ]
 
@@ -143,19 +144,42 @@ const SUGGESTION_CARDS = [
   },
 ]
 
+// ── Adapters — 将后端类型转换为前端展示结构 ─────────────────
+function convGroup(conv: Conversation): ConvGroup {
+  if (conv.isPinned) return 'pinned'
+  const ts = conv.lastMessageAt ?? conv.createdAt
+  const age = Date.now() - new Date(ts).getTime()
+  if (age < 86_400_000) return 'today'
+  if (age < 172_800_000) return 'yesterday'
+  return 'week'
+}
+
+function apiConvToMock(conv: Conversation): MockConversation {
+  const ts = conv.lastMessageAt ?? conv.createdAt
+  return {
+    id: conv.id,
+    title: conv.title,
+    group: convGroup(conv),
+    updatedAt: new Date(ts).getTime(),
+  }
+}
+
+function apiMsgToMock(msg: Message): MockMessage {
+  return {
+    id: msg.id,
+    role: msg.role as 'user' | 'assistant',
+    parts: [{ type: 'text' as const, content: msg.content }],
+    createdAt: new Date(msg.createdAt).getTime(),
+  }
+}
+
 function isDark(): boolean {
   const t = document.documentElement.getAttribute('data-theme')
   return t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme:dark)').matches)
 }
 
 // ── Message part renderer ─────────────────────────────
-/**
- * 将文本中的内联 Markdown 语法转换为 JSX 元素数组。
- * 支持两种语法：`**粗体**` 渲染为 `<strong>`，`` `代码` `` 渲染为 `<code>`。
- * 未匹配的普通文本段落以 `<span>` 包裹后追加到结果中。
- */
 function renderInline(text: string): JSX.Element[] {
-  // 正则同时匹配 **bold** 和 `code`，通过捕获组区分两种语法
   const parts: JSX.Element[] = []
   const re = /(\*\*(.+?)\*\*|`([^`]+)`)/g
   let last = 0
@@ -178,7 +202,6 @@ function renderInline(text: string): JSX.Element[] {
   return parts
 }
 
-/** 渲染纯文本消息内容，按空行拆分为多个段落，并对每段应用内联 Markdown 解析。 */
 function TextPart({ content }: { content: string }): JSX.Element {
   const paragraphs = content.split('\n\n').filter(Boolean)
   return (
@@ -190,7 +213,6 @@ function TextPart({ content }: { content: string }): JSX.Element {
   )
 }
 
-/** 渲染代码块消息内容，带语言标签和一键复制按钮。 */
 function CodePart({ lang, code }: { lang?: string; code?: string }): JSX.Element {
   return (
     <div className="ch-code-block">
@@ -225,7 +247,6 @@ function MessagePartRenderer({ part }: { part: MessagePart }): JSX.Element {
 }
 
 // ── Think block ───────────────────────────────────────
-/** 可折叠的 AI 思考过程展示块，点击标题栏可展开/收起推理内容。 */
 function ThinkBlock({ content }: { content: string }): JSX.Element {
   const [open, setOpen] = useState(false)
   return (
@@ -251,7 +272,6 @@ function ThinkBlock({ content }: { content: string }): JSX.Element {
 }
 
 // ── Message components ────────────────────────────────
-/** 渲染用户发送的消息气泡，附带编辑操作按钮。 */
 function UserMessage({ msg }: { msg: MockMessage }): JSX.Element {
   const text = msg.parts.find((p) => p.type === 'text')?.content ?? ''
   return (
@@ -268,11 +288,6 @@ function UserMessage({ msg }: { msg: MockMessage }): JSX.Element {
   )
 }
 
-/**
- * 渲染 AI 回复消息。
- * 当 `isStreaming` 为 true 时，展示来自 store 的实时 `streamingContent`（带光标动画的纯文本流）；
- * 流式结束后则改为渲染已落盘的 `msg.parts`（支持文本/代码等多种结构化片段），并显示复制、重新生成、点赞/点踩等操作及追问建议。
- */
 function AIMessage({
   msg,
   isStreaming,
@@ -339,46 +354,38 @@ function AIMessage({
 }
 
 // ── Props ────────────────────────────────────────────
-/** {@link ChatInterface} 组件的属性。 */
 interface ChatInterfaceProps {
-  /**
-   * 当前激活的会话 ID。
-   * - 不传（`undefined`）：展示空白欢迎态（"empty" 视图），等待用户发起新对话。
-   * - 传入具体会话 ID：直接进入该会话的聊天视图（"chat" 视图）并加载对应消息列表。
-   */
   initialConvId?: string
 }
 
 // ── Main component ────────────────────────────────────
-/**
- * 聊天主界面，渲染整个全屏聊天 UI：左侧会话侧边栏（搜索、置顶、多选删除、用户面板）+
- * 右侧主内容区（顶部工具栏、模型切换、消息列表流式渲染、底部输入框与附件上传、内容面板 Artifact）。
- *
- * 视图切换与路由强绑定：新建对话、切换会话、删除当前会话等操作均通过 `router.push`
- * 修改 URL（`/chat` 或 `/chat/[id]`），再由 `initialConvId` 变化驱动内部 `view`/`activeConv` 状态同步，
- * 因此本组件不直接维护"当前会话"的真相状态，而是作为路由参数的镜像。
- */
 export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JSX.Element {
   const router = useRouter()
 
-  // Store
-  const conversations = useChatStore((s) => s.conversations)
-  const allMessages = useChatStore((s) => s.messages)
+  // ── Auth ──
+  const user = useAuthStore((s) => s.user)
+  const { mutate: doLogout } = useLogout()
+
+  // ── Streaming state (store) ──
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const streamingContent = useChatStore((s) => s.streamingContent)
-  const streamingMsgId = useChatStore((s) => s.streamingMsgId)
-  const createConversation = useChatStore((s) => s.createConversation)
-  const deleteConversation = useChatStore((s) => s.deleteConversation)
-  const renameConversation = useChatStore((s) => s.renameConversation)
-  const togglePin = useChatStore((s) => s.togglePin)
+  const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
+
+  // ── Server state (TanStack Query) ──
+  const { data: apiConversations = [] } = useConversations()
+  const conversations = apiConversations.map(apiConvToMock)
+
+  const { mutateAsync: createConvAsync } = useCreateConversation()
+  const { mutate: deleteConv } = useDeleteConversation()
+  const { mutate: deleteConvs } = useDeleteConversations()
+  const { mutate: updateConv } = useUpdateConversation()
 
   const stream = useStream()
 
-  // View state
+  // ── View state ──
   const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
   const [activeConv, setActiveConv] = useState<string>(() => initialConvId ?? '')
 
-  // Sync when initialConvId prop changes (e.g., router navigation)
   useEffect(() => {
     if (initialConvId) {
       setView('chat')
@@ -389,14 +396,18 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     }
   }, [initialConvId])
 
-  // Sidebar state
+  // ── Messages for active conv ──
+  const { data: apiMessages = [] } = useMessages(activeConv)
+  const messages = apiMessages.map(apiMsgToMock)
+
+  // ── Sidebar state ──
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [search, setSearch] = useState('')
   const [multiSel, setMultiSel] = useState(false)
   const [selectedConvs, setSelectedConvs] = useState<Set<string>>(new Set())
 
-  // UI state
+  // ── UI state ──
   const [artifactOpen, setArtifactOpen] = useState(false)
   const [webSearch, setWebSearch] = useState(true)
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
@@ -407,25 +418,22 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [dark, setDark] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
-  // Input state
+  // ── Input state ──
   const [inputValue, setInputValue] = useState('')
-  // 是否正在接收 AI 流式回复；用于禁用发送、切换发送/停止按钮、驱动自动滚动
   const [isStreaming, setIsStreaming] = useState(false)
 
-  // Attachment state
-  // 待发送的附件列表（图片会生成本地预览 URL，需在移除/卸载时 revoke）
+  // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Scroll FAB
+  // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
 
-  // Refs
+  // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const userTriggerRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  // 消息列表末尾的锚点元素，流式输出时用于自动滚动到最新内容
   const msgsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -444,14 +452,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Auto-scroll when streaming
+  // 流式输出时自动滚动
   useEffect(() => {
     if (isStreaming && msgsEndRef.current) {
       msgsEndRef.current.scrollIntoView({ behavior: 'smooth' })
     }
   }, [streamingContent, isStreaming])
-
-  const messages = allMessages[activeConv] ?? []
 
   const closeAllPanels = (): void => {
     setModelDropOpen(false)
@@ -530,43 +536,45 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      if (inputValue.trim() && !isStreaming) sendMessage()
+      if (inputValue.trim() && !isStreaming) void sendMessage()
     }
   }
 
-  /**
-   * 发送当前输入框中的消息。
-   * 若尚无激活会话（`activeConv` 为空），先以输入内容的前 20 个字符为标题创建新会话，
-   * 并通过 `router.push` 跳转到该会话路由；随后清空输入框与附件，
-   * 实际的发送与 SSE 流式接收均委托给 `useStream` 的 `stream.send`（由其更新 store 中的流式状态）。
-   */
-  const sendMessage = (): void => {
+  const sendMessage = async (): Promise<void> => {
     if (!inputValue.trim() || isStreaming) return
 
     let convId = activeConv
+    const text = inputValue.trim()
+
     if (!convId) {
-      // Create a new conversation from the first few words of the message
-      const title = inputValue.trim().slice(0, 20) + (inputValue.trim().length > 20 ? '…' : '')
-      convId = createConversation(title)
-      router.push('/chat/' + convId)
+      // 无当前会话时先创建，再发送消息
+      try {
+        const newConv = await createConvAsync({
+          model: activeModel.id,
+          title: text.slice(0, 30) + (text.length > 30 ? '…' : ''),
+        })
+        convId = newConv.id
+        setActiveConv(convId)
+        setView('chat')
+        router.push('/chat/' + convId)
+      } catch {
+        return
+      }
     }
 
-    const text = inputValue.trim()
     setInputValue('')
     setFiles([])
-    if (inputRef.current) {
-      inputRef.current.style.height = 'auto'
-    }
+    if (inputRef.current) inputRef.current.style.height = 'auto'
 
-    stream.send({
+    setIsStreaming(true)
+    void stream.send({
       convId,
       content: text,
-      onStart: () => setIsStreaming(true),
+      model: activeModel.id,
       onEnd: () => setIsStreaming(false),
     })
   }
 
-  // 中止当前 SSE 流式请求并立即恢复输入区为可发送状态
   const stopStreaming = (): void => {
     stream.stop()
     setIsStreaming(false)
@@ -595,7 +603,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
   }
 
-  // Attachment handlers
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const picked = Array.from(e.target.files ?? [])
     const newFiles: AttachFile[] = picked.map((f) => ({
@@ -605,7 +612,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       type: f.type.startsWith('image/') ? 'image' : 'doc',
     }))
     setFiles((prev) => [...prev, ...newFiles])
-    // Reset input so same file can be re-selected
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -642,9 +648,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const charCount = inputValue.length
 
+  // 用于侧边栏显示的用户信息
+  const userInitial = user?.username?.charAt(0).toUpperCase() ?? '?'
+  const userName = user?.username ?? '未登录'
+  const userEmail = user?.email ?? ''
+
+  const isThisStreaming = streamingConvId === activeConv
+
   return (
     <div className={appClass} id="app">
-      {/* ── Backdrop overlay — closes all popups on outside click ── */}
+      {/* ── Backdrop overlay ── */}
       {(modelDropOpen || userPanelOpen || !!cvMenuOpen) && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={closeAllPanels} />
       )}
@@ -707,7 +720,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               className="ch-multi-del"
               disabled={selectedConvs.size === 0}
               onClick={() => {
-                selectedConvs.forEach((id) => deleteConversation(id))
+                deleteConvs([...selectedConvs])
                 setSelectedConvs(new Set())
                 setMultiSel(false)
               }}
@@ -837,10 +850,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
         {/* User section */}
         <div className="ch-sb-user" ref={userTriggerRef} onClick={toggleUserPanel}>
-          <div className="ch-avatar">李</div>
+          <div className="ch-avatar">{userInitial}</div>
           <div className="ch-sb-uinfo">
-            <div className="ch-sb-uname">李建明</div>
-            <div className="ch-sb-uemail">li@example.com</div>
+            <div className="ch-sb-uname">{userName}</div>
+            <div className="ch-sb-uemail">{userEmail}</div>
           </div>
           <button
             className="ch-sb-uset"
@@ -980,21 +993,44 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           {/* Messages */}
           <div className="ch-msgs-scroll">
             <div className="ch-msgs-inner">
+              {/* Persisted messages from API */}
               {messages.map((msg) => {
                 if (msg.role === 'user') {
                   return <UserMessage key={msg.id} msg={msg} />
                 }
-                const isThisStreaming = streamingConvId === activeConv && streamingMsgId === msg.id
                 return (
                   <AIMessage
                     key={msg.id}
                     msg={msg}
-                    isStreaming={isThisStreaming}
-                    streamingContent={streamingContent}
+                    isStreaming={false}
+                    streamingContent=""
                     onFill={fill}
                   />
                 )
               })}
+
+              {/* Optimistic user message (shown during streaming before API persists it) */}
+              {isThisStreaming && optimisticUserMsg && (
+                <UserMessage
+                  msg={{
+                    id: '__opt_user__',
+                    role: 'user',
+                    parts: [{ type: 'text', content: optimisticUserMsg }],
+                    createdAt: Date.now(),
+                  }}
+                />
+              )}
+
+              {/* Streaming AI message */}
+              {isThisStreaming && (
+                <AIMessage
+                  msg={{ id: '__streaming__', role: 'assistant', parts: [], createdAt: Date.now() }}
+                  isStreaming={true}
+                  streamingContent={streamingContent}
+                  onFill={fill}
+                />
+              )}
+
               <div ref={msgsEndRef} style={{ height: '20px' }} />
             </div>
 
@@ -1095,7 +1131,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 ) : (
                   <button
                     className={`ch-send-btn ${inputValue.trim() ? 'on' : ''}`}
-                    onClick={sendMessage}
+                    onClick={() => {
+                      void sendMessage()
+                    }}
                     disabled={!inputValue.trim()}
                     title="发送 (Enter)"
                   >
@@ -1126,42 +1164,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         <div className="ch-ap-body">
           <pre>{`import React, { memo, useMemo, useCallback } from 'react'
 
-interface ListItemProps {
-  id: number
-  label: string
-  value: number
-  onSelect: (id: number) => void
-}
-
-const ListItem = memo(({ id, label, value, onSelect }: ListItemProps) => {
-  const display = useMemo(
-    () => \`\${label}：\${value.toLocaleString('zh-CN')} 元\`,
-    [label, value]
-  )
+const ListItem = memo(({ id, label, value, onSelect }) => {
+  const display = useMemo(() => \`\${label}：\${value.toLocaleString('zh-CN')} 元\`, [label, value])
   return <div onClick={() => onSelect(id)}>{display}</div>
-})
-
-function ProductList({ items }: { items: Item[] }) {
-  const [selected, setSelected] = React.useState<number | null>(null)
-
-  const handleSelect = useCallback((id: number) => {
-    setSelected(id)
-  }, [])
-
-  return (
-    <ul>
-      {items.map(item => (
-        <ListItem key={item.id} {...item} onSelect={handleSelect} />
-      ))}
-    </ul>
-  )
-}`}</pre>
+})`}</pre>
         </div>
         <div className="ch-ap-footer">
           <button className="ch-ap-copy-btn">
             <Copy size={14} /> 复制全部
           </button>
-          <span className="ch-ap-finfo">TypeScript · 30 行</span>
+          <span className="ch-ap-finfo">TypeScript · 8 行</span>
         </div>
       </div>
 
@@ -1254,7 +1266,13 @@ function ProductList({ items }: { items: Item[] }) {
             <User size={16} /> 个人设置
           </div>
           <div className="ch-up-sep" />
-          <div className="ch-up-row danger">
+          <div
+            className="ch-up-row danger"
+            onClick={() => {
+              setUserPanelOpen(false)
+              doLogout()
+            }}
+          >
             <LogOut size={16} /> 退出登录
           </div>
         </div>
@@ -1267,6 +1285,7 @@ function ProductList({ items }: { items: Item[] }) {
       {cvMenuOpen &&
         (() => {
           const conv = conversations.find((c) => c.id === cvMenuOpen)
+          const apiConv = apiConversations.find((c) => c.id === cvMenuOpen)
           if (!conv) return null
           return (
             <div
@@ -1278,7 +1297,9 @@ function ProductList({ items }: { items: Item[] }) {
                 className="ch-cvm-row"
                 onClick={() => {
                   const newTitle = window.prompt('请输入新名称', conv.title)
-                  if (newTitle?.trim()) renameConversation(conv.id, newTitle.trim())
+                  if (newTitle?.trim()) {
+                    updateConv({ id: conv.id, title: newTitle.trim() })
+                  }
                   setCvMenuOpen(null)
                 }}
               >
@@ -1287,11 +1308,11 @@ function ProductList({ items }: { items: Item[] }) {
               <div
                 className="ch-cvm-row"
                 onClick={() => {
-                  togglePin(conv.id)
+                  updateConv({ id: conv.id, isPinned: !(apiConv?.isPinned ?? false) })
                   setCvMenuOpen(null)
                 }}
               >
-                <Pin size={14} /> {conv.group === 'pinned' ? '取消置顶' : '置顶'}
+                <Pin size={14} /> {apiConv?.isPinned ? '取消置顶' : '置顶'}
               </div>
               <div
                 className="ch-cvm-row"
@@ -1307,7 +1328,7 @@ function ProductList({ items }: { items: Item[] }) {
               <div
                 className="ch-cvm-row danger"
                 onClick={() => {
-                  deleteConversation(conv.id)
+                  deleteConv(conv.id)
                   setCvMenuOpen(null)
                   if (activeConv === conv.id) {
                     router.push('/chat')
@@ -1324,7 +1345,6 @@ function ProductList({ items }: { items: Item[] }) {
 }
 
 // ── ConvItem sub-component ────────────────────────────────────
-/** 侧边栏单个会话列表项，支持点击进入、置顶标记、多选勾选与右键/更多按钮打开上下文菜单。 */
 function ConvItem({
   conv,
   active,

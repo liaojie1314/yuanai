@@ -6,16 +6,14 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { QrCode, Smartphone, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
-
-function setAuthCookie(): void {
-  const maxAge = 7 * 24 * 60 * 60
-  document.cookie = `yuanai-auth=1; path=/; max-age=${maxAge}; SameSite=Lax`
-}
+import { useLogin } from '@yuanai/core/hooks'
 
 export default function LoginPage(): JSX.Element {
   const t = useTranslations('auth')
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  const loginMutation = useLogin()
 
   const [tab, setTab] = useState<'phone' | 'email'>('phone')
   const [showQr, setShowQr] = useState(false)
@@ -26,7 +24,6 @@ export default function LoginPage(): JSX.Element {
   const [smsErr, setSmsErr] = useState('')
   const [smsCount, setSmsCount] = useState(0)
   const smsTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-  const [phoneLoading, setPhoneLoading] = useState(false)
 
   const [email, setEmail] = useState('')
   const [pwd, setPwd] = useState('')
@@ -34,7 +31,7 @@ export default function LoginPage(): JSX.Element {
   const [remember, setRemember] = useState(false)
   const [emailErr, setEmailErr] = useState('')
   const [pwdErr, setPwdErr] = useState('')
-  const [emailLoading, setEmailLoading] = useState(false)
+  const [apiErr, setApiErr] = useState('')
 
   const [qrCount, setQrCount] = useState(60)
   const qrTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -102,16 +99,13 @@ export default function LoginPage(): JSX.Element {
       ok = false
     } else setSmsErr('')
     if (!ok) return
-    setPhoneLoading(true)
-    setTimeout(() => {
-      setPhoneLoading(false)
-      setAuthCookie()
-      redirectAfterLogin()
-    }, 1200)
+    // 手机号登录尚未对接（后端暂不支持），暂时提示用户使用邮箱登录
+    setPhoneErr('手机号登录暂未开放，请使用邮箱登录')
   }
 
-  const handleEmail = (e: React.FormEvent): void => {
+  const handleEmail = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
+    setApiErr('')
     let ok = true
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setEmailErr(t('errors.invalidEmail'))
@@ -122,13 +116,20 @@ export default function LoginPage(): JSX.Element {
       ok = false
     } else setPwdErr('')
     if (!ok) return
-    setEmailLoading(true)
-    setTimeout(() => {
-      setEmailLoading(false)
-      setAuthCookie()
+
+    try {
+      await loginMutation.mutateAsync({ email: email.trim(), password: pwd })
       redirectAfterLogin()
-    }, 1200)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
+      // axios 错误中取后端 message
+      const detail = (err as { response?: { data?: { detail?: { message?: string } } } })?.response
+        ?.data?.detail
+      setApiErr(detail?.message ?? msg)
+    }
   }
+
+  const loading = loginMutation.isPending
 
   return (
     <div className="auth-wrap">
@@ -246,19 +247,23 @@ export default function LoginPage(): JSX.Element {
                     <p className={smsErr ? 'ferr on' : 'ferr'}>{smsErr}</p>
                   </div>
 
-                  <button type="submit" className="btn" disabled={phoneLoading}>
-                    {phoneLoading ? (
-                      <>
-                        <span className="spin" />
-                        {t('loggingIn')}
-                      </>
-                    ) : (
-                      t('login')
-                    )}
+                  <button type="submit" className="btn">
+                    {t('login')}
                   </button>
                 </form>
               ) : (
-                <form onSubmit={handleEmail} noValidate>
+                <form
+                  onSubmit={(e) => {
+                    void handleEmail(e)
+                  }}
+                  noValidate
+                >
+                  {apiErr && (
+                    <p className="ferr on" style={{ marginBottom: '12px' }}>
+                      {apiErr}
+                    </p>
+                  )}
+
                   <div className="fg">
                     <label className="fl" htmlFor="em">
                       {t('email')}
@@ -323,8 +328,8 @@ export default function LoginPage(): JSX.Element {
                     </Link>
                   </div>
 
-                  <button type="submit" className="btn" disabled={emailLoading}>
-                    {emailLoading ? (
+                  <button type="submit" className="btn" disabled={loading}>
+                    {loading ? (
                       <>
                         <span className="spin" />
                         {t('loggingIn')}
