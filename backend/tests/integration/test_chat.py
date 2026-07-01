@@ -26,7 +26,7 @@ class TestConversation:
         data = response.json()
         assert data["title"] == "测试对话"
         assert data["model"] == "gpt-4o"
-        assert data["is_pinned"] is False
+        assert data["isPinned"] is False
         assert "id" in data
 
     async def test_create_conversation_default_title(
@@ -92,11 +92,11 @@ class TestConversation:
 
         pin_res = await client.patch(
             f"/api/v1/chat/conversations/{conv_id}",
-            json={"is_pinned": True},
+            json={"isPinned": True},
             headers=auth_headers,
         )
         assert pin_res.status_code == 200
-        assert pin_res.json()["is_pinned"] is True
+        assert pin_res.json()["isPinned"] is True
 
     async def test_delete_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]

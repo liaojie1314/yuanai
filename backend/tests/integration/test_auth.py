@@ -155,9 +155,9 @@ class TestUserSettings:
         response = await client.get("/api/v1/auth/me/stats", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
-        assert data["conversation_count"] == 0
-        assert data["total_tokens"] == 0
-        assert data["file_count"] == 0
+        assert data["conversationCount"] == 0
+        assert data["totalTokens"] == 0
+        assert data["fileCount"] == 0
 
     async def test_change_password_success(
         self, client: AsyncClient, auth_headers: dict[str, str]

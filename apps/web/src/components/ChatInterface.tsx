@@ -378,7 +378,8 @@ function AIMessage({
   feedbackGiven?: 'like' | 'dislike' | undefined
 }): JSX.Element {
   const displayContent = isStreaming ? streamingContent : getMsgText(msg)
-  const [copyState, setCopyState] = useState<'idle' | 'md' | 'txt'>('idle')
+  const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
+  const copyWrapRef = useRef<HTMLDivElement>(null)
 
   const copyMd = (): void => {
     void navigator.clipboard.writeText(displayContent)
@@ -391,6 +392,15 @@ function AIMessage({
     setCopyState('txt')
     setTimeout(() => setCopyState('idle'), 2000)
   }
+
+  useEffect(() => {
+    if (copyState !== 'open') return
+    const handler = (e: MouseEvent): void => {
+      if (!copyWrapRef.current?.contains(e.target as Node)) setCopyState('idle')
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [copyState])
 
   return (
     <div className="ch-msg ch-msg-ai">
@@ -424,22 +434,30 @@ function AIMessage({
               </div>
             )}
             <div className="ch-msg-acts">
-              <button
-                className={`ch-msg-act ${copyState === 'md' ? 'copied' : ''}`}
-                onClick={copyMd}
-                title="复制 Markdown 原文"
-              >
-                {copyState === 'md' ? <Check size={12} /> : <Copy size={12} />}
-                {copyState === 'md' ? '已复制' : 'MD'}
-              </button>
-              <button
-                className={`ch-msg-act ${copyState === 'txt' ? 'copied' : ''}`}
-                onClick={copyTxt}
-                title="复制纯文本"
-              >
-                {copyState === 'txt' ? <Check size={12} /> : <Copy size={12} />}
-                {copyState === 'txt' ? '已复制' : '纯文本'}
-              </button>
+              <div ref={copyWrapRef} className="ch-copy-wrap">
+                <button
+                  className={`ch-msg-act ${copyState === 'md' || copyState === 'txt' ? 'copied' : ''}`}
+                  onClick={() => setCopyState((p) => (p === 'open' ? 'idle' : 'open'))}
+                  title="复制内容"
+                >
+                  {copyState === 'md' || copyState === 'txt' ? (
+                    <Check size={12} />
+                  ) : (
+                    <Copy size={12} />
+                  )}
+                  {copyState === 'md' ? '已复制 MD' : copyState === 'txt' ? '已复制文本' : '复制'}
+                </button>
+                {copyState === 'open' && (
+                  <div className="ch-copy-dropdown">
+                    <button className="ch-copy-opt" onClick={copyMd}>
+                      复制 Markdown
+                    </button>
+                    <button className="ch-copy-opt" onClick={copyTxt}>
+                      复制纯文本
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="ch-msg-act-sep" />
               {onRegenerate && (
                 <button className="ch-msg-act" onClick={onRegenerate} title="重新生成回答">
@@ -596,6 +614,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [feedbackReason, setFeedbackReason] = useState('')
   const [msgFeedback, setMsgFeedback] = useState<Record<string, 'like' | 'dislike'>>({})
 
+  // ── Regeneration tracking ──
+  const [regeneratingPairKey, setRegeneratingPairKey] = useState<string | null>(null)
+
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const userTriggerRef = useRef<HTMLDivElement>(null)
@@ -670,6 +691,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     if (streamingConvId !== activeConv || !contentRef.current) return
     contentRef.current.scrollTop = contentRef.current.scrollHeight
   }, [streamingContent, streamingConvId, activeConv])
+
+  // 流结束后清除重新生成追踪
+  useEffect(() => {
+    if (!isThisStreaming && regeneratingPairKey) setRegeneratingPairKey(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isThisStreaming])
 
   // 切换会话时同步滚动到底部，消除内容抖动
   useLayoutEffect(() => {
@@ -899,6 +926,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── Regenerate ───────────────────────────────────────────
   const handleRegenerate = (pair: MsgPair): void => {
     if (isThisStreaming || !activeConv) return
+    setRegeneratingPairKey(pair.pairKey)
     const userText = getMsgText(pair.userMsg)
     void stream.send({
       convId: activeConv,
@@ -1029,7 +1057,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 : t('actions.selectAll')}
             </span>
             <span className="ch-multi-c">
-              {t('actions.selectedCount').replace('{count}', String(selectedConvs.size))}
+              {t('actions.selectedCount', { count: selectedConvs.size })}
             </span>
             <button
               className="ch-multi-del"
@@ -1037,7 +1065,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               onClick={() => {
                 showConfirm(
                   t('delete.batchTitle'),
-                  t('delete.batchMessage').replace('{count}', String(selectedConvs.size)),
+                  t('delete.batchMessage', { count: selectedConvs.size }),
                   () => {
                     deleteConvs([...selectedConvs])
                     setSelectedConvs(new Set())
@@ -1367,6 +1395,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       const rawIdx = versionIdxs[pair.pairKey] ?? pair.assistants.length - 1
                       const vIdx = Math.max(0, Math.min(rawIdx, pair.assistants.length - 1))
                       const currentAsst = pair.assistants[vIdx]
+                      // 重新生成时：将流式内容内联到当前对话对，而非在下方另起一条
+                      const isPairRegenerating =
+                        isThisStreaming && regeneratingPairKey === pair.pairKey
+                      const effectiveVersionCount =
+                        pair.assistants.length + (isPairRegenerating ? 1 : 0)
+                      const effectiveVIdx = isPairRegenerating ? effectiveVersionCount - 1 : vIdx
                       const elems: JSX.Element[] = [
                         <UserMessage
                           key={`u-${pair.pairKey}`}
@@ -1377,7 +1411,25 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                           onCancelEdit={() => setEditingMsgId(null)}
                         />,
                       ]
-                      if (currentAsst) {
+                      if (isPairRegenerating) {
+                        // 流式重新生成：以流式状态展示在此对话对内
+                        elems.push(
+                          <AIMessage
+                            key={`a-regen-${pair.pairKey}`}
+                            msg={{
+                              id: '__regen__',
+                              role: 'assistant',
+                              parts: [],
+                              createdAt: Date.now(),
+                            }}
+                            isStreaming={true}
+                            streamingContent={streamingContent}
+                            onFill={fill}
+                            versionCount={effectiveVersionCount}
+                            versionIdx={effectiveVIdx}
+                          />
+                        )
+                      } else if (currentAsst) {
                         elems.push(
                           <AIMessage
                             key={`a-${currentAsst.id}-v${vIdx}`}
@@ -1385,8 +1437,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                             isStreaming={false}
                             streamingContent=""
                             onFill={fill}
-                            versionCount={pair.assistants.length}
-                            versionIdx={vIdx}
+                            versionCount={effectiveVersionCount}
+                            versionIdx={effectiveVIdx}
                             onVersionChange={(i) =>
                               setVersionIdxs((prev) => ({ ...prev, [pair.pairKey]: i }))
                             }
@@ -1415,8 +1467,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       />
                     )}
 
-                    {/* Streaming AI response */}
-                    {isThisStreaming && (
+                    {/* Streaming AI response (only for new messages, not regeneration) */}
+                    {isThisStreaming && !regeneratingPairKey && (
                       <AIMessage
                         msg={{
                           id: '__streaming__',

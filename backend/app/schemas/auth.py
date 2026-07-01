@@ -2,7 +2,8 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic.alias_generators import to_camel
 
 
 class RegisterRequest(BaseModel):
@@ -37,16 +38,23 @@ class RefreshRequest(BaseModel):
 
 
 class UserResponse(BaseModel):
+    """序列化为 camelCase，与前端 User 类型对齐"""
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
     id: uuid.UUID
     email: str
     username: str
     avatar_url: str | None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
-
 
 class AuthResponse(BaseModel):
+    # access_token / refresh_token / token_type 与前端类型保持 snake_case
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
@@ -54,11 +62,15 @@ class AuthResponse(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     username: str | None = None
     avatar_url: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     old_password: str
     new_password: str
 
@@ -73,6 +85,11 @@ class ChangePasswordRequest(BaseModel):
 
 
 class UserStatsResponse(BaseModel):
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
     conversation_count: int
     total_tokens: int
     file_count: int
