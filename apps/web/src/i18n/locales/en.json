@@ -25,6 +25,7 @@
     "registerSubtitle": "Sign up for YuanAI and start your AI journey",
     "phone": "Phone",
     "emailCode": "Email Code",
+    "emailPassword": "Email Password",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm Password",

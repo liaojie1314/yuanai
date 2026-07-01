@@ -261,23 +261,68 @@
   border-color: var(--success);
 }
 
-.eye {
+.eye,
+.eye-btn {
   position: absolute;
-  right: 2px;
-  width: 44px;
-  height: 44px;
+  right: 6px;
+  width: 38px;
+  height: 38px;
   background: none;
   border: none;
+  border-radius: 6px;
   color: var(--fg3);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: color 150ms;
+  transition:
+    color 150ms,
+    background 150ms;
   font-family: inherit;
 }
-.eye:hover {
-  color: var(--fg2);
+.eye:hover,
+.eye-btn:hover {
+  color: var(--fg);
+  background: var(--elevated);
+}
+
+/* Password field needs right padding so text doesn't overlap eye icon */
+.fi-pw {
+  padding-right: 50px;
+}
+
+/* Send-code button (below the code input) */
+.code-btn {
+  width: 100%;
+  height: 42px;
+  border-radius: var(--r);
+  border: 1px solid var(--brand);
+  background: var(--brand-light);
+  color: var(--brand);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 150ms,
+    color 150ms,
+    border-color 150ms;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 4px;
+  margin-bottom: 20px;
+}
+.code-btn:hover:not(:disabled) {
+  background: var(--brand);
+  color: #fff;
+}
+.code-btn:disabled {
+  border-color: var(--brand-b);
+  background: transparent;
+  color: var(--fg3);
+  cursor: not-allowed;
 }
 
 /* Phone row */

@@ -25,6 +25,7 @@
     "registerSubtitle": "注册元AI账号，开启 AI 对话之旅",
     "phone": "手机号",
     "emailCode": "邮箱验证码",
+    "emailPassword": "邮箱密码",
     "email": "邮箱",
     "password": "密码",
     "confirmPassword": "确认密码",

@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect, type JSX } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { QrCode, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
+import { useAuthStore } from '@yuanai/core/stores'
 
 export default function LoginPage(): JSX.Element {
   const t = useTranslations('auth')
@@ -122,10 +123,16 @@ export default function LoginPage(): JSX.Element {
 
     try {
       await loginMutation.mutateAsync({ email: email.trim(), password: pwd })
+      // "记住我 7 天" — extend cookie lifetime to 7 days (default is 1 day)
+      if (remember) {
+        const token = useAuthStore.getState().accessToken
+        if (token) {
+          document.cookie = `yuanai-auth=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`
+        }
+      }
       redirectAfterLogin()
     } catch (err) {
       const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
-      // axios 错误中取后端 message
       const detail = (err as { response?: { data?: { detail?: { message?: string } } } })?.response
         ?.data?.detail
       setApiErr(detail?.message ?? msg)
@@ -191,13 +198,13 @@ export default function LoginPage(): JSX.Element {
                   role="tab"
                   onClick={() => setTab('email')}
                 >
-                  {t('email')}
-                  {t('password')}
+                  {t('emailPassword')}
                 </button>
               </div>
 
               {tab === 'emailCode' ? (
                 <form onSubmit={handleEmailCode} noValidate>
+                  {/* Email input */}
                   <div className="fg">
                     <label className="fl" htmlFor="code-email">
                       {t('email')}
@@ -219,35 +226,39 @@ export default function LoginPage(): JSX.Element {
                     <p className={codeEmailErr ? 'ferr on' : 'ferr'}>{codeEmailErr}</p>
                   </div>
 
+                  {/* Verification code input */}
                   <div className="fg">
                     <label className="fl" htmlFor="ecode">
                       {t('verificationCode')}
                     </label>
-                    <div className="code-row">
-                      <div className="iw" style={{ flex: 1 }}>
-                        <input
-                          id="ecode"
-                          className={codeErr ? 'fi err' : 'fi'}
-                          type="text"
-                          inputMode="numeric"
-                          placeholder={t('placeholders.code')}
-                          maxLength={6}
-                          autoComplete="one-time-code"
-                          value={emailCodeVal}
-                          onChange={(e) => setEmailCodeVal(e.target.value.replace(/\D/g, ''))}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="code-btn"
-                        disabled={codeCount > 0}
-                        onClick={sendEmailCode}
-                      >
-                        {codeCount > 0 ? t('resendIn', { seconds: codeCount }) : t('sendCode')}
-                      </button>
+                    <div className="iw">
+                      <span className="ii">
+                        <KeyRound size={16} />
+                      </span>
+                      <input
+                        id="ecode"
+                        className={codeErr ? 'fi err' : 'fi'}
+                        type="text"
+                        inputMode="numeric"
+                        placeholder={t('placeholders.code')}
+                        maxLength={6}
+                        autoComplete="one-time-code"
+                        value={emailCodeVal}
+                        onChange={(e) => setEmailCodeVal(e.target.value.replace(/\D/g, ''))}
+                      />
                     </div>
                     <p className={codeErr ? 'ferr on' : 'ferr'}>{codeErr}</p>
                   </div>
+
+                  {/* Send code button below the input */}
+                  <button
+                    type="button"
+                    className="code-btn"
+                    disabled={codeCount > 0}
+                    onClick={sendEmailCode}
+                  >
+                    {codeCount > 0 ? t('resendIn', { seconds: codeCount }) : t('sendCode')}
+                  </button>
 
                   <button type="submit" className="btn">
                     {t('login')}
@@ -261,7 +272,7 @@ export default function LoginPage(): JSX.Element {
                   noValidate
                 >
                   {apiErr && (
-                    <p className="ferr on" style={{ marginBottom: '12px' }}>
+                    <p className="api-err ferr on" style={{ marginBottom: '12px' }}>
                       {apiErr}
                     </p>
                   )}
@@ -297,7 +308,7 @@ export default function LoginPage(): JSX.Element {
                       </span>
                       <input
                         id="pw"
-                        className={pwdErr ? 'fi err' : 'fi'}
+                        className={pwdErr ? 'fi fi-pw err' : 'fi fi-pw'}
                         type={showPwd ? 'text' : 'password'}
                         placeholder={t('placeholders.password')}
                         autoComplete="current-password"
@@ -310,14 +321,14 @@ export default function LoginPage(): JSX.Element {
                         onClick={() => setShowPwd(!showPwd)}
                         aria-label={showPwd ? 'Hide password' : 'Show password'}
                       >
-                        {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showPwd ? <EyeOff size={20} /> : <Eye size={20} />}
                       </button>
                     </div>
                     <p className={pwdErr ? 'ferr on' : 'ferr'}>{pwdErr}</p>
                   </div>
 
-                  <div className="flex-row">
-                    <label className="rm-chk">
+                  <div className="helper">
+                    <label className="rm-wrap">
                       <input
                         type="checkbox"
                         checked={remember}

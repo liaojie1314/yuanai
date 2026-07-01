@@ -40,6 +40,8 @@ Thumbs.db
 # 测试
 coverage/
 .pytest_cache/
+playwright-report/
+test-results/
 
 # Expo
 .expo/
