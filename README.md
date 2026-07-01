@@ -1,0 +1,94 @@
+# 元AI
+
+多端 AI 聊天应用，功能对标 ChatGPT。支持 Web、Android、iOS、Windows、macOS、Linux，接入 DeepSeek / GPT-4o / Claude 等多种大模型。
+
+## 技术栈
+
+| 层          | 技术                                             |
+| ----------- | ------------------------------------------------ |
+| Web         | Next.js 15 + shadcn/ui + Tailwind v4             |
+| Mobile      | Expo (React Native) + NativeWind                 |
+| Desktop     | Electron 33                                      |
+| 状态 / 请求 | Zustand 5 + TanStack Query v5                    |
+| 后端        | FastAPI 0.115 + SQLAlchemy 2 (async)             |
+| 数据库      | PostgreSQL 16 + Redis 7                          |
+| AI 接入     | OpenAI 兼容接口（DeepSeek / OpenAI / Anthropic） |
+| Monorepo    | Turborepo + pnpm                                 |
+
+## 快速开始
+
+### 方式一：Mock 模式（无需后端，推荐新成员上手）
+
+```bash
+pnpm install
+pnpm dev:mock
+```
+
+打开 [http://localhost:3000](http://localhost:3000)，使用 `demo@yuanai.dev` / `Demo1234!` 登录。
+
+### 方式二：全栈模式（真实 AI 接口）
+
+**前提**：已安装 Docker、[uv](https://github.com/astral-sh/uv)，并拥有至少一个 AI 提供商的 API Key（推荐 [DeepSeek](https://platform.deepseek.com/api_keys)，有免费额度）。
+
+```bash
+pnpm install
+pnpm dev:real
+```
+
+脚本会自动完成：启动 Docker 基础设施 → 等待 PostgreSQL → 数据库迁移 → 启动后端 → 启动前端。  
+首次运行会提示填写 `backend/.env` 中的 API Key，按提示操作后按回车继续。
+
+### 方式三：分步手动启动
+
+详见 [开发运行指南](docs/dev-guide.md)。
+
+## 配置 AI 大模型
+
+编辑 `backend/.env`，填写需要使用的模型的 API Key（留空的模型不会出现在前端）：
+
+```bash
+DEEPSEEK_API_KEY=sk-xxxxxxxx    # DeepSeek V3
+OPENAI_API_KEY=sk-proj-xxxxxxx  # GPT-4o（可选）
+ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
+```
+
+详细说明、各平台注册步骤、新增模型方法见 [AI 大模型接入指南](docs/ai-providers.md)。
+
+## 常用命令
+
+| 命令             | 说明                     |
+| ---------------- | ------------------------ |
+| `pnpm dev:mock`  | 纯前端 Mock 模式启动     |
+| `pnpm dev:real`  | 一键全栈启动（真实接口） |
+| `pnpm build`     | 构建全部应用             |
+| `pnpm lint`      | ESLint 检查              |
+| `pnpm typecheck` | TypeScript 类型检查      |
+| `pnpm test:unit` | 运行单元测试             |
+
+## 文档
+
+| 文档                                      | 说明                        |
+| ----------------------------------------- | --------------------------- |
+| [开发运行指南](docs/dev-guide.md)         | Mock / 全栈模式详细启动步骤 |
+| [AI 大模型接入指南](docs/ai-providers.md) | API Key 配置与新增模型      |
+| [架构设计](docs/architecture.md)          | 系统架构与数据流            |
+| [API 设计](docs/api-design.md)            | 后端接口规范                |
+| [UI 规范](docs/ui-spec.md)                | 设计系统与组件规范          |
+| [RUNNING.md](RUNNING.md)                  | 完整的从零部署参考手册      |
+
+## 目录结构
+
+```
+yuanai/
+├── apps/
+│   ├── web/        # Next.js 15 Web 端
+│   ├── mobile/     # Expo React Native 移动端
+│   └── desktop/    # Electron 桌面端
+├── packages/
+│   ├── ui/         # 共享组件库 (@yuanai/ui)
+│   ├── core/       # API Client / Hooks / Store (@yuanai/core)
+│   └── types/      # 前后端共享 TS 类型 (@yuanai/types)
+├── backend/        # FastAPI 后端
+└── scripts/
+    └── dev.sh      # 全栈一键启动脚本
+```

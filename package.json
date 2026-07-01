@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:mock": "pnpm --filter @yuanai/web dev:mock",
+    "dev:real": "bash scripts/dev.sh",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint -- --fix",
