@@ -149,21 +149,24 @@ describe('MarkdownContent', () => {
     expect(container.querySelectorAll('td')).toHaveLength(2)
   })
 
-  // ── Streaming cursor ───────────────────────────────────────────
+  // ── Streaming class（光标通过 CSS ::after 伪元素实现，无 DOM span）──
 
-  it('shows .ch-cursor when streaming=true', () => {
+  it('adds .streaming class to wrapper when streaming=true', () => {
     const { container } = render(<MarkdownContent content="typing..." streaming={true} />)
-    expect(container.querySelector('.ch-cursor')).toBeInTheDocument()
+    const wrapper = container.querySelector('.ch-msg-content')
+    expect(wrapper?.classList.contains('streaming')).toBe(true)
   })
 
-  it('no .ch-cursor when streaming=false', () => {
+  it('no .streaming class when streaming=false', () => {
     const { container } = render(<MarkdownContent content="done" streaming={false} />)
-    expect(container.querySelector('.ch-cursor')).not.toBeInTheDocument()
+    const wrapper = container.querySelector('.ch-msg-content')
+    expect(wrapper?.classList.contains('streaming')).toBe(false)
   })
 
-  it('no .ch-cursor when streaming prop is omitted', () => {
+  it('no .streaming class when streaming prop is omitted', () => {
     const { container } = render(<MarkdownContent content="text" />)
-    expect(container.querySelector('.ch-cursor')).not.toBeInTheDocument()
+    const wrapper = container.querySelector('.ch-msg-content')
+    expect(wrapper?.classList.contains('streaming')).toBe(false)
   })
 
   // ── LaTeX (remark-math + rehype-katex) ──────────────────────────
