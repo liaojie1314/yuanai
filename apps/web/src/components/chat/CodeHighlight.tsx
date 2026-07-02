@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect, useState, type CSSProperties, type JSX } from 'react'
-import { Prism as SyntaxHighlighterRaw } from 'react-syntax-highlighter'
+import { PrismAsyncLight as SyntaxHighlighterRaw } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { isDark } from './utils'
 
+// 用 PrismAsyncLight 而非 Prism：后者把全部 300+ 种语言语法同步打包，
+// 会话里代码块一多，光解析求值这个 bundle 就明显拖慢首屏；
+// AsyncLight 只按需异步加载当前用到的语言，未加载完前先原样展示纯文本再渐进高亮。
 // react-syntax-highlighter 的 @types 落后于运行时的 v16 API；cast 修正类型不匹配。
 const SyntaxHighlighter = SyntaxHighlighterRaw as unknown as (props: {
   language: string

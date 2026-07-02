@@ -29,7 +29,9 @@ export interface CodeBlockProps {
  */
 export function CodeBlock({ lang, code, title }: CodeBlockProps): JSX.Element {
   const [copied, setCopied] = useState(false)
-  const { openView, openRun } = useArtifactStore()
+  // 用 selector 而非整体订阅：避免面板 open/payload 变化时，页面里每个代码块都跟着重渲染
+  const openView = useArtifactStore((s) => s.openView)
+  const openRun = useArtifactStore((s) => s.openRun)
   const displayLang = lang || 'Code'
   const runnable = isRunnableLang(lang)
 
