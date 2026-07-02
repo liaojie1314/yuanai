@@ -166,6 +166,37 @@ describe('MarkdownContent', () => {
     expect(container.querySelector('.ch-cursor')).not.toBeInTheDocument()
   })
 
+  // ── LaTeX (remark-math + rehype-katex) ──────────────────────────
+
+  it('renders inline math $..$ via KaTeX', () => {
+    const { container } = render(<MarkdownContent content="质能方程 $E=mc^2$ 很有名" />)
+    expect(container.querySelector('.katex')).toBeInTheDocument()
+    expect(container.querySelector('.katex-display')).not.toBeInTheDocument()
+  })
+
+  it('renders block math $$..$$ via KaTeX as katex-display', () => {
+    const { container } = render(<MarkdownContent content={'$$\n\\sum_{i=1}^n i\n$$'} />)
+    expect(container.querySelector('.katex-display')).toBeInTheDocument()
+  })
+
+  // ── GFM footnotes ────────────────────────────────────────────────
+
+  it('renders GFM footnotes as a .footnotes section with backref', () => {
+    const md = '这里有个注释[^1]\n\n[^1]: 注释内容'
+    const { container } = render(<MarkdownContent content={md} />)
+    expect(container.querySelector('.footnotes')).toBeInTheDocument()
+    expect(container.querySelector('[data-footnote-ref]')).toBeInTheDocument()
+    expect(container.querySelector('[data-footnote-backref]')).toBeInTheDocument()
+    expect(container.querySelector('.footnotes')?.textContent).toContain('注释内容')
+  })
+
+  // ── Emoji (remark-gemoji) ────────────────────────────────────────
+
+  it('converts :shortcode: emoji to unicode character', () => {
+    const { container } = render(<MarkdownContent content="发布啦 :tada:" />)
+    expect(container.textContent).toContain('🎉')
+  })
+
   // ── Complex mixed content ──────────────────────────────────────
 
   it('renders mixed markdown: heading + bold + list', () => {

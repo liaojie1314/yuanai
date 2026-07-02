@@ -175,6 +175,80 @@ export function isRunnableLang(lang: string): boolean {
   )
 }
 
+/** 代码语言 → 文件扩展名映射，用于下载代码块时生成合适的文件名 */
+const LANG_EXTENSIONS: Record<string, string> = {
+  javascript: 'js',
+  js: 'js',
+  jsx: 'jsx',
+  mjs: 'mjs',
+  cjs: 'cjs',
+  typescript: 'ts',
+  ts: 'ts',
+  tsx: 'tsx',
+  python: 'py',
+  py: 'py',
+  java: 'java',
+  kotlin: 'kt',
+  kt: 'kt',
+  swift: 'swift',
+  c: 'c',
+  h: 'h',
+  cpp: 'cpp',
+  'c++': 'cpp',
+  cc: 'cc',
+  csharp: 'cs',
+  cs: 'cs',
+  go: 'go',
+  golang: 'go',
+  rust: 'rs',
+  rs: 'rs',
+  ruby: 'rb',
+  rb: 'rb',
+  php: 'php',
+  dart: 'dart',
+  scala: 'scala',
+  html: 'html',
+  htm: 'html',
+  css: 'css',
+  scss: 'scss',
+  sass: 'sass',
+  less: 'less',
+  json: 'json',
+  yaml: 'yaml',
+  yml: 'yaml',
+  xml: 'xml',
+  sql: 'sql',
+  bash: 'sh',
+  sh: 'sh',
+  shell: 'sh',
+  zsh: 'sh',
+  powershell: 'ps1',
+  ps1: 'ps1',
+  markdown: 'md',
+  md: 'md',
+  vue: 'vue',
+  graphql: 'graphql',
+  dockerfile: 'dockerfile',
+  makefile: 'mk',
+  toml: 'toml',
+  ini: 'ini',
+  lua: 'lua',
+  perl: 'pl',
+  r: 'r',
+  objectivec: 'm',
+  haskell: 'hs',
+  elixir: 'ex',
+  erlang: 'erl',
+  clojure: 'clj',
+}
+
+/**
+ * 根据代码语言推导下载文件的扩展名，未识别的语言回退为 `txt`。
+ */
+export function langToExtension(lang: string): string {
+  return LANG_EXTENSIONS[lang.trim().toLowerCase()] ?? 'txt'
+}
+
 /**
  * 根据代码语言构造 iframe `srcdoc` 内容。
  *

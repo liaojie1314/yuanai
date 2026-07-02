@@ -1,40 +1,50 @@
 'use client'
 
-import { useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Copy, Check, X, Play, Eye } from 'lucide-react'
-import { useArtifactStore } from '@yuanai/core/stores'
+import { useArtifactStore, type ArtifactPayload } from '@yuanai/core/stores'
 import { buildRunSrcDoc, isRunnableLang } from './utils'
+import { CodeHighlight } from './CodeHighlight'
+
+const EMPTY_PAYLOAD: ArtifactPayload = { title: '', lang: '', code: '', mode: 'view' }
 
 /**
  * Artifact 面板（右侧滑出）。
  *
+ * 面板容器始终挂载（哪怕从未打开过），只有内容随 store 的 payload 变化而更新。
+ * 若改成"仅 open 时才挂载"，首次打开会因为 DOM 节点创建与祖先 `.ap-open` 类的应用
+ * 发生在同一次 React commit 里，浏览器没有"关闭态"的前一帧可供过渡，滑入动画会直接跳变；
+ * 关闭时同理会立刻卸载导致滑出动画被打断。保持常驻挂载 + 记住最后一次 payload，
+ * 才能让每次打开/关闭都成为已存在节点上的一次真实样式变化，交给 CSS transition 处理。
+ *
  * 订阅 `useArtifactStore`：
  * - `mode === 'view'`：只读代码展示
  * - `mode === 'run'`：iframe `srcdoc` 沙箱执行（`sandbox="allow-scripts"`）
- *
- * 面板可在 view / run 两态间切换（如果代码可运行）。
  */
-export function ArtifactPanel(): JSX.Element | null {
+export function ArtifactPanel(): JSX.Element {
   const open = useArtifactStore((s) => s.open)
   const payload = useArtifactStore((s) => s.payload)
   const openView = useArtifactStore((s) => s.openView)
   const openRun = useArtifactStore((s) => s.openRun)
   const close = useArtifactStore((s) => s.close)
   const [copied, setCopied] = useState(false)
+  const [shown, setShown] = useState<ArtifactPayload>(EMPTY_PAYLOAD)
 
-  const srcdoc = useMemo(() => {
-    if (!payload || payload.mode !== 'run') return ''
-    return buildRunSrcDoc(payload.lang, payload.code)
+  useEffect(() => {
+    if (payload) setShown(payload)
   }, [payload])
 
-  if (!open || !payload) return null
+  const srcdoc = useMemo(() => {
+    if (shown.mode !== 'run') return ''
+    return buildRunSrcDoc(shown.lang, shown.code)
+  }, [shown])
 
-  const lineCount = payload.code.split('\n').length
-  const runnable = isRunnableLang(payload.lang)
+  const lineCount = shown.code.split('\n').length
+  const runnable = isRunnableLang(shown.lang)
 
   const copy = async (): Promise<void> => {
     try {
-      await navigator.clipboard.writeText(payload.code)
+      await navigator.clipboard.writeText(shown.code)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -43,55 +53,46 @@ export function ArtifactPanel(): JSX.Element | null {
   }
 
   return (
-    <div className="ch-artifact-panel" role="complementary" aria-label="代码面板">
+    <div
+      className="ch-artifact-panel"
+      role="complementary"
+      aria-label="代码面板"
+      aria-hidden={!open}
+    >
       <div className="ch-ap-head">
-        <span className="ch-ap-lang">{payload.lang}</span>
-        <span className="ch-ap-title" title={payload.title}>
-          {payload.title}
+        <span className="ch-ap-lang">{shown.lang}</span>
+        <span className="ch-ap-title" title={shown.title}>
+          {shown.title}
         </span>
         <div className="ch-ap-head-acts">
-          {runnable && payload.mode === 'view' && (
+          {runnable && shown.mode === 'view' && (
             <button
               className="ch-ib"
-              onClick={() =>
-                openRun({ title: payload.title, lang: payload.lang, code: payload.code })
-              }
+              onClick={() => openRun({ title: shown.title, lang: shown.lang, code: shown.code })}
               title="运行代码"
               aria-label="运行代码"
             >
               <Play size={16} />
             </button>
           )}
-          {payload.mode === 'run' && (
+          {shown.mode === 'run' && (
             <button
               className="ch-ib"
-              onClick={() =>
-                openView({ title: payload.title, lang: payload.lang, code: payload.code })
-              }
+              onClick={() => openView({ title: shown.title, lang: shown.lang, code: shown.code })}
               title="查看源码"
               aria-label="查看源码"
             >
               <Eye size={16} />
             </button>
           )}
-          <button
-            className="ch-ib"
-            onClick={() => {
-              void copy()
-            }}
-            title="复制代码"
-            aria-label="复制代码"
-          >
-            {copied ? <Check size={16} /> : <Copy size={16} />}
-          </button>
           <button className="ch-ib" onClick={close} title="关闭面板" aria-label="关闭面板">
             <X size={16} />
           </button>
         </div>
       </div>
       <div className="ch-ap-body">
-        {payload.mode === 'view' ? (
-          <pre>{payload.code}</pre>
+        {shown.mode === 'view' ? (
+          <CodeHighlight lang={shown.lang} code={shown.code} fontSize="12px" lineHeight={1.6} />
         ) : (
           <iframe
             key={srcdoc}
@@ -112,7 +113,7 @@ export function ArtifactPanel(): JSX.Element | null {
           {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? '已复制' : '复制代码'}
         </button>
         <span className="ch-ap-finfo">
-          {payload.lang} · {lineCount} 行
+          {shown.lang} · {lineCount} 行
         </span>
       </div>
     </div>

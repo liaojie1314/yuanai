@@ -1009,6 +1009,50 @@
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   color: var(--brand);
 }
+/* GFM task list checkboxes */
+.md-body li.task-list-item {
+  list-style-type: none;
+  margin-left: -1.4em;
+}
+.md-body input[type='checkbox'] {
+  margin-right: 6px;
+  accent-color: var(--brand);
+}
+/* GFM footnotes */
+.md-body .footnotes {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--fg2);
+}
+.md-body .footnotes ol {
+  padding-left: 18px;
+  margin: 6px 0 0;
+}
+.md-body .footnotes li {
+  margin: 4px 0;
+}
+.md-body [data-footnote-ref] {
+  color: var(--brand);
+  text-decoration: none;
+  font-size: 0.75em;
+}
+.md-body [data-footnote-backref] {
+  color: var(--brand);
+  text-decoration: none;
+  margin-left: 4px;
+}
+/* KaTeX math */
+.md-body .katex-display {
+  margin: 10px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+}
+.md-body .katex {
+  font-size: 1.05em;
+}
 
 /* Message action buttons */
 .ch-msg-acts {
@@ -1634,6 +1678,7 @@
   transition:
     transform 0.22s ease,
     opacity 0.22s ease;
+  will-change: transform, opacity;
   z-index: 15;
   box-shadow: -4px 0 20px rgba(59, 130, 246, 0.08);
 }

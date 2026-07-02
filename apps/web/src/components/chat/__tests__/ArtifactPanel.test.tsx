@@ -14,16 +14,25 @@ beforeEach(() => {
 })
 
 describe('ArtifactPanel', () => {
-  it('关闭状态下不渲染', () => {
+  it('从未打开过时面板已挂载但内容为空，且 aria-hidden 为 true', () => {
     const { container } = render(<ArtifactPanel />)
-    expect(container.querySelector('.ch-artifact-panel')).toBeNull()
+    const panel = container.querySelector('.ch-artifact-panel')
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute('aria-hidden')).toBe('true')
+    expect(panel?.querySelector('.ch-ap-lang')?.textContent).toBe('')
   })
 
-  it('view 模式渲染 <pre> 只读代码', () => {
+  it('view 模式渲染语法高亮的只读代码', () => {
     useArtifactStore.getState().openView({ title: 't', lang: 'javascript', code: 'let a=1' })
-    render(<ArtifactPanel />)
-    expect(screen.getByText('let a=1')).toBeInTheDocument()
+    const { container } = render(<ArtifactPanel />)
+    expect(container.querySelector('.ch-ap-body pre')?.textContent).toBe('let a=1')
     expect(screen.getByText('javascript')).toBeInTheDocument()
+  })
+
+  it('只有一个复制按钮（头部重复的复制按钮已移除）', () => {
+    useArtifactStore.getState().openView({ title: 't', lang: 'html', code: 'x' })
+    render(<ArtifactPanel />)
+    expect(screen.getAllByRole('button', { name: /复制代码/ })).toHaveLength(1)
   })
 
   it('run 模式渲染 iframe 且 srcdoc 含代码', () => {
@@ -60,5 +69,15 @@ describe('ArtifactPanel', () => {
     render(<ArtifactPanel />)
     fireEvent.click(screen.getByRole('button', { name: '关闭面板' }))
     expect(useArtifactStore.getState().open).toBe(false)
+  })
+
+  it('关闭后面板仍挂载并保留最后一次内容，供滑出动画过渡', () => {
+    useArtifactStore.getState().openView({ title: 't', lang: 'html', code: 'x' })
+    const { container } = render(<ArtifactPanel />)
+    fireEvent.click(screen.getByRole('button', { name: '关闭面板' }))
+    const panel = container.querySelector('.ch-artifact-panel')
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByText('html')).toBeInTheDocument()
   })
 })
