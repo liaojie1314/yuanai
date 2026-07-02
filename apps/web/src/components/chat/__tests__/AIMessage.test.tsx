@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import type { MockMessage } from '@yuanai/core/stores'
 import { AIMessage } from '../AIMessage'
@@ -34,6 +34,11 @@ function renderMsg(text?: string): void {
 describe('AIMessage 复制交互（hover 触发）', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('默认不展示复制格式下拉', () => {
@@ -42,13 +47,19 @@ describe('AIMessage 复制交互（hover 触发）', () => {
     expect(screen.queryByText('复制纯文本')).not.toBeInTheDocument()
   })
 
-  it('hover 复制区域展开下拉，移出后收起', () => {
+  it('hover 复制区域展开下拉，移出后延迟 200ms 收起', () => {
     renderMsg()
     const wrap = screen.getByTitle('复制内容').parentElement as HTMLElement
     fireEvent.mouseEnter(wrap)
     expect(screen.getByText('复制 Markdown')).toBeInTheDocument()
     expect(screen.getByText('复制纯文本')).toBeInTheDocument()
+    // 移出后下拉延迟 200ms 收起，计时器未触发前仍可见
     fireEvent.mouseLeave(wrap)
+    expect(screen.getByText('复制 Markdown')).toBeInTheDocument()
+    // 快进 200ms 后收起
+    act(() => {
+      vi.advanceTimersByTime(200)
+    })
     expect(screen.queryByText('复制 Markdown')).not.toBeInTheDocument()
   })
 
@@ -59,7 +70,8 @@ describe('AIMessage 复制交互（hover 触发）', () => {
       fireEvent.click(screen.getByTitle('复制内容'))
     })
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(text)
-    expect(await screen.findByText('已复制 MD')).toBeInTheDocument()
+    // copyMd 同步调用 setCopyState('md')，无需等待计时器
+    expect(screen.getByText('已复制 MD')).toBeInTheDocument()
   })
 
   it('hover 展开后选择"复制纯文本"会剥离 Markdown 语法', async () => {
