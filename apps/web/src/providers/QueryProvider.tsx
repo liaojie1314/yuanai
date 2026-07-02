@@ -3,7 +3,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { JSX } from 'react'
 import { useEffect, useRef } from 'react'
-import { setOnAuthFailure, setTokenGetter } from '@yuanai/core/api'
+import {
+  setOnAuthFailure,
+  setOnTokenRefreshed,
+  setRefreshTokenGetter,
+  setTokenGetter,
+} from '@yuanai/core/api'
 import { useAuthStore } from '@yuanai/core/stores'
 
 function makeQueryClient(): QueryClient {
@@ -49,6 +54,8 @@ export default function QueryProvider({
     registered.current = true
 
     setTokenGetter(() => useAuthStore.getState().accessToken)
+    setRefreshTokenGetter(() => useAuthStore.getState().refreshToken)
+    setOnTokenRefreshed((accessToken) => useAuthStore.getState().setAccessToken(accessToken))
 
     setOnAuthFailure(() => {
       useAuthStore.getState().clearAuth()

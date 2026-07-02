@@ -29,10 +29,10 @@ export function useLogin() {
   const { setAuth } = useAuthStore()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ email, password }: { email: string; password: string }) =>
+    mutationFn: ({ email, password }: { email: string; password: string; remember?: boolean }) =>
       login(email, password),
-    onSuccess: (data) => {
-      setAuth(data.user, data.access_token, data.refresh_token)
+    onSuccess: (data, variables) => {
+      setAuth(data.user, data.access_token, data.refresh_token, variables.remember)
       void qc.invalidateQueries({ queryKey: ['me'] })
     },
   })

@@ -7,7 +7,6 @@ import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
-import { useAuthStore } from '@yuanai/core/stores'
 
 export default function LoginPage(): JSX.Element {
   const t = useTranslations('auth')
@@ -122,14 +121,7 @@ export default function LoginPage(): JSX.Element {
     if (!ok) return
 
     try {
-      await loginMutation.mutateAsync({ email: email.trim(), password: pwd })
-      // "记住我 7 天" — extend cookie lifetime to 7 days (default is 1 day)
-      if (remember) {
-        const token = useAuthStore.getState().accessToken
-        if (token) {
-          document.cookie = `yuanai-auth=${encodeURIComponent(token)}; path=/; max-age=604800; SameSite=Lax`
-        }
-      }
+      await loginMutation.mutateAsync({ email: email.trim(), password: pwd, remember })
       redirectAfterLogin()
     } catch (err) {
       const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
