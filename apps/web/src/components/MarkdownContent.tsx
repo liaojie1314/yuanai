@@ -37,7 +37,9 @@ interface MarkdownContentProps {
  */
 export default function MarkdownContent({ content, streaming }: MarkdownContentProps): JSX.Element {
   return (
-    <div className={`ch-msg-content md-body${streaming ? 'streaming' : ''}`}>
+    <div
+      className={['ch-msg-content', 'md-body', streaming && 'streaming'].filter(Boolean).join(' ')}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath, remarkGemoji]}
         rehypePlugins={[rehypeKatex]}
