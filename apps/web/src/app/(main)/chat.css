@@ -2595,29 +2595,26 @@
 }
 
 /* ── Message outline (right rail) ───────────────── */
-.ch-outline {
+.ch-outline-wrap {
   position: absolute;
-  top: 20px;
+  top: 50%;
   right: 6px;
-  bottom: 40px;
-  width: 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 0;
-  overflow-y: auto;
-  scrollbar-width: none;
+  transform: translateY(-50%);
   z-index: 5;
   pointer-events: auto;
 }
-.ch-outline::-webkit-scrollbar {
-  display: none;
+.ch-outline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 4px;
 }
 .ch-outline-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
+  width: 18px;
   background: transparent;
   border: none;
   padding: 0;
@@ -2650,8 +2647,78 @@
   opacity: 1;
   width: 18px;
 }
+
+/* 悬浮浮层：分页展示历史消息标题，向上滚动到顶部增量加载 */
+.ch-outline-flyout {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  transform: translateY(-50%);
+  margin-right: 10px;
+  width: 210px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--elevated);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  animation: outlineFlyIn 0.14s ease both;
+}
+@keyframes outlineFlyIn {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
+.ch-outline-flyout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--fg2);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.ch-outline-flyout-row:hover {
+  background: var(--brand-light);
+}
+.ch-outline-flyout-row.active {
+  color: var(--brand);
+  font-weight: 500;
+}
+.ch-outline-flyout-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-outline-flyout-mark {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
 @media (max-width: 767px) {
-  .ch-outline {
+  .ch-outline-wrap {
     display: none;
   }
 }
