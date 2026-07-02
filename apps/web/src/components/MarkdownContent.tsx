@@ -37,7 +37,7 @@ interface MarkdownContentProps {
  */
 export default function MarkdownContent({ content, streaming }: MarkdownContentProps): JSX.Element {
   return (
-    <div className="ch-msg-content md-body">
+    <div className={`ch-msg-content md-body${streaming ? 'streaming' : ''}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath, remarkGemoji]}
         rehypePlugins={[rehypeKatex]}
@@ -66,7 +66,6 @@ export default function MarkdownContent({ content, streaming }: MarkdownContentP
       >
         {content}
       </ReactMarkdown>
-      {streaming && <span className="ch-cursor" />}
     </div>
   )
 }

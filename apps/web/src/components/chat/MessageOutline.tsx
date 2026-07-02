@@ -8,6 +8,11 @@ import { getMsgText } from './utils'
 export interface MessageOutlineProps {
   pairs: MsgPair[]
   virtuosoRef: RefObject<VirtuosoHandle | null>
+  /**
+   * 外部传入的当前激活 pair 索引（由滚动事件驱动）；
+   * 传入时覆盖内部基于消息数量的自动定位。
+   */
+  scrollActiveIdx?: number
 }
 
 /** 默认折叠态最多展示的色块数量，超出部分仅在悬浮浮层中可见 */
@@ -24,8 +29,17 @@ const CLOSE_DELAY_MS = 200
  * 悬浮态：展开浮层，按时间顺序列出历史消息标题，默认停在最新一条，
  * 向上滚动到顶部时增量加载更早的消息（数据已在内存中，纯前端分页展示，不发起请求）。
  */
-export function MessageOutline({ pairs, virtuosoRef }: MessageOutlineProps): JSX.Element | null {
+export function MessageOutline({
+  pairs,
+  virtuosoRef,
+  scrollActiveIdx,
+}: MessageOutlineProps): JSX.Element | null {
   const [active, setActive] = useState(0)
+  // 外部滚动驱动的 active 索引优先；内部 active 仍用于「新消息到达后跳末尾」
+  const displayActive =
+    scrollActiveIdx !== undefined
+      ? Math.max(0, Math.min(scrollActiveIdx, pairs.length - 1))
+      : active
   const [hovering, setHovering] = useState(false)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const flyoutRef = useRef<HTMLDivElement>(null)
@@ -95,7 +109,7 @@ export function MessageOutline({ pairs, virtuosoRef }: MessageOutlineProps): JSX
 
   const compactStart = Math.max(
     0,
-    Math.min(active - Math.floor(COMPACT_MAX / 2), items.length - COMPACT_MAX)
+    Math.min(displayActive - Math.floor(COMPACT_MAX / 2), items.length - COMPACT_MAX)
   )
   const compactItems = items
     .slice(compactStart, compactStart + COMPACT_MAX)
@@ -122,7 +136,7 @@ export function MessageOutline({ pairs, virtuosoRef }: MessageOutlineProps): JSX
         {compactItems.map((item) => (
           <button
             key={item.key}
-            className={`ch-outline-item ${item.idx === active ? 'active' : ''}`}
+            className={`ch-outline-item ${item.idx === displayActive ? 'active' : ''}`}
             style={{ height: item.height }}
             title={item.full}
             onClick={() => jump(item.idx)}
@@ -137,7 +151,7 @@ export function MessageOutline({ pairs, virtuosoRef }: MessageOutlineProps): JSX
           {flyoutItems.map((item) => (
             <button
               key={item.key}
-              className={`ch-outline-flyout-row ${item.idx === active ? 'active' : ''}`}
+              className={`ch-outline-flyout-row ${item.idx === displayActive ? 'active' : ''}`}
               title={item.full}
               onClick={() => jump(item.idx)}
             >

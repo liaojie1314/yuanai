@@ -145,10 +145,14 @@ async def _generate_sse(
 
     full_content = ""
     try:
-        async for token in stream_chat(model, messages):  # type: ignore[arg-type]
-            full_content += token
-            delta = json.dumps({"token": token}, ensure_ascii=False)
-            yield f"event: content_delta\ndata: {delta}\n\n"
+        async for event_type, token in stream_chat(model, messages):  # type: ignore[arg-type]
+            if event_type == "thinking":
+                delta = json.dumps({"token": token}, ensure_ascii=False)
+                yield f"event: thinking_delta\ndata: {delta}\n\n"
+            else:
+                full_content += token
+                delta = json.dumps({"token": token}, ensure_ascii=False)
+                yield f"event: content_delta\ndata: {delta}\n\n"
 
         # 更新 assistant 消息内容
         result = await db.execute(select(Message).where(Message.id == assistant_msg_id))

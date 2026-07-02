@@ -1929,13 +1929,28 @@
     opacity: 0;
   }
 }
-.ch-cursor {
+/* 光标跟随文字末尾：在流式状态时，通过 ::after 内联注入到最后一个段落末尾 */
+.ch-msg-content.streaming p:last-child::after,
+.ch-msg-content.streaming > *:last-child::after {
+  content: '';
   display: inline-block;
   width: 2px;
-  height: 15px;
-  background: #3b82f6;
-  margin-left: 1px;
-  vertical-align: middle;
+  height: 0.85em;
+  background: var(--accent, #3b82f6);
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  animation: cursor-blink 0.6s steps(1) infinite;
+}
+/* 纯文本（无段落标签）时直接在容器末尾添加光标 */
+.ch-msg-content.streaming:not(:has(p))::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.85em;
+  background: var(--accent, #3b82f6);
+  margin-left: 2px;
+  vertical-align: text-bottom;
   border-radius: 1px;
   animation: cursor-blink 0.6s steps(1) infinite;
 }

@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl'
 import { getMessages } from 'next-intl/server'
 import MockProvider from '@/providers/MockProvider'
 import QueryProvider from '@/providers/QueryProvider'
+import { Toaster } from '@/components/Toaster'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -31,7 +32,10 @@ export default async function RootLayout({
       <body>
         <NextIntlClientProvider messages={messages}>
           <MockProvider>
-            <QueryProvider>{children}</QueryProvider>
+            <QueryProvider>
+              {children}
+              <Toaster />
+            </QueryProvider>
           </MockProvider>
         </NextIntlClientProvider>
       </body>

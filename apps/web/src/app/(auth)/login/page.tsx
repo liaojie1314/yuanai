@@ -7,6 +7,7 @@ import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
+import { useToast } from '@/hooks/useToast'
 
 export default function LoginPage(): JSX.Element {
   const t = useTranslations('auth')
@@ -14,6 +15,7 @@ export default function LoginPage(): JSX.Element {
   const searchParams = useSearchParams()
 
   const loginMutation = useLogin()
+  const toast = useToast()
 
   const [tab, setTab] = useState<'emailCode' | 'email'>('emailCode')
   const [showQr, setShowQr] = useState(false)
@@ -33,7 +35,6 @@ export default function LoginPage(): JSX.Element {
   const [remember, setRemember] = useState(false)
   const [emailErr, setEmailErr] = useState('')
   const [pwdErr, setPwdErr] = useState('')
-  const [apiErr, setApiErr] = useState('')
 
   // QR code state
   const [qrCount, setQrCount] = useState(60)
@@ -108,7 +109,6 @@ export default function LoginPage(): JSX.Element {
 
   const handleEmail = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    setApiErr('')
     let ok = true
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setEmailErr(t('errors.invalidEmail'))
@@ -127,7 +127,7 @@ export default function LoginPage(): JSX.Element {
       const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
       const detail = (err as { response?: { data?: { detail?: { message?: string } } } })?.response
         ?.data?.detail
-      setApiErr(detail?.message ?? msg)
+      toast.error(detail?.message ?? msg)
     }
   }
 
@@ -263,12 +263,6 @@ export default function LoginPage(): JSX.Element {
                   }}
                   noValidate
                 >
-                  {apiErr && (
-                    <p className="api-err ferr on" style={{ marginBottom: '12px' }}>
-                      {apiErr}
-                    </p>
-                  )}
-
                   <div className="fg">
                     <label className="fl" htmlFor="em">
                       {t('email')}

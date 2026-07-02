@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, type JSX, type RefObject } from 'react'
-import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import { Virtuoso, type VirtuosoHandle, type ListRange } from 'react-virtuoso'
 import { useChatStore } from '@yuanai/core/stores'
 import type { MockMessage } from '@yuanai/core/stores'
 import { UserMessage } from './UserMessage'
@@ -58,6 +58,8 @@ export interface MessageListProps {
   onFeedback: (msgId: string, type: 'like' | 'dislike') => void
   msgFeedback: Record<string, 'like' | 'dislike'>
   onAtBottomStateChange: (atBottom: boolean) => void
+  /** 可视区域变化时回调当前可见的第一个 pair 索引（用于右侧 outline 跟踪） */
+  onRangeChanged?: (firstVisiblePairIdx: number) => void
 }
 
 /**
@@ -86,6 +88,7 @@ export function MessageList({
   onFeedback,
   msgFeedback,
   onAtBottomStateChange,
+  onRangeChanged,
 }: MessageListProps): JSX.Element {
   const streamingThink = useChatStore((s) => s.streamingThink)
   const streamingToolCalls = useChatStore((s) => s.streamingToolCalls)
@@ -131,6 +134,12 @@ export function MessageList({
       followOutput="auto"
       initialTopMostItemIndex={rows.length > 0 ? rows.length - 1 : 0}
       atBottomStateChange={onAtBottomStateChange}
+      rangeChanged={(range: ListRange) => {
+        if (!onRangeChanged) return
+        // 虚拟列表中每两行对应一个 pair（user + ai）
+        const pairIdx = Math.floor(range.startIndex / 2)
+        onRangeChanged(pairIdx)
+      }}
       atBottomThreshold={80}
       increaseViewportBy={{ top: 300, bottom: 300 }}
       className="ch-virtuoso"

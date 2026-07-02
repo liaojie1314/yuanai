@@ -10,7 +10,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react'
-import { useChatStore } from '@yuanai/core/stores'
+import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import type { MockMessage } from '@yuanai/core/stores'
 import type { ToolCall } from '@yuanai/types'
 import MarkdownContent from '@/components/MarkdownContent'
@@ -61,6 +61,7 @@ export function AIMessage({
   const displayContent = isStreaming ? streamingContent : getMsgText(msg)
   const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
   const thinkDuration = useChatStore((s) => s.streamingThinkDurationMs)
+  const showThinking = usePrefsStore((s) => s.showThinking)
 
   const copyMd = (): void => {
     void navigator.clipboard.writeText(displayContent)
@@ -89,7 +90,7 @@ export function AIMessage({
     <div className="ch-msg ch-msg-ai">
       <div className="ch-msg-ai-av">元</div>
       <div className="ch-msg-body">
-        {hasThink && (
+        {hasThink && showThinking && (
           <ThinkBlock
             content={finalThinkContent}
             toolCalls={finalToolCalls}

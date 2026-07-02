@@ -62,6 +62,7 @@ import {
   User,
   Square,
   Loader2,
+  Brain,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -157,6 +158,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── User preferences ──
   const timeFmt = usePrefsStore((s) => s.timeFmt)
   const dateFmt = usePrefsStore((s) => s.dateFmt)
+  const showThinking = usePrefsStore((s) => s.showThinking)
+  const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
   // ── Streaming state (store) ──
   const streamingConvId = useChatStore((s) => s.streamingConvId)
@@ -273,6 +276,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Regeneration tracking ──
   const [regeneratingPairKey, setRegeneratingPairKey] = useState<string | null>(null)
+
+  // ── Outline scroll tracking ──
+  const [outlineActiveIdx, setOutlineActiveIdx] = useState(0)
 
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
@@ -481,6 +487,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setInputValue('')
     setFiles([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
+
+    // 发送前先滚到底部，确保用户能看到流式输出
+    virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
 
     void stream.send({
       convId,
@@ -1046,9 +1055,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 onFeedback={(msgId, type) => openFeedback(msgId, type)}
                 msgFeedback={msgFeedback}
                 onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
+                onRangeChanged={(idx) => setOutlineActiveIdx(idx)}
               />
             )}
-            <MessageOutline pairs={pairs} virtuosoRef={virtuosoRef} />
+            <MessageOutline
+              pairs={pairs}
+              virtuosoRef={virtuosoRef}
+              scrollActiveIdx={outlineActiveIdx}
+            />
             {/* Scroll FAB */}
             <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
               <button onClick={toBottom} title={t('actions.scrollToBottom')}>
@@ -1121,6 +1135,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 onClick={() => setWebSearch((w) => !w)}
               >
                 <Globe size={18} />
+              </button>
+              <button
+                className={`ch-in-btn ${showThinking ? 'on' : ''}`}
+                title={showThinking ? '关闭思考过程' : '开启思考过程'}
+                disabled={!isLoggedIn}
+                onClick={() => setShowThinking(!showThinking)}
+              >
+                <Brain size={18} />
               </button>
               <div className="ch-in-sep" />
               <div className="ch-in-r">
