@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, type JSX } from 'react'
-import { Brain, ChevronDown } from 'lucide-react'
+import { Sparkles, ChevronDown } from 'lucide-react'
 import type { ToolCall } from '@yuanai/types'
 import { ToolCallRow } from './ToolCallRow'
 
@@ -62,7 +62,7 @@ export function ThinkBlock({
       >
         <span className="ch-think-hd-l">
           <span className="ch-think-ic">
-            <Brain size={14} />
+            <Sparkles size={14} />
           </span>
           <span className="ch-think-lbl">{label}</span>
         </span>

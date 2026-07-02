@@ -63,6 +63,7 @@ import {
   Square,
   Loader2,
   Brain,
+  Maximize2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -243,6 +244,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Input state ──
   const [inputValue, setInputValue] = useState('')
+  /** 输入框展开弹窗（点击右上角放大图标打开） */
+  const [expandOpen, setExpandOpen] = useState(false)
 
   // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
@@ -453,21 +456,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     const ta = e.target
     ta.style.height = 'auto'
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
-  }
-
-  /** 聚焦时展开到至少 3 行，方便用户输入多行内容 */
-  const onInputFocus = (): void => {
-    const ta = inputRef.current
-    if (!ta) return
-    ta.style.height = 'auto'
-    ta.style.height = Math.max(Math.min(ta.scrollHeight, 200), 72) + 'px'
-  }
-
-  /** 失焦且内容为空时收回到 1 行 */
-  const onInputBlur = (): void => {
-    const ta = inputRef.current
-    if (!ta || ta.value.trim()) return
-    ta.style.height = 'auto'
   }
 
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -1124,18 +1112,28 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 )}
               </div>
             )}
-            <textarea
-              ref={inputRef}
-              className="ch-input-ta"
-              placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
-              rows={1}
-              value={inputValue}
-              onChange={onInputChange}
-              onKeyDown={onInputKey}
-              onFocus={onInputFocus}
-              onBlur={onInputBlur}
-              disabled={!isLoggedIn}
-            />
+            <div className="ch-input-ta-wrap">
+              <textarea
+                ref={inputRef}
+                className="ch-input-ta"
+                placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
+                rows={1}
+                value={inputValue}
+                onChange={onInputChange}
+                onKeyDown={onInputKey}
+                disabled={!isLoggedIn}
+              />
+              {isLoggedIn && (
+                <button
+                  className="ch-input-expand-btn"
+                  title="展开输入框"
+                  onClick={() => setExpandOpen(true)}
+                  type="button"
+                >
+                  <Maximize2 size={12} />
+                </button>
+              )}
+            </div>
             <div className="ch-input-tb">
               <button
                 className="ch-in-btn"
@@ -1209,6 +1207,61 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
       {/* ── Artifact panel ───────────────────────── */}
       <ArtifactPanel />
+
+      {/* ── 输入框展开弹窗 ────────────────────────── */}
+      {expandOpen && (
+        <div
+          className="ch-exp-overlay"
+          onClick={() => setExpandOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="展开输入框"
+        >
+          <div className="ch-exp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ch-exp-hd">
+              <span className="ch-exp-title">编辑消息</span>
+              <button
+                className="ch-exp-close"
+                onClick={() => setExpandOpen(false)}
+                title="关闭 (Esc)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <textarea
+              className="ch-exp-ta"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder={t('inputPlaceholder')}
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setExpandOpen(false)
+              }}
+            />
+            <div className="ch-exp-ft">
+              <button className="ch-exp-cancel" onClick={() => setExpandOpen(false)}>
+                取消
+              </button>
+              <button
+                className={`ch-exp-send ${inputValue.trim() ? 'on' : ''}`}
+                disabled={!inputValue.trim()}
+                onClick={() => {
+                  setExpandOpen(false)
+                  setTimeout(() => {
+                    if (inputRef.current) {
+                      inputRef.current.style.height = 'auto'
+                      inputRef.current.style.height =
+                        Math.min(inputRef.current.scrollHeight, 200) + 'px'
+                    }
+                  }, 0)
+                }}
+              >
+                确认
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Model dropdown ────────────────────────── */}
       {modelDropOpen && (
