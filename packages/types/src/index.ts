@@ -66,11 +66,95 @@ export interface MessageFile {
   url: string
 }
 
+/** 工具调用的执行状态 */
+export type ToolCallStatus = 'pending' | 'running' | 'done' | 'error'
+
+/**
+ * AI 一次工具调用的完整生命周期数据。
+ *
+ * 用于在思考块中展示"调用了什么工具、传了什么参数、执行状态、返回结果"。
+ */
+export interface ToolCall {
+  /** 工具调用 ID（由后端分配） */
+  id: string
+  /** 工具名，例如 `search_web`、`read_docs` */
+  name: string
+  /**
+   * 调用参数（原始 JSON 字符串）。
+   * 使用字符串是因为参数在流式过程中会分片写入，最终解析在渲染层完成。
+   */
+  arguments: string
+  /** 当前执行状态 */
+  status: ToolCallStatus
+  /** 执行结果摘要，`status === 'done'` 时提供 */
+  result?: string
+  /** 出错时的错误提示 */
+  error?: string
+  /** 执行耗时（毫秒） */
+  durationMs?: number
+}
+
+/** 文本片段 part */
+export interface TextPart {
+  type: 'text'
+  content: string
+}
+
+/** 代码片段 part */
+export interface CodePart {
+  type: 'code'
+  /** 语言，例如 `typescript`、`html`、`css`、`javascript` */
+  lang: string
+  code: string
+  /** 可选标题，展示在 artifact 面板顶部 */
+  title?: string
+}
+
+/** 推理/思考 part（chain-of-thought 或 reasoning tokens） */
+export interface ThinkingPart {
+  type: 'thinking'
+  content: string
+  /** 思考耗时（毫秒），流结束后填充 */
+  durationMs?: number
+}
+
+/** 工具调用 part（引用一个 ToolCall） */
+export interface ToolCallPart {
+  type: 'tool_call'
+  toolCall: ToolCall
+}
+
+/** 多模态资源 part（图片/音频/视频） */
+export interface MediaPart {
+  type: 'media'
+  mediaType: 'image' | 'audio' | 'video'
+  url: string
+  /** 描述文案 / caption */
+  caption?: string
+  /** 图片/视频的宽（像素），可选 */
+  width?: number
+  /** 图片/视频的高（像素），可选 */
+  height?: number
+  /** 音频/视频时长（秒），可选 */
+  durationSec?: number
+}
+
+/**
+ * 消息 part 判别联合：一条消息可以由多种 part 组成
+ * （文字 / 代码 / 思考 / 工具调用 / 多媒体）。
+ */
+export type MessagePart = TextPart | CodePart | ThinkingPart | ToolCallPart | MediaPart
+
 /** 单条聊天消息 */
 export interface Message {
   id: string
   role: Role
   content: string
+  /**
+   * 结构化 parts 列表；后端未提供时前端降级为 `[{ type: 'text', content }]`。
+   * 后端支持工具调用/多模态后填充此字段。
+   */
+  messageParts?: MessagePart[]
   /** 生成该消息使用的模型；用户消息无此字段 */
   model?: string
   /** 本次响应消耗的 token 总量；用户消息无此字段 */
@@ -131,6 +215,39 @@ export interface SSEContentDelta {
   token: string
 }
 
+/** SSE 思考/推理增量事件 —— 每次推送一段思考文字 */
+export interface SSEThinkingDelta {
+  type: 'thinking_delta'
+  token: string
+}
+
+/** SSE 工具调用开始事件 */
+export interface SSEToolCallStart {
+  type: 'tool_call_start'
+  toolCallId: string
+  name: string
+}
+
+/** SSE 工具调用参数增量事件 —— 每次追加一段参数片段 */
+export interface SSEToolCallDelta {
+  type: 'tool_call_delta'
+  toolCallId: string
+  /** 参数分片；组件将其拼接到 arguments 后 */
+  argsChunk: string
+}
+
+/** SSE 工具调用结束事件 */
+export interface SSEToolCallEnd {
+  type: 'tool_call_end'
+  toolCallId: string
+  status: ToolCallStatus
+  /** 完整执行结果摘要（`status === 'done'`） */
+  result?: string
+  /** 出错原因（`status === 'error'`） */
+  error?: string
+  durationMs?: number
+}
+
 /** SSE 流结束事件 */
 export interface SSEMessageEnd {
   type: 'message_end'
@@ -146,4 +263,12 @@ export interface SSEError {
 }
 
 /** SSE 事件联合类型，用于前端 SSE 解析 */
-export type SSEEvent = SSEMessageStart | SSEContentDelta | SSEMessageEnd | SSEError
+export type SSEEvent =
+  | SSEMessageStart
+  | SSEContentDelta
+  | SSEThinkingDelta
+  | SSEToolCallStart
+  | SSEToolCallDelta
+  | SSEToolCallEnd
+  | SSEMessageEnd
+  | SSEError

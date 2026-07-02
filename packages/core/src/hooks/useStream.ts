@@ -27,9 +27,25 @@ export interface StreamParams {
  *
  * 调用 `POST /api/v1/chat/stream` 并通过 `ReadableStream` 解析 SSE 事件，
  * 将 token 增量写入 `useChatStore`，流结束后通过 TanStack Query 刷新消息列表。
+ *
+ * 支持的 SSE 事件：
+ * - `content_delta`：追加正文 token
+ * - `thinking_delta`：追加思考文字（reasoning tokens）
+ * - `tool_call_start` / `tool_call_delta` / `tool_call_end`：工具调用生命周期
+ * - `message_start` / `message_end` / `error`：识别但不影响 UI
+ *
+ * 未知事件会被静默忽略，保证向后兼容。
  */
 export function useStream() {
-  const { startStreaming, appendToken, finalizeStream } = useChatStore()
+  const {
+    startStreaming,
+    appendToken,
+    appendThink,
+    startToolCall,
+    appendToolCallArgs,
+    updateToolCall,
+    finalizeStream,
+  } = useChatStore()
   const qc = useQueryClient()
   const abortRef = useRef<AbortController | null>(null)
 
@@ -88,8 +104,60 @@ export function useStream() {
             } else if (line.startsWith('data: ') && currentEvent) {
               try {
                 const data = JSON.parse(line.slice(6)) as Record<string, unknown>
-                if (currentEvent === 'content_delta' && typeof data.token === 'string') {
-                  appendToken(data.token)
+                switch (currentEvent) {
+                  case 'content_delta':
+                    if (typeof data['token'] === 'string') {
+                      appendToken(data['token'])
+                    }
+                    break
+                  case 'thinking_delta':
+                    if (typeof data['token'] === 'string') {
+                      appendThink(data['token'])
+                    }
+                    break
+                  case 'tool_call_start': {
+                    const id = data['tool_call_id']
+                    const name = data['name']
+                    if (typeof id === 'string' && typeof name === 'string') {
+                      startToolCall({
+                        id,
+                        name,
+                        arguments: '',
+                        status: 'running',
+                      })
+                    }
+                    break
+                  }
+                  case 'tool_call_delta': {
+                    const id = data['tool_call_id']
+                    const chunk = data['args_chunk']
+                    if (typeof id === 'string' && typeof chunk === 'string') {
+                      appendToolCallArgs(id, chunk)
+                    }
+                    break
+                  }
+                  case 'tool_call_end': {
+                    const id = data['tool_call_id']
+                    if (typeof id === 'string') {
+                      const status =
+                        typeof data['status'] === 'string' &&
+                        ['pending', 'running', 'done', 'error'].includes(data['status'])
+                          ? (data['status'] as 'pending' | 'running' | 'done' | 'error')
+                          : 'done'
+                      updateToolCall(id, {
+                        status,
+                        ...(typeof data['result'] === 'string' ? { result: data['result'] } : {}),
+                        ...(typeof data['error'] === 'string' ? { error: data['error'] } : {}),
+                        ...(typeof data['duration_ms'] === 'number'
+                          ? { durationMs: data['duration_ms'] }
+                          : {}),
+                      })
+                    }
+                    break
+                  }
+                  // message_start / message_end / error 识别但暂不影响 UI
+                  default:
+                    break
                 }
               } catch {
                 // 忽略无效 JSON
@@ -114,7 +182,16 @@ export function useStream() {
         onEnd?.()
       }
     },
-    [startStreaming, appendToken, finalizeStream, qc]
+    [
+      startStreaming,
+      appendToken,
+      appendThink,
+      startToolCall,
+      appendToolCallArgs,
+      updateToolCall,
+      finalizeStream,
+      qc,
+    ]
   )
 
   const stop = useCallback(() => {

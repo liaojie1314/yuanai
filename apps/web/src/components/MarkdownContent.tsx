@@ -4,7 +4,7 @@ import type { JSX } from 'react'
 // react-markdown v10 peer dep targets React 16-18; the cast fixes the React 19 type mismatch.
 import ReactMarkdownRaw from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy } from 'lucide-react'
+import { CodeBlock } from '@/components/chat/CodeBlock'
 
 interface MarkdownProps {
   children: string
@@ -14,29 +14,6 @@ interface MarkdownProps {
 }
 // react-markdown v10 peer dep targets React 16-18; cast fixes React 19 type mismatch.
 const ReactMarkdown = ReactMarkdownRaw as unknown as (props: MarkdownProps) => JSX.Element
-
-interface CodeBlockProps {
-  lang: string
-  code: string
-}
-
-function CodeBlock({ lang, code }: CodeBlockProps): JSX.Element {
-  return (
-    <div className="ch-code-block">
-      <div className="ch-code-head">
-        <span className="ch-code-lang">{lang || 'Code'}</span>
-        <div className="ch-code-acts">
-          <button className="ch-code-act" onClick={() => void navigator.clipboard.writeText(code)}>
-            <Copy size={12} /> 复制
-          </button>
-        </div>
-      </div>
-      <pre className="ch-code-body">
-        <code>{code}</code>
-      </pre>
-    </div>
-  )
-}
 
 interface MarkdownContentProps {
   content: string
@@ -48,7 +25,7 @@ interface MarkdownContentProps {
  * 通用 Markdown 渲染组件
  *
  * 支持 GFM（表格、删除线、任务列表、代码块）。
- * 代码块带语言标签和一键复制按钮。
+ * 代码块委托 `CodeBlock` 组件渲染（含复制/在面板中查看/运行按钮）。
  */
 export default function MarkdownContent({ content, streaming }: MarkdownContentProps): JSX.Element {
   return (

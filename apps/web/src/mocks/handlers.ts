@@ -162,9 +162,34 @@ function uuid(): string {
 }
 
 const MOCK_RESPONSES = [
-  '好的，我来帮你分析这个问题。\n\n根据你的描述，核心思路是：\n\n1. **明确目标** - 首先确定期望的输出结果\n2. **拆解步骤** - 将复杂问题分解为可执行的小步骤\n3. **验证方案** - 每个步骤都要有可验证的方式',
+  '好的，我来帮你分析这个问题。\n\n根据你的描述，核心思路是：\n\n1. **明确目标** - 首先确定期望的输出结果\n2. **拆解步骤** - 将复杂问题分解为可执行的小步骤\n3. **验证方案** - 每个步骤都要有可验证的方式\n\n下面是一段可以在面板中运行的 HTML 示例：\n\n```html\n<h1 style="color:#3B82F6">Hello 元AI</h1>\n<p>点击右上角"运行"，可在受限 iframe 沙箱中执行。</p>\n<button onclick="alert(\'来自沙箱的问候\')">点我</button>\n```\n',
   '这是个很好的问题！让我从几个角度来分析：\n\n**技术层面**：需要考虑性能、可维护性和扩展性三个维度的平衡。\n\n**实践层面**：建议从最小可行方案开始，快速验证核心假设，再逐步迭代完善。',
-  '明白了。基于你的需求，我有以下几点建议：\n\n首先，这个问题的关键在于理解底层原理。一旦掌握了核心机制，后续的应用就会水到渠成。\n\n其次，推荐你参考官方文档来加深理解。',
+  '明白了。基于你的需求，我有以下几点建议：\n\n首先，这个问题的关键在于理解底层原理。\n\n下面是一段 JavaScript 演示：\n\n```javascript\nconst app = document.getElementById("app")\napp.innerHTML = "<h2>元AI 沙箱运行示例</h2><p>此段脚本运行在 iframe 沙箱内。</p>"\nconsole.log("Hello from sandbox")\n```\n',
+]
+
+/** 思考过程模板 */
+const MOCK_THINK_SEGMENTS = [
+  '需要拆解用户诉求：先确定要输出的核心信息，再规划展示形式。',
+  '判断是否需要调用工具：本题涉及最新资料，走一次网页检索验证时效。',
+  '再确认答案的结构：三段式（结论 → 展开 → 可运行示例）能覆盖用户 90% 场景。',
+]
+
+/** 工具调用脚本 */
+const MOCK_TOOL_CALLS = [
+  {
+    id: 'tc-search',
+    name: 'search_web',
+    args: '{"query":"元AI 最新使用技巧","topK":3}',
+    result: '共找到 12 条相关结果，Top3 已缓存到上下文。',
+    durationMs: 640,
+  },
+  {
+    id: 'tc-read',
+    name: 'read_docs',
+    args: '{"url":"https://yuanai.dev/docs/quickstart"}',
+    result: '已提取 3 章要点：安装、消息交互、模型切换。',
+    durationMs: 320,
+  },
 ]
 
 // ── 处理器 ───────────────────────────────────────────────────
@@ -293,51 +318,122 @@ export const handlers = [
     const stream = new ReadableStream({
       start(controller) {
         const enc = new TextEncoder()
+        const enqueue = (event: string, data: unknown): void => {
+          controller.enqueue(enc.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`))
+        }
 
-        // message_start
-        const startPayload = JSON.stringify({
+        // 全流程 mock：message_start → thinking → tool_call → content → message_end
+        enqueue('message_start', {
           user_message_id: userMsgId,
           assistant_message_id: assistantMsgId,
           model: body.model,
         })
-        controller.enqueue(enc.encode(`event: message_start\ndata: ${startPayload}\n\n`))
 
-        // content_delta — 每 30ms 发一个 token
-        let i = 0
+        const thinkSegments = MOCK_THINK_SEGMENTS
+        const toolCalls = MOCK_TOOL_CALLS
+        let segIdx = 0
+        let charIdx = 0
+        let toolIdx = 0
+        let toolArgIdx = 0
+        let contentIdx = 0
         let full = ''
+        let phase: 'thinking' | 'toolStart' | 'toolArgs' | 'toolEnd' | 'content' | 'done' =
+          'thinking'
+
         const timer = setInterval(() => {
-          if (i < tokens.length) {
-            const token = tokens[i] ?? ''
-            i++
-            full += token
-            const delta = JSON.stringify({ token })
-            controller.enqueue(enc.encode(`event: content_delta\ndata: ${delta}\n\n`))
-          } else {
-            clearInterval(timer)
-
-            // 持久化助手消息
-            const convMsgs = messages[convId]
-            if (convMsgs) {
-              convMsgs.push({
-                id: assistantMsgId,
-                role: 'assistant',
-                model: body.model,
-                tokensUsed: full.length,
-                content: full,
-                files: [],
-                createdAt: new Date().toISOString(),
-              })
+          if (phase === 'thinking') {
+            const seg = thinkSegments[segIdx]
+            if (!seg) {
+              phase = 'toolStart'
+              return
             }
-            const conv = conversations[convId]
-            if (conv) {
-              conv.lastMessageAt = new Date().toISOString()
+            if (charIdx < seg.length) {
+              const step = 4
+              const chunk = seg.slice(charIdx, charIdx + step)
+              charIdx += step
+              enqueue('thinking_delta', { token: chunk })
+            } else {
+              enqueue('thinking_delta', { token: '\n' })
+              segIdx++
+              charIdx = 0
             }
-
-            const endPayload = JSON.stringify({ tokensUsed: full.length, finishReason: 'stop' })
-            controller.enqueue(enc.encode(`event: message_end\ndata: ${endPayload}\n\n`))
-            controller.close()
+            return
           }
-        }, 30)
+          if (phase === 'toolStart') {
+            const tc = toolCalls[toolIdx]
+            if (!tc) {
+              phase = 'content'
+              return
+            }
+            enqueue('tool_call_start', { tool_call_id: tc.id, name: tc.name })
+            phase = 'toolArgs'
+            toolArgIdx = 0
+            return
+          }
+          if (phase === 'toolArgs') {
+            const tc = toolCalls[toolIdx]
+            if (!tc) {
+              phase = 'content'
+              return
+            }
+            if (toolArgIdx < tc.args.length) {
+              const step = 6
+              const chunk = tc.args.slice(toolArgIdx, toolArgIdx + step)
+              toolArgIdx += step
+              enqueue('tool_call_delta', { tool_call_id: tc.id, args_chunk: chunk })
+            } else {
+              phase = 'toolEnd'
+            }
+            return
+          }
+          if (phase === 'toolEnd') {
+            const tc = toolCalls[toolIdx]
+            if (!tc) {
+              phase = 'content'
+              return
+            }
+            enqueue('tool_call_end', {
+              tool_call_id: tc.id,
+              status: 'done',
+              result: tc.result,
+              duration_ms: tc.durationMs,
+            })
+            toolIdx++
+            phase = 'toolStart'
+            return
+          }
+          if (phase === 'content') {
+            if (contentIdx < tokens.length) {
+              const token = tokens[contentIdx] ?? ''
+              contentIdx++
+              full += token
+              enqueue('content_delta', { token })
+            } else {
+              phase = 'done'
+            }
+            return
+          }
+          // phase === 'done'
+          clearInterval(timer)
+          const convMsgs = messages[convId]
+          if (convMsgs) {
+            convMsgs.push({
+              id: assistantMsgId,
+              role: 'assistant',
+              model: body.model,
+              tokensUsed: full.length,
+              content: full,
+              files: [],
+              createdAt: new Date().toISOString(),
+            })
+          }
+          const conv = conversations[convId]
+          if (conv) {
+            conv.lastMessageAt = new Date().toISOString()
+          }
+          enqueue('message_end', { tokensUsed: full.length, finishReason: 'stop' })
+          controller.close()
+        }, 25)
       },
     })
 

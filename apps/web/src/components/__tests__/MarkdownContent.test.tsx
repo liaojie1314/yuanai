@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import MarkdownContent from '@/components/MarkdownContent'
 
 // navigator.clipboard not available in jsdom
@@ -100,11 +100,13 @@ describe('MarkdownContent', () => {
     expect(screen.getByText('Code')).toBeInTheDocument()
   })
 
-  it('code block has copy button that calls clipboard.writeText', () => {
+  it('code block has copy button that calls clipboard.writeText', async () => {
     render(<MarkdownContent content={"```python\nprint('hello')\n```"} />)
-    const copyBtn = screen.getByRole('button', { name: /复制/i })
+    const copyBtn = screen.getByRole('button', { name: /复制代码/ })
     expect(copyBtn).toBeInTheDocument()
-    fireEvent.click(copyBtn)
+    await act(async () => {
+      fireEvent.click(copyBtn)
+    })
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith("print('hello')")
   })
 

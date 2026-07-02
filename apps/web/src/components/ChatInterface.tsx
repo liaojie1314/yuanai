@@ -1,14 +1,26 @@
 'use client'
 
-import { useState, useRef, useEffect, useLayoutEffect, useCallback, type JSX } from 'react'
+import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import MarkdownContent from '@/components/MarkdownContent'
 import SettingsModal from '@/components/settings/SettingsModal'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { MessageList } from '@/components/chat/MessageList'
+import { MessageOutline } from '@/components/chat/MessageOutline'
+import { ArtifactPanel } from '@/components/chat/ArtifactPanel'
+import {
+  apiConvToMock,
+  apiMsgToMock,
+  buildPairs,
+  getMsgText,
+  isDark,
+  type MsgPair,
+} from '@/components/chat/utils'
+import type { VirtuosoHandle } from 'react-virtuoso'
 import { useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
 import { usePrefsStore } from '@yuanai/core/stores'
+import { useArtifactStore } from '@yuanai/core/stores'
 import { useStream } from '@yuanai/core/hooks'
 import {
   useConversations,
@@ -19,8 +31,7 @@ import {
   useMessages,
   useLogout,
 } from '@yuanai/core/hooks'
-import type { Conversation, Message } from '@yuanai/types'
-import type { MockConversation, MockMessage, ConvGroup } from '@yuanai/core/stores'
+import type { MockMessage, MockConversation } from '@yuanai/core/stores'
 import {
   SquarePen,
   Search,
@@ -33,8 +44,6 @@ import {
   Globe,
   Share2,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Check,
   Sparkles,
   Bug,
@@ -44,12 +53,7 @@ import {
   Paperclip,
   Mic,
   SendHorizontal,
-  Copy,
-  RotateCcw,
-  ThumbsUp,
-  ThumbsDown,
   ArrowDown,
-  Brain,
   Menu,
   PanelLeft,
   X,
@@ -76,13 +80,6 @@ interface AttachFile {
   file: File
   preview: string
   type: 'image' | 'doc'
-}
-
-/** 消息对：一条用户消息 + 对应的多个 AI 回复（重新生成产生多版本） */
-interface MsgPair {
-  pairKey: string
-  userMsg: MockMessage
-  assistants: MockMessage[]
 }
 
 // ── Static constants ─────────────────────────────────
@@ -138,409 +135,6 @@ const SUGGESTION_CARDS = [
     prompt: '用简单方式解释量子纠缠是什么',
   },
 ]
-
-// ── Adapters — 将后端类型转换为前端展示结构 ─────────────────
-function convGroup(conv: Conversation): ConvGroup {
-  if (conv.isPinned) return 'pinned'
-  const ts = conv.lastMessageAt ?? conv.createdAt
-  const age = Date.now() - new Date(ts).getTime()
-  if (age < 86_400_000) return 'today'
-  if (age < 172_800_000) return 'yesterday'
-  return 'week'
-}
-
-function apiConvToMock(conv: Conversation): MockConversation {
-  const ts = conv.lastMessageAt ?? conv.createdAt
-  return {
-    id: conv.id,
-    title: conv.title,
-    group: convGroup(conv),
-    updatedAt: new Date(ts).getTime(),
-  }
-}
-
-function apiMsgToMock(msg: Message): MockMessage {
-  return {
-    id: msg.id,
-    role: msg.role as 'user' | 'assistant',
-    parts: [{ type: 'text' as const, content: msg.content }],
-    createdAt: new Date(msg.createdAt).getTime(),
-  }
-}
-
-function isDark(): boolean {
-  const t = document.documentElement.getAttribute('data-theme')
-  return t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme:dark)').matches)
-}
-
-// ── Helpers ───────────────────────────────────────────
-/** Extract the raw text content from a MockMessage's parts array */
-function getMsgText(msg: MockMessage): string {
-  return msg.parts
-    .filter((p) => p.type === 'text')
-    .map((p) => p.content ?? '')
-    .join('\n')
-}
-
-/** Format a message timestamp according to user's prefs */
-function formatMsgTime(ts: number, timeFmt: '24h' | '12h', dateFmt: 'ymd' | 'mdy' | 'dmy'): string {
-  const d = new Date(ts)
-  const now = new Date()
-  const todayStr = now.toDateString()
-  const yd = new Date(now)
-  yd.setDate(now.getDate() - 1)
-
-  const h = d.getHours()
-  const m = String(d.getMinutes()).padStart(2, '0')
-  const timeStr =
-    timeFmt === '24h'
-      ? `${String(h).padStart(2, '0')}:${m}`
-      : `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`
-
-  if (d.toDateString() === todayStr) return timeStr
-  if (d.toDateString() === yd.toDateString()) return `昨天 ${timeStr}`
-
-  const y = d.getFullYear()
-  const mo = d.getMonth() + 1
-  const day = d.getDate()
-  const dateStr =
-    dateFmt === 'ymd'
-      ? `${y}/${mo}/${day}`
-      : dateFmt === 'mdy'
-        ? `${mo}/${day}/${y}`
-        : `${day}/${mo}/${y}`
-  return `${dateStr} ${timeStr}`
-}
-
-/** Strip common Markdown syntax to produce plain readable text */
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/~~(.+?)~~/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/^\s*\d+\.\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^>\s+/gm, '')
-    .trim()
-}
-
-/**
- * 将消息列表分组为 (用户消息, AI回复[]) 对。
- * 用户内容相同的相邻对合并（用于版本切换：重新生成会产生重复用户消息）。
- */
-function buildPairs(msgs: MockMessage[]): MsgPair[] {
-  const pairs: MsgPair[] = []
-  let i = 0
-  while (i < msgs.length) {
-    const msg = msgs[i]
-    if (!msg) {
-      i++
-      continue
-    }
-    if (msg.role === 'user') {
-      const assistants: MockMessage[] = []
-      let j = i + 1
-      while (j < msgs.length && msgs[j]?.role === 'assistant') {
-        assistants.push(msgs[j] as MockMessage)
-        j++
-      }
-      pairs.push({ pairKey: msg.id, userMsg: msg, assistants })
-      i = j
-    } else {
-      i++
-    }
-  }
-  // 合并相邻的相同用户内容对（重新生成场景）
-  const merged: MsgPair[] = []
-  for (const pair of pairs) {
-    const last = merged[merged.length - 1]
-    if (last && getMsgText(last.userMsg) === getMsgText(pair.userMsg)) {
-      last.assistants.push(...pair.assistants)
-    } else {
-      merged.push(pair)
-    }
-  }
-  return merged
-}
-
-// ── Think block ───────────────────────────────────────
-function ThinkBlock({ content }: { content: string }): JSX.Element {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className={`ch-think-block ${open ? 'open' : ''}`} data-state="done">
-      <div className="ch-think-hd" onClick={() => setOpen((o) => !o)}>
-        <div className="ch-think-hd-l">
-          <span className="ch-think-ic">
-            <Brain size={14} />
-          </span>
-          <span className="ch-think-lbl">已完成思考</span>
-        </div>
-        <div className="ch-think-hd-r">
-          <span className="ch-think-chev">
-            <ChevronDown size={13} />
-          </span>
-        </div>
-      </div>
-      <div className="ch-think-body">
-        <div className="ch-think-text">{content}</div>
-      </div>
-    </div>
-  )
-}
-
-// ── Message components ────────────────────────────────
-function UserMessage({
-  msg,
-  editing,
-  timeFmt,
-  dateFmt,
-  onStartEdit,
-  onSubmitEdit,
-  onCancelEdit,
-}: {
-  msg: MockMessage
-  editing: boolean
-  timeFmt: '24h' | '12h'
-  dateFmt: 'ymd' | 'mdy' | 'dmy'
-  onStartEdit: () => void
-  onSubmitEdit: (text: string) => void
-  onCancelEdit: () => void
-}): JSX.Element {
-  const text = getMsgText(msg)
-  const editRef = useRef<HTMLTextAreaElement>(null)
-  const [localEdit, setLocalEdit] = useState(text)
-
-  useEffect(() => {
-    if (editing) {
-      setLocalEdit(text)
-      // Focus + cursor to end after textarea mounts
-      requestAnimationFrame(() => {
-        const ta = editRef.current
-        if (!ta) return
-        ta.style.height = 'auto'
-        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
-        ta.focus()
-        ta.setSelectionRange(ta.value.length, ta.value.length)
-      })
-    }
-  }, [editing, text])
-
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      const trimmed = localEdit.trim()
-      if (trimmed) onSubmitEdit(trimmed)
-      else onCancelEdit()
-    }
-    if (e.key === 'Escape') onCancelEdit()
-  }
-
-  if (editing) {
-    return (
-      <div className="ch-msg ch-msg-user">
-        <div className="ch-msg-body ch-msg-body-edit">
-          <textarea
-            ref={editRef}
-            className="ch-edit-ta"
-            value={localEdit}
-            onChange={(e) => {
-              setLocalEdit(e.target.value)
-              const ta = e.currentTarget
-              ta.style.height = 'auto'
-              ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
-            }}
-            onKeyDown={handleKey}
-          />
-          <div className="ch-edit-acts">
-            <span className="ch-edit-hint">Shift+Enter 换行 · Enter 提交</span>
-            <button className="ch-edit-cancel" onClick={onCancelEdit}>
-              取消
-            </button>
-            <button
-              className="ch-edit-submit"
-              onClick={() => {
-                const t = localEdit.trim()
-                if (t) onSubmitEdit(t)
-              }}
-            >
-              提交
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="ch-msg ch-msg-user">
-      <div className="ch-msg-body">
-        <div className="ch-msg-bubble">{text}</div>
-        <div className="ch-msg-acts">
-          <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
-          <button className="ch-msg-act" onClick={onStartEdit}>
-            <Pencil size={12} /> 编辑
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AIMessage({
-  msg,
-  isStreaming,
-  streamingContent,
-  onFill,
-  timeFmt,
-  dateFmt,
-  versionCount = 1,
-  versionIdx = 0,
-  onVersionChange,
-  onRegenerate,
-  onFeedback,
-  feedbackGiven,
-}: {
-  msg: MockMessage
-  isStreaming: boolean
-  streamingContent: string
-  onFill: (text: string) => void
-  timeFmt: '24h' | '12h'
-  dateFmt: 'ymd' | 'mdy' | 'dmy'
-  versionCount?: number
-  versionIdx?: number
-  onVersionChange?: (idx: number) => void
-  onRegenerate?: () => void
-  onFeedback?: (type: 'like' | 'dislike') => void
-  feedbackGiven?: 'like' | 'dislike' | undefined
-}): JSX.Element {
-  const displayContent = isStreaming ? streamingContent : getMsgText(msg)
-  const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
-  const copyWrapRef = useRef<HTMLDivElement>(null)
-
-  const copyMd = (): void => {
-    void navigator.clipboard.writeText(displayContent)
-    setCopyState('md')
-    setTimeout(() => setCopyState('idle'), 2000)
-  }
-
-  const copyTxt = (): void => {
-    void navigator.clipboard.writeText(stripMarkdown(displayContent))
-    setCopyState('txt')
-    setTimeout(() => setCopyState('idle'), 2000)
-  }
-
-  useEffect(() => {
-    if (copyState !== 'open') return
-    const handler = (e: MouseEvent): void => {
-      if (!copyWrapRef.current?.contains(e.target as Node)) setCopyState('idle')
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [copyState])
-
-  return (
-    <div className="ch-msg ch-msg-ai">
-      <div className="ch-msg-ai-av">元</div>
-      <div className="ch-msg-body">
-        {msg.thinkContent && <ThinkBlock content={msg.thinkContent} />}
-        <MarkdownContent content={displayContent} streaming={isStreaming} />
-        {!isStreaming && (
-          <>
-            {versionCount > 1 && onVersionChange && (
-              <div className="ch-ver-nav">
-                <button
-                  className="ch-ver-btn"
-                  disabled={versionIdx === 0}
-                  onClick={() => onVersionChange(versionIdx - 1)}
-                  title="上一个版本"
-                >
-                  <ChevronLeft size={12} />
-                </button>
-                <span className="ch-ver-label">
-                  {versionIdx + 1} / {versionCount}
-                </span>
-                <button
-                  className="ch-ver-btn"
-                  disabled={versionIdx === versionCount - 1}
-                  onClick={() => onVersionChange(versionIdx + 1)}
-                  title="下一个版本"
-                >
-                  <ChevronRight size={12} />
-                </button>
-              </div>
-            )}
-            <div className="ch-msg-acts">
-              {!isStreaming && (
-                <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
-              )}
-              <div ref={copyWrapRef} className="ch-copy-wrap">
-                <button
-                  className={`ch-msg-act ${copyState === 'md' || copyState === 'txt' ? 'copied' : ''}`}
-                  onClick={() => setCopyState((p) => (p === 'open' ? 'idle' : 'open'))}
-                  title="复制内容"
-                >
-                  {copyState === 'md' || copyState === 'txt' ? (
-                    <Check size={12} />
-                  ) : (
-                    <Copy size={12} />
-                  )}
-                  {copyState === 'md' ? '已复制 MD' : copyState === 'txt' ? '已复制文本' : '复制'}
-                </button>
-                {copyState === 'open' && (
-                  <div className="ch-copy-dropdown">
-                    <button className="ch-copy-opt" onClick={copyMd}>
-                      复制 Markdown
-                    </button>
-                    <button className="ch-copy-opt" onClick={copyTxt}>
-                      复制纯文本
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="ch-msg-act-sep" />
-              {onRegenerate && (
-                <button className="ch-msg-act" onClick={onRegenerate} title="重新生成回答">
-                  <RotateCcw size={12} /> 重新生成
-                </button>
-              )}
-              {onFeedback && (
-                <>
-                  <button
-                    className={`ch-msg-act ${feedbackGiven === 'like' ? 'active-fb' : ''}`}
-                    onClick={() => onFeedback('like')}
-                    title="有帮助"
-                  >
-                    <ThumbsUp size={12} />
-                  </button>
-                  <button
-                    className={`ch-msg-act ${feedbackGiven === 'dislike' ? 'active-fb' : ''}`}
-                    onClick={() => onFeedback('dislike')}
-                    title="有问题"
-                  >
-                    <ThumbsDown size={12} />
-                  </button>
-                </>
-              )}
-            </div>
-          </>
-        )}
-        {!isStreaming && msg.followUps && msg.followUps.length > 0 && (
-          <div className="ch-followups">
-            {msg.followUps.map((fu) => (
-              <button key={fu} className="ch-fu" onClick={() => onFill(fu)}>
-                {fu}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // ── Props ────────────────────────────────────────────
 interface ChatInterfaceProps {
@@ -612,7 +206,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [selectedConvs, setSelectedConvs] = useState<Set<string>>(new Set())
 
   // ── UI state ──
-  const [artifactOpen, setArtifactOpen] = useState(false)
+  const artifactOpen = useArtifactStore((s) => s.open)
   const [webSearch, setWebSearch] = useState(true)
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
@@ -667,13 +261,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
   const userTriggerRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const msgsEndRef = useRef<HTMLDivElement>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
-  /** 用户在流式回复中主动向上滚动时为 true，暂停自动跟随 */
-  const userScrolledUpRef = useRef(false)
+  const virtuosoRef = useRef<VirtuosoHandle>(null)
   const [sidebarWidth, setSidebarWidth] = useState(260)
 
   useEffect(() => {
@@ -735,24 +326,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 流式输出时自动跟随到底部（用户未主动上滑时）
-  useEffect(() => {
-    if (streamingConvId !== activeConv || !contentRef.current) return
-    if (userScrolledUpRef.current) return
-    contentRef.current.scrollTop = contentRef.current.scrollHeight
-  }, [streamingContent, streamingConvId, activeConv])
-
   // 流结束后清除重新生成追踪
   useEffect(() => {
     if (!isThisStreaming && regeneratingPairKey) setRegeneratingPairKey(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isThisStreaming])
 
-  // 切换会话时同步滚动到底部，消除内容抖动；同时重置上滑标记
-  useLayoutEffect(() => {
-    userScrolledUpRef.current = false
-    if (!contentRef.current) return
-    contentRef.current.scrollTop = contentRef.current.scrollHeight
+  // 切换会话时同步滚动到底部（Virtuoso 由 followOutput 处理粘底）
+  useEffect(() => {
+    virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' })
   }, [activeConv])
 
   // 标题重命名输入框挂载后聚焦并将光标移到末尾
@@ -849,8 +431,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setCvMenuOpen(id)
   }
 
-  const _toggleArtifact = (): void => setArtifactOpen((o) => !o)
-
   const onInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setInputValue(e.target.value)
     const ta = e.target
@@ -915,20 +495,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     }, 0)
   }, [])
 
-  const onScroll = (): void => {
-    if (!contentRef.current) return
-    const { scrollTop, scrollHeight, clientHeight } = contentRef.current
-    const distFromBottom = scrollHeight - scrollTop - clientHeight
-    setShowScrollFab(distFromBottom > 100)
-    // 流式输出中：用户主动上滑则暂停自动跟随，回到底部则恢复
-    if (isThisStreaming) {
-      userScrolledUpRef.current = distFromBottom > 80
-    }
-  }
-
   const toBottom = (): void => {
-    userScrolledUpRef.current = false
-    contentRef.current?.scrollTo({ top: contentRef.current.scrollHeight, behavior: 'smooth' })
+    virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
   }
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -1379,7 +947,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         </header>
 
         {/* Content */}
-        <div className="ch-content" ref={contentRef} onScroll={onScroll}>
+        <div className="ch-content">
           {/* Empty state */}
           <div className="ch-empty-state">
             <div className="ch-ai-av">元</div>
@@ -1429,139 +997,50 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           </div>
 
           {/* Messages */}
-          <div className="ch-msgs-scroll">
-            <div className="ch-msgs-inner">
-              {(() => {
-                // Filter out streaming-time placeholders
-                const filteredMsgs = messages.filter((msg) => {
-                  if (!isThisStreaming) return true
-                  if (msg.role === 'assistant' && !getMsgText(msg)) return false
-                  if (
-                    msg.role === 'user' &&
-                    optimisticUserMsg &&
-                    getMsgText(msg) === optimisticUserMsg
-                  )
-                    return false
-                  return true
-                })
-                const pairs = buildPairs(filteredMsgs)
-
-                return (
-                  <>
-                    {pairs.flatMap((pair) => {
-                      const rawIdx = versionIdxs[pair.pairKey] ?? pair.assistants.length - 1
-                      const vIdx = Math.max(0, Math.min(rawIdx, pair.assistants.length - 1))
-                      const currentAsst = pair.assistants[vIdx]
-                      // 重新生成时：将流式内容内联到当前对话对，而非在下方另起一条
-                      const isPairRegenerating =
-                        isThisStreaming && regeneratingPairKey === pair.pairKey
-                      const effectiveVersionCount =
-                        pair.assistants.length + (isPairRegenerating ? 1 : 0)
-                      const effectiveVIdx = isPairRegenerating ? effectiveVersionCount - 1 : vIdx
-                      const elems: JSX.Element[] = [
-                        <UserMessage
-                          key={`u-${pair.pairKey}`}
-                          msg={pair.userMsg}
-                          editing={editingMsgId === pair.userMsg.id}
-                          timeFmt={timeFmt}
-                          dateFmt={dateFmt}
-                          onStartEdit={() => startEditMsg(pair.userMsg)}
-                          onSubmitEdit={(text) => submitEditMsg(pair.userMsg, text)}
-                          onCancelEdit={() => setEditingMsgId(null)}
-                        />,
-                      ]
-                      if (isPairRegenerating) {
-                        // 流式重新生成：以流式状态展示在此对话对内
-                        elems.push(
-                          <AIMessage
-                            key={`a-regen-${pair.pairKey}`}
-                            msg={{
-                              id: '__regen__',
-                              role: 'assistant',
-                              parts: [],
-                              createdAt: Date.now(),
-                            }}
-                            isStreaming={true}
-                            streamingContent={streamingContent}
-                            onFill={fill}
-                            timeFmt={timeFmt}
-                            dateFmt={dateFmt}
-                            versionCount={effectiveVersionCount}
-                            versionIdx={effectiveVIdx}
-                          />
-                        )
-                      } else if (currentAsst) {
-                        elems.push(
-                          <AIMessage
-                            key={`a-${currentAsst.id}-v${vIdx}`}
-                            msg={currentAsst}
-                            isStreaming={false}
-                            streamingContent=""
-                            onFill={fill}
-                            timeFmt={timeFmt}
-                            dateFmt={dateFmt}
-                            versionCount={effectiveVersionCount}
-                            versionIdx={effectiveVIdx}
-                            onVersionChange={(i) =>
-                              setVersionIdxs((prev) => ({ ...prev, [pair.pairKey]: i }))
-                            }
-                            onRegenerate={() => handleRegenerate(pair)}
-                            onFeedback={(type) => openFeedback(currentAsst.id, type)}
-                            feedbackGiven={msgFeedback[currentAsst.id]}
-                          />
-                        )
-                      }
-                      return elems
-                    })}
-
-                    {/* Optimistic user message (new send, not regeneration) */}
-                    {isThisStreaming && optimisticUserMsg && (
-                      <UserMessage
-                        msg={{
-                          id: '__opt_user__',
-                          role: 'user',
-                          parts: [{ type: 'text', content: optimisticUserMsg }],
-                          createdAt: Date.now(),
-                        }}
-                        editing={false}
-                        timeFmt={timeFmt}
-                        dateFmt={dateFmt}
-                        onStartEdit={() => {}}
-                        onSubmitEdit={() => {}}
-                        onCancelEdit={() => {}}
-                      />
-                    )}
-
-                    {/* Streaming AI response (only for new messages, not regeneration) */}
-                    {isThisStreaming && !regeneratingPairKey && (
-                      <AIMessage
-                        msg={{
-                          id: '__streaming__',
-                          role: 'assistant',
-                          parts: [],
-                          createdAt: Date.now(),
-                        }}
-                        isStreaming={true}
-                        streamingContent={streamingContent}
-                        onFill={fill}
-                        timeFmt={timeFmt}
-                        dateFmt={dateFmt}
-                      />
-                    )}
-                  </>
-                )
-              })()}
-
-              <div ref={msgsEndRef} style={{ height: '20px' }} />
-            </div>
-
-            {/* Scroll FAB */}
-            <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
-              <button onClick={toBottom} title={t('actions.scrollToBottom')}>
-                <ArrowDown size={16} />
-              </button>
-            </div>
-          </div>
+          {(() => {
+            const filteredMsgs = messages.filter((msg) => {
+              if (!isThisStreaming) return true
+              if (msg.role === 'assistant' && !getMsgText(msg)) return false
+              if (msg.role === 'user' && optimisticUserMsg && getMsgText(msg) === optimisticUserMsg)
+                return false
+              return true
+            })
+            const pairs = buildPairs(filteredMsgs)
+            return (
+              <div className="ch-msgs-scroll">
+                <MessageList
+                  virtuosoRef={virtuosoRef}
+                  pairs={pairs}
+                  streamingUserMsg={isThisStreaming && optimisticUserMsg ? optimisticUserMsg : null}
+                  showStreamingAI={isThisStreaming && !regeneratingPairKey}
+                  regeneratingPairKey={regeneratingPairKey}
+                  streamingContent={streamingContent}
+                  timeFmt={timeFmt}
+                  dateFmt={dateFmt}
+                  versionIdxs={versionIdxs}
+                  onFill={fill}
+                  editingMsgId={editingMsgId}
+                  onStartEdit={(msg) => startEditMsg(msg)}
+                  onSubmitEdit={(msg, text) => submitEditMsg(msg, text)}
+                  onCancelEdit={() => setEditingMsgId(null)}
+                  onVersionChange={(pairKey, i) =>
+                    setVersionIdxs((prev) => ({ ...prev, [pairKey]: i }))
+                  }
+                  onRegenerate={(pair) => handleRegenerate(pair)}
+                  onFeedback={(msgId, type) => openFeedback(msgId, type)}
+                  msgFeedback={msgFeedback}
+                  onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
+                />
+                <MessageOutline pairs={pairs} virtuosoRef={virtuosoRef} />
+                {/* Scroll FAB */}
+                <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
+                  <button onClick={toBottom} title={t('actions.scrollToBottom')}>
+                    <ArrowDown size={16} />
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
         </div>
 
         {/* Input area */}
@@ -1672,34 +1151,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       </main>
 
       {/* ── Artifact panel ───────────────────────── */}
-      <div className="ch-artifact-panel">
-        <div className="ch-ap-head">
-          <span className="ch-ap-lang">TypeScript</span>
-          <span className="ch-ap-title">ListItem 性能优化示例</span>
-          <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
-            <button className="ch-ib" title="复制全部">
-              <Copy size={18} />
-            </button>
-            <button className="ch-ib" title="关闭" onClick={() => setArtifactOpen(false)}>
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-        <div className="ch-ap-body">
-          <pre>{`import React, { memo, useMemo, useCallback } from 'react'
-
-const ListItem = memo(({ id, label, value, onSelect }) => {
-  const display = useMemo(() => \`\${label}：\${value.toLocaleString('zh-CN')} 元\`, [label, value])
-  return <div onClick={() => onSelect(id)}>{display}</div>
-})`}</pre>
-        </div>
-        <div className="ch-ap-footer">
-          <button className="ch-ap-copy-btn">
-            <Copy size={14} /> 复制全部
-          </button>
-          <span className="ch-ap-finfo">TypeScript · 8 行</span>
-        </div>
-      </div>
+      <ArtifactPanel />
 
       {/* ── Model dropdown ────────────────────────── */}
       {modelDropOpen && (
