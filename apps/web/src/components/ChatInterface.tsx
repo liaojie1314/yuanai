@@ -471,8 +471,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     const ta = inputRef.current
     if (ta) {
       if (next) {
-        // 展开：移除内联高度，让 CSS flex 撑满剩余空间
-        ta.style.height = ''
+        // 展开：高度撑至接近顶部工具栏（56px toolbar + ~120px input toolbar + padding）
+        const expandedH = Math.max(200, window.innerHeight - 56 - 120)
+        ta.style.height = expandedH + 'px'
       } else {
         // 收起：恢复 JS 控制的自适应高度
         ta.style.height = 'auto'
