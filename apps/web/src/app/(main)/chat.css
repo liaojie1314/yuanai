@@ -1149,11 +1149,10 @@
 
 /* ── Think block ─────────────────────────────────── */
 .ch-think-block {
-  border: 1px solid rgba(59, 130, 246, 0.18);
+  border: 1px solid var(--elevated);
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 14px;
-  background: var(--surface);
 }
 
 .ch-think-hd {
@@ -1455,25 +1454,28 @@
   min-height: 0;
   overflow: hidden;
 }
+/* ch-input-wrap 保持 block 内部布局，仅在 ch-main(column flex) 中 flex grow */
 .ch-main.input-expanded .ch-input-wrap {
   flex: 1;
-  display: flex;
-  flex-direction: column;
 }
+/* ch-input-inner 用 height:calc 撑满 wrap，自身转 flex column */
 .ch-main.input-expanded .ch-input-inner {
-  flex: 1;
   display: flex;
   flex-direction: column;
+  /* ch-input-wrap: padding 12px top + 16px bottom = 28px */
+  height: calc(100% - 28px);
 }
 .ch-main.input-expanded .ch-input-ta-wrap {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 .ch-main.input-expanded .ch-input-ta {
   flex: 1;
   max-height: none;
   min-height: 0;
+  overflow-y: auto;
 }
 .ch-input-tb {
   display: flex;
