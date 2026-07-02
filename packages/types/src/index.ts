@@ -155,6 +155,8 @@ export interface Message {
    * 后端支持工具调用/多模态后填充此字段。
    */
   messageParts?: MessagePart[]
+  /** AI 思考/推理过程文字（仅 assistant 消息，模型不支持时为 null） */
+  thinkingContent?: string | null
   /** 生成该消息使用的模型；用户消息无此字段 */
   model?: string
   /** 本次响应消耗的 token 总量；用户消息无此字段 */

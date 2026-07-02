@@ -455,6 +455,21 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
   }
 
+  /** 聚焦时展开到至少 3 行，方便用户输入多行内容 */
+  const onInputFocus = (): void => {
+    const ta = inputRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = Math.max(Math.min(ta.scrollHeight, 200), 72) + 'px'
+  }
+
+  /** 失焦且内容为空时收回到 1 行 */
+  const onInputBlur = (): void => {
+    const ta = inputRef.current
+    if (!ta || ta.value.trim()) return
+    ta.style.height = 'auto'
+  }
+
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -495,6 +510,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       convId,
       content: text,
       model: activeModel.id,
+      enableThinking: showThinking,
     })
   }
 
@@ -565,6 +581,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       convId: activeConv,
       content: newText,
       model: activeModel.id,
+      enableThinking: showThinking,
     })
   }
 
@@ -578,6 +595,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       content: userText,
       model: activeModel.id,
       skipOptimistic: true,
+      enableThinking: showThinking,
     })
   }
 
@@ -1114,6 +1132,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               value={inputValue}
               onChange={onInputChange}
               onKeyDown={onInputKey}
+              onFocus={onInputFocus}
+              onBlur={onInputBlur}
               disabled={!isLoggedIn}
             />
             <div className="ch-input-tb">

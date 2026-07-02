@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type JSX } from 'react'
+import { useState, useEffect, type JSX } from 'react'
 import { Brain, ChevronDown } from 'lucide-react'
 import type { ToolCall } from '@yuanai/types'
 import { ToolCallRow } from './ToolCallRow'
@@ -32,7 +32,19 @@ export function ThinkBlock({
   durationMs,
   defaultOpen,
 }: ThinkBlockProps): JSX.Element {
+  // 流式思考中默认展开；思考完成后自动折叠（对标原型图行为）
   const [open, setOpen] = useState(defaultOpen ?? active)
+
+  useEffect(() => {
+    if (active) {
+      // 进入思考态：自动展开
+      setOpen(true)
+    } else {
+      // 思考完成：自动折叠，用户可手动展开
+      setOpen(false)
+    }
+  }, [active])
+
   const state = active ? 'active' : 'done'
   const label = active ? '正在思考…' : '已完成思考'
   const durationLabel =

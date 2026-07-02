@@ -228,6 +228,50 @@ async def test_stream_chat_propagates_api_error() -> None:
                 pass
 
 
+async def test_stream_chat_deepseek_extra_body_enable_thinking() -> None:
+    """enable_thinking=True 时 DeepSeek 请求应携带 extra_body={"thinking": {"type": "enabled"}}。"""
+    mock_client = _build_mock_client(["ok"])
+
+    with patch("app.services.ai_service._get_client", return_value=mock_client):
+        async for _ in stream_chat(
+            "deepseek-v4-flash", [{"role": "user", "content": "hi"}], enable_thinking=True
+        ):
+            pass
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert "extra_body" in call_kwargs
+    assert call_kwargs["extra_body"]["thinking"]["type"] == "enabled"
+
+
+async def test_stream_chat_deepseek_extra_body_disable_thinking() -> None:
+    """enable_thinking=False 时 DeepSeek 请求应携带 extra_body={"thinking": {"type": "disabled"}}。"""
+    mock_client = _build_mock_client(["ok"])
+
+    with patch("app.services.ai_service._get_client", return_value=mock_client):
+        async for _ in stream_chat(
+            "deepseek-v4-flash", [{"role": "user", "content": "hi"}], enable_thinking=False
+        ):
+            pass
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert "extra_body" in call_kwargs
+    assert call_kwargs["extra_body"]["thinking"]["type"] == "disabled"
+
+
+async def test_stream_chat_openai_no_extra_body() -> None:
+    """OpenAI 模型不应携带 extra_body（非 DeepSeek 提供商）。"""
+    mock_client = _build_mock_client(["ok"])
+
+    with patch("app.services.ai_service._get_client", return_value=mock_client):
+        async for _ in stream_chat(
+            "gpt-4o", [{"role": "user", "content": "hi"}], enable_thinking=True
+        ):
+            pass
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert "extra_body" not in call_kwargs
+
+
 async def test_stream_chat_propagates_stream_error() -> None:
     """流式迭代中途抛出异常时应向调用方传播。"""
 

@@ -12,6 +12,8 @@ export interface StreamParams {
   content: string
   /** 使用的 AI 模型 ID */
   model: string
+  /** 是否开启 AI 思考模式（DeepSeek 系列通过 extra_body 传递，其他模型忽略） */
+  enableThinking?: boolean
   /** 为 true 时不显示乐观用户消息（重新生成场景：原用户消息已存在） */
   skipOptimistic?: boolean
   /** 流启动时回调 */
@@ -54,6 +56,7 @@ export function useStream() {
       convId,
       content,
       model,
+      enableThinking,
       skipOptimistic,
       onStart,
       onEnd,
@@ -76,6 +79,7 @@ export function useStream() {
             conversation_id: convId,
             model,
             message: { content, fileIds: [] },
+            enable_thinking: enableThinking ?? false,
           }),
           signal: abortRef.current.signal,
         })

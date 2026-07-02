@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type JSX } from 'react'
+import { useState, useRef, type JSX } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -75,9 +75,19 @@ export function AIMessage({
     setTimeout(() => setCopyState('idle'), 2000)
   }
 
-  // 复制格式下拉改为 hover 触发（悬浮展开 / 移出收起），而非点击切换
-  const openCopyMenu = (): void => setCopyState((p) => (p === 'md' || p === 'txt' ? p : 'open'))
-  const closeCopyMenu = (): void => setCopyState((p) => (p === 'open' ? 'idle' : p))
+  // 复制格式下拉：hover 展开，离开后延迟 200ms 收起，防止鼠标经过间隙时意外关闭
+  const copyCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const openCopyMenu = (): void => {
+    if (copyCloseTimer.current) {
+      clearTimeout(copyCloseTimer.current)
+      copyCloseTimer.current = null
+    }
+    setCopyState((p) => (p === 'md' || p === 'txt' ? p : 'open'))
+  }
+  const closeCopyMenu = (): void => {
+    if (copyCloseTimer.current) clearTimeout(copyCloseTimer.current)
+    copyCloseTimer.current = setTimeout(() => setCopyState((p) => (p === 'open' ? 'idle' : p)), 200)
+  }
 
   // 决定思考块的数据源与状态：流式期间用 store 数据，否则用消息静态数据
   const finalThinkContent = isStreaming ? (streamingThink ?? '') : (msg.thinkContent ?? '')
@@ -158,7 +168,11 @@ export function AIMessage({
                   {copyState === 'md' ? '已复制 MD' : copyState === 'txt' ? '已复制文本' : '复制'}
                 </button>
                 {copyState === 'open' && (
-                  <div className="ch-copy-dropdown">
+                  <div
+                    className="ch-copy-dropdown"
+                    onMouseEnter={openCopyMenu}
+                    onMouseLeave={closeCopyMenu}
+                  >
                     <button className="ch-copy-opt" onClick={copyMd}>
                       复制 Markdown
                     </button>

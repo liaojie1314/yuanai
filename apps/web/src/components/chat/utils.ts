@@ -43,6 +43,7 @@ export function apiMsgToMock(msg: Message): MockMessage {
     id: msg.id,
     role: msg.role as 'user' | 'assistant',
     parts: [{ type: 'text' as const, content: msg.content }],
+    ...(msg.thinkingContent ? { thinkContent: msg.thinkingContent } : {}),
     createdAt: new Date(msg.createdAt).getTime(),
   }
 }

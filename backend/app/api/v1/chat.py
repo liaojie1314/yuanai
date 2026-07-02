@@ -117,15 +117,22 @@ async def stream_chat_endpoint(
     await db.refresh(user_msg)
     await db.refresh(assistant_msg)
 
-    # 构建历史消息（最多 50 条）
+    # 构建历史消息（最多 50 条，排除刚创建的空 assistant 占位）
     history_result = await db.execute(
-        select(Message).where(Message.conv_id == conv.id).order_by(Message.created_at).limit(50)
+        select(Message)
+        .where(Message.conv_id == conv.id)
+        .where(Message.id != assistant_msg.id)  # 排除空占位，避免模型误以为已回复
+        .order_by(Message.created_at)
+        .limit(50)
     )
     history = history_result.scalars().all()
     openai_messages = [{"role": m.role.value, "content": m.content} for m in history]
 
     return StreamingResponse(
-        _generate_sse(openai_messages, req.model, assistant_msg.id, user_msg.id, db),
+        _generate_sse(
+            openai_messages, req.model, assistant_msg.id, user_msg.id, db,
+            enable_thinking=req.enable_thinking,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -137,6 +144,8 @@ async def _generate_sse(
     assistant_msg_id: uuid.UUID,
     user_msg_id: uuid.UUID,
     db: AsyncSession,
+    *,
+    enable_thinking: bool = False,
 ) -> AsyncGenerator[str, None]:
     payload = json.dumps(
         {"user_message_id": str(user_msg_id), "assistant_message_id": str(assistant_msg_id), "model": model}  # noqa: E501
@@ -144,9 +153,11 @@ async def _generate_sse(
     yield f"event: message_start\ndata: {payload}\n\n"
 
     full_content = ""
+    full_thinking = ""
     try:
-        async for event_type, token in stream_chat(model, messages):  # type: ignore[arg-type]
+        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
             if event_type == "thinking":
+                full_thinking += token
                 delta = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"event: thinking_delta\ndata: {delta}\n\n"
             else:
@@ -154,10 +165,12 @@ async def _generate_sse(
                 delta = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"event: content_delta\ndata: {delta}\n\n"
 
-        # 更新 assistant 消息内容
+        # 更新 assistant 消息内容（含思考内容）
         result = await db.execute(select(Message).where(Message.id == assistant_msg_id))
         msg = result.scalar_one()
         msg.content = full_content
+        if full_thinking:
+            msg.thinking_content = full_thinking
         await db.commit()
 
         yield (

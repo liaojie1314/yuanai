@@ -61,6 +61,7 @@ class MessageResponse(BaseModel):
     id: uuid.UUID
     role: str
     content: str
+    thinking_content: str | None = None
     model: str | None = None
     tokens_used: int | None = None
     files: list[MessageFileResponse] = []
@@ -80,3 +81,4 @@ class SendMessageRequest(BaseModel):
     conversation_id: uuid.UUID
     model: str
     message: MessageContent
+    enable_thinking: bool = False

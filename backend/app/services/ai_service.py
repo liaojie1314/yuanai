@@ -118,6 +118,7 @@ def _get_client(provider: str, base_url: str) -> AsyncOpenAI:
 async def stream_chat(
     model: str,
     messages: list[dict[str, object]],
+    enable_thinking: bool = False,
 ) -> AsyncGenerator[tuple[str, str], None]:
     """向 AI 提供商发送流式聊天请求，逐 token yield 事件元组。
 
@@ -128,6 +129,7 @@ async def stream_chat(
     Args:
         model: 模型 ID（须在 PROVIDER_CONFIG 中注册）
         messages: OpenAI 格式的消息列表
+        enable_thinking: 是否开启思考/推理模式（DeepSeek 系列通过 extra_body 传递）
 
     Yields:
         tuple[str, str]: (event_type, token)
@@ -143,10 +145,22 @@ async def stream_chat(
 
     client = _get_client(config["provider"], config["base_url"])
 
+    # DeepSeek 模型通过 extra_body 控制思考模式：
+    # https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+    extra_body: dict[str, object] | None = None
+    if config["provider"] == "deepseek":
+        extra_body = {
+            "thinking": {
+                "type": "enabled" if enable_thinking else "disabled",
+                "budget_tokens": 8000,
+            }
+        }
+
     stream = await client.chat.completions.create(
         model=model,
         messages=messages,  # type: ignore[arg-type]
         stream=True,
+        **({"extra_body": extra_body} if extra_body is not None else {}),
     )
 
     async for chunk in stream:  # type: ignore[union-attr]
