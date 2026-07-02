@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type JSX } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import type { MockMessage } from '@yuanai/core/stores'
-import { getMsgText, formatMsgTime, stripMarkdown } from './utils'
+import { getMsgText, formatMsgTime } from './utils'
 
 export interface UserMessageProps {
   msg: MockMessage
@@ -18,9 +18,7 @@ export interface UserMessageProps {
 /**
  * 用户消息气泡组件。
  *
- * 提供编辑与复制两种操作。复制支持两种模式：
- * - 复制 Markdown：保留原始格式
- * - 复制纯文本：剥离 Markdown 语法
+ * 提供编辑与复制两种操作。复制直接写入用户原始输入文本，不弹出格式选择。
  */
 export function UserMessage({
   msg,
@@ -33,9 +31,8 @@ export function UserMessage({
 }: UserMessageProps): JSX.Element {
   const text = getMsgText(msg)
   const editRef = useRef<HTMLTextAreaElement>(null)
-  const copyWrapRef = useRef<HTMLDivElement>(null)
   const [localEdit, setLocalEdit] = useState(text)
-  const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     if (editing) {
@@ -51,15 +48,6 @@ export function UserMessage({
     }
   }, [editing, text])
 
-  useEffect(() => {
-    if (copyState !== 'open') return
-    const handler = (e: MouseEvent): void => {
-      if (!copyWrapRef.current?.contains(e.target as Node)) setCopyState('idle')
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [copyState])
-
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -70,16 +58,10 @@ export function UserMessage({
     if (e.key === 'Escape') onCancelEdit()
   }
 
-  const copyMd = (): void => {
+  const copy = (): void => {
     void navigator.clipboard.writeText(text)
-    setCopyState('md')
-    setTimeout(() => setCopyState('idle'), 2000)
-  }
-
-  const copyTxt = (): void => {
-    void navigator.clipboard.writeText(stripMarkdown(text))
-    setCopyState('txt')
-    setTimeout(() => setCopyState('idle'), 2000)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   if (editing) {
@@ -124,27 +106,15 @@ export function UserMessage({
         <div className="ch-msg-bubble">{text}</div>
         <div className="ch-msg-acts">
           <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
-          <div ref={copyWrapRef} className="ch-copy-wrap">
-            <button
-              className={`ch-msg-act ${copyState === 'md' || copyState === 'txt' ? 'copied' : ''}`}
-              onClick={() => setCopyState((p) => (p === 'open' ? 'idle' : 'open'))}
-              title="复制内容"
-              aria-label="复制内容"
-            >
-              {copyState === 'md' || copyState === 'txt' ? <Check size={12} /> : <Copy size={12} />}
-              {copyState === 'md' ? '已复制 MD' : copyState === 'txt' ? '已复制文本' : '复制'}
-            </button>
-            {copyState === 'open' && (
-              <div className="ch-copy-dropdown">
-                <button className="ch-copy-opt" onClick={copyMd}>
-                  复制 Markdown
-                </button>
-                <button className="ch-copy-opt" onClick={copyTxt}>
-                  复制纯文本
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            className={`ch-msg-act ${copied ? 'copied' : ''}`}
+            onClick={copy}
+            title="复制"
+            aria-label="复制"
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? '已复制' : '复制'}
+          </button>
           <button className="ch-msg-act" onClick={onStartEdit} aria-label="编辑消息">
             <Pencil size={12} /> 编辑
           </button>

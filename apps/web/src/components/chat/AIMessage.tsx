@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -60,7 +60,6 @@ export function AIMessage({
 }: AIMessageProps): JSX.Element {
   const displayContent = isStreaming ? streamingContent : getMsgText(msg)
   const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
-  const copyWrapRef = useRef<HTMLDivElement>(null)
   const thinkDuration = useChatStore((s) => s.streamingThinkDurationMs)
 
   const copyMd = (): void => {
@@ -75,14 +74,9 @@ export function AIMessage({
     setTimeout(() => setCopyState('idle'), 2000)
   }
 
-  useEffect(() => {
-    if (copyState !== 'open') return
-    const handler = (e: MouseEvent): void => {
-      if (!copyWrapRef.current?.contains(e.target as Node)) setCopyState('idle')
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [copyState])
+  // 复制格式下拉改为 hover 触发（悬浮展开 / 移出收起），而非点击切换
+  const openCopyMenu = (): void => setCopyState((p) => (p === 'md' || p === 'txt' ? p : 'open'))
+  const closeCopyMenu = (): void => setCopyState((p) => (p === 'open' ? 'idle' : p))
 
   // 决定思考块的数据源与状态：流式期间用 store 数据，否则用消息静态数据
   const finalThinkContent = isStreaming ? (streamingThink ?? '') : (msg.thinkContent ?? '')
@@ -141,10 +135,18 @@ export function AIMessage({
             )}
             <div className="ch-msg-acts">
               <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
-              <div ref={copyWrapRef} className="ch-copy-wrap">
+              <div
+                className="ch-copy-wrap"
+                onMouseEnter={openCopyMenu}
+                onMouseLeave={closeCopyMenu}
+                onFocus={openCopyMenu}
+                onBlur={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) closeCopyMenu()
+                }}
+              >
                 <button
                   className={`ch-msg-act ${copyState === 'md' || copyState === 'txt' ? 'copied' : ''}`}
-                  onClick={() => setCopyState((p) => (p === 'open' ? 'idle' : 'open'))}
+                  onClick={copyMd}
                   title="复制内容"
                 >
                   {copyState === 'md' || copyState === 'txt' ? (

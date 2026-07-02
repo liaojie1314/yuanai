@@ -38,7 +38,7 @@ describe('UserMessage', () => {
     expect(screen.getByText('Hello 元AI')).toBeInTheDocument()
   })
 
-  it('点击复制展开下拉，选"复制 Markdown"保留原始格式', async () => {
+  it('点击复制直接写入原始文本，不弹出格式选择', async () => {
     const text = 'A **bold** line'
     render(
       <UserMessage
@@ -51,31 +51,13 @@ describe('UserMessage', () => {
         onCancelEdit={() => {}}
       />
     )
-    fireEvent.click(screen.getByRole('button', { name: '复制内容' }))
     await act(async () => {
-      fireEvent.click(screen.getByText('复制 Markdown'))
+      fireEvent.click(screen.getByRole('button', { name: '复制' }))
     })
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(text)
-    expect(await screen.findByText('已复制 MD')).toBeInTheDocument()
-  })
-
-  it('选"复制纯文本"会剥离 Markdown 语法', async () => {
-    render(
-      <UserMessage
-        msg={makeMsg('A **bold** _italic_')}
-        editing={false}
-        timeFmt="24h"
-        dateFmt="ymd"
-        onStartEdit={() => {}}
-        onSubmitEdit={() => {}}
-        onCancelEdit={() => {}}
-      />
-    )
-    fireEvent.click(screen.getByRole('button', { name: '复制内容' }))
-    await act(async () => {
-      fireEvent.click(screen.getByText('复制纯文本'))
-    })
-    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('A bold _italic_')
+    expect(await screen.findByText('已复制')).toBeInTheDocument()
+    expect(screen.queryByText('复制 Markdown')).not.toBeInTheDocument()
+    expect(screen.queryByText('复制纯文本')).not.toBeInTheDocument()
   })
 
   it('点击"编辑"触发 onStartEdit 回调', () => {
