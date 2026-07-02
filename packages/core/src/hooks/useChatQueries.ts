@@ -40,6 +40,8 @@ export function useCreateConversation() {
       qc.setQueryData<Conversation[]>(['conversations'], (prev) =>
         prev ? [newConv, ...prev] : [newConv]
       )
+      // 新会话必然没有历史消息，预填缓存避免 useMessages 出现一次多余的 loading 态
+      qc.setQueryData<Message[]>(['messages', newConv.id], [])
     },
   })
 }

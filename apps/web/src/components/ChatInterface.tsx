@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, type JSX } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import SettingsModal from '@/components/settings/SettingsModal'
@@ -61,6 +61,7 @@ import {
   LogIn,
   User,
   Square,
+  Loader2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -195,8 +196,23 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }, [initialConvId])
 
   // ── Messages for active conv ──
-  const { data: apiMessages = [] } = useMessages(activeConv)
-  const messages = apiMessages.map(apiMsgToMock)
+  // isLoading（而非 isFetching）：只在这个会话从未取到过数据时为 true——
+  // 切到已缓存过的会话不应出现加载态，只有切到全新会话才需要过渡占位，
+  // 避免 Virtuoso 挂载时 pairs 还是空数组，之后数据到达又要二次滚动导致跳动。
+  const { data: apiMessages = [], isLoading: messagesLoading } = useMessages(activeConv)
+  const messages = useMemo(() => apiMessages.map(apiMsgToMock), [apiMessages])
+  const filteredMsgs = useMemo(
+    () =>
+      messages.filter((msg) => {
+        if (!isThisStreaming) return true
+        if (msg.role === 'assistant' && !getMsgText(msg)) return false
+        if (msg.role === 'user' && optimisticUserMsg && getMsgText(msg) === optimisticUserMsg)
+          return false
+        return true
+      }),
+    [messages, isThisStreaming, optimisticUserMsg]
+  )
+  const pairs = useMemo(() => buildPairs(filteredMsgs), [filteredMsgs])
 
   // ── Sidebar state ──
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -331,11 +347,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     if (!isThisStreaming && regeneratingPairKey) setRegeneratingPairKey(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isThisStreaming])
-
-  // 切换会话时同步滚动到底部（Virtuoso 由 followOutput 处理粘底）
-  useEffect(() => {
-    virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end' })
-  }, [activeConv])
 
   // 标题重命名输入框挂载后聚焦并将光标移到末尾
   useEffect(() => {
@@ -618,7 +629,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     <div className={appClass} id="app">
       {/* ── Backdrop overlay ── */}
       {(modelDropOpen || userPanelOpen || !!cvMenuOpen) && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={closeAllPanels} />
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+          onClick={closeAllPanels}
+          onContextMenu={(e) => {
+            // 该遮罩层级高于侧边栏，会话菜单展开时再次右键会先命中这里；
+            // 若不阻止默认行为并关闭菜单，浏览器原生右键菜单会弹出
+            e.preventDefault()
+            closeAllPanels()
+          }}
+        />
       )}
 
       {/* Hidden file input */}
@@ -997,50 +1017,45 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           </div>
 
           {/* Messages */}
-          {(() => {
-            const filteredMsgs = messages.filter((msg) => {
-              if (!isThisStreaming) return true
-              if (msg.role === 'assistant' && !getMsgText(msg)) return false
-              if (msg.role === 'user' && optimisticUserMsg && getMsgText(msg) === optimisticUserMsg)
-                return false
-              return true
-            })
-            const pairs = buildPairs(filteredMsgs)
-            return (
-              <div className="ch-msgs-scroll">
-                <MessageList
-                  virtuosoRef={virtuosoRef}
-                  pairs={pairs}
-                  streamingUserMsg={isThisStreaming && optimisticUserMsg ? optimisticUserMsg : null}
-                  showStreamingAI={isThisStreaming && !regeneratingPairKey}
-                  regeneratingPairKey={regeneratingPairKey}
-                  streamingContent={streamingContent}
-                  timeFmt={timeFmt}
-                  dateFmt={dateFmt}
-                  versionIdxs={versionIdxs}
-                  onFill={fill}
-                  editingMsgId={editingMsgId}
-                  onStartEdit={(msg) => startEditMsg(msg)}
-                  onSubmitEdit={(msg, text) => submitEditMsg(msg, text)}
-                  onCancelEdit={() => setEditingMsgId(null)}
-                  onVersionChange={(pairKey, i) =>
-                    setVersionIdxs((prev) => ({ ...prev, [pairKey]: i }))
-                  }
-                  onRegenerate={(pair) => handleRegenerate(pair)}
-                  onFeedback={(msgId, type) => openFeedback(msgId, type)}
-                  msgFeedback={msgFeedback}
-                  onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
-                />
-                <MessageOutline pairs={pairs} virtuosoRef={virtuosoRef} />
-                {/* Scroll FAB */}
-                <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
-                  <button onClick={toBottom} title={t('actions.scrollToBottom')}>
-                    <ArrowDown size={16} />
-                  </button>
-                </div>
+          <div className="ch-msgs-scroll">
+            {messagesLoading ? (
+              <div className="ch-msgs-loading">
+                <Loader2 size={22} className="ch-spin" />
               </div>
-            )
-          })()}
+            ) : (
+              <MessageList
+                key={activeConv}
+                virtuosoRef={virtuosoRef}
+                pairs={pairs}
+                streamingUserMsg={isThisStreaming && optimisticUserMsg ? optimisticUserMsg : null}
+                showStreamingAI={isThisStreaming && !regeneratingPairKey}
+                regeneratingPairKey={regeneratingPairKey}
+                streamingContent={streamingContent}
+                timeFmt={timeFmt}
+                dateFmt={dateFmt}
+                versionIdxs={versionIdxs}
+                onFill={fill}
+                editingMsgId={editingMsgId}
+                onStartEdit={(msg) => startEditMsg(msg)}
+                onSubmitEdit={(msg, text) => submitEditMsg(msg, text)}
+                onCancelEdit={() => setEditingMsgId(null)}
+                onVersionChange={(pairKey, i) =>
+                  setVersionIdxs((prev) => ({ ...prev, [pairKey]: i }))
+                }
+                onRegenerate={(pair) => handleRegenerate(pair)}
+                onFeedback={(msgId, type) => openFeedback(msgId, type)}
+                msgFeedback={msgFeedback}
+                onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
+              />
+            )}
+            <MessageOutline pairs={pairs} virtuosoRef={virtuosoRef} />
+            {/* Scroll FAB */}
+            <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
+              <button onClick={toBottom} title={t('actions.scrollToBottom')}>
+                <ArrowDown size={16} />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Input area */}
