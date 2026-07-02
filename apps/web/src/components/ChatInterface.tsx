@@ -64,6 +64,7 @@ import {
   Loader2,
   Brain,
   Maximize2,
+  Minimize2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -244,8 +245,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Input state ──
   const [inputValue, setInputValue] = useState('')
-  /** 输入框展开弹窗（点击右上角放大图标打开） */
-  const [expandOpen, setExpandOpen] = useState(false)
+  /** 输入框是否已达到最大高度（触发放大图标显示） */
+  const [atMaxHeight, setAtMaxHeight] = useState(false)
+  /** 输入框是否处于展开大模式 */
+  const [inputExpanded, setInputExpanded] = useState(false)
 
   // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
@@ -453,9 +456,31 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const onInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setInputValue(e.target.value)
-    const ta = e.target
-    ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+    if (!inputExpanded) {
+      const ta = e.target
+      ta.style.height = 'auto'
+      const newH = Math.min(ta.scrollHeight, 200)
+      ta.style.height = newH + 'px'
+      setAtMaxHeight(ta.scrollHeight >= 200)
+    }
+  }
+
+  const toggleExpand = (): void => {
+    const next = !inputExpanded
+    setInputExpanded(next)
+    const ta = inputRef.current
+    if (ta) {
+      if (next) {
+        // 展开：移除内联高度，让 CSS flex 撑满剩余空间
+        ta.style.height = ''
+      } else {
+        // 收起：恢复 JS 控制的自适应高度
+        ta.style.height = 'auto'
+        const newH = Math.min(ta.scrollHeight, 200)
+        ta.style.height = newH + 'px'
+        setAtMaxHeight(ta.scrollHeight >= 200)
+      }
+    }
   }
 
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -489,6 +514,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
     setInputValue('')
     setFiles([])
+    setAtMaxHeight(false)
+    setInputExpanded(false)
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
     // 发送前先滚到底部，确保用户能看到流式输出
@@ -916,7 +943,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       <div className={`ch-overlay ${sidebarOpen ? 'open' : ''}`} onClick={closeSidebar} />
 
       {/* ── Main ─────────────────────────────────── */}
-      <main className="ch-main">
+      <main className={`ch-main${inputExpanded ? 'input-expanded' : ''}`}>
         {/* Toolbar */}
         <header className="ch-toolbar">
           <div className="ch-tb-l">
@@ -1123,14 +1150,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 onKeyDown={onInputKey}
                 disabled={!isLoggedIn}
               />
-              {isLoggedIn && (
+              {isLoggedIn && (atMaxHeight || inputExpanded) && (
                 <button
                   className="ch-input-expand-btn"
-                  title="展开输入框"
-                  onClick={() => setExpandOpen(true)}
+                  title={inputExpanded ? '收起输入框' : '展开输入框'}
+                  onClick={toggleExpand}
                   type="button"
                 >
-                  <Maximize2 size={12} />
+                  {inputExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
                 </button>
               )}
             </div>
@@ -1207,61 +1234,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
       {/* ── Artifact panel ───────────────────────── */}
       <ArtifactPanel />
-
-      {/* ── 输入框展开弹窗 ────────────────────────── */}
-      {expandOpen && (
-        <div
-          className="ch-exp-overlay"
-          onClick={() => setExpandOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="展开输入框"
-        >
-          <div className="ch-exp-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="ch-exp-hd">
-              <span className="ch-exp-title">编辑消息</span>
-              <button
-                className="ch-exp-close"
-                onClick={() => setExpandOpen(false)}
-                title="关闭 (Esc)"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <textarea
-              className="ch-exp-ta"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              placeholder={t('inputPlaceholder')}
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') setExpandOpen(false)
-              }}
-            />
-            <div className="ch-exp-ft">
-              <button className="ch-exp-cancel" onClick={() => setExpandOpen(false)}>
-                取消
-              </button>
-              <button
-                className={`ch-exp-send ${inputValue.trim() ? 'on' : ''}`}
-                disabled={!inputValue.trim()}
-                onClick={() => {
-                  setExpandOpen(false)
-                  setTimeout(() => {
-                    if (inputRef.current) {
-                      inputRef.current.style.height = 'auto'
-                      inputRef.current.style.height =
-                        Math.min(inputRef.current.scrollHeight, 200) + 'px'
-                    }
-                  }, 0)
-                }}
-              >
-                确认
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Model dropdown ────────────────────────── */}
       {modelDropOpen && (
