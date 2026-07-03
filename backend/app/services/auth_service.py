@@ -16,11 +16,26 @@ from app.models.conversation import Conversation
 from app.models.file import File
 from app.models.message import Message, MessageRole
 from app.models.user import User
-from app.schemas.auth import AuthResponse, RegisterRequest, UserResponse, UserStatsResponse
+from app.schemas.auth import (
+    AuthResponse,
+    RegisterRequest,
+    ResetPasswordRequest,
+    UserResponse,
+    UserStatsResponse,
+)
+from app.services import verify_code_service
 
 
 async def register(req: RegisterRequest, db: AsyncSession) -> AuthResponse:
-    """注册新用户，检查邮箱/用户名唯一性。"""
+    """注册新用户，先校验邮箱验证码，再检查邮箱/用户名唯一性。
+
+    Raises:
+        VerifyCodeError: 验证码错误或已过期
+        ValueError("EMAIL_OR_USERNAME_EXISTS"): 唯一性冲突
+    """
+    # 先校验验证码；失败时不写库
+    await verify_code_service.verify_code(req.email, req.verify_code, scene="register")
+
     existing = await db.execute(
         select(User).where((User.email == req.email) | (User.username == req.username))
     )
@@ -100,6 +115,28 @@ async def change_password(
         raise ValueError("OLD_PASSWORD_WRONG")
     user.hashed_password = hash_password(new_password)
     await db.commit()
+
+
+async def reset_password(req: ResetPasswordRequest, db: AsyncSession) -> None:
+    """通过邮箱验证码重置密码。
+
+    Raises:
+        VerifyCodeError: 验证码错误或已过期
+        ValueError("EMAIL_NOT_FOUND"): 邮箱未注册
+    """
+    result = await db.execute(select(User).where(User.email == req.email))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise ValueError("EMAIL_NOT_FOUND")
+
+    # 校验验证码（一次性，通过后立即删除）
+    await verify_code_service.verify_code(req.email, req.verify_code, scene="reset_password")
+
+    user.hashed_password = hash_password(req.new_password)
+    await db.commit()
+
+    # 密码变更后同时撤销所有 refresh token，强制其他设备重新登录
+    await redis_client.delete(f"refresh:{user.id}")
 
 
 async def delete_account(user: User, db: AsyncSession) -> None:

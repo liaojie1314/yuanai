@@ -18,6 +18,8 @@ from sqlalchemy.pool import NullPool
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+# 邮箱验证码：测试环境统一启用调试后门 "888888"，跳过真实 SMTP 发送与 Redis 校验
+os.environ["VERIFY_CODE_DEBUG_BYPASS"] = "888888"
 
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.security import create_access_token, hash_password  # noqa: E402
@@ -60,10 +62,14 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
 
 @pytest.fixture(autouse=True)
 def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Mock Redis 避免跨 event loop 共享连接问题。存储为字典模拟 KV 行为。"""
+    """Mock Redis 避免跨 event loop 共享连接问题。存储为字典模拟 KV 行为。
+
+    同一份 mock 同时挂到 auth_service 与 verify_code_service，保证两个模块看到一致视图。
+    """
     from unittest.mock import AsyncMock
 
-    import app.services.auth_service as svc
+    import app.services.auth_service as auth_svc
+    import app.services.verify_code_service as vc_svc
 
     store: dict[str, str] = {}
 
@@ -82,7 +88,8 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     mock.get.side_effect = fake_get
     mock.delete.side_effect = fake_delete
 
-    monkeypatch.setattr(svc, "redis_client", mock)
+    monkeypatch.setattr(auth_svc, "redis_client", mock)
+    monkeypatch.setattr(vc_svc, "redis_client", mock)
 
 
 @pytest.fixture(autouse=True)

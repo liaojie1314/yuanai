@@ -291,6 +291,43 @@
   padding-right: 50px;
 }
 
+/* 邮箱验证码行：输入框 + 右侧内嵌的"发送验证码"按钮 */
+.code-iw .fi {
+  padding-right: 118px; /* 给右侧按钮预留空间 */
+}
+.code-send-btn {
+  position: absolute;
+  right: 6px;
+  height: 36px;
+  min-width: 104px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--brand);
+  background: var(--brand-light);
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition:
+    background 150ms,
+    color 150ms,
+    border-color 150ms,
+    opacity 150ms;
+}
+.code-send-btn:hover:not(:disabled) {
+  background: var(--brand);
+  color: #fff;
+}
+.code-send-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 /* Send-code button (below the code input) */
 .code-btn {
   width: 100%;

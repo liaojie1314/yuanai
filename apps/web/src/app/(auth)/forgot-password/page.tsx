@@ -6,18 +6,29 @@ import { useRouter } from 'next/navigation'
 import { ChevronLeft, Mail, Lock, Shield, Check } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import StrengthBar from '@/components/auth/StrengthBar'
+import { useResetPassword, useSendVerifyCode } from '@yuanai/core/hooks'
+
+/** 从后端错误中解析 detail.code 和 detail.message */
+function parseApiError(err: unknown): { code?: string; message?: string } {
+  return (
+    (err as { response?: { data?: { detail?: { code?: string; message?: string } } } })?.response
+      ?.data?.detail ?? {}
+  )
+}
 
 type Step = 1 | 2 | 'success'
 
 export default function ForgotPasswordPage(): JSX.Element {
   const router = useRouter()
+  const sendCodeMutation = useSendVerifyCode()
+  const resetPasswordMutation = useResetPassword()
+
   const [step, setStep] = useState<Step>(1)
   const [email, setEmail] = useState('')
   const [emailErr, setEmailErr] = useState('')
-  const [sendLoading, setSendLoading] = useState(false)
 
   const [otp, setOtp] = useState(['', '', '', '', '', ''])
-  const [otpErr, setOtpErr] = useState(false)
+  const [otpErr, setOtpErr] = useState('')
   const [otpShake, setOtpShake] = useState(false)
   const otpRefs = useRef<(HTMLInputElement | null)[]>([])
 
@@ -25,13 +36,15 @@ export default function ForgotPasswordPage(): JSX.Element {
   const [newPwdErr, setNewPwdErr] = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
   const [confirmErr, setConfirmErr] = useState('')
-  const [resetLoading, setResetLoading] = useState(false)
 
   const [resendCount, setResendCount] = useState(0)
   const resendRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [autoCount, setAutoCount] = useState(3)
   const autoRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const sendLoading = sendCodeMutation.isPending
+  const resetLoading = resetPasswordMutation.isPending
 
   useEffect(
     () => () => {
@@ -60,21 +73,48 @@ export default function ForgotPasswordPage(): JSX.Element {
     return `${(parts[0] ?? '').slice(0, 4)}**@${parts[1] ?? ''}`
   }
 
-  const handleStep1 = (e: React.FormEvent): void => {
+  const handleStep1 = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setEmailErr('请输入正确的邮箱地址')
       return
     }
     setEmailErr('')
-    setSendLoading(true)
-    // TODO: 调用 API
-    setTimeout(() => {
-      setSendLoading(false)
+    try {
+      await sendCodeMutation.mutateAsync({ email: email.trim(), scene: 'reset_password' })
       setStep(2)
-      otpRefs.current[0]?.focus()
+      requestAnimationFrame(() => otpRefs.current[0]?.focus())
       startResend()
-    }, 1200)
+    } catch (err) {
+      const detail = parseApiError(err)
+      if (detail.code === 'EMAIL_NOT_FOUND') {
+        setEmailErr('该邮箱尚未注册，请核对后重试')
+      } else if (detail.code === 'VERIFY_CODE_THROTTLED') {
+        // 已在冷却期，直接进入 Step 2 让用户输入之前收到的验证码
+        setStep(2)
+        requestAnimationFrame(() => otpRefs.current[0]?.focus())
+        startResend()
+      } else {
+        setEmailErr(detail.message ?? '发送失败，请稍后再试')
+      }
+    }
+  }
+
+  const handleResend = async (): Promise<void> => {
+    if (resendCount > 0) return
+    setOtpErr('')
+    try {
+      await sendCodeMutation.mutateAsync({ email: email.trim(), scene: 'reset_password' })
+      startResend()
+    } catch (err) {
+      const detail = parseApiError(err)
+      if (detail.code === 'VERIFY_CODE_THROTTLED') {
+        // 服务端节流；同步启动前端倒计时避免继续点击
+        startResend()
+      } else {
+        setOtpErr(detail.message ?? '重发失败，请稍后再试')
+      }
+    }
   }
 
   const handleOtpInput = (idx: number, val: string): void => {
@@ -98,17 +138,21 @@ export default function ForgotPasswordPage(): JSX.Element {
     otpRefs.current[Math.min(data.length, 5)]?.focus()
   }
 
-  const handleStep2 = (e: React.FormEvent): void => {
+  const handleStep2 = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
     let ok = true
-    if (otp.join('').length < 6) {
-      setOtpErr(true)
+    const code = otp.join('')
+    if (code.length < 6) {
+      setOtpErr('请输入 6 位验证码')
       setOtpShake(true)
       setTimeout(() => setOtpShake(false), 350)
       ok = false
-    } else setOtpErr(false)
+    } else setOtpErr('')
     if (newPwd.length < 8) {
       setNewPwdErr('密码至少 8 位')
+      ok = false
+    } else if (!/[A-Za-z]/.test(newPwd) || !/\d/.test(newPwd)) {
+      setNewPwdErr('密码须包含字母和数字')
       ok = false
     } else setNewPwdErr('')
     if (confirmPwd !== newPwd) {
@@ -116,10 +160,13 @@ export default function ForgotPasswordPage(): JSX.Element {
       ok = false
     } else setConfirmErr('')
     if (!ok) return
-    setResetLoading(true)
-    // TODO: 调用 API
-    setTimeout(() => {
-      setResetLoading(false)
+
+    try {
+      await resetPasswordMutation.mutateAsync({
+        email: email.trim(),
+        verifyCode: code,
+        newPassword: newPwd,
+      })
       setStep('success')
       if (resendRef.current) clearInterval(resendRef.current)
       let s = 3
@@ -132,7 +179,18 @@ export default function ForgotPasswordPage(): JSX.Element {
           router.replace('/login')
         }
       }, 1000)
-    }, 1400)
+    } catch (err) {
+      const detail = parseApiError(err)
+      if (detail.code === 'VERIFY_CODE_INVALID') {
+        setOtpErr(detail.message ?? '验证码错误或已过期')
+        setOtpShake(true)
+        setTimeout(() => setOtpShake(false), 350)
+      } else if (detail.code === 'EMAIL_NOT_FOUND') {
+        setOtpErr('该邮箱尚未注册，请返回上一步核对')
+      } else {
+        setOtpErr(detail.message ?? '密码重置失败，请稍后再试')
+      }
+    }
   }
 
   return (
@@ -166,7 +224,12 @@ export default function ForgotPasswordPage(): JSX.Element {
               <h1 className="page-title">重置密码</h1>
               <p className="page-sub">输入注册邮箱，我们将发送验证码</p>
 
-              <form onSubmit={handleStep1} noValidate>
+              <form
+                onSubmit={(e) => {
+                  void handleStep1(e)
+                }}
+                noValidate
+              >
                 <div className="fg">
                   <label className="fl" htmlFor="femail">
                     注册邮箱
@@ -213,7 +276,12 @@ export default function ForgotPasswordPage(): JSX.Element {
               <h1 className="page-title">设置新密码</h1>
               <p className="page-sub">验证码已发送至 {maskEmail(email)}</p>
 
-              <form onSubmit={handleStep2} noValidate>
+              <form
+                onSubmit={(e) => {
+                  void handleStep2(e)
+                }}
+                noValidate
+              >
                 <div className="fg">
                   <label className="fl">验证码</label>
                   <div className={otpShake ? 'otp-row shake' : 'otp-row'}>
@@ -224,6 +292,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                           otpRefs.current[i] = el
                         }}
                         className={otpErr ? 'otp-cell err' : 'otp-cell'}
+                        autoComplete={i === 0 ? 'one-time-code' : 'off'}
                         type="text"
                         maxLength={1}
                         inputMode="numeric"
@@ -234,7 +303,7 @@ export default function ForgotPasswordPage(): JSX.Element {
                       />
                     ))}
                   </div>
-                  <p className={otpErr ? 'ferr on' : 'ferr'}>请输入 6 位验证码</p>
+                  <p className={otpErr ? 'ferr on' : 'ferr'}>{otpErr || '请输入 6 位验证码'}</p>
                   <div
                     style={{
                       marginTop: '10px',
@@ -250,17 +319,19 @@ export default function ForgotPasswordPage(): JSX.Element {
                       type="button"
                       style={{
                         fontSize: '13px',
-                        color: resendCount > 0 ? 'var(--fg3)' : 'var(--brand)',
+                        color: resendCount > 0 || sendLoading ? 'var(--fg3)' : 'var(--brand)',
                         background: 'none',
                         border: 'none',
                         padding: 0,
-                        cursor: resendCount > 0 ? 'not-allowed' : 'pointer',
+                        cursor: resendCount > 0 || sendLoading ? 'not-allowed' : 'pointer',
                         fontFamily: 'inherit',
                       }}
-                      disabled={resendCount > 0}
-                      onClick={() => startResend()}
+                      disabled={resendCount > 0 || sendLoading}
+                      onClick={() => {
+                        void handleResend()
+                      }}
                     >
-                      重新发送
+                      {sendLoading ? '发送中…' : '重新发送'}
                     </button>
                   </div>
                 </div>

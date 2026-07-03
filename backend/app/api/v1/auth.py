@@ -1,25 +1,77 @@
 from fastapi import APIRouter, HTTPException
+from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
+from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
     ChangePasswordRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
+    ResetPasswordRequest,
+    SendVerifyCodeRequest,
     UpdateUserRequest,
     UserResponse,
     UserStatsResponse,
 )
-from app.services import auth_service
+from app.services import auth_service, verify_code_service
+from app.services.verify_code_service import Scene, VerifyCodeError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post("/send-verify-code", status_code=200)
+async def send_verify_code(req: SendVerifyCodeRequest, db: DB) -> dict[str, str]:
+    """发送邮箱验证码到指定邮箱。
+
+    - ``register`` 场景：邮箱必须**未**注册，已注册 → 409
+    - ``reset_password`` 场景：邮箱必须**已**注册，未注册 → 404
+    - 频率限制：同邮箱同场景 60 秒内只能发一次（返回 429）
+    """
+    scene: Scene = req.scene  # type: ignore[assignment]
+    existing = (await db.execute(select(User).where(User.email == req.email))).scalar_one_or_none()
+
+    if scene == "register" and existing:
+        raise HTTPException(
+            409,
+            {"code": "EMAIL_ALREADY_REGISTERED", "message": "该邮箱已被注册，请直接登录"},
+        )
+    if scene == "reset_password" and not existing:
+        raise HTTPException(
+            404,
+            {"code": "EMAIL_NOT_FOUND", "message": "该邮箱尚未注册"},
+        )
+
+    try:
+        await verify_code_service.send_code(req.email, scene=scene)
+    except VerifyCodeError as e:
+        status = 429 if e.code == "VERIFY_CODE_THROTTLED" else 500
+        raise HTTPException(status, {"code": e.code, "message": e.message}) from e
+
+    return {"message": "验证码已发送"}
+
+
+@router.post("/reset-password", status_code=200)
+async def reset_password(req: ResetPasswordRequest, db: DB) -> dict[str, str]:
+    """通过邮箱验证码重置密码。"""
+    try:
+        await auth_service.reset_password(req, db)
+    except VerifyCodeError as e:
+        raise HTTPException(400, {"code": e.code, "message": e.message}) from e
+    except ValueError as e:
+        if str(e) == "EMAIL_NOT_FOUND":
+            raise HTTPException(404, {"code": "EMAIL_NOT_FOUND", "message": "该邮箱尚未注册"}) from e
+        raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "密码重置失败"}) from e
+    return {"message": "密码已重置"}
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
 async def register(req: RegisterRequest, db: DB) -> AuthResponse:
     try:
         return await auth_service.register(req, db)
+    except VerifyCodeError as e:
+        raise HTTPException(400, {"code": e.code, "message": e.message}) from e
     except ValueError as e:
         code = str(e)
         if code == "EMAIL_OR_USERNAME_EXISTS":

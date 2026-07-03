@@ -5,6 +5,8 @@ export {
   useLogin,
   useLogout,
   useRegister,
+  useResetPassword,
+  useSendVerifyCode,
   useUpdateMe,
   useMyStats,
   useChangePassword,

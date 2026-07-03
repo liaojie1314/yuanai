@@ -8,7 +8,10 @@ import {
   login,
   logout,
   register,
+  resetPassword,
+  sendVerifyCode,
   updateMe,
+  type VerifyCodeScene,
 } from '../api/auth.js'
 import { useAuthStore } from '../stores/auth.store.js'
 
@@ -38,7 +41,7 @@ export function useLogin() {
   })
 }
 
-/** 注册 mutation */
+/** 注册 mutation（携带邮箱验证码） */
 export function useRegister() {
   const { setAuth } = useAuthStore()
   const qc = useQueryClient()
@@ -47,15 +50,40 @@ export function useRegister() {
       email,
       password,
       username,
+      verifyCode,
     }: {
       email: string
       password: string
       username: string
-    }) => register(email, password, username),
+      verifyCode: string
+    }) => register(email, password, username, verifyCode),
     onSuccess: (data) => {
       setAuth(data.user, data.access_token, data.refresh_token)
       void qc.invalidateQueries({ queryKey: ['me'] })
     },
+  })
+}
+
+/** 请求发送邮箱验证码 mutation */
+export function useSendVerifyCode() {
+  return useMutation({
+    mutationFn: ({ email, scene = 'register' }: { email: string; scene?: VerifyCodeScene }) =>
+      sendVerifyCode(email, scene),
+  })
+}
+
+/** 通过邮箱验证码重置密码 mutation */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: ({
+      email,
+      verifyCode,
+      newPassword,
+    }: {
+      email: string
+      verifyCode: string
+      newPassword: string
+    }) => resetPassword(email, verifyCode, newPassword),
   })
 }
 

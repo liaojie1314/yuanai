@@ -11,10 +11,36 @@ export async function login(email: string, password: string): Promise<AuthRespon
 export async function register(
   email: string,
   password: string,
-  username: string
+  username: string,
+  verifyCode: string
 ): Promise<AuthResponse> {
-  const res = await apiClient.post<AuthResponse>('/auth/register', { email, password, username })
+  const res = await apiClient.post<AuthResponse>('/auth/register', {
+    email,
+    password,
+    username,
+    verifyCode,
+  })
   return res.data
+}
+
+/** 邮箱验证码使用场景 */
+export type VerifyCodeScene = 'register' | 'reset_password'
+
+/** 请求向邮箱发送 6 位数字验证码 */
+export async function sendVerifyCode(
+  email: string,
+  scene: VerifyCodeScene = 'register'
+): Promise<void> {
+  await apiClient.post('/auth/send-verify-code', { email, scene })
+}
+
+/** 用邮箱验证码重置密码 */
+export async function resetPassword(
+  email: string,
+  verifyCode: string,
+  newPassword: string
+): Promise<void> {
+  await apiClient.post('/auth/reset-password', { email, verifyCode, newPassword })
 }
 
 /** 退出登录 */

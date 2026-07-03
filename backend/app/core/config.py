@@ -32,5 +32,19 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
 
+    # ── Email / SMTP (用于发送邮箱验证码) ─────────────────────────────
+    # QQ 邮箱：smtp.qq.com / 465 (SSL) 或 587 (STARTTLS)
+    # 授权码在 QQ 邮箱设置→账户→POP3/IMAP/SMTP 服务里生成（16 位字符串），不是登录密码
+    smtp_host: str = "smtp.qq.com"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_name: str = "元AI"
+    # 验证码有效期（秒）与发送节流间隔（秒）
+    verify_code_ttl_seconds: int = 600
+    verify_code_send_interval_seconds: int = 60
+    # 测试环境后门：非空时跳过真实发送和 Redis 校验，任何 6 位数字都视作正确
+    verify_code_debug_bypass: str = ""
+
 
 settings = Settings()  # type: ignore[call-arg]

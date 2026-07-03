@@ -12,7 +12,13 @@ export const API_BASE_URL =
   getEnv('NEXT_PUBLIC_API_URL') ?? getEnv('EXPO_PUBLIC_API_URL') ?? 'http://localhost:8000/api/v1'
 
 /** 401 时不应触发刷新流程的接口：登录/注册失败是正常凭据错误，刷新接口自身失败需直接判定为鉴权失败 */
-const AUTH_EXEMPT_PATHS = ['/auth/login', '/auth/register', '/auth/refresh']
+const AUTH_EXEMPT_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/send-verify-code',
+  '/auth/reset-password',
+]
 
 interface RetriableConfig extends InternalAxiosRequestConfig {
   _retried?: boolean

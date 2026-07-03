@@ -1,20 +1,24 @@
 'use client'
 
-import { useState, useRef, useCallback, type JSX } from 'react'
+import { useState, useRef, useCallback, useEffect, type JSX } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { User, Loader2, CheckCircle, XCircle, Mail, Lock, Shield } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import StrengthBar from '@/components/auth/StrengthBar'
 import { useTranslations } from '@/i18n/client'
-import { useRegister } from '@yuanai/core/hooks'
+import { useRegister, useSendVerifyCode } from '@yuanai/core/hooks'
 
 type CheckStatus = 'idle' | 'checking' | 'ok' | 'taken'
+
+/** 邮箱格式的基础校验（与后端 EmailStr 松耦合，仅用于按钮启用与前端提前提示） */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function RegisterPage(): JSX.Element {
   const t = useTranslations('auth')
   const router = useRouter()
   const registerMutation = useRegister()
+  const sendCodeMutation = useSendVerifyCode()
 
   const [username, setUsername] = useState('')
   const [checkStatus, setCheckStatus] = useState<CheckStatus>('idle')
@@ -23,6 +27,15 @@ export default function RegisterPage(): JSX.Element {
 
   const [email, setEmail] = useState('')
   const [emailErr, setEmailErr] = useState('')
+
+  /** 6 位 OTP 分格，与忘记密码页保持一致的输入体验 */
+  const [otp, setOtp] = useState<string[]>(['', '', '', '', '', ''])
+  const [codeErr, setCodeErr] = useState('')
+  const [otpShake, setOtpShake] = useState(false)
+  const otpRefs = useRef<(HTMLInputElement | null)[]>([])
+  /** 距离下次可发送验证码剩余秒数；0 表示可发送 */
+  const [resendIn, setResendIn] = useState(0)
+  const [codeSentTip, setCodeSentTip] = useState('')
 
   const [pwd, setPwd] = useState('')
   const [pwdErr, setPwdErr] = useState('')
@@ -35,6 +48,69 @@ export default function RegisterPage(): JSX.Element {
   const [termsShake, setTermsShake] = useState(false)
 
   const [apiErr, setApiErr] = useState('')
+
+  // 60s 倒计时；resendIn 归零时清理 interval
+  useEffect(() => {
+    if (resendIn <= 0) return
+    const timer = window.setInterval(() => {
+      setResendIn((n) => (n > 0 ? n - 1 : 0))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [resendIn])
+
+  const handleSendCode = async (): Promise<void> => {
+    setApiErr('')
+    setCodeErr('')
+    setCodeSentTip('')
+    if (!EMAIL_RE.test(email.trim())) {
+      setEmailErr(t('errors.invalidEmail'))
+      return
+    }
+    try {
+      await sendCodeMutation.mutateAsync({ email: email.trim(), scene: 'register' })
+      setResendIn(60)
+      setCodeSentTip('验证码已发送，请查收邮箱')
+      // 发送成功后光标聚焦到第一个 OTP 格子
+      requestAnimationFrame(() => otpRefs.current[0]?.focus())
+    } catch (err) {
+      const detail = (
+        err as { response?: { data?: { detail?: { code?: string; message?: string } } } }
+      )?.response?.data?.detail
+      if (detail?.code === 'EMAIL_ALREADY_REGISTERED') {
+        setEmailErr('该邮箱已被注册，请直接登录')
+      } else if (detail?.code === 'VERIFY_CODE_THROTTLED') {
+        setResendIn(60)
+        setCodeSentTip(detail.message ?? '请求过于频繁，请稍后再试')
+      } else {
+        setApiErr(detail?.message ?? '验证码发送失败，请稍后再试')
+      }
+    }
+  }
+
+  /** OTP 格子：单字符输入自动跳到下一格 */
+  const handleOtpInput = (idx: number, val: string): void => {
+    const digit = val.replace(/\D/g, '')
+    const next = [...otp]
+    next[idx] = digit.charAt(0) ?? ''
+    setOtp(next)
+    if (codeErr) setCodeErr('')
+    if (digit && idx < 5) otpRefs.current[idx + 1]?.focus()
+  }
+
+  /** OTP 格子：退格回跳上一格 */
+  const handleOtpKey = (idx: number, e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Backspace' && !otp[idx] && idx > 0) otpRefs.current[idx - 1]?.focus()
+  }
+
+  /** OTP 格子：粘贴 6 位数字自动填满 */
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>): void => {
+    e.preventDefault()
+    const data = e.clipboardData.getData('text').replace(/\D/g, '')
+    const next = ['', '', '', '', '', '']
+    for (let i = 0; i < 6; i++) next[i] = data[i] ?? ''
+    setOtp(next)
+    otpRefs.current[Math.min(data.length, 5)]?.focus()
+  }
 
   const handleUsername = useCallback((v: string): void => {
     setUsername(v)
@@ -62,10 +138,17 @@ export default function RegisterPage(): JSX.Element {
       setUnameErr(t('errors.usernameRequired'))
       ok = false
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!EMAIL_RE.test(email.trim())) {
       setEmailErr(t('errors.invalidEmail'))
       ok = false
     } else setEmailErr('')
+    const verifyCode = otp.join('')
+    if (!/^\d{6}$/.test(verifyCode)) {
+      setCodeErr(t('errors.codeRequired'))
+      setOtpShake(true)
+      setTimeout(() => setOtpShake(false), 350)
+      ok = false
+    } else setCodeErr('')
     if (pwd.length < 8) {
       setPwdErr(t('errors.passwordTooShort'))
       ok = false
@@ -86,12 +169,18 @@ export default function RegisterPage(): JSX.Element {
         email: email.trim(),
         password: pwd,
         username: username.trim(),
+        verifyCode,
       })
       router.replace('/chat')
     } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: { message?: string } } } })?.response
-        ?.data?.detail
-      if (detail?.message?.includes('already') || detail?.message?.includes('exists')) {
+      const detail = (
+        err as { response?: { data?: { detail?: { code?: string; message?: string } } } }
+      )?.response?.data?.detail
+      if (detail?.code === 'VERIFY_CODE_INVALID') {
+        setCodeErr(detail.message ?? '验证码错误或已过期')
+        setOtpShake(true)
+        setTimeout(() => setOtpShake(false), 350)
+      } else if (detail?.code === 'EMAIL_OR_USERNAME_EXISTS') {
         setApiErr('邮箱或用户名已被注册，请换一个试试')
       } else {
         setApiErr(detail?.message ?? '注册失败，请稍后重试')
@@ -167,7 +256,7 @@ export default function RegisterPage(): JSX.Element {
               <label className="fl" htmlFor="remail">
                 {t('email')}
               </label>
-              <div className="iw">
+              <div className="iw code-iw">
                 <span className="ii">
                   <Mail size={16} />
                 </span>
@@ -180,13 +269,62 @@ export default function RegisterPage(): JSX.Element {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onBlur={() => {
-                    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-                      setEmailErr(t('errors.invalidEmail'))
+                    if (email && !EMAIL_RE.test(email)) setEmailErr(t('errors.invalidEmail'))
                     else setEmailErr('')
                   }}
                 />
+                <button
+                  type="button"
+                  className="code-send-btn"
+                  onClick={() => {
+                    void handleSendCode()
+                  }}
+                  disabled={
+                    resendIn > 0 || sendCodeMutation.isPending || !EMAIL_RE.test(email.trim())
+                  }
+                >
+                  {sendCodeMutation.isPending ? (
+                    <Loader2 size={14} style={{ animation: 'spin .7s linear infinite' }} />
+                  ) : resendIn > 0 ? (
+                    t('resendIn', { seconds: resendIn })
+                  ) : (
+                    t('sendCode')
+                  )}
+                </button>
               </div>
               <p className={emailErr ? 'ferr on' : 'ferr'}>{emailErr}</p>
+            </div>
+
+            <div className="fg">
+              <label className="fl">{t('verificationCode')}</label>
+              <div className={otpShake ? 'otp-row shake' : 'otp-row'}>
+                {otp.map((v, i) => (
+                  <input
+                    key={i}
+                    ref={(el) => {
+                      otpRefs.current[i] = el
+                    }}
+                    className={codeErr ? 'otp-cell err' : 'otp-cell'}
+                    type="text"
+                    maxLength={1}
+                    inputMode="numeric"
+                    autoComplete={i === 0 ? 'one-time-code' : 'off'}
+                    value={v}
+                    onChange={(e) => handleOtpInput(i, e.target.value)}
+                    onKeyDown={(e) => handleOtpKey(i, e)}
+                    onPaste={handleOtpPaste}
+                  />
+                ))}
+              </div>
+              {codeErr ? (
+                <p className="ferr on">{codeErr}</p>
+              ) : codeSentTip ? (
+                <p className="ferr on" style={{ color: '#10b981' }}>
+                  {codeSentTip}
+                </p>
+              ) : (
+                <p className="ferr">&nbsp;</p>
+              )}
             </div>
 
             <div className="fg">
