@@ -44,6 +44,9 @@ export function apiMsgToMock(msg: Message): MockMessage {
     role: msg.role as 'user' | 'assistant',
     parts: [{ type: 'text' as const, content: msg.content }],
     ...(msg.thinkingContent ? { thinkContent: msg.thinkingContent } : {}),
+    ...(typeof msg.thinkingDurationMs === 'number'
+      ? { thinkDurationMs: msg.thinkingDurationMs }
+      : {}),
     createdAt: new Date(msg.createdAt).getTime(),
   }
 }

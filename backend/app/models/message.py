@@ -25,6 +25,8 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     # 思考/推理过程文字（仅 assistant 消息，模型不支持时为 None）
     thinking_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 思考耗时（毫秒）— 首个 reasoning token → 首个 content token 之间的间隔，None 表示未开启或未产生思考
+    thinking_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(100))
     tokens_used: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(

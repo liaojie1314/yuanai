@@ -62,6 +62,7 @@ class MessageResponse(BaseModel):
     role: str
     content: str
     thinking_content: str | None = None
+    thinking_duration_ms: int | None = None
     model: str | None = None
     tokens_used: int | None = None
     files: list[MessageFileResponse] = []

@@ -157,6 +157,8 @@ export interface Message {
   messageParts?: MessagePart[]
   /** AI 思考/推理过程文字（仅 assistant 消息，模型不支持时为 null） */
   thinkingContent?: string | null
+  /** AI 思考耗时（毫秒）— 首个 reasoning token → 首个 content token 的间隔 */
+  thinkingDurationMs?: number | null
   /** 生成该消息使用的模型；用户消息无此字段 */
   model?: string
   /** 本次响应消耗的 token 总量；用户消息无此字段 */

@@ -1,4 +1,5 @@
 import json
+import time
 import uuid
 from collections.abc import AsyncGenerator
 
@@ -154,23 +155,37 @@ async def _generate_sse(
 
     full_content = ""
     full_thinking = ""
+    # 思考耗时统计：首个 reasoning token → 首个 content token 之间的间隔（毫秒）
+    thinking_start_at: float | None = None
+    thinking_duration_ms: int | None = None
     try:
         async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
             if event_type == "thinking":
+                if thinking_start_at is None:
+                    thinking_start_at = time.monotonic()
                 full_thinking += token
                 delta = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"event: thinking_delta\ndata: {delta}\n\n"
             else:
+                # 首个正文 token 到达时，思考阶段结束——记录耗时
+                if thinking_start_at is not None and thinking_duration_ms is None:
+                    thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
                 full_content += token
                 delta = json.dumps({"token": token}, ensure_ascii=False)
                 yield f"event: content_delta\ndata: {delta}\n\n"
 
-        # 更新 assistant 消息内容（含思考内容）
+        # 极端场景：只有思考没有正文（模型异常提前结束），也补记耗时
+        if thinking_start_at is not None and thinking_duration_ms is None:
+            thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
+
+        # 更新 assistant 消息内容（含思考内容 + 耗时）
         result = await db.execute(select(Message).where(Message.id == assistant_msg_id))
         msg = result.scalar_one()
         msg.content = full_content
         if full_thinking:
             msg.thinking_content = full_thinking
+        if thinking_duration_ms is not None:
+            msg.thinking_duration_ms = thinking_duration_ms
         await db.commit()
 
         yield (

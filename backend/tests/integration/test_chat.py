@@ -184,8 +184,8 @@ class TestStream:
         conv_id = conv_res.json()["id"]
 
         async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
-            yield "你好"
-            yield "！"
+            yield ("content", "你好")
+            yield ("content", "！")
 
         with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
             async with client.stream(
@@ -224,7 +224,7 @@ class TestStream:
         conv_id = conv_res.json()["id"]
 
         async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
-            yield "测试回复"
+            yield ("content", "测试回复")
 
         with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
             async with client.stream(
