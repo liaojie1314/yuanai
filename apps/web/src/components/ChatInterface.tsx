@@ -63,8 +63,6 @@ import {
   Square,
   Loader2,
   Brain,
-  Maximize2,
-  Minimize2,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────
@@ -245,10 +243,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Input state ──
   const [inputValue, setInputValue] = useState('')
-  /** 输入框是否已达到最大高度（触发放大图标显示） */
-  const [atMaxHeight, setAtMaxHeight] = useState(false)
-  /** 输入框是否处于展开大模式 */
-  const [inputExpanded, setInputExpanded] = useState(false)
 
   // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
@@ -456,32 +450,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const onInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setInputValue(e.target.value)
-    if (!inputExpanded) {
-      const ta = e.target
-      ta.style.height = 'auto'
-      const newH = Math.min(ta.scrollHeight, 200)
-      ta.style.height = newH + 'px'
-      setAtMaxHeight(ta.scrollHeight >= 200)
-    }
-  }
-
-  const toggleExpand = (): void => {
-    const next = !inputExpanded
-    setInputExpanded(next)
-    const ta = inputRef.current
-    if (ta) {
-      if (next) {
-        // 展开：高度撑至接近顶部工具栏（56px toolbar + ~120px input toolbar + padding）
-        const expandedH = Math.max(200, window.innerHeight - 56 - 120)
-        ta.style.height = expandedH + 'px'
-      } else {
-        // 收起：恢复 JS 控制的自适应高度
-        ta.style.height = 'auto'
-        const newH = Math.min(ta.scrollHeight, 200)
-        ta.style.height = newH + 'px'
-        setAtMaxHeight(ta.scrollHeight >= 200)
-      }
-    }
+    const ta = e.target
+    ta.style.height = 'auto'
+    ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
   }
 
   const onInputKey = (e: React.KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -515,8 +486,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
     setInputValue('')
     setFiles([])
-    setAtMaxHeight(false)
-    setInputExpanded(false)
     if (inputRef.current) inputRef.current.style.height = 'auto'
 
     // 发送前先滚到底部，确保用户能看到流式输出
@@ -944,7 +913,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       <div className={`ch-overlay ${sidebarOpen ? 'open' : ''}`} onClick={closeSidebar} />
 
       {/* ── Main ─────────────────────────────────── */}
-      <main className={`ch-main${inputExpanded ? 'input-expanded' : ''}`}>
+      <main className="ch-main">
         {/* Toolbar */}
         <header className="ch-toolbar">
           <div className="ch-tb-l">
@@ -1140,28 +1109,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 )}
               </div>
             )}
-            <div className="ch-input-ta-wrap">
-              <textarea
-                ref={inputRef}
-                className="ch-input-ta"
-                placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
-                rows={1}
-                value={inputValue}
-                onChange={onInputChange}
-                onKeyDown={onInputKey}
-                disabled={!isLoggedIn}
-              />
-              {isLoggedIn && (atMaxHeight || inputExpanded) && (
-                <button
-                  className="ch-input-expand-btn"
-                  title={inputExpanded ? '收起输入框' : '展开输入框'}
-                  onClick={toggleExpand}
-                  type="button"
-                >
-                  {inputExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-                </button>
-              )}
-            </div>
+            <textarea
+              ref={inputRef}
+              className="ch-input-ta"
+              placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
+              rows={1}
+              value={inputValue}
+              onChange={onInputChange}
+              onKeyDown={onInputKey}
+              disabled={!isLoggedIn}
+            />
             <div className="ch-input-tb">
               <button
                 className="ch-in-btn"

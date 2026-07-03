@@ -120,8 +120,11 @@ describe('MessageOutline', () => {
     fireEvent.mouseEnter(wrap)
     expect(screen.queryByText('问题 0 的内容')).not.toBeInTheDocument()
 
+    // 每次滚动到顶部加载一页（10 条），30 条总量需要触发多次分页才能露出最早一条
     const flyout = container.querySelector('.ch-outline-flyout') as HTMLElement
-    fireEvent.scroll(flyout, { target: { scrollTop: 0 } })
+    for (let i = 0; i < 3; i += 1) {
+      fireEvent.scroll(flyout, { target: { scrollTop: 0 } })
+    }
     expect(screen.getByText('问题 0 的内容')).toBeInTheDocument()
   })
 

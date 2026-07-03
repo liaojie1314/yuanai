@@ -18,7 +18,7 @@ export interface MessageOutlineProps {
 /** 默认折叠态最多展示的色块数量，超出部分仅在悬浮浮层中可见 */
 const COMPACT_MAX = 10
 /** 浮层每页展示的历史条目数，滚动到顶部时增量加载上一页 */
-const PAGE_SIZE = 20
+const PAGE_SIZE = 10
 /** 折叠态色块与浮层之间存在视觉间隙，鼠标划过间隙时延迟收起，避免浮层过早消失 */
 const CLOSE_DELAY_MS = 200
 
