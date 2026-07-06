@@ -58,8 +58,12 @@ export interface MessageListProps {
   onFeedback: (msgId: string, type: 'like' | 'dislike') => void
   msgFeedback: Record<string, 'like' | 'dislike'>
   onAtBottomStateChange: (atBottom: boolean) => void
-  /** 可视区域变化时回调当前可见的第一个 pair 索引（用于右侧 outline 跟踪） */
-  onRangeChanged?: (firstVisiblePairIdx: number) => void
+  /**
+   * 可视区域变化时回调「最能代表当前视野」的 pair 索引（用于右侧 outline 跟踪）。
+   *
+   * 选取策略：取可视区间中点对应的 pair，避免仅看首行时把上一条 pair 当作 active。
+   */
+  onRangeChanged?: (activePairIdx: number) => void
 }
 
 /**
@@ -136,8 +140,10 @@ export function MessageList({
       atBottomStateChange={onAtBottomStateChange}
       rangeChanged={(range: ListRange) => {
         if (!onRangeChanged) return
-        // 虚拟列表中每两行对应一个 pair（user + ai）
-        const pairIdx = Math.floor(range.startIndex / 2)
+        // 每两行对应一个 pair（user + ai）；取可视区间中点，
+        // 避免仅看到上一条 AI 尾部时误把上一 pair 当作 active。
+        const midRow = Math.round((range.startIndex + range.endIndex) / 2)
+        const pairIdx = Math.floor(midRow / 2)
         onRangeChanged(pairIdx)
       }}
       atBottomThreshold={80}

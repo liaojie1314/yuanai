@@ -106,6 +106,99 @@ pnpm --filter @yuanai/web dev
 
 ---
 
+## 文件上传与对象存储
+
+### 存储后端选择
+
+`backend/.env` 中的 `STORAGE_BACKEND` 决定文件（头像、聊天附件）的落盘位置：
+
+| 值      | 用途            | 说明                                                                   |
+| ------- | --------------- | ---------------------------------------------------------------------- |
+| `s3`    | 默认（推荐）    | 走 `docker compose` 起的 MinIO，兼容 AWS S3；分片上传使用 S3 multipart |
+| `local` | 无 MinIO / 测试 | 直接写 `LOCAL_UPLOADS_DIR`（默认 `./uploads`），后端挂载到 `/uploads`  |
+
+集成测试固定用 `local`（在 `backend/tests/conftest.py` 设置），无需 MinIO。
+
+### S3 / MinIO 相关配置
+
+```dotenv
+STORAGE_BACKEND=s3
+S3_ENDPOINT_URL=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET_NAME=yuanai-files
+S3_PUBLIC_URL=http://localhost:9000/yuanai-files
+
+# 大小限制（可选，均有默认值）
+MAX_UPLOAD_SIZE_BYTES=524288000        # 500 MB，分片上传总大小上限
+MAX_DIRECT_UPLOAD_BYTES=10485760       # 10 MB，超过则必须走分片
+UPLOAD_CHUNK_SIZE_BYTES=5242880        # 5 MB，S3 多段上传要求 ≥ 5 MB
+```
+
+### bucket 公开读策略（AccessDenied 排查）
+
+MinIO / S3 的 bucket **默认拒绝匿名 GET**，导致 `<img src="…/avatars/…">` 报：
+
+```xml
+<Error>
+  <Code>AccessDenied</Code>
+  <Message>Access Denied.</Message>
+  ...
+</Error>
+```
+
+后端在 `lifespan` 启动阶段会自动调用 `storage.ensure_bucket()`，
+除 `HeadBucket` / `CreateBucket` 之外，还会 `PutBucketPolicy` 授予
+`avatars/*` 与 `files/*` 前缀匿名 GET 权限（见
+`backend/app/services/storage_service.py:_PUBLIC_READ_PREFIXES`）。
+
+如果启动时策略写入失败（权限不足、后端未就绪等），可通过 MinIO 客户端 `mc` 手动配置：
+
+```bash
+# 一次性：安装 mc 客户端后
+mc alias set local http://localhost:9000 minioadmin minioadmin
+mc anonymous set-json - local/yuanai-files <<'JSON'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {"AWS": ["*"]},
+      "Action": ["s3:GetObject"],
+      "Resource": [
+        "arn:aws:s3:::yuanai-files/avatars/*",
+        "arn:aws:s3:::yuanai-files/files/*"
+      ]
+    }
+  ]
+}
+JSON
+```
+
+或在 MinIO 控制台（[http://localhost:9001](http://localhost:9001)） →
+Buckets → yuanai-files → Access Rules，添加：
+
+| Prefix     | Access   |
+| ---------- | -------- |
+| `avatars/` | readonly |
+| `files/`   | readonly |
+
+> ⚠️ 生产环境私有文件应使用签名 URL 而非公开读；当前策略适合 MVP。
+
+### 分片上传 / 断点续传 / 秒传
+
+前端 `packages/core/src/hooks/useFileUpload.ts` 的 `uploadFileSmart(file)` 会自动：
+
+1. 计算 SHA-256 → `POST /files/check-hash` 命中则秒传返回
+2. 文件 ≤ 10 MB → `POST /files/upload` 直传
+3. 否则按 5 MB 切片；localStorage 记录 `hash → sessionId`，下次同 hash
+   自动 `GET /files/upload-session/{id}` 拉回已上传分片续传
+4. 全部分片就绪后 `POST /complete` 触发 S3 multipart 合并
+
+后端会话表：`file_upload_sessions`（迁移 `e7f2b3d4c5a6`）。
+
+---
+
 ## 切换模式
 
 ### 从真实模式切换到 mock 模式

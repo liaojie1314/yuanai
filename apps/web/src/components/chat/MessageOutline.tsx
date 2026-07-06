@@ -13,6 +13,12 @@ export interface MessageOutlineProps {
    * 传入时覆盖内部基于消息数量的自动定位。
    */
   scrollActiveIdx?: number
+  /**
+   * 用户点击 outline 跳转到某 pair 时回调。父组件应据此立即更新
+   * ``scrollActiveIdx``，让高亮同步生效 —— 否则要等 Virtuoso 滚动
+   * 完成后 ``rangeChanged`` 才会触发同步，视觉上高亮延迟明显。
+   */
+  onJumpToPair?: (pairIdx: number) => void
 }
 
 /** 默认折叠态最多展示的色块数量，超出部分仅在悬浮浮层中可见 */
@@ -33,6 +39,7 @@ export function MessageOutline({
   pairs,
   virtuosoRef,
   scrollActiveIdx,
+  onJumpToPair,
 }: MessageOutlineProps): JSX.Element | null {
   const [active, setActive] = useState(0)
   // 外部滚动驱动的 active 索引优先；内部 active 仍用于「新消息到达后跳末尾」
@@ -102,9 +109,12 @@ export function MessageOutline({
 
   const jump = (idx: number): void => {
     // pair 在虚拟列表里的实际 index 需要按 rows 顺序推导：
-    // MessageList 按 [user, ai, user, ai, ...] 排列，因此 user 在偶数位
+    // MessageList 按 [user, ai, user, ai, ...] 排列，因此 user 在偶数位。
     virtuosoRef.current?.scrollToIndex({ index: idx * 2, align: 'start', behavior: 'smooth' })
     setActive(idx)
+    // 立即通知父组件更新 scrollActiveIdx，避免等待 Virtuoso 滚动结束
+    // 后的 rangeChanged 才同步高亮 —— 用户点击哪一条，那一条立刻高亮。
+    onJumpToPair?.(idx)
   }
 
   const compactStart = Math.max(

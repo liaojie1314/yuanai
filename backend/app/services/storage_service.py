@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import shutil
 import uuid
 from pathlib import Path
@@ -19,6 +20,10 @@ import boto3
 from botocore.exceptions import ClientError
 
 from app.core.config import settings
+
+# 允许匿名 GET 的对象前缀 —— 头像永远公开，聊天附件在 MVP 阶段也公开以简化展示；
+# 未来接入分享/私有文件流程时可改为签名 URL。
+_PUBLIC_READ_PREFIXES = ("avatars/*", "files/*")
 
 
 class StorageService(Protocol):
@@ -72,11 +77,41 @@ class S3StorageService:
         self.public_url = settings.s3_public_url
 
     async def ensure_bucket(self) -> None:
-        """启动时确保 bucket 存在（MinIO 常需要创建）。"""
+        """启动时确保 bucket 存在，并授予匿名 GET 权限（MinIO 默认私有）。
+
+        MinIO / AWS S3 的 bucket 默认拒绝匿名读，导致 ``<img src="…/avatars/…">``
+        返回 ``AccessDenied``。这里 head → create → put_bucket_policy，
+        允许 ``_PUBLIC_READ_PREFIXES`` 下的对象被公开访问。
+        """
         try:
             await asyncio.to_thread(self._client.head_bucket, Bucket=self.bucket)
         except ClientError:
             await asyncio.to_thread(self._client.create_bucket, Bucket=self.bucket)
+
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Sid": "AllowPublicReadOnUserFiles",
+                    "Effect": "Allow",
+                    "Principal": {"AWS": ["*"]},
+                    "Action": ["s3:GetObject"],
+                    "Resource": [
+                        f"arn:aws:s3:::{self.bucket}/{prefix}"
+                        for prefix in _PUBLIC_READ_PREFIXES
+                    ],
+                }
+            ],
+        }
+        try:
+            await asyncio.to_thread(
+                self._client.put_bucket_policy,
+                Bucket=self.bucket,
+                Policy=json.dumps(policy),
+            )
+        except ClientError:
+            # 权限不足或后端不支持 bucket policy —— 不阻断启动，稍后由运维手动配置
+            pass
 
     async def put_object(self, key: str, data: bytes, content_type: str) -> str:
         await asyncio.to_thread(

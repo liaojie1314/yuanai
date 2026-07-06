@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo, type JSX } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, startTransition, type JSX } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import SettingsModal from '@/components/settings/SettingsModal'
@@ -330,6 +330,21 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Outline scroll tracking ──
   const [outlineActiveIdx, setOutlineActiveIdx] = useState(0)
+  const outlineIdxRef = useRef(0)
+  /**
+   * MessageList 的 rangeChanged 会在滚动 / 流式打字过程中高频触发。
+   * 通过 ref 去重 + startTransition 把 outline 高亮标记为低优先级更新，
+   * 避免每一次滚动像素都强制 ChatInterface 同步重渲染。
+   */
+  const handleRangeChanged = useCallback((idx: number) => {
+    if (idx === outlineIdxRef.current) return
+    outlineIdxRef.current = idx
+    startTransition(() => setOutlineActiveIdx(idx))
+  }, [])
+  const handleOutlineJump = useCallback((idx: number) => {
+    outlineIdxRef.current = idx
+    setOutlineActiveIdx(idx)
+  }, [])
 
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
@@ -1172,13 +1187,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 onFeedback={(msgId, type) => openFeedback(msgId, type)}
                 msgFeedback={msgFeedback}
                 onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
-                onRangeChanged={(idx) => setOutlineActiveIdx(idx)}
+                onRangeChanged={handleRangeChanged}
               />
             )}
             <MessageOutline
               pairs={pairs}
               virtuosoRef={virtuosoRef}
               scrollActiveIdx={outlineActiveIdx}
+              onJumpToPair={handleOutlineJump}
             />
             {/* Scroll FAB */}
             <div className={`ch-scroll-fab ${showScrollFab ? '' : 'hide'}`}>
