@@ -1,17 +1,23 @@
-from fastapi import APIRouter, HTTPException
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, HTTPException, UploadFile
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
 from app.models.user import User
 from app.schemas.auth import (
     AuthResponse,
+    ChangeEmailRequest,
     ChangePasswordRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
     SendVerifyCodeRequest,
+    UpdatePreferencesRequest,
     UpdateUserRequest,
+    UserPreferencesResponse,
     UserResponse,
     UserStatsResponse,
 )
@@ -41,6 +47,11 @@ async def send_verify_code(req: SendVerifyCodeRequest, db: DB) -> dict[str, str]
         raise HTTPException(
             404,
             {"code": "EMAIL_NOT_FOUND", "message": "该邮箱尚未注册"},
+        )
+    if scene == "change_email" and existing:
+        raise HTTPException(
+            409,
+            {"code": "EMAIL_ALREADY_REGISTERED", "message": "该邮箱已被其他账户使用"},
         )
 
     try:
@@ -114,12 +125,73 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
 @router.patch("/me", response_model=UserResponse)
 async def update_me(req: UpdateUserRequest, current_user: CurrentUser, db: DB) -> UserResponse:
     if req.username is not None:
+        # 唯一性检查
+        exists = await db.execute(
+            select(User).where(User.username == req.username).where(User.id != current_user.id)
+        )
+        if exists.scalar_one_or_none():
+            raise HTTPException(
+                409, {"code": "USERNAME_TAKEN", "message": "该用户名已被使用"}
+            )
         current_user.username = req.username
     if req.avatar_url is not None:
         current_user.avatar_url = req.avatar_url
+    if req.bio is not None:
+        current_user.bio = req.bio
     await db.commit()
     await db.refresh(current_user)
     return UserResponse.model_validate(current_user)
+
+
+@router.patch("/me/email", response_model=UserResponse)
+async def change_email(
+    req: ChangeEmailRequest, current_user: CurrentUser, db: DB
+) -> UserResponse:
+    """修改当前用户邮箱。需要先通过 send-verify-code(scene=change_email) 发码。"""
+    # 邮箱唯一性检查
+    existing = await db.execute(
+        select(User).where(User.email == req.new_email).where(User.id != current_user.id)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            409, {"code": "EMAIL_ALREADY_REGISTERED", "message": "该邮箱已被其他账户使用"}
+        )
+
+    try:
+        await verify_code_service.verify_code(req.new_email, req.verify_code, scene="change_email")
+    except VerifyCodeError as e:
+        raise HTTPException(400, {"code": e.code, "message": e.message}) from e
+
+    current_user.email = req.new_email
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
+
+
+@router.get("/me/preferences", response_model=UserPreferencesResponse)
+async def get_my_preferences(current_user: CurrentUser) -> UserPreferencesResponse:
+    return UserPreferencesResponse.model_validate(current_user)
+
+
+@router.patch("/me/preferences", response_model=UserPreferencesResponse)
+async def update_my_preferences(
+    req: UpdatePreferencesRequest, current_user: CurrentUser, db: DB
+) -> UserPreferencesResponse:
+    if req.theme is not None:
+        current_user.theme = req.theme
+    if req.font_size is not None:
+        current_user.font_size = req.font_size
+    if req.density is not None:
+        current_user.density = req.density
+    if req.time_format is not None:
+        current_user.time_format = req.time_format
+    if req.date_format is not None:
+        current_user.date_format = req.date_format
+    if req.language is not None:
+        current_user.language = req.language
+    await db.commit()
+    await db.refresh(current_user)
+    return UserPreferencesResponse.model_validate(current_user)
 
 
 @router.get("/me/stats", response_model=UserStatsResponse)
@@ -137,7 +209,42 @@ async def change_password(
         if str(e) == "OLD_PASSWORD_WRONG":
             raise HTTPException(400, {"code": "OLD_PASSWORD_WRONG", "message": "当前密码不正确"}) from e
         raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "修改密码失败"}) from e
+    current_user.password_changed_at = datetime.now(UTC)
+    await db.commit()
     return {"message": "密码已修改"}
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def upload_avatar(file: UploadFile, current_user: CurrentUser, db: DB) -> UserResponse:
+    """上传用户头像，支持 jpeg/png/webp/gif，最大 5 MB。"""
+    from app.services.storage_service import storage
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            400, {"code": "INVALID_FILE_TYPE", "message": "仅支持上传图片文件"}
+        )
+
+    _EXT_MAP = {
+        "image/jpeg": "jpg",
+        "image/png": "png",
+        "image/webp": "webp",
+        "image/gif": "gif",
+    }
+    ext = _EXT_MAP.get(file.content_type, "jpg")
+
+    content = await file.read()
+    max_size = 5 * 1024 * 1024
+    if len(content) > max_size:
+        raise HTTPException(
+            413, {"code": "FILE_TOO_LARGE", "message": "头像文件不能超过 5 MB"}
+        )
+
+    key = f"avatars/{current_user.id}/{uuid.uuid4()}.{ext}"
+    url = await storage.put_object(key, content, file.content_type)
+    current_user.avatar_url = url
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
 
 
 @router.delete("/me", status_code=200)

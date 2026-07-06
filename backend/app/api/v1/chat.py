@@ -5,11 +5,12 @@ from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
 from app.models.conversation import Conversation
+from app.models.file import File, MessageFile
 from app.models.message import Message, MessageRole
 from app.schemas.chat import (
     ConversationResponse,
@@ -75,6 +76,18 @@ async def delete_conversation(
     await db.commit()
 
 
+@router.delete("/conversations", status_code=200)
+async def delete_all_conversations(
+    current_user: CurrentUser, db: DB
+) -> dict[str, int]:
+    """一次性删除当前用户的所有会话（含消息，通过 ondelete=CASCADE 级联）。"""
+    result = await db.execute(
+        delete(Conversation).where(Conversation.user_id == current_user.id)
+    )
+    await db.commit()
+    return {"deleted": int(result.rowcount or 0)}
+
+
 @router.get("/conversations/{conv_id}/messages")
 async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -> dict[str, object]:
     await _get_user_conv(conv_id, current_user.id, db)
@@ -118,6 +131,19 @@ async def stream_chat_endpoint(
     await db.refresh(user_msg)
     await db.refresh(assistant_msg)
 
+    # 关联文件（若有）
+    attached_files: list[File] = []
+    if req.message.file_ids:
+        file_results = await db.execute(
+            select(File)
+            .where(File.id.in_(req.message.file_ids))
+            .where(File.user_id == current_user.id)
+        )
+        attached_files = list(file_results.scalars().all())
+        for i, f in enumerate(attached_files):
+            db.add(MessageFile(message_id=user_msg.id, file_id=f.id, sort_order=i))
+        await db.commit()
+
     # 构建历史消息（最多 50 条，排除刚创建的空 assistant 占位）
     history_result = await db.execute(
         select(Message)
@@ -127,7 +153,21 @@ async def stream_chat_endpoint(
         .limit(50)
     )
     history = history_result.scalars().all()
-    openai_messages = [{"role": m.role.value, "content": m.content} for m in history]
+
+    # 构造 OpenAI 格式消息列表；最新一条若有图片附件则转为多模态格式
+    openai_messages: list[dict] = []
+    for m in history:
+        if m.id == user_msg.id and attached_files:
+            # 带附件的用户消息：组装 content 数组（视觉模型格式）
+            content_parts: list[dict] = [{"type": "text", "text": m.content}]
+            for af in attached_files:
+                if af.mime_type.startswith("image/"):
+                    content_parts.append(
+                        {"type": "image_url", "image_url": {"url": af.s3_key}}
+                    )
+            openai_messages.append({"role": m.role.value, "content": content_parts})
+        else:
+            openai_messages.append({"role": m.role.value, "content": m.content})
 
     return StreamingResponse(
         _generate_sse(

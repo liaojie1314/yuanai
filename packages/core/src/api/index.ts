@@ -9,3 +9,4 @@ export {
 export * from './auth.js'
 export * from './chat.js'
 export * from './models.js'
+export * from './share.js'

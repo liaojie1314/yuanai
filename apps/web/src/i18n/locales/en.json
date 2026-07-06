@@ -102,12 +102,14 @@
       "appearance": "Appearance",
       "notifications": "Notifications",
       "language": "Language & Region",
-      "about": "About & Help"
+      "about": "About & Help",
+      "data": "Data"
     },
     "groups": {
       "personal": "Personal",
       "system": "Preferences",
-      "support": "Support"
+      "support": "Support",
+      "data": "Data"
     },
     "profile": {
       "username": "Username",
@@ -120,18 +122,20 @@
     },
     "security": {
       "email": "Email",
-      "phone": "Phone",
       "password": "Password",
       "wechat": "WeChat",
       "changeEmail": "Change Email",
       "changePassword": "Change Password",
-      "bindPhone": "Bind Phone",
       "bindWechat": "Bind WeChat",
       "unbindWechat": "Unbind WeChat",
       "deleteAccount": "Delete Account",
+      "deleteAccountDesc": "Permanently delete your account and all data. Cannot be undone.",
+      "clearConversations": "Clear All Conversations",
+      "clearConversationsDesc": "Permanently delete all your conversation history. Cannot be undone.",
       "notBound": "Not bound",
       "bound": "Bound",
-      "lastChanged": "Last changed: {date}",
+      "lastChanged": "Last changed",
+      "lastChangedNever": "Never changed",
       "thirdPartyLogin": "Third-Party Login",
       "dangerousOps": "Danger Zone"
     },
@@ -152,13 +156,12 @@
     },
     "notifications": {
       "browser": "Browser Notifications",
+      "browserDesc": "Requires browser permission; prompt appears on first enable",
       "sound": "Sound",
+      "soundDesc": "Play a chime when the AI response finishes",
       "aiResponse": "AI Response Notifications",
-      "newFeatures": "New Feature Announcements",
-      "maintenance": "Maintenance Alerts",
-      "weeklyReport": "Weekly Usage Report",
-      "updates": "Version Updates",
-      "security": "Security Alerts"
+      "aiResponseDesc": "Send a desktop notification when the tab is in the background and the AI response completes",
+      "webGroup": "Web Notifications"
     },
     "language": {
       "interface": "Interface Language",
@@ -204,6 +207,11 @@
         "title": "Unbind WeChat",
         "warning": "After unbinding, you won't be able to sign in with WeChat. Continue?"
       },
+      "clearConversations": {
+        "title": "Clear All Conversations",
+        "warning": "This will permanently delete all your conversation history. This cannot be undone.",
+        "confirmText": "Clear"
+      },
       "deleteConversation": {
         "title": "Delete Conversation",
         "message": "Are you sure you want to delete this conversation? This cannot be undone."
@@ -214,7 +222,15 @@
       "emailChanged": "Email updated",
       "passwordChanged": "Password changed",
       "accountDeleted": "Account deleted",
-      "wechatUnbound": "WeChat unbound"
+      "wechatUnbound": "WeChat unbound",
+      "conversationsCleared": "Cleared {count} conversations",
+      "prefsSaved": "Preferences saved"
+    },
+    "data": {
+      "clearConversations": "Clear All Conversations",
+      "clearConversationsDesc": "Permanently delete all your conversation history. This action cannot be undone.",
+      "clearButton": "Clear All",
+      "thirdPartyNote": "Third-party account linking coming soon"
     }
   },
   "theme": {

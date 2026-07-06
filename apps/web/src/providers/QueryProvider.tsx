@@ -62,7 +62,8 @@ export default function QueryProvider({
       if (
         typeof window !== 'undefined' &&
         !window.location.pathname.startsWith('/login') &&
-        !window.location.pathname.startsWith('/register')
+        !window.location.pathname.startsWith('/register') &&
+        !window.location.pathname.startsWith('/share')
       ) {
         window.location.href = '/login'
       }

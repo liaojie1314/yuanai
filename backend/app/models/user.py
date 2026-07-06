@@ -15,6 +15,17 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
+    bio: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # ── 用户偏好设置 ───────────────────────────────────
+    theme: Mapped[str] = mapped_column(String(10), nullable=False, default="auto")
+    font_size: Mapped[str] = mapped_column(String(10), nullable=False, default="medium")
+    density: Mapped[str] = mapped_column(String(10), nullable=False, default="standard")
+    time_format: Mapped[str] = mapped_column(String(5), nullable=False, default="24h")
+    date_format: Mapped[str] = mapped_column(String(5), nullable=False, default="ymd")
+    language: Mapped[str] = mapped_column(String(10), nullable=False, default="zh-CN")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

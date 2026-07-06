@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { User, UserStats } from '@yuanai/types'
 import {
+  changeEmail,
   changePassword,
+  clearAllConversations,
   deleteMe,
   getMe,
+  getMyPreferences,
   getMyStats,
   login,
   logout,
@@ -11,6 +14,9 @@ import {
   resetPassword,
   sendVerifyCode,
   updateMe,
+  updateMyPreferences,
+  uploadAvatar,
+  type UserPreferences,
   type VerifyCodeScene,
 } from '../api/auth.js'
 import { useAuthStore } from '../stores/auth.store.js'
@@ -104,9 +110,55 @@ export function useLogout() {
 export function useUpdateMe() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { username?: string; avatarUrl?: string }) => updateMe(data),
+    mutationFn: (data: { username?: string; avatarUrl?: string; bio?: string }) => updateMe(data),
     onSuccess: (updatedUser: User) => {
       qc.setQueryData<User>(['me'], updatedUser)
+    },
+  })
+}
+
+/** 获取当前用户偏好设置 */
+export function useMyPreferences() {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery<UserPreferences>({
+    queryKey: ['me', 'preferences'],
+    queryFn: getMyPreferences,
+    enabled: !!accessToken,
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/** 更新用户偏好设置 mutation（乐观更新） */
+export function useUpdateMyPreferences() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: Partial<UserPreferences>) => updateMyPreferences(data),
+    onSuccess: (prefs) => {
+      qc.setQueryData<UserPreferences>(['me', 'preferences'], prefs)
+    },
+  })
+}
+
+/** 修改邮箱 mutation */
+export function useChangeEmail() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ newEmail, verifyCode }: { newEmail: string; verifyCode: string }) =>
+      changeEmail(newEmail, verifyCode),
+    onSuccess: (updatedUser: User) => {
+      qc.setQueryData<User>(['me'], updatedUser)
+    },
+  })
+}
+
+/** 一次清空所有会话 mutation。清空后会话数归零，需同步失效 ``['me','stats']``。 */
+export function useClearAllConversations() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: clearAllConversations,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['conversations'] })
+      void qc.invalidateQueries({ queryKey: ['me', 'stats'] })
     },
   })
 }
@@ -139,6 +191,17 @@ export function useDeleteMe() {
     onSuccess: () => {
       clearAuth()
       qc.clear()
+    },
+  })
+}
+
+/** 上传头像 mutation */
+export function useUploadAvatar() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (file: File) => uploadAvatar(file),
+    onSuccess: (updatedUser) => {
+      qc.setQueryData<User>(['me'], updatedUser)
     },
   })
 }

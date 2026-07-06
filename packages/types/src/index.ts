@@ -19,6 +19,21 @@ export interface User {
   username: string
   /** 头像 URL；用户未上传时为 null */
   avatarUrl: string | null
+  /** 个人简介，未填写时为 null */
+  bio?: string | null
+  /** 上次修改密码时间；从未修改时为 null */
+  passwordChangedAt?: string | null
+  createdAt: string
+}
+
+/** 服务端文件引用 */
+export interface FileRef {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  url: string
+  fileHash?: string | null
   createdAt: string
 }
 

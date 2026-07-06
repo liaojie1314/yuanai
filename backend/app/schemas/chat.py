@@ -83,3 +83,67 @@ class SendMessageRequest(BaseModel):
     model: str
     message: MessageContent
     enable_thinking: bool = False
+
+
+class ShareLinkResponse(BaseModel):
+    """会话分享链接信息（返回给分享者本人）"""
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    share_token: str
+    title_snapshot: str
+    created_at: datetime
+    expires_at: datetime | None = None
+    has_password: bool = False
+
+
+class CreateShareRequest(BaseModel):
+    """创建分享链接的请求；有效期与密码可选"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    # 有效期天数：None/0 表示永久
+    expires_in_days: int | None = None
+    # 访问密码，为空/None 表示无密码
+    password: str | None = None
+
+
+class UnlockShareRequest(BaseModel):
+    """匿名用户校验分享密码"""
+
+    password: str
+
+
+class SharedConversationResponse(BaseModel):
+    """通过分享链接匿名访问时返回的只读会话数据"""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    title: str
+    model: str
+    messages: list[MessageResponse]
+    shared_at: datetime
+    author_username: str
+    expires_at: datetime | None = None
+
+
+class SharedConversationMetaResponse(BaseModel):
+    """未解锁前只暴露标题/作者/是否需要密码，避免暴露内容"""
+
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    title: str
+    author_username: str
+    requires_password: bool
+    expires_at: datetime | None = None
+    shared_at: datetime

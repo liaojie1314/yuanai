@@ -2,6 +2,10 @@
 
 /* ── Design tokens ── */
 :root {
+  /* 用户可调字号（settings > appearance > fontSize），fallback 15px 与之前一致 */
+  --user-font-size: 15px;
+  /* 用户可调消息垂直间距（settings > appearance > density） */
+  --density-gap: 18px;
   --bg: #f4f8ff;
   --sidebar-bg: #f0f6ff;
   --surface: #ffffff;
@@ -36,6 +40,23 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* ── 用户可调紧凑度：影响聊天消息垂直间距 ── */
+html[data-density='compact'] {
+  --density-gap: 12px;
+}
+html[data-density='standard'] {
+  --density-gap: 18px;
+}
+html[data-density='loose'] {
+  --density-gap: 28px;
+}
+
+/* ── 用户可调字号：应用到聊天消息正文 ── */
+.ch-msg-content,
+.md-body {
+  font-size: var(--user-font-size);
 }
 
 html {

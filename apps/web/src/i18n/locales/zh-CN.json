@@ -102,12 +102,14 @@
       "appearance": "外观与主题",
       "notifications": "通知设置",
       "language": "语言与地区",
-      "about": "关于与帮助"
+      "about": "关于与帮助",
+      "data": "数据管理"
     },
     "groups": {
       "personal": "个人中心",
       "system": "系统偏好",
-      "support": "支持"
+      "support": "支持",
+      "data": "数据"
     },
     "profile": {
       "username": "用户名",
@@ -120,18 +122,20 @@
     },
     "security": {
       "email": "邮箱",
-      "phone": "手机号",
       "password": "密码",
       "wechat": "微信",
       "changeEmail": "更换邮箱",
       "changePassword": "修改密码",
-      "bindPhone": "绑定手机",
       "bindWechat": "绑定微信",
       "unbindWechat": "解绑微信",
       "deleteAccount": "注销账号",
+      "deleteAccountDesc": "永久删除账户及所有数据，此操作不可撤销。",
+      "clearConversations": "清空所有会话",
+      "clearConversationsDesc": "永久删除你的所有对话记录，此操作不可撤销。",
       "notBound": "未绑定",
       "bound": "已绑定",
-      "lastChanged": "上次修改：{date}",
+      "lastChanged": "上次修改时间",
+      "lastChangedNever": "从未修改",
       "thirdPartyLogin": "第三方登录",
       "dangerousOps": "危险操作"
     },
@@ -152,13 +156,12 @@
     },
     "notifications": {
       "browser": "浏览器通知",
+      "browserDesc": "需要浏览器授权，首次启用时会弹出权限请求",
       "sound": "声音提示",
+      "soundDesc": "AI 回复完成时播放提示音",
       "aiResponse": "AI 回复通知",
-      "newFeatures": "新功能发布",
-      "maintenance": "系统维护通知",
-      "weeklyReport": "每周使用报告",
-      "updates": "版本更新",
-      "security": "安全提醒"
+      "aiResponseDesc": "标签页在后台时，AI 回复完成后发送桌面通知",
+      "webGroup": "Web 通知"
     },
     "language": {
       "interface": "界面语言",
@@ -204,6 +207,11 @@
         "title": "解绑微信",
         "warning": "解绑后，你将无法使用微信登录此账号。确定要解绑吗？"
       },
+      "clearConversations": {
+        "title": "清空所有会话",
+        "warning": "此操作将永久删除你的所有对话记录，无法恢复。你确定要继续吗？",
+        "confirmText": "清空"
+      },
       "deleteConversation": {
         "title": "删除会话",
         "message": "确定要删除这个会话吗？删除后无法恢复。"
@@ -214,7 +222,15 @@
       "emailChanged": "邮箱已更新",
       "passwordChanged": "密码已修改",
       "accountDeleted": "账号已注销",
-      "wechatUnbound": "微信已解绑"
+      "wechatUnbound": "微信已解绑",
+      "conversationsCleared": "已清空 {count} 个会话",
+      "prefsSaved": "设置已保存"
+    },
+    "data": {
+      "clearConversations": "清空所有会话",
+      "clearConversationsDesc": "永久删除你的所有对话记录，此操作不可撤销。",
+      "clearButton": "清空全部",
+      "thirdPartyNote": "第三方账号绑定即将开放"
     }
   },
   "theme": {

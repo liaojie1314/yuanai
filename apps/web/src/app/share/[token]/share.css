@@ -1,0 +1,496 @@
+/* ── 分享页样式（只读会话展示） ── */
+
+.share-page {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f4f8ff 0%, #ffffff 100%);
+  color: var(--fg);
+}
+
+.share-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 32px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+}
+
+.share-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.share-brand-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: -0.5px;
+}
+
+.share-brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.share-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.share-btn-ghost,
+.share-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s;
+  cursor: pointer;
+  border: none;
+}
+
+.share-btn-ghost {
+  background: transparent;
+  color: var(--fg2);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+.share-btn-ghost:hover {
+  background: var(--brand-light);
+  color: var(--brand);
+}
+
+.share-btn-primary {
+  background: linear-gradient(135deg, var(--brand), var(--brand-a));
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+}
+.share-btn-primary:hover {
+  box-shadow: 0 6px 18px rgba(59, 130, 246, 0.35);
+  transform: translateY(-1px);
+}
+
+.share-btn-lg {
+  height: 44px;
+  padding: 0 24px;
+  font-size: 14px;
+}
+
+.share-main {
+  max-width: 820px;
+  margin: 40px auto 80px;
+  padding: 0 32px;
+}
+
+.share-meta {
+  margin-bottom: 32px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.08);
+}
+
+.share-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--fg);
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.share-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.share-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 11px;
+  background: var(--brand-light);
+  color: var(--brand-a);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.share-meta-text {
+  font-size: 13px;
+  color: var(--fg2);
+}
+.share-meta-text strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.share-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.share-msg {
+  display: flex;
+  gap: 12px;
+}
+
+.share-msg-user {
+  justify-content: flex-end;
+}
+
+.share-msg-user .share-msg-bubble {
+  max-width: 78%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--brand), var(--brand-a));
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.share-msg-ai {
+  align-items: flex-start;
+}
+
+.share-msg-avatar {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1e3a8a, #3b82f6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.share-msg-body {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+}
+
+.share-msg-body .md-body {
+  font-size: 14.5px;
+  line-height: 1.75;
+}
+
+.share-msg-body pre {
+  background: var(--elevated);
+  border-radius: 10px;
+  padding: 12px 16px;
+  overflow-x: auto;
+}
+
+.share-empty {
+  padding: 60px 0;
+  text-align: center;
+  color: var(--fg3);
+}
+
+.share-cta {
+  margin-top: 60px;
+  padding: 32px 24px;
+  text-align: center;
+  background: var(--brand-light);
+  border-radius: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+}
+
+.share-cta p {
+  font-size: 15px;
+  color: var(--fg2);
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+
+/* ── 加载 / 错误状态 ── */
+.share-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--fg2);
+}
+
+.share-spin {
+  animation: share-spin 1s linear infinite;
+  color: var(--brand);
+}
+
+@keyframes share-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.share-error {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--fg2);
+}
+
+.share-error > svg {
+  color: var(--error);
+  margin-bottom: 4px;
+}
+
+.share-error h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 0;
+}
+
+.share-error p {
+  font-size: 14px;
+  max-width: 400px;
+  line-height: 1.6;
+  margin: 0 0 12px;
+}
+
+/* ── Markdown 内容基础样式（分享页独立于 chat.css） ── */
+.share-msg-body .md-body p {
+  margin: 0 0 12px;
+}
+.share-msg-body .md-body p:last-child {
+  margin-bottom: 0;
+}
+.share-msg-body .md-body h1,
+.share-msg-body .md-body h2,
+.share-msg-body .md-body h3,
+.share-msg-body .md-body h4 {
+  margin: 20px 0 10px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.share-msg-body .md-body h1 {
+  font-size: 20px;
+}
+.share-msg-body .md-body h2 {
+  font-size: 18px;
+}
+.share-msg-body .md-body h3 {
+  font-size: 16px;
+}
+.share-msg-body .md-body h4 {
+  font-size: 15px;
+}
+.share-msg-body .md-body ul,
+.share-msg-body .md-body ol {
+  padding-left: 24px;
+  margin: 0 0 12px;
+}
+.share-msg-body .md-body li {
+  margin: 4px 0;
+}
+.share-msg-body .md-body a {
+  color: var(--brand);
+  text-decoration: underline;
+}
+.share-msg-body .md-body blockquote {
+  border-left: 3px solid var(--brand-b);
+  padding-left: 12px;
+  color: var(--fg2);
+  margin: 12px 0;
+}
+.share-msg-body .md-body table {
+  border-collapse: collapse;
+  margin: 12px 0;
+  width: 100%;
+}
+.share-msg-body .md-body th,
+.share-msg-body .md-body td {
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  padding: 6px 10px;
+  text-align: left;
+}
+.share-msg-body .md-body th {
+  background: var(--brand-light);
+  font-weight: 600;
+}
+
+.sh-inline-code {
+  background: var(--elevated);
+  color: var(--brand-a);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', Consolas, 'Fira Code', monospace;
+}
+
+/* ── 代码块（分享页专用，独立于 chat.css） ── */
+.sh-code {
+  border: 1px solid rgba(59, 130, 246, 0.12);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--elevated);
+  margin: 12px 0;
+}
+.sh-code-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  background: rgba(59, 130, 246, 0.06);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.1);
+}
+.sh-code-lang {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sh-code-acts {
+  display: flex;
+  gap: 6px;
+}
+.sh-code-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  background: var(--surface);
+  color: var(--fg2);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+  font-family: inherit;
+}
+.sh-code-act:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.sh-code-body {
+  overflow-x: auto;
+}
+.sh-code-body pre {
+  margin: 0;
+}
+
+/* ── 密码解锁页 ── */
+.share-gate {
+  min-height: calc(100vh - 64px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.share-gate-card {
+  max-width: 420px;
+  width: 100%;
+  padding: 40px 32px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(30, 64, 175, 0.08);
+  text-align: center;
+}
+.share-gate-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--brand-light);
+  color: var(--brand);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+}
+.share-gate-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 0 0 10px;
+}
+.share-gate-sub {
+  font-size: 14px;
+  color: var(--fg2);
+  line-height: 1.7;
+  margin: 0 0 24px;
+}
+.share-gate-sub strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+.share-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.share-gate-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 14px;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.share-gate-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+.share-gate-err {
+  color: var(--error);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* ── 响应式 ── */
+@media (max-width: 640px) {
+  .share-header {
+    padding: 12px 16px;
+  }
+  .share-main {
+    padding: 0 16px;
+    margin: 24px auto 60px;
+  }
+  .share-title {
+    font-size: 20px;
+  }
+  .share-msg-user .share-msg-bubble {
+    max-width: 88%;
+  }
+}

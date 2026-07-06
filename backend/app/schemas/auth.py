@@ -57,8 +57,8 @@ class SendVerifyCodeRequest(BaseModel):
     @field_validator("scene")
     @classmethod
     def validate_scene(cls, v: str) -> str:
-        if v not in ("register", "reset_password"):
-            raise ValueError("scene 必须为 register 或 reset_password")
+        if v not in ("register", "reset_password", "change_email"):
+            raise ValueError("scene 必须为 register/reset_password/change_email")
         return v
 
 
@@ -110,6 +110,8 @@ class UserResponse(BaseModel):
     email: str
     username: str
     avatar_url: str | None
+    bio: str | None = None
+    password_changed_at: datetime | None = None
     created_at: datetime
 
 
@@ -126,6 +128,117 @@ class UpdateUserRequest(BaseModel):
 
     username: str | None = None
     avatar_url: str | None = None
+    bio: str | None = None
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not re.match(r"^[a-zA-Z0-9_一-鿿]{2,20}$", v):
+            raise ValueError("用户名 2-20 位，支持中英文、数字、下划线")
+        return v
+
+    @field_validator("bio")
+    @classmethod
+    def validate_bio(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if len(v) > 200:
+            raise ValueError("简介不能超过 200 字")
+        return v
+
+
+class ChangeEmailRequest(BaseModel):
+    """修改邮箱：新邮箱 + 发送到新邮箱的验证码。"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    new_email: EmailStr
+    verify_code: str
+
+    @field_validator("verify_code")
+    @classmethod
+    def validate_verify_code(cls, v: str) -> str:
+        if not re.match(r"^\d{6}$", v):
+            raise ValueError("验证码必须为 6 位数字")
+        return v
+
+
+class UserPreferencesResponse(BaseModel):
+    """用户偏好设置响应体"""
+
+    model_config = ConfigDict(
+        from_attributes=True,
+        alias_generator=to_camel,
+        populate_by_name=True,
+    )
+
+    theme: str
+    font_size: str
+    density: str
+    time_format: str
+    date_format: str
+    language: str
+
+
+class UpdatePreferencesRequest(BaseModel):
+    """任意子集偏好更新（未提供的字段保持不变）"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    theme: str | None = None
+    font_size: str | None = None
+    density: str | None = None
+    time_format: str | None = None
+    date_format: str | None = None
+    language: str | None = None
+
+    @field_validator("theme")
+    @classmethod
+    def _theme(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in ("auto", "light", "dark"):
+            raise ValueError("theme 必须为 auto/light/dark")
+        return v
+
+    @field_validator("font_size")
+    @classmethod
+    def _font_size(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in ("small", "medium", "large"):
+            raise ValueError("fontSize 必须为 small/medium/large")
+        return v
+
+    @field_validator("density")
+    @classmethod
+    def _density(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in ("compact", "standard", "loose"):
+            raise ValueError("density 必须为 compact/standard/loose")
+        return v
+
+    @field_validator("time_format")
+    @classmethod
+    def _time_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in ("24h", "12h"):
+            raise ValueError("timeFormat 必须为 24h/12h")
+        return v
+
+    @field_validator("date_format")
+    @classmethod
+    def _date_format(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v not in ("ymd", "mdy", "dmy"):
+            raise ValueError("dateFormat 必须为 ymd/mdy/dmy")
+        return v
 
 
 class ChangePasswordRequest(BaseModel):

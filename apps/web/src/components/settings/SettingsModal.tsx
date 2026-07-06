@@ -13,12 +13,11 @@ import {
   Check,
   Eye,
   EyeOff,
-  Camera,
-  Upload,
-  ExternalLink,
+  Loader2,
   MessageSquare,
   Zap,
   Paperclip,
+  ExternalLink,
 } from 'lucide-react'
 import { useTranslations } from '@/i18n/client'
 import { locales, localeNames, type Locale } from '@/i18n/config'
@@ -27,16 +26,28 @@ import {
   useCurrentUser,
   useUpdateMe,
   useMyStats,
+  useMyPreferences,
+  useUpdateMyPreferences,
   useChangePassword,
+  useChangeEmail,
+  useSendVerifyCode,
   useDeleteMe,
+  useClearAllConversations,
+  useUploadAvatar,
 } from '@yuanai/core/hooks'
 import { usePrefsStore } from '@yuanai/core/stores'
+import type { FontSize, Density, ThemeChoice } from '@yuanai/core/stores'
+import type { UserPreferences } from '@yuanai/core/api'
 
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
-type SubModal = 'change-email' | 'change-pw' | 'unlink-wechat' | 'delete-account' | null
-type ThemeChoice = 'auto' | 'light' | 'dark'
-type Density = 'compact' | 'standard' | 'loose'
+type SubModal =
+  | 'change-email'
+  | 'change-pw'
+  | 'delete-account'
+  | 'clear-conversations'
+  | 'unlink-third'
+  | null
 
 interface Toast {
   id: number
@@ -50,7 +61,8 @@ interface Props {
   initialSection?: Section
 }
 
-const FONT_SIZES: [number, number, number] = [13, 15, 17]
+const FONT_SIZE_PX: Record<FontSize, number> = { small: 13, medium: 15, large: 17 }
+const FONT_SIZE_ORDER: FontSize[] = ['small', 'medium', 'large']
 
 function pwStrength(pw: string, labels: string[]): { score: number; label: string; color: string } {
   if (!pw) return { score: 0, label: '', color: 'var(--fg3)' }
@@ -61,6 +73,35 @@ function pwStrength(pw: string, labels: string[]): { score: number; label: strin
   if (/[^A-Za-z0-9]/.test(pw)) s++
   const colors: Record<number, string> = { 1: '#ef4444', 2: '#f59e0b', 3: '#3b82f6', 4: '#10b981' }
   return { score: s, label: labels[s - 1] ?? '', color: colors[s] ?? '#ef4444' }
+}
+
+/**
+ * 按用户 dateFmt / timeFmt 偏好格式化时间戳，用于展示密码上次修改时间等审计信息。
+ * 无效或空输入返回空串。
+ */
+function formatDateTime(
+  iso: string,
+  dateFmt: 'ymd' | 'mdy' | 'dmy',
+  timeFmt: '24h' | '12h'
+): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  const datePart =
+    dateFmt === 'mdy'
+      ? `${mm}/${dd}/${yyyy}`
+      : dateFmt === 'dmy'
+        ? `${dd}/${mm}/${yyyy}`
+        : `${yyyy}/${mm}/${dd}`
+  const hh24 = d.getHours()
+  const mi = String(d.getMinutes()).padStart(2, '0')
+  const timePart =
+    timeFmt === '12h'
+      ? `${String(((hh24 + 11) % 12) + 1).padStart(2, '0')}:${mi} ${hh24 >= 12 ? 'PM' : 'AM'}`
+      : `${String(hh24).padStart(2, '0')}:${mi}`
+  return `${datePart} ${timePart}`
 }
 
 // ── Component ──────────────────────────────────────────────────
@@ -75,38 +116,81 @@ export default function SettingsModal({
   // Real API data
   const { data: currentUser } = useCurrentUser()
   const { data: stats } = useMyStats()
+  const { data: serverPrefs } = useMyPreferences()
   const updateMe = useUpdateMe()
   const changePasswordMutation = useChangePassword()
+  const changeEmailMutation = useChangeEmail()
+  const sendVerifyCodeMutation = useSendVerifyCode()
   const deleteMeMutation = useDeleteMe()
+  const clearConvsMutation = useClearAllConversations()
+  const updatePrefsMutation = useUpdateMyPreferences()
+  const uploadAvatarMutation = useUploadAvatar()
 
   // Navigation
   const [section, setSection] = useState<Section>(initialSection)
   const [subModal, setSubModal] = useState<SubModal>(null)
 
-  // Theme / appearance
-  const [themeChoice, setThemeChoice] = useState<ThemeChoice>('light')
-  const [fontSizeIdx, setFontSizeIdx] = useState<0 | 1 | 2>(1)
-  const [density, setDensity] = useState<Density>('standard')
+  // Prefs store (本地立即生效 + 后端持久化)
+  // 分别 subscribe 单个字段，避免整体订阅引起的死循环
+  const theme = usePrefsStore((s) => s.theme)
+  const fontSize = usePrefsStore((s) => s.fontSize)
+  const density = usePrefsStore((s) => s.density)
+  const timeFmt = usePrefsStore((s) => s.timeFmt)
+  const dateFmt = usePrefsStore((s) => s.dateFmt)
+  const setTheme = usePrefsStore((s) => s.setTheme)
+  const setFontSize = usePrefsStore((s) => s.setFontSize)
+  const setDensity = usePrefsStore((s) => s.setDensity)
+  const setTimeFmt = usePrefsStore((s) => s.setTimeFmt)
+  const setDateFmt = usePrefsStore((s) => s.setDateFmt)
 
   // Language
   const [currentLocale, setCurrentLocale] = useState<Locale>('zh-CN')
-  const { timeFmt, dateFmt, setTimeFmt, setDateFmt } = usePrefsStore()
 
-  // Notifications
-  const [notifBrowser, setNotifBrowser] = useState(true)
-  const [notifSound, setNotifSound] = useState(false)
-  const [notifAI, setNotifAI] = useState(true)
-  const [notifFeature, setNotifFeature] = useState(true)
-  const [notifMaint, setNotifMaint] = useState(false)
-  const [notifWeekly, setNotifWeekly] = useState(false)
-  const [notifUpdate, setNotifUpdate] = useState(true)
-  const [notifSecurity, setNotifSecurity] = useState(true)
+  // Notifications（localStorage 持久化）
+  const loadNotifPref = (key: string, def: boolean): boolean => {
+    if (typeof window === 'undefined') return def
+    const v = localStorage.getItem(`notif_${key}`)
+    return v === null ? def : v === 'true'
+  }
 
-  // Profile editing state (bio is local-only until backend supports it)
+  const [notifBrowser, setNotifBrowserRaw] = useState(() => loadNotifPref('browser', false))
+  const [notifSound, setNotifSoundRaw] = useState(() => loadNotifPref('sound', false))
+  const [notifAI, setNotifAIRaw] = useState(() => loadNotifPref('ai', true))
+
+  const setNotifBrowser = (v: boolean | ((prev: boolean) => boolean)): void => {
+    setNotifBrowserRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      localStorage.setItem('notif_browser', String(next))
+      if (next && typeof window !== 'undefined' && 'Notification' in window) {
+        if (Notification.permission === 'default') {
+          void Notification.requestPermission()
+        }
+      }
+      return next
+    })
+  }
+  const setNotifSound = (v: boolean | ((prev: boolean) => boolean)): void => {
+    setNotifSoundRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      localStorage.setItem('notif_sound', String(next))
+      return next
+    })
+  }
+  const setNotifAI = (v: boolean | ((prev: boolean) => boolean)): void => {
+    setNotifAIRaw((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v
+      localStorage.setItem('notif_ai', String(next))
+      return next
+    })
+  }
+
+  // 第三方登录待解绑目标（暂时仅 UI）
+  const [, setUnlinkTarget] = useState<'wechat' | 'google' | 'github' | null>(null)
+
+  // Profile editing state
   const [editingUsername, setEditingUsername] = useState(false)
   const [editingBio, setEditingBio] = useState(false)
   const [usernameInput, setUsernameInput] = useState('')
-  const [bio, setBio] = useState('')
   const [bioInput, setBioInput] = useState('')
 
   // Security sub-modal state
@@ -124,10 +208,15 @@ export default function SettingsModal({
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([])
   const toastId = useRef(0)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok'): void => {
     const id = ++toastId.current
-    setToasts((prev) => [...prev, { id, msg, type }])
+    // 最多同屏 3 条：新 toast 挤掉最早那条
+    setToasts((prev) => {
+      const next = [...prev, { id, msg, type }]
+      return next.length > 3 ? next.slice(next.length - 3) : next
+    })
     setTimeout(() => setToasts((prev) => prev.filter((item) => item.id !== id)), 3000)
   }, [])
 
@@ -148,11 +237,37 @@ export default function SettingsModal({
   useEffect(() => {
     if (!open) return
     setSection(initialSection)
-    const saved = localStorage.getItem('theme')
-    if (saved === 'auto' || saved === 'light' || saved === 'dark') setThemeChoice(saved)
-    else setThemeChoice('light')
     setCurrentLocale(getLocaleFromCookie())
   }, [open, initialSection])
+
+  // 从后端拉到 preferences 时，首次同步到本地 store（之后本地即权威，避免覆盖用户改动）
+  const syncedRef = useRef(false)
+  useEffect(() => {
+    if (!serverPrefs || syncedRef.current) return
+    syncedRef.current = true
+    usePrefsStore.getState().replaceAll({
+      theme: serverPrefs.theme as ThemeChoice,
+      fontSize: serverPrefs.fontSize as FontSize,
+      density: serverPrefs.density as Density,
+      timeFmt: serverPrefs.timeFormat,
+      dateFmt: serverPrefs.dateFormat,
+    })
+  }, [serverPrefs])
+
+  // 立即将 theme/fontSize/density 应用到 document
+  useEffect(() => {
+    const html = document.documentElement
+    if (theme === 'dark') html.setAttribute('data-theme', 'dark')
+    else if (theme === 'light') html.setAttribute('data-theme', 'light')
+    else
+      html.setAttribute(
+        'data-theme',
+        window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'
+      )
+    localStorage.setItem('theme', theme)
+    html.style.setProperty('--user-font-size', `${FONT_SIZE_PX[fontSize]}px`)
+    html.setAttribute('data-density', density)
+  }, [theme, fontSize, density])
 
   // Email countdown
   useEffect(() => {
@@ -161,38 +276,71 @@ export default function SettingsModal({
     return () => clearTimeout(timer)
   }, [emailCd])
 
+  const persistPref = useCallback(
+    (patch: Partial<UserPreferences>): void => {
+      // 登录状态才需要写后端；未登录时仅本地生效
+      if (currentUser) {
+        updatePrefsMutation.mutate(patch)
+      }
+    },
+    [currentUser, updatePrefsMutation]
+  )
+
   const applyTheme = (choice: ThemeChoice): void => {
-    setThemeChoice(choice)
-    const html = document.documentElement
-    if (choice === 'dark') html.setAttribute('data-theme', 'dark')
-    else if (choice === 'light') html.setAttribute('data-theme', 'light')
-    else
-      html.setAttribute(
-        'data-theme',
-        window.matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light'
-      )
-    localStorage.setItem('theme', choice)
-    showToast(tc('success'))
+    setTheme(choice)
+    persistPref({ theme: choice })
+    showToast(t('toast.prefsSaved'))
+  }
+
+  const applyFontSize = (size: FontSize): void => {
+    setFontSize(size)
+    persistPref({ fontSize: size })
+    showToast(t('toast.prefsSaved'))
+  }
+
+  const applyDensity = (d: Density): void => {
+    setDensity(d)
+    persistPref({ density: d })
+    showToast(t('toast.prefsSaved'))
+  }
+
+  const applyTimeFmt = (fmt: '24h' | '12h'): void => {
+    setTimeFmt(fmt)
+    persistPref({ timeFormat: fmt })
+  }
+
+  const applyDateFmt = (fmt: 'ymd' | 'mdy' | 'dmy'): void => {
+    setDateFmt(fmt)
+    persistPref({ dateFormat: fmt })
   }
 
   const switchLocale = (locale: Locale): void => {
     setCurrentLocale(locale)
     setLocaleCookie(locale)
-    // Reload to apply the new locale from the server
+    persistPref({ language: locale })
     window.location.reload()
   }
 
   const sendCode = (): void => {
-    if (!newEmail) {
-      showToast(t('dialogs.changeEmail.codeSent'), 'err')
+    if (!newEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+      showToast('请输入有效的邮箱地址', 'err')
       return
     }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-      showToast(tc('error'), 'err')
-      return
-    }
-    setEmailCd(60)
-    showToast(t('dialogs.changeEmail.codeSent'))
+    sendVerifyCodeMutation.mutate(
+      { email: newEmail, scene: 'change_email' },
+      {
+        onSuccess: () => {
+          setEmailCd(60)
+          showToast(t('dialogs.changeEmail.codeSent'))
+        },
+        onError: (err: unknown) => {
+          const msg =
+            (err as { response?: { data?: { detail?: { message?: string } } } })?.response?.data
+              ?.detail?.message ?? tc('error')
+          showToast(msg, 'err')
+        },
+      }
+    )
   }
 
   const submitEmail = (): void => {
@@ -200,8 +348,23 @@ export default function SettingsModal({
       showToast(tc('error'), 'err')
       return
     }
-    // 更换邮箱需后端邮件验证服务支持，暂不开放
-    showToast('更换邮箱功能暂未开放', 'err')
+    changeEmailMutation.mutate(
+      { newEmail, verifyCode: emailCode },
+      {
+        onSuccess: () => {
+          setSubModal(null)
+          setNewEmail('')
+          setEmailCode('')
+          showToast(t('toast.emailChanged'))
+        },
+        onError: (err: unknown) => {
+          const msg =
+            (err as { response?: { data?: { detail?: { message?: string } } } })?.response?.data
+              ?.detail?.message ?? tc('error')
+          showToast(msg, 'err')
+        },
+      }
+    )
   }
 
   const savePw = (): void => {
@@ -210,7 +373,7 @@ export default function SettingsModal({
       return
     }
     if (newPw !== confPw || newPw.length < 8) {
-      showToast(tc('error'), 'err')
+      showToast('两次密码不一致或长度不足 8 位', 'err')
       return
     }
     changePasswordMutation.mutate(
@@ -243,9 +406,21 @@ export default function SettingsModal({
         setSubModal(null)
         setDelInput('')
         onClose()
-        // useDeleteMe.onSuccess already calls clearAuth() + qc.clear()
-        // redirect to login
         window.location.href = '/login'
+      },
+      onError: () => showToast(tc('error'), 'err'),
+    })
+  }
+
+  const doClearConversations = (): void => {
+    clearConvsMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setSubModal(null)
+        showToast(t('toast.conversationsCleared', { count: data.deleted }))
+        // 清空后跳到 /chat，避免用户停留在已被删除的会话页
+        if (typeof window !== 'undefined' && window.location.pathname.startsWith('/chat/')) {
+          window.location.href = '/chat'
+        }
       },
       onError: () => showToast(tc('error'), 'err'),
     })
@@ -261,15 +436,26 @@ export default function SettingsModal({
       { username: trimmed },
       {
         onSuccess: () => showToast(t('toast.saved')),
-        onError: () => showToast(tc('error'), 'err'),
+        onError: (err: unknown) => {
+          const msg =
+            (err as { response?: { data?: { detail?: { message?: string } } } })?.response?.data
+              ?.detail?.message ?? tc('error')
+          showToast(msg, 'err')
+        },
       }
     )
     setEditingUsername(false)
   }
 
   const saveBio = (): void => {
-    setBio(bioInput.trim())
-    showToast(t('toast.saved'))
+    const trimmed = bioInput.trim()
+    updateMe.mutate(
+      { bio: trimmed },
+      {
+        onSuccess: () => showToast(t('toast.saved')),
+        onError: () => showToast(tc('error'), 'err'),
+      }
+    )
     setEditingBio(false)
   }
 
@@ -280,10 +466,11 @@ export default function SettingsModal({
     ? currentUser.email.replace(/^(.{2})(.*)(@.+)$/, (_, a, _b, c) => `${a}**${c}`)
     : '—'
   const avatarLetter = displayName.charAt(0).toUpperCase()
+  const bio = currentUser?.bio ?? ''
 
   const pwStrengthLabels = ['弱', '中', '强', '很强']
   const str = pwStrength(newPw, pwStrengthLabels)
-  const fontSize = FONT_SIZES[fontSizeIdx]
+  const fontSizeIdx = FONT_SIZE_ORDER.indexOf(fontSize)
 
   const navItems: Array<{ id: Section; label: string; icon: JSX.Element; group: string }> = [
     {
@@ -327,7 +514,6 @@ export default function SettingsModal({
 
   return (
     <>
-      {/* ── Settings overlay ── */}
       <div className="st-overlay" onClick={onClose}>
         <div
           className="st-modal"
@@ -380,17 +566,49 @@ export default function SettingsModal({
                   </div>
                   <div className="st-avatar-row">
                     <div className="st-avatar-area">
-                      <div className="st-avatar-wrap">
-                        <div className="st-avatar-circle">{avatarLetter}</div>
+                      <div
+                        className="st-avatar-wrap"
+                        title="点击上传头像"
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => avatarInputRef.current?.click()}
+                      >
+                        {currentUser?.avatarUrl ? (
+                          <img
+                            src={currentUser.avatarUrl}
+                            alt="头像"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              borderRadius: '50%',
+                              objectFit: 'cover',
+                            }}
+                          />
+                        ) : (
+                          <div className="st-avatar-circle">{avatarLetter}</div>
+                        )}
                         <div className="st-av-ov">
-                          <Camera size={16} />
-                          {t('profile.changeAvatar')}
+                          {uploadAvatarMutation.isPending ? (
+                            <Loader2 size={14} className="ch-spin" />
+                          ) : (
+                            <Pencil size={14} />
+                          )}
                         </div>
                       </div>
-                      <button className="st-btn-sm">
-                        <Upload size={12} />
-                        {t('profile.uploadAvatar')}
-                      </button>
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (!file) return
+                          uploadAvatarMutation.mutate(file, {
+                            onSuccess: () => showToast('头像已更新'),
+                            onError: () => showToast('头像上传失败', 'err'),
+                          })
+                          e.target.value = ''
+                        }}
+                      />
                     </div>
                     <div className="st-user-meta">
                       <div className="st-user-name">{displayName}</div>
@@ -480,7 +698,7 @@ export default function SettingsModal({
                             className="st-ie-input"
                             value={bioInput}
                             onChange={(e) => setBioInput(e.target.value)}
-                            maxLength={100}
+                            maxLength={200}
                             placeholder={t('profile.bioPlaceholder')}
                             autoFocus
                           />
@@ -573,6 +791,18 @@ export default function SettingsModal({
                       </button>
                     </div>
                   </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
+                      <span className="st-row-label">{t('security.lastChanged')}</span>
+                    </div>
+                    <div className="st-row-r">
+                      <span className="st-row-muted">
+                        {currentUser?.passwordChangedAt
+                          ? formatDateTime(currentUser.passwordChangedAt, dateFmt, timeFmt)
+                          : t('security.lastChangedNever')}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="st-blk">
@@ -581,21 +811,21 @@ export default function SettingsModal({
                   </div>
                   {[
                     {
-                      key: 'wechat',
+                      key: 'wechat' as const,
                       label: '微信',
                       cls: 'st-sl-wechat',
                       icon: '/icons/wechat.svg',
-                      linked: true,
+                      linked: false,
                     },
                     {
-                      key: 'google',
+                      key: 'google' as const,
                       label: 'Google',
                       cls: 'st-sl-google',
                       icon: '/icons/google.svg',
                       linked: false,
                     },
                     {
-                      key: 'github',
+                      key: 'github' as const,
                       label: 'GitHub',
                       cls: 'st-sl-github',
                       icon: '/icons/github.svg',
@@ -617,15 +847,17 @@ export default function SettingsModal({
                           {linked ? t('security.bound') : t('security.notBound')}
                         </span>
                         {linked ? (
-                          <button
-                            className="st-btn-err-link"
-                            onClick={() => key === 'wechat' && setSubModal('unlink-wechat')}
-                          >
-                            {t('security.unbindWechat')}
+                          <button className="st-btn-err-link" onClick={() => setUnlinkTarget(key)}>
+                            解绑
                           </button>
                         ) : (
-                          <button className="st-btn-link" onClick={() => showToast(tc('success'))}>
-                            {t('security.bindWechat')}
+                          <button
+                            className="st-btn-link"
+                            disabled
+                            title="第三方登录即将开放"
+                            style={{ opacity: 0.5, cursor: 'not-allowed' }}
+                          >
+                            绑定
                           </button>
                         )}
                       </div>
@@ -641,7 +873,21 @@ export default function SettingsModal({
                   </div>
                   <div className="st-row">
                     <div className="st-row-l">
+                      <span className="st-row-label">{t('security.clearConversations')}</span>
+                      <p className="st-row-desc">{t('security.clearConversationsDesc')}</p>
+                    </div>
+                    <button
+                      className="st-btn-danger"
+                      onClick={() => setSubModal('clear-conversations')}
+                      disabled={clearConvsMutation.isPending}
+                    >
+                      {t('data.clearButton')}
+                    </button>
+                  </div>
+                  <div className="st-row">
+                    <div className="st-row-l">
                       <span className="st-row-label">{t('security.deleteAccount')}</span>
+                      <p className="st-row-desc">{t('security.deleteAccountDesc')}</p>
                     </div>
                     <button className="st-btn-danger" onClick={() => setSubModal('delete-account')}>
                       {t('security.deleteAccount')}
@@ -671,13 +917,13 @@ export default function SettingsModal({
                     ).map(({ key, label, cls }) => (
                       <div
                         key={key}
-                        className={`st-theme-card ${themeChoice === key ? 'sel' : ''}`}
+                        className={`st-theme-card ${theme === key ? 'sel' : ''}`}
                         onClick={() => applyTheme(key)}
                       >
                         <div className={`st-tp ${cls}`} />
                         <div className="st-tp-detail">
                           <span className="st-tp-name">{label}</span>
-                          {themeChoice === key && <Check size={13} color="var(--brand)" />}
+                          {theme === key && <Check size={13} color="var(--brand)" />}
                         </div>
                       </div>
                     ))}
@@ -703,10 +949,14 @@ export default function SettingsModal({
                       value={fontSizeIdx}
                       onChange={(e) => {
                         const v = Number(e.target.value)
-                        if (v === 0 || v === 1 || v === 2) setFontSizeIdx(v)
+                        const picked = FONT_SIZE_ORDER[v]
+                        if (picked) applyFontSize(picked)
                       }}
                     />
-                    <div className="st-slider-preview" style={{ fontSize: `${fontSize}px` }}>
+                    <div
+                      className="st-slider-preview"
+                      style={{ fontSize: `${FONT_SIZE_PX[fontSize]}px` }}
+                    >
                       {tc('appName')}
                     </div>
                   </div>
@@ -727,87 +977,13 @@ export default function SettingsModal({
                       <button
                         key={key}
                         className={`st-radio-btn ${density === key ? 'sel' : ''}`}
-                        onClick={() => setDensity(key)}
+                        onClick={() => applyDensity(key)}
                       >
                         {label}
                       </button>
                     ))}
                   </div>
                 </div>
-              </div>
-            </section>
-
-            {/* ────────── 通知设置 ────────── */}
-            <section className={`st-sec ${section === 'notifications' ? 'active' : ''}`}>
-              <div className="st-sec-hd">
-                <h2 className="st-sec-title">{t('sections.notifications')}</h2>
-              </div>
-              <div className="st-sec-body">
-                {[
-                  {
-                    key: 'browser',
-                    label: t('notifications.browser'),
-                    value: notifBrowser,
-                    set: setNotifBrowser,
-                  },
-                  {
-                    key: 'sound',
-                    label: t('notifications.sound'),
-                    value: notifSound,
-                    set: setNotifSound,
-                  },
-                  {
-                    key: 'ai',
-                    label: t('notifications.aiResponse'),
-                    value: notifAI,
-                    set: setNotifAI,
-                  },
-                  {
-                    key: 'feature',
-                    label: t('notifications.newFeatures'),
-                    value: notifFeature,
-                    set: setNotifFeature,
-                  },
-                  {
-                    key: 'maint',
-                    label: t('notifications.maintenance'),
-                    value: notifMaint,
-                    set: setNotifMaint,
-                  },
-                  {
-                    key: 'weekly',
-                    label: t('notifications.weeklyReport'),
-                    value: notifWeekly,
-                    set: setNotifWeekly,
-                  },
-                  {
-                    key: 'update',
-                    label: t('notifications.updates'),
-                    value: notifUpdate,
-                    set: setNotifUpdate,
-                  },
-                  {
-                    key: 'security',
-                    label: t('notifications.security'),
-                    value: notifSecurity,
-                    set: setNotifSecurity,
-                  },
-                ].map(({ key, label, value, set }) => (
-                  <div className="st-blk" key={key} style={{ padding: '0' }}>
-                    <div className="st-row">
-                      <div className="st-row-l">
-                        <span className="st-row-label">{label}</span>
-                      </div>
-                      <button
-                        className={`st-toggle ${value ? 'on' : ''}`}
-                        onClick={() => set((v) => !v)}
-                        role="switch"
-                        aria-checked={value}
-                        aria-label={label}
-                      />
-                    </div>
-                  </div>
-                ))}
               </div>
             </section>
 
@@ -848,13 +1024,13 @@ export default function SettingsModal({
                   <div className="st-radio-grp">
                     <button
                       className={`st-radio-btn ${timeFmt === '24h' ? 'sel' : ''}`}
-                      onClick={() => setTimeFmt('24h')}
+                      onClick={() => applyTimeFmt('24h')}
                     >
                       {t('language.time24h')}
                     </button>
                     <button
                       className={`st-radio-btn ${timeFmt === '12h' ? 'sel' : ''}`}
-                      onClick={() => setTimeFmt('12h')}
+                      onClick={() => applyTimeFmt('12h')}
                     >
                       {t('language.time12h')}
                     </button>
@@ -868,19 +1044,19 @@ export default function SettingsModal({
                   <div className="st-radio-grp">
                     <button
                       className={`st-radio-btn ${dateFmt === 'ymd' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('ymd')}
+                      onClick={() => applyDateFmt('ymd')}
                     >
                       {t('language.dateYMD')}
                     </button>
                     <button
                       className={`st-radio-btn ${dateFmt === 'mdy' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('mdy')}
+                      onClick={() => applyDateFmt('mdy')}
                     >
                       {t('language.dateMDY')}
                     </button>
                     <button
                       className={`st-radio-btn ${dateFmt === 'dmy' ? 'sel' : ''}`}
-                      onClick={() => setDateFmt('dmy')}
+                      onClick={() => applyDateFmt('dmy')}
                     >
                       {t('language.dateDMY')}
                     </button>
@@ -889,8 +1065,62 @@ export default function SettingsModal({
               </div>
             </section>
 
+            {/* ────────── 通知设置 ────────── */}
+            <section className={`st-sec ${section === 'notifications' ? 'active' : ''}`}>
+              <div className="st-sec-hd">
+                <h2 className="st-sec-title">{t('sections.notifications')}</h2>
+              </div>
+              <div className="st-sec-body">
+                <div className="st-blk">
+                  <div className="st-blk-hd">
+                    <span className="st-blk-title">{t('notifications.webGroup')}</span>
+                  </div>
+                  {[
+                    {
+                      key: 'browser',
+                      label: t('notifications.browser'),
+                      desc: t('notifications.browserDesc'),
+                      value: notifBrowser,
+                      set: setNotifBrowser,
+                    },
+                    {
+                      key: 'sound',
+                      label: t('notifications.sound'),
+                      desc: t('notifications.soundDesc'),
+                      value: notifSound,
+                      set: setNotifSound,
+                    },
+                    {
+                      key: 'ai',
+                      label: t('notifications.aiResponse'),
+                      desc: t('notifications.aiResponseDesc'),
+                      value: notifAI,
+                      set: setNotifAI,
+                    },
+                  ].map(({ key, label, desc, value, set }) => (
+                    <div className="st-row" key={key}>
+                      <div className="st-row-l">
+                        <span className="st-row-label">{label}</span>
+                        <p className="st-row-desc">{desc}</p>
+                      </div>
+                      <button
+                        className={`st-toggle ${value ? 'on' : ''}`}
+                        onClick={() => set((v: boolean) => !v)}
+                        role="switch"
+                        aria-checked={value}
+                        aria-label={label}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
             {/* ────────── 关于与帮助 ────────── */}
             <section className={`st-sec ${section === 'about' ? 'active' : ''}`}>
+              <div className="st-sec-hd">
+                <h2 className="st-sec-title">{t('sections.about')}</h2>
+              </div>
               <div className="st-sec-body">
                 <div className="st-about-brand">
                   <div className="st-about-logo">元</div>
@@ -963,10 +1193,14 @@ export default function SettingsModal({
                   <button
                     className="st-btn st-btn-ghost"
                     style={{ flexShrink: 0, height: '44px', fontSize: '12px' }}
-                    disabled={emailCd > 0}
+                    disabled={emailCd > 0 || sendVerifyCodeMutation.isPending}
                     onClick={sendCode}
                   >
-                    {emailCd > 0 ? `${emailCd}s` : t('dialogs.changeEmail.sendCode')}
+                    {emailCd > 0
+                      ? `${emailCd}s`
+                      : sendVerifyCodeMutation.isPending
+                        ? '发送中'
+                        : t('dialogs.changeEmail.sendCode')}
                   </button>
                 </div>
               </div>
@@ -975,7 +1209,11 @@ export default function SettingsModal({
               <button className="st-btn st-btn-ghost" onClick={() => setSubModal(null)}>
                 {tc('cancel')}
               </button>
-              <button className="st-btn st-btn-primary" onClick={submitEmail}>
+              <button
+                className="st-btn st-btn-primary"
+                onClick={submitEmail}
+                disabled={changeEmailMutation.isPending}
+              >
                 {tc('confirm')}
               </button>
             </div>
@@ -1061,41 +1299,12 @@ export default function SettingsModal({
               >
                 {tc('cancel')}
               </button>
-              <button className="st-btn st-btn-primary" onClick={savePw}>
-                {tc('save')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Sub-modal: Unlink WeChat ── */}
-      {subModal === 'unlink-wechat' && (
-        <div className="st-sub-ov" onClick={() => setSubModal(null)}>
-          <div className="st-sub-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="st-sub-hd">
-              <span className="st-sub-title">{t('dialogs.unbindWechat.title')}</span>
-              <button className="st-close-btn" onClick={() => setSubModal(null)}>
-                <X size={15} />
-              </button>
-            </div>
-            <div className="st-sub-body">
-              <p style={{ fontSize: '14px', color: 'var(--fg2)', lineHeight: '1.7' }}>
-                {t('dialogs.unbindWechat.warning')}
-              </p>
-            </div>
-            <div className="st-sub-ft">
-              <button className="st-btn st-btn-ghost" onClick={() => setSubModal(null)}>
-                {tc('cancel')}
-              </button>
               <button
-                className="st-btn-danger"
-                onClick={() => {
-                  setSubModal(null)
-                  showToast(t('toast.wechatUnbound'))
-                }}
+                className="st-btn st-btn-primary"
+                onClick={savePw}
+                disabled={changePasswordMutation.isPending}
               >
-                {tc('confirm')}
+                {tc('save')}
               </button>
             </div>
           </div>
@@ -1149,10 +1358,45 @@ export default function SettingsModal({
               </button>
               <button
                 className="st-btn-danger"
-                disabled={delInput !== t('dialogs.deleteAccount.confirmText')}
+                disabled={
+                  delInput !== t('dialogs.deleteAccount.confirmText') || deleteMeMutation.isPending
+                }
                 onClick={doDelete}
               >
                 {tc('confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sub-modal: Clear Conversations ── */}
+      {subModal === 'clear-conversations' && (
+        <div className="st-sub-ov" onClick={() => setSubModal(null)}>
+          <div className="st-sub-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="st-sub-hd">
+              <span className="st-sub-title" style={{ color: '#ef4444' }}>
+                {t('dialogs.clearConversations.title')}
+              </span>
+              <button className="st-close-btn" onClick={() => setSubModal(null)}>
+                <X size={15} />
+              </button>
+            </div>
+            <div className="st-sub-body">
+              <p style={{ fontSize: 14, color: 'var(--fg2)', lineHeight: 1.7 }}>
+                {t('dialogs.clearConversations.warning')}
+              </p>
+            </div>
+            <div className="st-sub-ft">
+              <button className="st-btn st-btn-ghost" onClick={() => setSubModal(null)}>
+                {tc('cancel')}
+              </button>
+              <button
+                className="st-btn-danger"
+                onClick={doClearConversations}
+                disabled={clearConvsMutation.isPending}
+              >
+                {t('dialogs.clearConversations.confirmText')}
               </button>
             </div>
           </div>

@@ -24,7 +24,7 @@ export async function register(
 }
 
 /** 邮箱验证码使用场景 */
-export type VerifyCodeScene = 'register' | 'reset_password'
+export type VerifyCodeScene = 'register' | 'reset_password' | 'change_email'
 
 /** 请求向邮箱发送 6 位数字验证码 */
 export async function sendVerifyCode(
@@ -63,23 +63,58 @@ export async function getMe(): Promise<User> {
 }
 
 /** 更新当前用户资料 */
-export async function updateMe(data: { username?: string; avatarUrl?: string }): Promise<User> {
+export async function updateMe(data: {
+  username?: string
+  avatarUrl?: string
+  bio?: string
+}): Promise<User> {
   const res = await apiClient.patch<User>('/auth/me', data)
   return res.data
 }
 
-/** 获取当前用户使用统计 */
+/** 用户偏好设置 */
+export interface UserPreferences {
+  theme: 'auto' | 'light' | 'dark'
+  fontSize: 'small' | 'medium' | 'large'
+  density: 'compact' | 'standard' | 'loose'
+  timeFormat: '24h' | '12h'
+  dateFormat: 'ymd' | 'mdy' | 'dmy'
+  language: string
+}
+
+/** 获取当前用户偏好设置 */
+export async function getMyPreferences(): Promise<UserPreferences> {
+  const res = await apiClient.get<UserPreferences>('/auth/me/preferences')
+  return res.data
+}
+
+/** 更新当前用户偏好设置（任意子集） */
+export async function updateMyPreferences(
+  data: Partial<UserPreferences>
+): Promise<UserPreferences> {
+  const res = await apiClient.patch<UserPreferences>('/auth/me/preferences', data)
+  return res.data
+}
+
+/** 修改邮箱（需要新邮箱验证码） */
+export async function changeEmail(newEmail: string, verifyCode: string): Promise<User> {
+  const res = await apiClient.patch<User>('/auth/me/email', {
+    newEmail,
+    verifyCode,
+  })
+  return res.data
+}
+
+/** 一次清空当前用户的所有会话 */
+export async function clearAllConversations(): Promise<{ deleted: number }> {
+  const res = await apiClient.delete<{ deleted: number }>('/chat/conversations')
+  return res.data
+}
+
+/** 获取当前用户使用统计（后端 pydantic to_camel → 直接返回 camelCase） */
 export async function getMyStats(): Promise<UserStats> {
-  const res = await apiClient.get<{
-    conversation_count: number
-    total_tokens: number
-    file_count: number
-  }>('/auth/me/stats')
-  return {
-    conversationCount: res.data.conversation_count,
-    totalTokens: res.data.total_tokens,
-    fileCount: res.data.file_count,
-  }
+  const res = await apiClient.get<UserStats>('/auth/me/stats')
+  return res.data
 }
 
 /** 修改密码 */
@@ -93,4 +128,14 @@ export async function changePassword(oldPassword: string, newPassword: string): 
 /** 注销账号 */
 export async function deleteMe(): Promise<void> {
   await apiClient.delete('/auth/me')
+}
+
+/** 上传头像，返回更新后的用户信息 */
+export async function uploadAvatar(file: File): Promise<User> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await apiClient.post<User>('/auth/me/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return res.data
 }

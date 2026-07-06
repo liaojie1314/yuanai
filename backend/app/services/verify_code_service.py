@@ -22,7 +22,7 @@ from app.services.email_service import (
     send_email,
 )
 
-Scene = Literal["register", "reset_password"]
+Scene = Literal["register", "reset_password", "change_email"]
 
 
 class VerifyCodeError(ValueError):

@@ -544,6 +544,11 @@
 .st-avatar-wrap:hover .st-av-ov {
   opacity: 1;
 }
+.st-av-ov-disabled {
+  opacity: 1 !important;
+  cursor: not-allowed;
+  background: rgba(26, 37, 64, 0.55);
+}
 
 .st-user-meta {
   display: flex;
@@ -801,7 +806,8 @@
   flex-shrink: 0;
 }
 .st-sl-wechat {
-  background: #07c160;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .st-sl-google {
   background: #fff;
@@ -1123,4 +1129,66 @@
     z-index: 2;
     background: var(--bg);
   }
+}
+
+/* ── ShareDialog 专属样式 ── */
+.sh-modal {
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(30, 64, 175, 0.15);
+  width: 100%;
+  max-width: 480px;
+  animation: st-in 0.2s ease-out both;
+}
+.sh-desc {
+  font-size: 13px;
+  color: var(--fg2);
+  line-height: 1.7;
+  margin-bottom: 18px;
+}
+.sh-field {
+  margin-bottom: 18px;
+}
+.sh-field:last-child {
+  margin-bottom: 0;
+}
+.sh-expiry-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.sh-expiry-btn {
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  background: var(--surface);
+  color: var(--fg2);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.sh-expiry-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.sh-expiry-btn.sel {
+  background: var(--brand-light);
+  border-color: var(--brand);
+  color: var(--brand-a);
+  font-weight: 600;
+}
+.sh-pw-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.sh-hint {
+  font-size: 12px;
+  color: var(--fg3);
+  margin: 6px 0 0;
+}
+.sh-footer {
+  justify-content: space-between !important;
 }

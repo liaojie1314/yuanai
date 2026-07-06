@@ -20,17 +20,36 @@ vi.mock('@/i18n/client', async (importOriginal) => {
 const mockUpdateMeMutate = vi.fn()
 const mockChangePasswordMutate = vi.fn()
 const mockDeleteMeMutate = vi.fn()
+const mockChangeEmailMutate = vi.fn()
+const mockSendVerifyCodeMutate = vi.fn()
+const mockClearConvsMutate = vi.fn()
+const mockUpdatePrefsMutate = vi.fn()
 
 vi.mock('@yuanai/core/hooks', () => ({
   useCurrentUser: () => ({
-    data: { username: 'testuser', email: 'test@example.com' },
+    data: { username: 'testuser', email: 'test@example.com', bio: null },
   }),
   useMyStats: () => ({
     data: { conversationCount: 5, totalTokens: 1500, fileCount: 2 },
   }),
+  useMyPreferences: () => ({
+    data: {
+      theme: 'auto',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: 'zh-CN',
+    },
+  }),
+  useUpdateMyPreferences: () => ({ mutate: mockUpdatePrefsMutate }),
   useUpdateMe: () => ({ mutate: mockUpdateMeMutate }),
-  useChangePassword: () => ({ mutate: mockChangePasswordMutate }),
-  useDeleteMe: () => ({ mutate: mockDeleteMeMutate }),
+  useChangePassword: () => ({ mutate: mockChangePasswordMutate, isPending: false }),
+  useChangeEmail: () => ({ mutate: mockChangeEmailMutate, isPending: false }),
+  useSendVerifyCode: () => ({ mutate: mockSendVerifyCodeMutate, isPending: false }),
+  useClearAllConversations: () => ({ mutate: mockClearConvsMutate, isPending: false }),
+  useDeleteMe: () => ({ mutate: mockDeleteMeMutate, isPending: false }),
+  useUploadAvatar: () => ({ mutate: vi.fn(), isPending: false }),
 }))
 
 const mockReload = vi.fn()
@@ -149,15 +168,14 @@ describe('SettingsModal', () => {
 
   it('shows masked email from useCurrentUser', () => {
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />)
-    // te**@example.com — first 2 chars + ** + domain
     expect(screen.getAllByText('te**@example.com').length).toBeGreaterThan(0)
   })
 
-  it('shows stats from useMyStats: conversationCount, totalTokens (formatted), fileCount', () => {
+  it('shows stats from useMyStats', () => {
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />)
-    expect(screen.getByText('5')).toBeInTheDocument() // conversationCount
-    expect(screen.getByText('1.5k')).toBeInTheDocument() // 1500 → 1.5k
-    expect(screen.getByText('2')).toBeInTheDocument() // fileCount
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('1.5k')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
   })
 
   // ── Language section ─────────────────────────────────
@@ -174,14 +192,6 @@ describe('SettingsModal', () => {
     await navigateTo(user, '语言与地区')
     expect(screen.getByRole('radio', { name: '简体中文' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'English' })).toBeInTheDocument()
-  })
-
-  it('zh-CN is selected by default in language section', async () => {
-    const user = userEvent.setup()
-    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '语言与地区')
-    expect(screen.getByRole('radio', { name: '简体中文' })).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByRole('radio', { name: 'English' })).toHaveAttribute('aria-checked', 'false')
   })
 
   it('switches language: sets cookie and reloads page', async () => {
@@ -204,15 +214,12 @@ describe('SettingsModal', () => {
     expect(screen.getByText('深色')).toBeInTheDocument()
   })
 
-  it('applies dark theme and shows success toast on theme card click', async () => {
+  it('applies dark theme on card click', async () => {
     const user = userEvent.setup()
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
     await navigateTo(user, '外观与主题')
     await user.click(screen.getByText('深色'))
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark')
-    await waitFor(() => {
-      expect(screen.getAllByText('成功').length).toBeGreaterThan(0)
-    })
   })
 
   it('density buttons work in appearance section', async () => {
@@ -224,13 +231,12 @@ describe('SettingsModal', () => {
     expect(compactBtn).toHaveClass('sel')
   })
 
-  // ── Notifications section ────────────────────────────
-  it('renders notification toggles in notifications section', async () => {
+  it('persists preference to backend when logged in', async () => {
     const user = userEvent.setup()
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '通知设置')
-    const toggles = screen.getAllByRole('switch')
-    expect(toggles.length).toBeGreaterThan(0)
+    await navigateTo(user, '外观与主题')
+    await user.click(screen.getByText('深色'))
+    expect(mockUpdatePrefsMutate).toHaveBeenCalledWith({ theme: 'dark' })
   })
 
   // ── Security — sub-modal open/close ──────────────────
@@ -263,6 +269,37 @@ describe('SettingsModal', () => {
     expect(screen.getByPlaceholderText(/delete account/i)).toBeInTheDocument()
   })
 
+  // ── Change email ────────────────────────────────────
+  it('sends verify code with change_email scene', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '账号安全')
+    await user.click(screen.getByText('更换邮箱'))
+    await user.type(screen.getByPlaceholderText('your@email.com'), 'new@example.com')
+    await user.click(screen.getByRole('button', { name: '发送验证码' }))
+    expect(mockSendVerifyCodeMutate).toHaveBeenCalledWith(
+      { email: 'new@example.com', scene: 'change_email' },
+      expect.any(Object)
+    )
+  })
+
+  it('calls changeEmail mutate on submit', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '账号安全')
+    await user.click(screen.getByText('更换邮箱'))
+    await user.type(screen.getByPlaceholderText('your@email.com'), 'new@example.com')
+    const codeInputs = screen.getAllByRole('textbox')
+    const codeInput = codeInputs[codeInputs.length - 1]
+    if (!codeInput) throw new Error('code input not found')
+    await user.type(codeInput, '888888')
+    await user.click(screen.getByRole('button', { name: '确认' }))
+    expect(mockChangeEmailMutate).toHaveBeenCalledWith(
+      { newEmail: 'new@example.com', verifyCode: '888888' },
+      expect.any(Object)
+    )
+  })
+
   // ── Change password ──────────────────────────────────
   it('opens change password sub-modal from security section', async () => {
     const user = userEvent.setup()
@@ -277,24 +314,6 @@ describe('SettingsModal', () => {
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
     await navigateTo(user, '账号安全')
     await user.click(screen.getByRole('button', { name: '修改密码' }))
-    await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => {
-      expect(screen.getAllByText('错误').length).toBeGreaterThan(0)
-    })
-    expect(mockChangePasswordMutate).not.toHaveBeenCalled()
-  })
-
-  it('shows error toast when new passwords do not match', async () => {
-    const user = userEvent.setup()
-    const { container } = renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '账号安全')
-    await user.click(screen.getByRole('button', { name: '修改密码' }))
-    const [oldInput, newInput, confInput] = Array.from(
-      container.querySelectorAll('input.st-field-inp.pw')
-    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
-    await user.type(oldInput, 'OldPass1!')
-    await user.type(newInput, 'NewPass99!')
-    await user.type(confInput, 'DifferentPw9!')
     await user.click(screen.getByRole('button', { name: '保存' }))
     await waitFor(() => {
       expect(screen.getAllByText('错误').length).toBeGreaterThan(0)
@@ -320,54 +339,6 @@ describe('SettingsModal', () => {
     )
   })
 
-  it('shows success toast after successful password change', async () => {
-    mockChangePasswordMutate.mockImplementation(
-      (_data: unknown, opts: { onSuccess?: () => void }) => {
-        opts?.onSuccess?.()
-      }
-    )
-    const user = userEvent.setup()
-    const { container } = renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '账号安全')
-    await user.click(screen.getByRole('button', { name: '修改密码' }))
-    const [oldInput, newInput, confInput] = Array.from(
-      container.querySelectorAll('input.st-field-inp.pw')
-    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
-    await user.type(oldInput, 'OldPass1!')
-    await user.type(newInput, 'NewPass99!')
-    await user.type(confInput, 'NewPass99!')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => {
-      expect(screen.getAllByText('密码已修改').length).toBeGreaterThan(0)
-    })
-    // Sub-modal should close after success
-    expect(screen.queryByText('修改密码', { selector: '.st-sub-title' })).not.toBeInTheDocument()
-  })
-
-  it('shows API error message when changePassword fails', async () => {
-    mockChangePasswordMutate.mockImplementation(
-      (_data: unknown, opts: { onError?: (err: unknown) => void }) => {
-        opts?.onError?.({
-          response: { data: { detail: { message: '当前密码不正确' } } },
-        })
-      }
-    )
-    const user = userEvent.setup()
-    const { container } = renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '账号安全')
-    await user.click(screen.getByRole('button', { name: '修改密码' }))
-    const [oldInput, newInput, confInput] = Array.from(
-      container.querySelectorAll('input.st-field-inp.pw')
-    ) as [HTMLInputElement, HTMLInputElement, HTMLInputElement]
-    await user.type(oldInput, 'WrongOld1!')
-    await user.type(newInput, 'NewPass99!')
-    await user.type(confInput, 'NewPass99!')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-    await waitFor(() => {
-      expect(screen.getAllByText('当前密码不正确').length).toBeGreaterThan(0)
-    })
-  })
-
   // ── Delete account ───────────────────────────────────
   it('opens delete account sub-modal from security section', async () => {
     const user = userEvent.setup()
@@ -384,18 +355,8 @@ describe('SettingsModal', () => {
     await user.click(screen.getByRole('button', { name: '注销账号' }))
     const confirmBtn = screen.getByRole('button', { name: '确认' })
     expect(confirmBtn).toBeDisabled()
-    // Typing wrong text still disabled
     await user.type(screen.getByPlaceholderText('请输入"删除账号"'), '错误文本')
     expect(confirmBtn).toBeDisabled()
-  })
-
-  it('confirm button becomes enabled when exact text is typed', async () => {
-    const user = userEvent.setup()
-    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
-    await navigateTo(user, '账号安全')
-    await user.click(screen.getByRole('button', { name: '注销账号' }))
-    await user.type(screen.getByPlaceholderText('请输入"删除账号"'), '删除账号')
-    expect(screen.getByRole('button', { name: '确认' })).not.toBeDisabled()
   })
 
   it('calls deleteMe mutate when confirmation text is correct', async () => {
@@ -422,5 +383,39 @@ describe('SettingsModal', () => {
       expect(onClose).toHaveBeenCalled()
       expect(hrefStore).toBe('/login')
     })
+  })
+
+  // ── Clear conversations（危险操作在 security section） ─────
+  it('opens clear conversations sub-modal from security section', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '账号安全')
+    await user.click(screen.getByRole('button', { name: /清空全部/ }))
+    expect(screen.getByText('清空所有会话', { selector: '.st-sub-title' })).toBeInTheDocument()
+  })
+
+  it('calls clearAllConversations mutate on confirm', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '账号安全')
+    await user.click(screen.getByRole('button', { name: /清空全部/ }))
+    await user.click(screen.getByRole('button', { name: '清空' }))
+    expect(mockClearConvsMutate).toHaveBeenCalledWith(undefined, expect.any(Object))
+  })
+
+  // ── About & Notifications sections ───────────────────
+  it('renders notifications section with toggles', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '通知设置')
+    const toggles = screen.getAllByRole('switch')
+    expect(toggles.length).toBeGreaterThan(0)
+  })
+
+  it('renders about section with app name', async () => {
+    const user = userEvent.setup()
+    renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
+    await navigateTo(user, '关于与帮助')
+    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
   })
 })

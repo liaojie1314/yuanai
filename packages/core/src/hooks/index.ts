@@ -9,8 +9,13 @@ export {
   useSendVerifyCode,
   useUpdateMe,
   useMyStats,
+  useMyPreferences,
+  useUpdateMyPreferences,
+  useChangeEmail,
   useChangePassword,
   useDeleteMe,
+  useClearAllConversations,
+  useUploadAvatar,
 } from './useAuthQueries'
 export {
   useConversations,
@@ -23,3 +28,11 @@ export {
   useAppendMessage,
 } from './useChatQueries'
 export { useModels } from './useModelsQuery'
+export {
+  useShareLink,
+  useCreateShareLink,
+  useRevokeShareLink,
+  useSharedConversation,
+  useSharedMeta,
+  useUnlockSharedConversation,
+} from './useShareQueries'
