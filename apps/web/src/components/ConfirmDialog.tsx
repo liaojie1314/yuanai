@@ -33,7 +33,7 @@ export default function ConfirmDialog({
           <button className="ch-confirm-cancel" onClick={onCancel}>
             {cancelText}
           </button>
-          <button className={`ch-confirm-ok${danger ? 'danger' : ''}`} onClick={onConfirm}>
+          <button className={danger ? 'ch-confirm-ok danger' : 'ch-confirm-ok'} onClick={onConfirm}>
             {confirmText}
           </button>
         </div>
