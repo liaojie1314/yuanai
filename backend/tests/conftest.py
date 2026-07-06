@@ -20,6 +20,9 @@ os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 # 邮箱验证码：测试环境统一启用调试后门 "888888"，跳过真实 SMTP 发送与 Redis 校验
 os.environ["VERIFY_CODE_DEBUG_BYPASS"] = "888888"
+# 存储后端：测试环境走本地文件系统，无需 MinIO
+os.environ["STORAGE_BACKEND"] = "local"
+os.environ.setdefault("LOCAL_UPLOADS_DIR", "./uploads-test")
 
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.security import create_access_token, hash_password  # noqa: E402
@@ -33,7 +36,8 @@ test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullP
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 _TRUNCATE_SQL = text(
-    "TRUNCATE TABLE message_files, messages, files, conversations, users RESTART IDENTITY CASCADE"
+    "TRUNCATE TABLE message_files, messages, file_upload_sessions, files, "
+    "conversation_shares, conversations, users RESTART IDENTITY CASCADE"
 )
 
 

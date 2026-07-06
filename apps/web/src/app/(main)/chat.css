@@ -835,7 +835,7 @@
   padding: 4px 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--density-gap);
 }
 @media (max-width: 767px) {
   .ch-msgs-scroll {
@@ -2061,6 +2061,34 @@
   cursor: pointer;
   display: flex;
   align-items: center;
+}
+
+/* 上传进度：图片附件底部覆盖一条进度条 */
+.ch-attach-prog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: rgba(26, 37, 64, 0.4);
+}
+.ch-attach-prog-bar {
+  height: 100%;
+  background: var(--brand, #3b82f6);
+  transition: width 0.15s linear;
+}
+/* 文件附件：进度百分比 / 错误提示 */
+.ch-attach-pct {
+  font-size: 11px;
+  color: var(--fg3);
+  flex-shrink: 0;
+}
+.ch-attach-pct.err {
+  color: #ef4444;
+}
+.ch-attach-img.err,
+.ch-attach-doc.err {
+  border-color: #ef4444;
 }
 
 /* ── Stop-streaming button ───────────────────────── */

@@ -8,6 +8,7 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import { MessageList } from '@/components/chat/MessageList'
 import { MessageOutline } from '@/components/chat/MessageOutline'
 import { ArtifactPanel } from '@/components/chat/ArtifactPanel'
+import { ShareDialog } from '@/components/chat/ShareDialog'
 import {
   apiConvToMock,
   apiMsgToMock,
@@ -30,6 +31,7 @@ import {
   useUpdateConversation,
   useMessages,
   useLogout,
+  uploadFileSmart,
 } from '@yuanai/core/hooks'
 import type { MockMessage, MockConversation } from '@yuanai/core/stores'
 import {
@@ -65,6 +67,43 @@ import {
   Brain,
 } from 'lucide-react'
 
+// ── Notification helpers ─────────────────────────────
+function playNotificationSound(): void {
+  try {
+    const ctx = new AudioContext()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(880, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15)
+    gain.gain.setValueAtTime(0.25, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
+    osc.start(ctx.currentTime)
+    osc.stop(ctx.currentTime + 0.4)
+  } catch {
+    // AudioContext not available (e.g., server-side render)
+  }
+}
+
+function triggerNotifications(): void {
+  if (typeof window === 'undefined') return
+  const soundOn = localStorage.getItem('notif_sound') === 'true'
+  const aiOn = localStorage.getItem('notif_ai') === 'true'
+  const browserOn = localStorage.getItem('notif_browser') === 'true'
+  if (soundOn) playNotificationSound()
+  if (
+    aiOn &&
+    browserOn &&
+    document.hidden &&
+    typeof Notification !== 'undefined' &&
+    Notification.permission === 'granted'
+  ) {
+    new Notification('元AI', { body: 'AI 回复已完成', icon: '/favicon.ico' })
+  }
+}
+
 // ── Types ────────────────────────────────────────────
 interface Model {
   id: string
@@ -77,11 +116,21 @@ interface Model {
   gradient?: string
 }
 
+/** 待上传附件状态 —— 覆盖秒传/直传/分片全流程。 */
+type AttachStatus = 'pending' | 'uploading' | 'done' | 'error'
+
 interface AttachFile {
   id: string
   file: File
   preview: string
   type: 'image' | 'doc'
+  status: AttachStatus
+  /** 上传进度 0-100。 */
+  progress: number
+  /** 上传成功后拿到的服务端文件 ID。 */
+  fileId?: string
+  /** 上传失败时的错误消息。 */
+  error?: string
 }
 
 // ── Static constants ─────────────────────────────────
@@ -235,6 +284,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [cvMenuPos, setCvMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const [dark, setDark] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<{
     title: string
     message: string
@@ -246,6 +296,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Attachment state ──
   const [files, setFiles] = useState<AttachFile[]>([])
+  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Scroll FAB ──
@@ -463,7 +514,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   const sendMessage = async (): Promise<void> => {
-    if (!inputValue.trim() || isThisStreaming) return
+    if (!inputValue.trim() || isThisStreaming || uploading) return
 
     let convId = activeConv
     const text = inputValue.trim()
@@ -484,6 +535,60 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       }
     }
 
+    // 先上传附件，收集文件 ID —— 按 hash 秒传，> 10 MB 走分片
+    let fileIds: string[] = []
+    if (files.length > 0) {
+      setUploading(true)
+      try {
+        const refs = await Promise.all(
+          files.map(async (f) => {
+            if (f.fileId) {
+              return { id: f.fileId }
+            }
+            const ref = await uploadFileSmart(f.file, {
+              onProgress: (snap) => {
+                setFiles((prev) =>
+                  prev.map((it) => {
+                    if (it.id !== f.id) return it
+                    const nextStatus: AttachStatus =
+                      snap.status === 'done'
+                        ? 'done'
+                        : snap.status === 'error'
+                          ? 'error'
+                          : 'uploading'
+                    const next: AttachFile = {
+                      ...it,
+                      status: nextStatus,
+                      progress: snap.percent,
+                    }
+                    if (snap.error) next.error = snap.error
+                    return next
+                  })
+                )
+              },
+            })
+            setFiles((prev) =>
+              prev.map((it) =>
+                it.id === f.id ? { ...it, fileId: ref.id, status: 'done', progress: 100 } : it
+              )
+            )
+            return ref
+          })
+        )
+        fileIds = refs.map((r) => r.id)
+      } catch (err) {
+        const msg = (err as { message?: string })?.message ?? '上传失败'
+        setFiles((prev) =>
+          prev.map((it) =>
+            it.status === 'uploading' ? { ...it, status: 'error', error: msg } : it
+          )
+        )
+        setUploading(false)
+        return
+      }
+      setUploading(false)
+    }
+
     setInputValue('')
     setFiles([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
@@ -495,7 +600,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       convId,
       content: text,
       model: activeModel.id,
+      fileIds: fileIds.length > 0 ? fileIds : undefined,
       enableThinking: showThinking,
+      onEnd: triggerNotifications,
     })
   }
 
@@ -527,6 +634,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       file: f,
       preview: f.type.startsWith('image/') ? URL.createObjectURL(f) : f.name,
       type: f.type.startsWith('image/') ? 'image' : 'doc',
+      status: 'pending',
+      progress: 0,
     }))
     setFiles((prev) => [...prev, ...newFiles])
     if (fileInputRef.current) fileInputRef.current.value = ''
@@ -972,7 +1081,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             </button>
           </div>
           <div className="ch-tb-r">
-            <button className="ch-ib" title={t('toolbar.share')}>
+            <button
+              className="ch-ib"
+              title={t('toolbar.share')}
+              disabled={!isLoggedIn || !activeConv}
+              onClick={() => setShareOpen(true)}
+            >
               <Share2 size={16} />
             </button>
           </div>
@@ -1083,8 +1197,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               <div className="ch-attach-row">
                 {files.map((f) =>
                   f.type === 'image' ? (
-                    <div key={f.id} className="ch-attach-img">
+                    <div key={f.id} className={`ch-attach-img${f.status === 'error' ? 'err' : ''}`}>
                       <img src={f.preview} alt={f.file.name} />
+                      {f.status === 'uploading' && (
+                        <div className="ch-attach-prog" aria-hidden>
+                          <div className="ch-attach-prog-bar" style={{ width: `${f.progress}%` }} />
+                        </div>
+                      )}
                       <button
                         className="ch-attach-rm"
                         onClick={() => removeFile(f.id)}
@@ -1094,9 +1213,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       </button>
                     </div>
                   ) : (
-                    <div key={f.id} className="ch-attach-doc">
+                    <div
+                      key={f.id}
+                      className={`ch-attach-doc${f.status === 'error' ? 'err' : ''}`}
+                      title={f.error ?? undefined}
+                    >
                       <FileText size={14} />
                       <span>{f.preview}</span>
+                      {f.status === 'uploading' && (
+                        <span className="ch-attach-pct">{f.progress}%</span>
+                      )}
+                      {f.status === 'error' && <span className="ch-attach-pct err">上传失败</span>}
                       <button
                         className="ch-attach-rm-doc"
                         onClick={() => removeFile(f.id)}
@@ -1170,6 +1297,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     title={t('actions.stopGeneration')}
                   >
                     <Square size={16} fill="currentColor" />
+                  </button>
+                ) : uploading ? (
+                  <button className="ch-send-btn on" disabled title="上传中...">
+                    <Loader2 size={18} className="ch-spin" />
                   </button>
                 ) : (
                   <button
@@ -1288,7 +1419,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 className="ch-up-row danger"
                 onClick={() => {
                   setUserPanelOpen(false)
-                  doLogout()
+                  doLogout(undefined, {
+                    onSettled: () => {
+                      router.push('/login')
+                    },
+                  })
                 }}
               >
                 <LogOut size={16} /> {t('sidebar.logout')}
@@ -1310,6 +1445,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
       {/* ── Settings modal ───────────────────────── */}
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* ── Share dialog ────────────────────────── */}
+      <ShareDialog
+        open={shareOpen}
+        convId={activeConv || null}
+        onClose={() => setShareOpen(false)}
+      />
 
       {/* ── Confirm dialog ───────────────────────── */}
       <ConfirmDialog

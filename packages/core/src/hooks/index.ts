@@ -36,3 +36,4 @@ export {
   useSharedMeta,
   useUnlockSharedConversation,
 } from './useShareQueries'
+export * from './useFileUpload'

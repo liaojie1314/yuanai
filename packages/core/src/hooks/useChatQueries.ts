@@ -67,7 +67,7 @@ export function useUpdateConversation() {
   })
 }
 
-/** 删除会话 mutation */
+/** 删除会话 mutation。会话数变化会影响用户统计卡片，需同步失效 ``['me','stats']``。 */
 export function useDeleteConversation() {
   const qc = useQueryClient()
   return useMutation({
@@ -75,11 +75,12 @@ export function useDeleteConversation() {
     onSuccess: (_data, id) => {
       qc.setQueryData<Conversation[]>(['conversations'], (prev) => prev?.filter((c) => c.id !== id))
       qc.removeQueries({ queryKey: ['messages', id] })
+      void qc.invalidateQueries({ queryKey: ['me', 'stats'] })
     },
   })
 }
 
-/** 批量删除会话 mutation */
+/** 批量删除会话 mutation。同 ``useDeleteConversation``，需失效统计。 */
 export function useDeleteConversations() {
   const qc = useQueryClient()
   return useMutation({
@@ -92,6 +93,7 @@ export function useDeleteConversations() {
         prev?.filter((c) => !idSet.has(c.id))
       )
       ids.forEach((id) => qc.removeQueries({ queryKey: ['messages', id] }))
+      void qc.invalidateQueries({ queryKey: ['me', 'stats'] })
     },
   })
 }

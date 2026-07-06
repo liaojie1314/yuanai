@@ -10,6 +10,8 @@ export default defineConfig({
     environment: 'jsdom',
     passWithNoTests: true,
     setupFiles: ['./tests/setup.ts'],
+    // Playwright e2e 用 `pnpm test:e2e` 单独跑；这里排除以免 vitest 尝试收集
+    exclude: ['node_modules/**', 'dist/**', '.next/**', 'tests/e2e/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
