@@ -679,39 +679,62 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   // ── User message edit ────────────────────────────────────
-  const startEditMsg = (msg: MockMessage): void => {
+  const startEditMsg = useCallback((msg: MockMessage): void => {
     setEditingMsgId(msg.id)
-  }
+  }, [])
 
-  const submitEditMsg = (msg: MockMessage, newText: string): void => {
+  // 用 ref 收拢流式相关的可变依赖，让 submitEditMsg / handleRegenerate 引用稳定，
+  // 避免每次流式 token 到达 / 会话切换都重建回调链导致 MessageList 全量重渲。
+  const streamCtxRef = useRef({
+    activeConv,
+    isThisStreaming,
+    activeModel,
+    showThinking,
+    stream,
+  })
+  useEffect(() => {
+    streamCtxRef.current = { activeConv, isThisStreaming, activeModel, showThinking, stream }
+  }, [activeConv, isThisStreaming, activeModel, showThinking, stream])
+
+  const submitEditMsg = useCallback((msg: MockMessage, newText: string): void => {
     setEditingMsgId(null)
-    if (!activeConv || newText === getMsgText(msg) || isThisStreaming) return
-    void stream.send({
-      convId: activeConv,
+    const ctx = streamCtxRef.current
+    if (!ctx.activeConv || newText === getMsgText(msg) || ctx.isThisStreaming) return
+    void ctx.stream.send({
+      convId: ctx.activeConv,
       content: newText,
-      model: activeModel.id,
-      enableThinking: showThinking,
+      model: ctx.activeModel.id,
+      enableThinking: ctx.showThinking,
     })
-  }
+  }, [])
 
   // ── Regenerate ───────────────────────────────────────────
-  const handleRegenerate = (pair: MsgPair): void => {
-    if (isThisStreaming || !activeConv) return
+  const handleRegenerate = useCallback((pair: MsgPair): void => {
+    const ctx = streamCtxRef.current
+    if (ctx.isThisStreaming || !ctx.activeConv) return
     setRegeneratingPairKey(pair.pairKey)
     const userText = getMsgText(pair.userMsg)
-    void stream.send({
-      convId: activeConv,
+    void ctx.stream.send({
+      convId: ctx.activeConv,
       content: userText,
-      model: activeModel.id,
+      model: ctx.activeModel.id,
       skipOptimistic: true,
-      enableThinking: showThinking,
+      enableThinking: ctx.showThinking,
     })
-  }
+  }, [])
+
+  const cancelEditMsg = useCallback(() => setEditingMsgId(null), [])
 
   // ── Feedback ─────────────────────────────────────────────
-  const openFeedback = (msgId: string, type: 'like' | 'dislike'): void => {
+  // 通过 ref 读取最新的 msgFeedback，避免 openFeedback 每次重建
+  const msgFeedbackRef = useRef(msgFeedback)
+  useEffect(() => {
+    msgFeedbackRef.current = msgFeedback
+  }, [msgFeedback])
+
+  const openFeedback = useCallback((msgId: string, type: 'like' | 'dislike'): void => {
     // Toggle off if already selected
-    if (msgFeedback[msgId] === type) {
+    if (msgFeedbackRef.current[msgId] === type) {
       setMsgFeedback((prev) => {
         const next = { ...prev }
         delete next[msgId]
@@ -722,7 +745,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setFeedbackDialog({ msgId, type })
     setFeedbackCategory('')
     setFeedbackReason('')
-  }
+  }, [])
+
+  const handleVersionChange = useCallback((pairKey: string, i: number): void => {
+    setVersionIdxs((prev) => ({ ...prev, [pairKey]: i }))
+  }, [])
+
+  const handleAtBottomStateChange = useCallback((atBottom: boolean): void => {
+    setShowScrollFab(!atBottom)
+  }, [])
 
   const submitFeedback = (): void => {
     if (!feedbackDialog) return
@@ -1177,16 +1208,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 versionIdxs={versionIdxs}
                 onFill={fill}
                 editingMsgId={editingMsgId}
-                onStartEdit={(msg) => startEditMsg(msg)}
-                onSubmitEdit={(msg, text) => submitEditMsg(msg, text)}
-                onCancelEdit={() => setEditingMsgId(null)}
-                onVersionChange={(pairKey, i) =>
-                  setVersionIdxs((prev) => ({ ...prev, [pairKey]: i }))
-                }
-                onRegenerate={(pair) => handleRegenerate(pair)}
-                onFeedback={(msgId, type) => openFeedback(msgId, type)}
+                onStartEdit={startEditMsg}
+                onSubmitEdit={submitEditMsg}
+                onCancelEdit={cancelEditMsg}
+                onVersionChange={handleVersionChange}
+                onRegenerate={handleRegenerate}
+                onFeedback={openFeedback}
                 msgFeedback={msgFeedback}
-                onAtBottomStateChange={(atBottom) => setShowScrollFab(!atBottom)}
+                onAtBottomStateChange={handleAtBottomStateChange}
                 onRangeChanged={handleRangeChanged}
               />
             )}

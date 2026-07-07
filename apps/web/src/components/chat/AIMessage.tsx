@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, type JSX } from 'react'
+import { memo, useState, useRef, type JSX } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -41,8 +41,11 @@ export interface AIMessageProps {
  * AI 消息渲染组件。
  *
  * 展示头像 + 思考块 + 内容（Markdown 或结构化 messageParts）+ 版本切换 / 复制 / 重新生成 / 反馈 / 追问。
+ *
+ * 用 `React.memo` 包裹，避免长对话滚动 / 兄弟消息状态变化触发的多余重渲；
+ * 流式消息由 `streamingContent`/`streamingThink` 驱动，正常刷新不受影响。
  */
-export function AIMessage({
+function AIMessageBase({
   msg,
   isStreaming,
   streamingContent,
@@ -222,3 +225,23 @@ export function AIMessage({
     </div>
   )
 }
+
+/**
+ * 自定义比较：MessageList itemContent 每次渲染都会生成新的箭头函数回调
+ * （因为要绑定当前 pair）。回调身份变化本身不表明消息内容变化，因此
+ * memo 只比较数据类 props，跳过回调比较。
+ */
+export const AIMessage = memo(AIMessageBase, (prev, next) => {
+  return (
+    prev.msg === next.msg &&
+    prev.isStreaming === next.isStreaming &&
+    prev.streamingContent === next.streamingContent &&
+    prev.streamingThink === next.streamingThink &&
+    prev.streamingToolCalls === next.streamingToolCalls &&
+    prev.timeFmt === next.timeFmt &&
+    prev.dateFmt === next.dateFmt &&
+    prev.versionCount === next.versionCount &&
+    prev.versionIdx === next.versionIdx &&
+    prev.feedbackGiven === next.feedbackGiven
+  )
+}) as unknown as (props: AIMessageProps) => JSX.Element

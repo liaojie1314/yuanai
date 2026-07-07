@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, type JSX } from 'react'
+import { memo, useEffect, useRef, useState, type JSX } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import type { MockMessage } from '@yuanai/core/stores'
 import { getMsgText, formatMsgTime } from './utils'
@@ -19,8 +19,11 @@ export interface UserMessageProps {
  * 用户消息气泡组件。
  *
  * 提供编辑与复制两种操作。复制直接写入用户原始输入文本，不弹出格式选择。
+ *
+ * 用 `React.memo` 包裹：MessageList 每次滚动/流式 token 到达都会重建 rows，
+ * 若不 memo，UserMessage 会随父组件每次渲染而重渲，长对话下滚动明显掉帧。
  */
-export function UserMessage({
+function UserMessageBase({
   msg,
   editing,
   timeFmt,
@@ -123,3 +126,13 @@ export function UserMessage({
     </div>
   )
 }
+
+/** 同 AIMessage：MessageList 内联绑定回调导致身份变化，memo 只比较数据类 props。 */
+export const UserMessage = memo(UserMessageBase, (prev, next) => {
+  return (
+    prev.msg === next.msg &&
+    prev.editing === next.editing &&
+    prev.timeFmt === next.timeFmt &&
+    prev.dateFmt === next.dateFmt
+  )
+}) as unknown as (props: UserMessageProps) => JSX.Element

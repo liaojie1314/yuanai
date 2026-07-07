@@ -110,7 +110,14 @@ export function MessageOutline({
   const jump = (idx: number): void => {
     // pair 在虚拟列表里的实际 index 需要按 rows 顺序推导：
     // MessageList 按 [user, ai, user, ai, ...] 排列，因此 user 在偶数位。
-    virtuosoRef.current?.scrollToIndex({ index: idx * 2, align: 'start', behavior: 'smooth' })
+    //
+    // 跨度自适应：距离当前 active 大于阈值时改用 auto（瞬时定位），只在最后
+    // 一段用 smooth。原因：Virtuoso smooth 滚过百来条会强制中途渲染大量
+    // 项目，肉眼看是"卡顿"的匀速带；瞬时定位后目标已在视口内，动效体验更好。
+    const LONG_JUMP_THRESHOLD = 20
+    const dist = Math.abs(idx - displayActive)
+    const behavior: 'auto' | 'smooth' = dist > LONG_JUMP_THRESHOLD ? 'auto' : 'smooth'
+    virtuosoRef.current?.scrollToIndex({ index: idx * 2, align: 'start', behavior })
     setActive(idx)
     // 立即通知父组件更新 scrollActiveIdx，避免等待 Virtuoso 滚动结束
     // 后的 rangeChanged 才同步高亮 —— 用户点击哪一条，那一条立刻高亮。

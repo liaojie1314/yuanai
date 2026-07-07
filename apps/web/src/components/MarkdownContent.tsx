@@ -1,6 +1,6 @@
 'use client'
 
-import type { JSX } from 'react'
+import { memo, type JSX } from 'react'
 // react-markdown v10 peer dep targets React 16-18; the cast fixes the React 19 type mismatch.
 import ReactMarkdownRaw from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -34,8 +34,12 @@ interface MarkdownContentProps {
  *
  * 未启用原始 HTML 透传（`rehype-raw`）：消息内容可能来自 AI 生成或用户输入，
  * 放行原始 HTML 会引入 XSS 风险，如需支持需搭配 `rehype-sanitize` 白名单一起启用。
+ *
+ * 用 `React.memo` 包裹：长对话下每次父组件更新（滚动 rangeChanged、流式 token
+ * 到达、hover 状态变化）都可能导致父树重渲，remark/rehype 解析对 CPU 较重，
+ * 未变化的历史消息 memo 后可完全跳过。
  */
-export default function MarkdownContent({ content, streaming }: MarkdownContentProps): JSX.Element {
+function MarkdownContentBase({ content, streaming }: MarkdownContentProps): JSX.Element {
   return (
     <div
       className={['ch-msg-content', 'md-body', streaming && 'streaming'].filter(Boolean).join(' ')}
@@ -71,3 +75,8 @@ export default function MarkdownContent({ content, streaming }: MarkdownContentP
     </div>
   )
 }
+
+const MarkdownContent = memo(MarkdownContentBase) as unknown as (
+  props: MarkdownContentProps
+) => JSX.Element
+export default MarkdownContent

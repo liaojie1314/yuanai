@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type JSX } from 'react'
+import { memo, useState, type JSX } from 'react'
 import { Copy, Check, ExternalLink, Play, Download } from 'lucide-react'
 import { useArtifactStore } from '@yuanai/core/stores'
 import { isRunnableLang, langToExtension } from './utils'
@@ -26,8 +26,11 @@ export interface CodeBlockProps {
 
 /**
  * 代码块渲染组件（详情见 {@link CodeBlockProps}）。
+ *
+ * 用 `React.memo` 包裹：CodeHighlight 内部走异步语法高亮，重复重渲开销显著，
+ * 长对话滚动时未变化的代码块 memo 后可跳过。
  */
-export function CodeBlock({ lang, code, title }: CodeBlockProps): JSX.Element {
+function CodeBlockBase({ lang, code, title }: CodeBlockProps): JSX.Element {
   const [copied, setCopied] = useState(false)
   // 用 selector 而非整体订阅：避免面板 open/payload 变化时，页面里每个代码块都跟着重渲染
   const openView = useArtifactStore((s) => s.openView)
@@ -113,3 +116,5 @@ export function CodeBlock({ lang, code, title }: CodeBlockProps): JSX.Element {
     </div>
   )
 }
+
+export const CodeBlock = memo(CodeBlockBase) as unknown as (props: CodeBlockProps) => JSX.Element

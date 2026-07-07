@@ -53,6 +53,33 @@ describe('MessageOutline', () => {
     })
   })
 
+  it('长跨度跳转（>20 pair）改用 auto 瞬时定位，避免 smooth 匀速滚过百来条卡顿', async () => {
+    const scrollToIndex = vi.fn()
+    const ref = {
+      current: { scrollToIndex } as unknown as VirtuosoHandle,
+    } as RefObject<VirtuosoHandle | null>
+    // 50 个 pair，默认 active=最后一个（idx=49），需展开浮层才能点到远端 pair
+    const { container } = render(<MessageOutline pairs={makePairs(50)} virtuosoRef={ref} />)
+    const wrap = container.querySelector('.ch-outline-wrap')
+    if (!wrap) throw new Error('outline wrap 缺失')
+    fireEvent.mouseEnter(wrap)
+    // 浮层默认加载最新 10 条（idx 40-49），滚动到顶部触发加载更早条目
+    const flyout = container.querySelector('.ch-outline-flyout') as HTMLDivElement | null
+    if (!flyout) throw new Error('flyout 缺失')
+    Object.defineProperty(flyout, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(flyout, 'scrollTop', { value: 0, writable: true, configurable: true })
+    fireEvent.scroll(flyout)
+    // 现在应展开到 20 条，覆盖 idx 30-49；idx 30 距 active 49 差 19 也不够远
+    Object.defineProperty(flyout, 'scrollTop', { value: 0, writable: true, configurable: true })
+    fireEvent.scroll(flyout)
+    // 展开到 30 条，覆盖 idx 20-49；此时 idx 20 距 active 49 差 29 > 20，应触发 auto
+    const rows = container.querySelectorAll('.ch-outline-flyout-row')
+    const first = rows[0] as HTMLElement | undefined
+    if (!first) throw new Error('flyout row 缺失')
+    fireEvent.click(first)
+    expect(scrollToIndex).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }))
+  })
+
   it('active 状态默认落在最后一个 pair', () => {
     const ref = { current: null } as RefObject<VirtuosoHandle | null>
     const { container } = render(<MessageOutline pairs={makePairs(3)} virtuosoRef={ref} />)
