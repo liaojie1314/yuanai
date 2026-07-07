@@ -2,6 +2,7 @@ import json
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -94,7 +95,8 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     result = await db.execute(
         select(Message)
         .where(Message.conv_id == conv_id)
-        .order_by(Message.created_at)
+        # 二级排序按 id 保证同 created_at 场景下顺序可确定
+        .order_by(Message.created_at, Message.id)
         .limit(200)
     )
     messages = result.scalars().all()
@@ -111,11 +113,17 @@ async def stream_chat_endpoint(
 ) -> StreamingResponse:
     conv = await _get_user_conv(req.conversation_id, current_user.id, db)
 
+    # 用显式时间戳强制 user 早于 assistant，避免同一事务下 server_default=func.now()
+    # 让两条记录拿到完全相同的 created_at，导致 order_by(created_at) 顺序不确定，
+    # 进而在前端 buildPairs 中把 assistant 归到上一个用户消息下（表现为回复错位/丢失）。
+    now = datetime.now(UTC)
+
     # 保存用户消息
     user_msg = Message(
         conv_id=conv.id,
         role=MessageRole.user,
         content=req.message.content,
+        created_at=now,
     )
     db.add(user_msg)
 
@@ -125,6 +133,7 @@ async def stream_chat_endpoint(
         role=MessageRole.assistant,
         content="",
         model=req.model,
+        created_at=now + timedelta(microseconds=1),
     )
     db.add(assistant_msg)
     await db.commit()
@@ -149,7 +158,7 @@ async def stream_chat_endpoint(
         select(Message)
         .where(Message.conv_id == conv.id)
         .where(Message.id != assistant_msg.id)  # 排除空占位，避免模型误以为已回复
-        .order_by(Message.created_at)
+        .order_by(Message.created_at, Message.id)
         .limit(50)
     )
     history = history_result.scalars().all()

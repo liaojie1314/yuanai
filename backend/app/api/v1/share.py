@@ -185,7 +185,10 @@ async def _load_share_conversation(
     author_name = author.username if author else "匿名用户"
 
     msg_result = await db.execute(
-        select(Message).where(Message.conv_id == conv.id).order_by(Message.created_at).limit(2000)
+        select(Message)
+        .where(Message.conv_id == conv.id)
+        .order_by(Message.created_at, Message.id)
+        .limit(2000)
     )
     messages = msg_result.scalars().all()
 

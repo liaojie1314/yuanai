@@ -252,6 +252,48 @@ class TestStream:
         assert "user" in roles
         assert "assistant" in roles
 
+    async def test_stream_message_order_user_before_assistant(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """回归：user 与 assistant 必须严格保序（user 先于 assistant），
+        避免前端 buildPairs 把 assistant 错挂到上一个 pair 上。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+
+        async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            yield ("content", "回复")
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            for content in ("问题一", "问题二", "问题三"):
+                async with client.stream(
+                    "POST",
+                    "/api/v1/chat/stream",
+                    json={
+                        "conversation_id": conv_id,
+                        "model": "gpt-4o",
+                        "message": {"content": content, "file_ids": []},
+                    },
+                    headers=auth_headers,
+                ) as response:
+                    async for _ in response.aiter_lines():
+                        pass
+
+        import asyncio
+        await asyncio.sleep(0.1)
+
+        msg_res = await client.get(
+            f"/api/v1/chat/conversations/{conv_id}/messages",
+            headers=auth_headers,
+        )
+        messages = msg_res.json()["messages"]
+        roles = [m["role"] for m in messages]
+        # 严格 user/assistant 交替，共 6 条
+        assert roles == ["user", "assistant"] * 3, roles
+
     async def test_stream_invalid_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:
