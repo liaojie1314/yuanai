@@ -249,6 +249,19 @@
   background: var(--brand-light);
   color: var(--brand);
 }
+.ch-sb-new.active {
+  background: rgba(139, 92, 246, 0.16);
+  color: rgb(139, 92, 246);
+}
+.ch-sb-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Collapsed sidebar: hide the temp toggle to keep header centered */
+.ch-app.sb-col .ch-sb-actions {
+  display: none;
+}
 
 /* Sidebar search */
 .ch-sb-search {
@@ -306,8 +319,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px;
-  height: 36px;
+  padding: var(--density-conv-py) 8px;
+  min-height: 36px;
+  margin-bottom: var(--density-conv-gap);
   border-radius: 8px;
   cursor: pointer;
   position: relative;
@@ -847,6 +861,7 @@
 .ch-msg {
   display: flex;
   gap: 12px;
+  padding: var(--density-msg-py) 0;
   animation: msgIn 0.25s ease both;
 }
 
@@ -1352,7 +1367,7 @@
 }
 .ch-input-ta {
   width: 100%;
-  padding: 14px 16px 6px;
+  padding: var(--density-input-py) 16px 6px;
   border: none;
   background: transparent;
   font-size: 14px;
@@ -1360,7 +1375,7 @@
   color: var(--fg);
   resize: none;
   outline: none;
-  min-height: 52px;
+  min-height: var(--density-input-min-h);
   max-height: 200px;
   font-family: inherit;
   overflow-y: auto;
@@ -2892,4 +2907,51 @@
 .ch-media-err-hint {
   font-size: 11px;
   color: var(--error, #ef4444);
+}
+
+/* ── Temporary chat banner ──────────────────────── */
+.ch-temp-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.14), rgba(59, 130, 246, 0.14));
+  border-bottom: 1px solid rgba(139, 92, 246, 0.2);
+  color: var(--fg2);
+  font-size: 12.5px;
+}
+.ch-temp-banner-off {
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background: transparent;
+  color: var(--fg2);
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.ch-temp-banner-off:hover {
+  background: rgba(139, 92, 246, 0.14);
+}
+[data-theme='dark'] .ch-temp-banner {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(59, 130, 246, 0.18));
+}
+
+.ch-conv-name-temp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg2);
+  font-style: italic;
+}
+.ch-conv-name-temp svg {
+  color: rgb(139, 92, 246);
+}
+
+/* on-state for toolbar button */
+.ch-ib.on {
+  background: var(--brand-light);
+  color: var(--brand);
 }

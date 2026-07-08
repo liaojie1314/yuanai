@@ -6,6 +6,14 @@
   --user-font-size: 15px;
   /* 用户可调消息垂直间距（settings > appearance > density） */
   --density-gap: 18px;
+  /* 密度联动的其他可调节量：侧栏会话行、聊天消息内边距、输入框高度、设置项行内距 */
+  --density-conv-py: 8px;
+  --density-conv-gap: 2px;
+  --density-msg-py: 4px;
+  --density-input-min-h: 44px;
+  --density-input-py: 12px;
+  --density-settings-row-py: 14px;
+  --density-settings-blk-mb: 20px;
   --bg: #f4f8ff;
   --sidebar-bg: #f0f6ff;
   --surface: #ffffff;
@@ -42,21 +50,58 @@ body {
   overflow-x: hidden;
 }
 
-/* ── 用户可调紧凑度：影响聊天消息垂直间距 ── */
+/* ── 用户可调紧凑度：驱动聊天/侧栏/设置面板的垂直节奏 ──
+   三档间差距做到肉眼可辨——用户切换后能立刻感受到「更紧」/「更松」 */
 html[data-density='compact'] {
-  --density-gap: 12px;
+  --density-gap: 6px;
+  --density-conv-py: 2px;
+  --density-conv-gap: 0px;
+  --density-msg-py: 0px;
+  --density-input-min-h: 34px;
+  --density-input-py: 6px;
+  --density-settings-row-py: 6px;
+  --density-settings-blk-mb: 8px;
 }
 html[data-density='standard'] {
-  --density-gap: 18px;
+  --density-gap: 20px;
+  --density-conv-py: 8px;
+  --density-conv-gap: 2px;
+  --density-msg-py: 6px;
+  --density-input-min-h: 48px;
+  --density-input-py: 14px;
+  --density-settings-row-py: 14px;
+  --density-settings-blk-mb: 20px;
 }
 html[data-density='loose'] {
-  --density-gap: 28px;
+  --density-gap: 40px;
+  --density-conv-py: 16px;
+  --density-conv-gap: 8px;
+  --density-msg-py: 16px;
+  --density-input-min-h: 64px;
+  --density-input-py: 22px;
+  --density-settings-row-py: 24px;
+  --density-settings-blk-mb: 32px;
 }
 
-/* ── 用户可调字号：应用到聊天消息正文 ── */
+/* ── 用户可调字号：应用到聊天消息正文、输入框、侧栏会话名、设置面板 ──
+   注：所有选择器都用 !important 是为了覆盖组件内联的固定 px 尺寸；
+   业务代码里那些硬编码 font-size 短期难以一次性清理，用户偏好优先级更高。 */
 .ch-msg-content,
-.md-body {
-  font-size: var(--user-font-size);
+.md-body,
+.ch-msg-bubble {
+  font-size: var(--user-font-size) !important;
+}
+.ch-input-ta {
+  font-size: var(--user-font-size) !important;
+}
+.ch-cv-title {
+  font-size: calc(var(--user-font-size) - 2px) !important;
+}
+.st-sec-body .st-row-label {
+  font-size: calc(var(--user-font-size) - 2px);
+}
+.st-sec-body .st-row-val {
+  font-size: calc(var(--user-font-size) - 2px);
 }
 
 html {
