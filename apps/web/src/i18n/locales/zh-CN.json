@@ -156,12 +156,14 @@
     },
     "notifications": {
       "browser": "浏览器通知",
-      "browserDesc": "需要浏览器授权，首次启用时会弹出权限请求",
+      "browserDesc": "需要浏览器授权，首次启用时会弹出权限请求（需 HTTPS 或 localhost）",
       "sound": "声音提示",
       "soundDesc": "AI 回复完成时播放提示音",
       "aiResponse": "AI 回复通知",
       "aiResponseDesc": "标签页在后台时，AI 回复完成后发送桌面通知",
-      "webGroup": "Web 通知"
+      "webGroup": "Web 通知",
+      "permissionDenied": "浏览器已禁止通知，请在地址栏权限设置里恢复",
+      "unsupported": "当前浏览器不支持系统通知"
     },
     "language": {
       "interface": "界面语言",
@@ -268,7 +270,16 @@
       "login": "去登录"
     },
     "toolbar": {
-      "share": "分享对话"
+      "share": "分享对话",
+      "temporary": "开启临时对话",
+      "temporaryOn": "关闭临时对话"
+    },
+    "temporary": {
+      "title": "临时对话",
+      "banner": "临时对话中：本次内容不会保存到历史记录，刷新或关闭即遗忘",
+      "exit": "退出临时对话",
+      "hint": "临时对话不会保存，无法重命名",
+      "filesDisabled": "临时对话暂不支持附件"
     },
     "actions": {
       "edit": "编辑",

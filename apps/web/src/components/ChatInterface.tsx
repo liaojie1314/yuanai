@@ -22,7 +22,8 @@ import { useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
 import { usePrefsStore } from '@yuanai/core/stores'
 import { useArtifactStore } from '@yuanai/core/stores'
-import { useStream } from '@yuanai/core/hooks'
+import { useStream, TEMPORARY_CONV_ID } from '@yuanai/core/hooks'
+import type { TemporaryChatMessage } from '@yuanai/core/hooks'
 import {
   useConversations,
   useCreateConversation,
@@ -65,44 +66,10 @@ import {
   Square,
   Loader2,
   Brain,
+  Ghost,
 } from 'lucide-react'
 
-// ── Notification helpers ─────────────────────────────
-function playNotificationSound(): void {
-  try {
-    const ctx = new AudioContext()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.type = 'sine'
-    osc.frequency.setValueAtTime(880, ctx.currentTime)
-    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.15)
-    gain.gain.setValueAtTime(0.25, ctx.currentTime)
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4)
-    osc.start(ctx.currentTime)
-    osc.stop(ctx.currentTime + 0.4)
-  } catch {
-    // AudioContext not available (e.g., server-side render)
-  }
-}
-
-function triggerNotifications(): void {
-  if (typeof window === 'undefined') return
-  const soundOn = localStorage.getItem('notif_sound') === 'true'
-  const aiOn = localStorage.getItem('notif_ai') === 'true'
-  const browserOn = localStorage.getItem('notif_browser') === 'true'
-  if (soundOn) playNotificationSound()
-  if (
-    aiOn &&
-    browserOn &&
-    document.hidden &&
-    typeof Notification !== 'undefined' &&
-    Notification.permission === 'granted'
-  ) {
-    new Notification('元AI', { body: 'AI 回复已完成', icon: '/favicon.ico' })
-  }
-}
+import { triggerAIReplyNotification } from '@/lib/notifications'
 
 // ── Types ────────────────────────────────────────────
 interface Model {
@@ -219,12 +186,19 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
   const [activeConv, setActiveConv] = useState<string>(() => initialConvId ?? '')
 
+  // ── 临时对话（Temporary chat）状态 ──
+  // 「临时对话」不落库、不上侧栏、不产生 API conversation；
+  // 用户开启后所有消息只在本地内存中维护，刷新页面 / 关闭标签即遗忘。
+  const [temporary, setTemporary] = useState(false)
+  const [tempMessages, setTempMessages] = useState<MockMessage[]>([])
+  const activeConvKey = temporary ? TEMPORARY_CONV_ID : activeConv
+
   /**
    * 当前会话是否正在流式输出。
    * 来源：Zustand store（持久跨 re-mount），比本地 useState 更可靠：
    * router.push() 重新挂载组件时，本地 state 会被重置为 false，导致 Stop 按钮丢失。
    */
-  const isThisStreaming = streamingConvId === activeConv
+  const isThisStreaming = streamingConvId === activeConvKey
 
   // ── Server state (TanStack Query) ──
   const { data: apiConversations = [] } = useConversations()
@@ -251,8 +225,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // isLoading（而非 isFetching）：只在这个会话从未取到过数据时为 true——
   // 切到已缓存过的会话不应出现加载态，只有切到全新会话才需要过渡占位，
   // 避免 Virtuoso 挂载时 pairs 还是空数组，之后数据到达又要二次滚动导致跳动。
-  const { data: apiMessages = [], isLoading: messagesLoading } = useMessages(activeConv)
-  const messages = useMemo(() => apiMessages.map(apiMsgToMock), [apiMessages])
+  const { data: apiMessages = [], isLoading: messagesLoading } = useMessages(
+    temporary ? '' : activeConv
+  )
+  const messages = useMemo(
+    () => (temporary ? tempMessages : apiMessages.map(apiMsgToMock)),
+    [temporary, tempMessages, apiMessages]
+  )
   const filteredMsgs = useMemo(
     () =>
       messages.filter((msg) => {
@@ -458,10 +437,36 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const newChat = (): void => {
     setInputValue('')
     setSidebarOpen(false)
+    // 临时会话下「新对话」清空本地缓存的临时消息即可，不动路由
+    if (temporary) {
+      setTempMessages([])
+      setView('empty')
+      return
+    }
     router.push('/chat')
   }
 
+  const toggleTemporary = (): void => {
+    // 不要把 router.push / 其他 setState 放进 setTemporary 的 updater —— React
+    // 会在渲染阶段调用 updater，router.push 会向 Router 派发状态更新，
+    // 触发 "Cannot update Router while rendering ChatInterface" 警告。
+    const next = !temporary
+    setTemporary(next)
+    setTempMessages([])
+    setView('empty')
+    if (next) {
+      setActiveConv('')
+      setInputValue('')
+      if (activeConv) router.push('/chat')
+    }
+  }
+
   const pickConv = (id: string): void => {
+    // 从临时对话切回真实会话时先关闭临时模式，丢弃临时消息
+    if (temporary) {
+      setTemporary(false)
+      setTempMessages([])
+    }
     setActiveConv(id)
     setView('chat')
     setSidebarOpen(false)
@@ -531,8 +536,51 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const sendMessage = async (): Promise<void> => {
     if (!inputValue.trim() || isThisStreaming || uploading) return
 
-    let convId = activeConv
     const text = inputValue.trim()
+
+    // ── 临时对话分支：走无状态 /chat/stream/temporary ──
+    if (temporary) {
+      setInputValue('')
+      if (inputRef.current) inputRef.current.style.height = 'auto'
+      setView('chat')
+
+      // 立刻把用户消息追加到本地列表；AI 回复流结束后再追加
+      const now = Date.now()
+      const userMsg: MockMessage = {
+        id: `temp-user-${now}`,
+        role: 'user',
+        parts: [{ type: 'text', content: text }],
+        createdAt: now,
+      }
+      setTempMessages((prev) => [...prev, userMsg])
+
+      const history: TemporaryChatMessage[] = tempMessages.map((m) => ({
+        role: m.role,
+        content: getMsgText(m),
+      }))
+
+      virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
+
+      void stream.sendTemporary({
+        content: text,
+        history,
+        model: activeModel.id,
+        enableThinking: showThinking,
+        onEnd: (finalContent) => {
+          const assistantMsg: MockMessage = {
+            id: `temp-assistant-${Date.now()}`,
+            role: 'assistant',
+            parts: [{ type: 'text', content: finalContent }],
+            createdAt: Date.now(),
+          }
+          setTempMessages((prev) => [...prev, assistantMsg])
+          triggerAIReplyNotification()
+        },
+      })
+      return
+    }
+
+    let convId = activeConv
 
     if (!convId) {
       // 无当前会话时先创建，再发送消息
@@ -617,7 +665,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       model: activeModel.id,
       fileIds: fileIds.length > 0 ? fileIds : undefined,
       enableThinking: showThinking,
-      onEnd: triggerNotifications,
+      onEnd: triggerAIReplyNotification,
     })
   }
 
@@ -771,8 +819,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     .filter(Boolean)
     .join(' ')
 
-  const convTitle =
-    conversations.find((c) => c.id === activeConv)?.title ?? t('actions.newDefaultTitle')
+  const convTitle = temporary
+    ? t('temporary.title')
+    : (conversations.find((c) => c.id === activeConv)?.title ?? t('actions.newDefaultTitle'))
 
   const filteredConvs = search
     ? conversations.filter((c) => c.title.includes(search))
@@ -831,14 +880,25 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <div className="ch-brand-logo">元</div>
             <span className="ch-sb-lbl">元AI</span>
           </div>
-          <button
-            className="ch-sb-new"
-            title={t('newChatTitle')}
-            onClick={newChat}
-            aria-label={t('newChatTitle')}
-          >
-            <SquarePen size={17} />
-          </button>
+          <div className="ch-sb-actions">
+            <button
+              className={`ch-sb-new ${temporary ? 'active' : ''}`}
+              title={temporary ? t('toolbar.temporaryOn') : t('toolbar.temporary')}
+              aria-label={temporary ? t('toolbar.temporaryOn') : t('toolbar.temporary')}
+              aria-pressed={temporary}
+              onClick={toggleTemporary}
+            >
+              <Ghost size={17} />
+            </button>
+            <button
+              className="ch-sb-new"
+              title={t('newChatTitle')}
+              onClick={newChat}
+              aria-label={t('newChatTitle')}
+            >
+              <SquarePen size={17} />
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -1088,7 +1148,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               <PanelLeft size={17} />
             </button>
             {view === 'chat' &&
-              (renamingTitle ? (
+              (renamingTitle && !temporary ? (
                 <input
                   ref={titleInputRef}
                   className="ch-conv-name-input"
@@ -1103,13 +1163,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 />
               ) : (
                 <button
-                  className="ch-conv-name"
-                  title="点击重命名"
+                  className={`ch-conv-name ${temporary ? 'ch-conv-name-temp' : ''}`}
+                  title={temporary ? t('temporary.hint') : '点击重命名'}
                   onClick={() => {
+                    if (temporary) return
                     setRenamingTitleInput(convTitle)
                     setRenamingTitle(true)
                   }}
                 >
+                  {temporary && <Ghost size={13} />}
                   {convTitle}
                 </button>
               ))}
@@ -1130,7 +1192,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <button
               className="ch-ib"
               title={t('toolbar.share')}
-              disabled={!isLoggedIn || !activeConv}
+              disabled={!isLoggedIn || !activeConv || temporary}
               onClick={() => setShareOpen(true)}
             >
               <Share2 size={16} />
@@ -1140,6 +1202,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
         {/* Content */}
         <div className="ch-content">
+          {temporary && (
+            <div className="ch-temp-banner" role="status">
+              <Ghost size={14} />
+              <span>{t('temporary.banner')}</span>
+              <button className="ch-temp-banner-off" onClick={toggleTemporary}>
+                {t('temporary.exit')}
+              </button>
+            </div>
+          )}
           {/* Empty state */}
           <div className="ch-empty-state">
             <div className="ch-ai-av">元</div>
@@ -1294,8 +1365,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <div className="ch-input-tb">
               <button
                 className="ch-in-btn"
-                title="添加附件"
-                disabled={!isLoggedIn}
+                title={temporary ? t('temporary.filesDisabled') : '添加附件'}
+                disabled={!isLoggedIn || temporary}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip size={18} />

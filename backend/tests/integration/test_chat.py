@@ -310,6 +310,56 @@ class TestStream:
         assert response.status_code == 404
 
 
+class TestTemporaryChat:
+    async def test_stream_temporary_returns_sse(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """临时对话应返回 SSE 且不落库、不创建 conversation。"""
+
+        async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            yield ("content", "临时")
+            yield ("content", "回复")
+
+        conv_before = (
+            await client.get("/api/v1/chat/conversations", headers=auth_headers)
+        ).json()["conversations"]
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream/temporary",
+                json={
+                    "model": "gpt-4o",
+                    "messages": [{"role": "user", "content": "你好"}],
+                },
+                headers=auth_headers,
+            ) as response:
+                assert response.status_code == 200
+                assert "text/event-stream" in response.headers["content-type"]
+                lines: list[str] = []
+                async for line in response.aiter_lines():
+                    if line.strip():
+                        lines.append(line)
+                all_text = "\n".join(lines)
+                assert "message_start" in all_text
+                assert "content_delta" in all_text
+                assert "临时" in all_text
+                assert "temporary" in all_text
+
+        # 会话列表数量不变（未落库）
+        conv_after = (
+            await client.get("/api/v1/chat/conversations", headers=auth_headers)
+        ).json()["conversations"]
+        assert len(conv_after) == len(conv_before)
+
+    async def test_stream_temporary_requires_auth(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/api/v1/chat/stream/temporary",
+            json={"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]},
+        )
+        assert response.status_code in (401, 403)
+
+
 class TestModels:
     async def test_list_models_requires_auth(self, client: AsyncClient) -> None:
         response = await client.get("/api/v1/models")

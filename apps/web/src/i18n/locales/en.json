@@ -159,6 +159,8 @@
       "browserDesc": "Requires browser permission; prompt appears on first enable",
       "sound": "Sound",
       "soundDesc": "Play a chime when the AI response finishes",
+      "permissionDenied": "Browser notifications are blocked — re-enable them in the site permission settings",
+      "unsupported": "System notifications are not supported by this browser",
       "aiResponse": "AI Response Notifications",
       "aiResponseDesc": "Send a desktop notification when the tab is in the background and the AI response completes",
       "webGroup": "Web Notifications"
@@ -268,7 +270,16 @@
       "login": "Log In"
     },
     "toolbar": {
-      "share": "Share conversation"
+      "share": "Share conversation",
+      "temporary": "Start temporary chat",
+      "temporaryOn": "Stop temporary chat"
+    },
+    "temporary": {
+      "title": "Temporary chat",
+      "banner": "Temporary chat — nothing is saved. Everything is discarded on refresh or when closed.",
+      "exit": "Exit temporary chat",
+      "hint": "Temporary chats can't be saved or renamed",
+      "filesDisabled": "Attachments are not available in temporary chat"
     },
     "actions": {
       "edit": "Edit",
