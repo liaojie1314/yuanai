@@ -2,17 +2,16 @@
 
 ## Web
 
-- [ ] **设置 → 外观与主题**：字体大小（`fontSize`）和界面密度（`density`）当前仅存偏好、未真正影响布局。需要：
-  - `--user-font-size` CSS 变量传导到聊天区 / 侧栏 / 设置面板等文字节点（当前仅设在 `<html>` 但组件多用固定 `px`）
-  - `data-density="compact|standard|loose"` 需驱动 padding / gap / min-height 变化（chat.css、settings.css、侧栏等目前未按 attr 切档）
-  - 加一个可见的预览区（如设置面板顶部一段 sample 文本 + 一条 fake 消息），让用户即时看到效果
+- [x] **设置 → 外观与主题**：字号档位驱动到聊天区/输入框/侧栏/设置面板（`--user-font-size` + `!important` 覆盖组件内联 px，档位 12/16/20 px），密度三档差距明显（`--density-gap` 6/20/40 等一整组变量）。相关 CSS 变量集中在 `apps/web/src/app/globals.css`。
 
-- [ ] **设置 → 通知设置**：前台浏览器通知（`new Notification()`）和 WebAudio 提示音已在 `ChatInterface.tsx` 实现，UI 开关偏好存 `localStorage`；但缺少后台推送能力（关闭标签/最小化浏览器时失效）。需要：
-  - 注册 Service Worker（`public/sw.js`）；SW 监听 `push` 事件后调用 `self.registration.showNotification()`，这样在后台或浏览器最小化时仍能弹出系统通知
-  - 后端新增 `/api/v1/notifications/subscribe`（接收 Web Push Subscription JSON 写入新表 `push_subscriptions`）和 `/unsubscribe` 端点；AI 流结束时服务端主动推送（替代现在在 `useStream.ts` stream complete 里的客户端检测）
-  - 将 `ChatInterface.tsx` 中的 `playNotificationSound` 提取到独立工具文件，供 SW 的 `notificationclick` 事件复用
-  - 短期可只做 SW + 系统通知，不做服务端推送（维持现有客户端检测逻辑），但需确保 HTTPS 环境下请求权限流程正常
-  - 编写文档告诉怎么测试功能的实现
+- [x] **设置 → 通知设置（前端 + SW）**：`apps/web/public/sw.js` 承担 `push` / `notificationclick`；`apps/web/src/lib/notifications.ts` 统一提供 `playNotificationSound` / `registerNotificationServiceWorker` / `requestNotificationPermission` / `triggerAIReplyNotification`；`ServiceWorkerProvider` 在应用挂载时注册 SW；`SettingsModal` 的「AI 回复通知」开关会同时申请权限。测试步骤：`docs-internal/notifications-testing.md`。
+  - [ ] **服务端推送（真正后台送达）**：目前 SW 已接入 `push` 事件但后端未提供订阅端点，标签页彻底关闭时仍收不到通知。仍需：
+    - 后端新增 `/api/v1/notifications/subscribe`（保存 Web Push Subscription JSON 到新表 `push_subscriptions`）和 `/unsubscribe`
+    - AI 流结束时服务端主动向所有活跃 subscription 推送（使用 pywebpush + VAPID 密钥）
+    - 前端在 `ServiceWorkerProvider` 里读取 SW registration 调用 `pushManager.subscribe({applicationServerKey})`，把 subscription POST 给后端
+    - 补一段测试文档：如何生成 VAPID keypair、本地用 `curl` 触发一次推送验证链路
+
+- [x] **临时对话（Temporary chat）**：侧栏头部 Ghost 图标切换；开启后消息仅存内存、不落库、不进侧栏列表；后端无状态端点 `POST /api/v1/chat/stream/temporary`（SSE 协议与 `/chat/stream` 完全一致，前端 `useStream.sendTemporary` 分支复用同一 store）；集成测试 `backend/tests/integration/test_chat.py::TestTemporaryChat`。
 
 - [ ] **用户输入框 → 语音输入**：`ChatInterface.tsx:1274` 的 `Mic` 按钮已渲染但无 `onClick` 处理器，是纯占位 UI，无任何语音 API 调用。需要：
   - 使用 `window.SpeechRecognition ?? window.webkitSpeechRecognition`（Web Speech API）,根据实际企业项目的方案给出选择，是否可以添加端侧模型；不支持时（Firefox / 旧 Safari）隐藏按钮或显示 tooltip"当前浏览器不支持语音输入"
@@ -32,6 +31,16 @@
   - 前端 `login/page.tsx` 替换 GitHub 按钮的 `onClick`：`window.location.href = API_URL + '/api/v1/auth/github'`；新建 `app/(auth)/oauth/callback/page.tsx` 读取 URL 中 `?token=` 参数并写入 auth store，再跳转首页
   - 环境变量：后端需 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，前端无需额外变量（回调由后端处理）
   - 在项目根新建 `docs-internal/oauth-setup.md`（不受 `docs/` 只读约束）记录 GitHub OAuth App 申请步骤、Callback URL 配置、所需环境变量，供其他开发者自助接入 Google / Apple 等额外 provider
+
+- [ ] **Artifact 面板 → 更完整的代码预览**：当前 `apps/web/src/components/chat/ArtifactPanel.tsx` 已能对 HTML / CSS / JS 走 iframe `srcdoc` 沙箱运行（`buildRunSrcDoc` in `chat/utils.ts`，`sandbox="allow-scripts allow-forms"`），但语言覆盖窄、无框架支持、无错误反馈。需要扩展：
+  - **React / Vue / Svelte 单文件预览**：识别 `jsx` / `tsx` / `vue` / `svelte` 代码块 → 在 iframe 内挂载 esm.sh 版本的运行时（`import React from 'https://esm.sh/react'`），在 `<div id="app">` 上渲染；仍走 srcdoc，不联网仅拉 esm.sh CDN
+  - **Markdown 预览**：`isRunnableLang` 增加 `markdown` / `md` 分支，用 `marked` + 内置 CSS 直接渲染成静态 HTML 页
+  - **Mermaid / 流程图**：识别 ` ```mermaid ` 代码块 → iframe 加载 `mermaid.esm.mjs`，调用 `mermaid.run()` 渲染 SVG
+  - **JSON / CSV 表格预览**：`json` 走可折叠 tree 视图（自实现或用 `react-json-view` 但要避免 SSR），`csv` 走 `<table>` 展示
+  - **运行时错误反馈**：iframe 内注入 `window.onerror` / `window.onunhandledrejection`，通过 `postMessage` 上抛到父页；面板底部新增一个可折叠的「控制台」面板显示错误 & `console.log/warn/error`（同样劫持后 postMessage）
+  - **iframe 尺寸自适应 + 全屏切换**：面板顶部加「全屏」按钮，把 `.ch-artifact-panel` 切成 `position: fixed; inset: 0` 铺满窗口；iframe 保持 `100% × 100%`
+  - **代码编辑（可选）**：view 模式下点击代码块可切编辑，改完点「重新运行」重放 srcdoc；用轻量 `codemirror-6` 或 `@codemirror/basic-setup`，避免引入 monaco（体积太大）
+  - 对齐现有 CSS class 前缀 `ch-ap-*`；新增控制台面板走 `ch-ap-console-*`；所有第三方 CDN 依赖集中在 `apps/web/src/components/chat/artifact-runtimes.ts` 便于替换/自托管
 
 ## backend
 

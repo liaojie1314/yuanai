@@ -220,7 +220,7 @@
 .st-blk {
   background: var(--surface);
   border-radius: 10px;
-  margin-bottom: 14px;
+  margin-bottom: var(--density-settings-blk-mb);
   overflow: hidden;
 }
 .st-blk.danger {
@@ -251,7 +251,7 @@
   align-items: center;
   justify-content: space-between;
   min-height: 52px;
-  padding: 0 20px;
+  padding: var(--density-settings-row-py) 20px;
   gap: 12px;
   border-bottom: 1px solid rgba(59, 130, 246, 0.07);
 }

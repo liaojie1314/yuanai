@@ -38,6 +38,7 @@ import {
 import { usePrefsStore } from '@yuanai/core/stores'
 import type { FontSize, Density, ThemeChoice } from '@yuanai/core/stores'
 import type { UserPreferences } from '@yuanai/core/api'
+import { requestNotificationPermission } from '@/lib/notifications'
 
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
@@ -61,7 +62,7 @@ interface Props {
   initialSection?: Section
 }
 
-const FONT_SIZE_PX: Record<FontSize, number> = { small: 13, medium: 15, large: 17 }
+const FONT_SIZE_PX: Record<FontSize, number> = { small: 12, medium: 16, large: 20 }
 const FONT_SIZE_ORDER: FontSize[] = ['small', 'medium', 'large']
 
 function pwStrength(pw: string, labels: string[]): { score: number; label: string; color: string } {
@@ -161,10 +162,14 @@ export default function SettingsModal({
     setNotifBrowserRaw((prev) => {
       const next = typeof v === 'function' ? v(prev) : v
       localStorage.setItem('notif_browser', String(next))
-      if (next && typeof window !== 'undefined' && 'Notification' in window) {
-        if (Notification.permission === 'default') {
-          void Notification.requestPermission()
-        }
+      if (next) {
+        void requestNotificationPermission().then((perm) => {
+          if (perm === 'denied') {
+            showToast(t('notifications.permissionDenied'), 'err')
+          } else if (perm === 'unsupported') {
+            showToast(t('notifications.unsupported'), 'err')
+          }
+        })
       }
       return next
     })
@@ -180,6 +185,16 @@ export default function SettingsModal({
     setNotifAIRaw((prev) => {
       const next = typeof v === 'function' ? v(prev) : v
       localStorage.setItem('notif_ai', String(next))
+      // 「AI 回复通知」是桌面弹窗的实际开关，打开时也要申请权限
+      if (next) {
+        void requestNotificationPermission().then((perm) => {
+          if (perm === 'denied') {
+            showToast(t('notifications.permissionDenied'), 'err')
+          } else if (perm === 'unsupported') {
+            showToast(t('notifications.unsupported'), 'err')
+          }
+        })
+      }
       return next
     })
   }
@@ -953,12 +968,6 @@ export default function SettingsModal({
                         if (picked) applyFontSize(picked)
                       }}
                     />
-                    <div
-                      className="st-slider-preview"
-                      style={{ fontSize: `${FONT_SIZE_PX[fontSize]}px` }}
-                    >
-                      {tc('appName')}
-                    </div>
                   </div>
                 </div>
 

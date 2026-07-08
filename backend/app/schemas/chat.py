@@ -85,6 +85,25 @@ class SendMessageRequest(BaseModel):
     enable_thinking: bool = False
 
 
+class TemporaryChatMessage(BaseModel):
+    """临时对话客户端上送的单轮历史消息（无 DB 依赖）。"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    role: str
+    content: str
+
+
+class TemporaryChatRequest(BaseModel):
+    """临时对话流式请求：不持久化任何数据，历史由前端在请求体中维护。"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    model: str
+    messages: list[TemporaryChatMessage]
+    enable_thinking: bool = False
+
+
 class ShareLinkResponse(BaseModel):
     """会话分享链接信息（返回给分享者本人）"""
 

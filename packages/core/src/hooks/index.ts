@@ -1,5 +1,5 @@
-export { useStream } from './useStream'
-export type { StreamParams } from './useStream'
+export { useStream, TEMPORARY_CONV_ID } from './useStream'
+export type { StreamParams, TemporaryStreamParams, TemporaryChatMessage } from './useStream'
 export {
   useCurrentUser,
   useLogin,

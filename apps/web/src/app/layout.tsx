@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl'
 import { getMessages } from 'next-intl/server'
 import MockProvider from '@/providers/MockProvider'
 import QueryProvider from '@/providers/QueryProvider'
+import { ServiceWorkerProvider } from '@/providers/ServiceWorkerProvider'
 import { Toaster } from '@/components/Toaster'
 import './globals.css'
 
@@ -33,6 +34,7 @@ export default async function RootLayout({
         <NextIntlClientProvider messages={messages}>
           <MockProvider>
             <QueryProvider>
+              <ServiceWorkerProvider />
               {children}
               <Toaster />
             </QueryProvider>

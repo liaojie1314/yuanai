@@ -18,6 +18,7 @@ from app.schemas.chat import (
     CreateConversationRequest,
     MessageResponse,
     SendMessageRequest,
+    TemporaryChatRequest,
     UpdateConversationRequest,
 )
 from app.services.ai_service import stream_chat
@@ -186,6 +187,68 @@ async def stream_chat_endpoint(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/stream/temporary")
+async def stream_temporary_chat(
+    req: TemporaryChatRequest, current_user: CurrentUser
+) -> StreamingResponse:
+    """临时对话流式接口。
+
+    与 `/stream` 的差异：
+    - 不落库、无 conversation_id、无附件；历史由前端在请求体 `messages` 中维护
+    - 不产生 message / user_message_id / assistant_message_id
+    - SSE 事件序列与 `/stream` 完全一致（`message_start`/`content_delta`/
+      `thinking_delta`/`message_end`），前端 `useStream` 无需分叉
+    - 会话结束即遗忘，不出现在会话列表和用户统计中
+    """
+    # 转换为 OpenAI 消息格式；限长防滥用（前端也会做，但服务端兜底）
+    openai_messages: list[dict[str, str]] = [
+        {"role": m.role, "content": m.content} for m in req.messages[-50:]
+    ]
+    return StreamingResponse(
+        _generate_temp_sse(openai_messages, req.model, enable_thinking=req.enable_thinking),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _generate_temp_sse(
+    messages: list[dict[str, str]],
+    model: str,
+    *,
+    enable_thinking: bool = False,
+) -> AsyncGenerator[str, None]:
+    """临时对话专用 SSE 生成器：与 `_generate_sse` 事件协议一致，但无 DB 依赖。"""
+    payload = json.dumps({"model": model, "temporary": True})
+    yield f"event: message_start\ndata: {payload}\n\n"
+
+    thinking_start_at: float | None = None
+    thinking_duration_ms: int | None = None
+    try:
+        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
+            if event_type == "thinking":
+                if thinking_start_at is None:
+                    thinking_start_at = time.monotonic()
+                delta = json.dumps({"token": token}, ensure_ascii=False)
+                yield f"event: thinking_delta\ndata: {delta}\n\n"
+            else:
+                if thinking_start_at is not None and thinking_duration_ms is None:
+                    thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
+                delta = json.dumps({"token": token}, ensure_ascii=False)
+                yield f"event: content_delta\ndata: {delta}\n\n"
+
+        end_payload: dict[str, object] = {"tokens_used": 0, "finish_reason": "stop"}
+        if thinking_duration_ms is not None:
+            end_payload["thinking_duration_ms"] = thinking_duration_ms
+        yield f"event: message_end\ndata: {json.dumps(end_payload)}\n\n"
+    except Exception as e:
+        yield (
+            f"event: error\n"
+            f"data: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n"
+        )
+
+    yield "data: [DONE]\n\n"
 
 
 async def _generate_sse(
