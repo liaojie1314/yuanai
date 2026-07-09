@@ -67,8 +67,21 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     # 后端回调 URL；必须与 GitHub OAuth App 中「Authorization callback URL」完全一致
     github_redirect_uri: str = "http://localhost:8000/api/v1/auth/github/callback"
+    # Google OAuth 2.0 Client：在 Google Cloud Console → API 和服务 → 凭据 创建「OAuth 客户端 ID」
+    # 授权重定向 URI 必须与 google_redirect_uri 完全一致
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
     # 前端回调页面；后端 exchange 完 code 后把 access/refresh token 通过 302 拼在 URL 中
     web_app_url: str = "http://localhost:3000"
+
+    # ── Web Push 推送（VAPID）─────────────────────────────────
+    # 用 `uv run python -m py_vapid` 或 pywebpush 生成密钥对；私钥切勿提交代码库
+    # 未配置时后端推送链路自动降级为 no-op（前端也不会发起订阅）
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    # VAPID subject：mailto: 或站点 URL，推送服务用它联系发送方
+    vapid_subject: str = "mailto:admin@yuanai.example"
 
 
 settings = Settings()  # type: ignore[call-arg]

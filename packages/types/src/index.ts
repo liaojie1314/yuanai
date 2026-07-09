@@ -25,7 +25,22 @@ export interface User {
   passwordChangedAt?: string | null
   /** 已关联的 GitHub 用户 ID；未绑定为 null */
   githubId?: string | null
+  /** 已关联的 Google 用户 ID（OpenID sub）；未绑定为 null */
+  googleId?: string | null
   createdAt: string
+}
+
+/** 浏览器 Web Push 订阅（`PushSubscription.toJSON()` 的结构） */
+export interface PushSubscriptionPayload {
+  /** 推送服务分配的端点 URL */
+  endpoint: string
+  /** 客户端加密公钥对 */
+  keys: {
+    /** ECDH 公钥（base64url） */
+    p256dh: string
+    /** auth secret（base64url） */
+    auth: string
+  }
 }
 
 /** 服务端文件引用 */

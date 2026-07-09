@@ -1,6 +1,7 @@
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
 from app.models.message import Message
+from app.models.push_subscription import PushSubscription
 from app.models.share import ConversationShare
 from app.models.upload_session import FileUploadSession
 from app.models.user import User
@@ -13,4 +14,5 @@ __all__ = [
     "MessageFile",
     "ConversationShare",
     "FileUploadSession",
+    "PushSubscription",
 ]

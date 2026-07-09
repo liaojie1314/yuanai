@@ -448,4 +448,10 @@ export const handlers = [
 
   // ── Models ──
   http.get(`${BASE}/models`, () => HttpResponse.json({ models: mockModels })),
+
+  // ── Notifications (Web Push) ──
+  // Mock 模式下未配置 VAPID：返回空公钥让前端跳过订阅；订阅/退订直接成功
+  http.get(`${BASE}/notifications/vapid-public-key`, () => HttpResponse.json({ publicKey: '' })),
+  http.post(`${BASE}/notifications/subscribe`, () => HttpResponse.json({ ok: true })),
+  http.post(`${BASE}/notifications/unsubscribe`, () => HttpResponse.json({ ok: true })),
 ]

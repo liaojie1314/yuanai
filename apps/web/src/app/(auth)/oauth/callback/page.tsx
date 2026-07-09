@@ -8,9 +8,9 @@ import { getMeWithToken } from '@yuanai/core/api'
 import { useToast } from '@/hooks/useToast'
 
 /**
- * 三方登录（GitHub / 未来接入的 Google / Apple 等）回调页。
+ * 三方登录（GitHub / Google 等）回调页，provider 无关。
  *
- * 后端 `/api/v1/auth/github/callback` 在完成 OAuth 后 302 到本页面，
+ * 后端 `/api/v1/auth/{provider}/callback` 在完成 OAuth 后 302 到本页面，
  * 把 `access_token` / `refresh_token` 拼在 query 上；页面读取后：
  *   1. 用刚拿到的 token 通过 `getMeWithToken` 拉取用户信息
  *   2. 写入 auth store（`remember=true`，默认走 localStorage）

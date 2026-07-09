@@ -1,8 +1,8 @@
-"""GitHub OAuth 集成测试。
+"""Google OAuth 集成测试。
 
-用 monkeypatch 替换 `_exchange_code_for_token` / `_fetch_github_profile`，
-避免真的调 GitHub API，让测试聚焦在业务流程：state 校验、账号创建/关联、
-错误回跳。
+与 test_oauth.py（GitHub）同构：用 monkeypatch 替换
+`_exchange_google_code_for_token` / `_fetch_google_profile`，避免真的调 Google，
+聚焦业务流程：state 校验、账号创建/关联、错误回跳、解绑。
 """
 from urllib.parse import parse_qs, urlparse
 
@@ -17,19 +17,19 @@ from app.services import oauth_service
 
 
 @pytest.fixture(autouse=True)
-def _configure_github_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
-    """给测试环境注入合法 client_id / client_secret，让 _ensure_configured() 通过。"""
-    monkeypatch.setattr(settings, "github_client_id", "test-client-id")
-    monkeypatch.setattr(settings, "github_client_secret", "test-client-secret")
+def _configure_google_oauth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """给测试环境注入合法 google client_id / secret，让 _ensure_configured() 通过。"""
+    monkeypatch.setattr(settings, "google_client_id", "test-google-client-id")
+    monkeypatch.setattr(settings, "google_client_secret", "test-google-client-secret")
     monkeypatch.setattr(settings, "web_app_url", "http://localhost:3000")
     monkeypatch.setattr(
-        settings, "github_redirect_uri", "http://localhost:8000/api/v1/auth/github/callback"
+        settings, "google_redirect_uri", "http://localhost:8000/api/v1/auth/google/callback"
     )
 
 
 @pytest.fixture
 def _mock_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
-    """把 oauth_service 用到的 redis_client 换成一个内存字典，便于测试 state 生命周期。"""
+    """把 oauth_service 用到的 redis_client 换成内存字典，便于测试 state 生命周期。"""
     store: dict[str, str] = {}
 
     class _FakeRedis:
@@ -48,24 +48,26 @@ def _mock_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
 
 class TestAuthorize:
-    async def test_returns_github_authorize_url(
+    async def test_returns_google_authorize_url(
         self, client: AsyncClient, _mock_state: dict[str, str]
     ) -> None:
-        resp = await client.get("/api/v1/auth/github", follow_redirects=False)
+        resp = await client.get("/api/v1/auth/google", follow_redirects=False)
         assert resp.status_code == 302
         loc = resp.headers["location"]
-        assert loc.startswith("https://github.com/login/oauth/authorize?")
-        # state 应该已经写进 Redis
+        assert loc.startswith("https://accounts.google.com/o/oauth2/v2/auth?")
+        # scope 应包含 openid，state 应写进 Redis（google 前缀隔离）
+        q = parse_qs(urlparse(loc).query)
+        assert "openid" in q["scope"][0]
         assert len(_mock_state) == 1
-        assert next(iter(_mock_state.keys())).startswith("oauth:github:state:")
+        assert next(iter(_mock_state.keys())).startswith("oauth:google:state:")
 
     async def test_missing_credentials_returns_503(
         self,
         client: AsyncClient,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(settings, "github_client_id", "")
-        resp = await client.get("/api/v1/auth/github", follow_redirects=False)
+        monkeypatch.setattr(settings, "google_client_id", "")
+        resp = await client.get("/api/v1/auth/google", follow_redirects=False)
         assert resp.status_code == 503
         assert resp.json()["detail"]["code"] == "OAUTH_NOT_CONFIGURED"
 
@@ -78,47 +80,44 @@ class TestCallback:
         monkeypatch: pytest.MonkeyPatch,
         _mock_state: dict[str, str],
     ) -> None:
-        # 先请求 authorize 拿到一个真实 state
-        await client.get("/api/v1/auth/github", follow_redirects=False)
-        state = next(iter(_mock_state.keys())).removeprefix("oauth:github:state:")
+        await client.get("/api/v1/auth/google", follow_redirects=False)
+        state = next(iter(_mock_state.keys())).removeprefix("oauth:google:state:")
 
         async def fake_exchange(code: str) -> str:  # noqa: ARG001
-            return "gh-access-token"
+            return "google-access-token"
 
         async def fake_profile(token: str) -> dict[str, str]:  # noqa: ARG001
             return {
-                "provider_id": "10086",
-                "email": "octocat@example.com",
-                "login": "octocat",
-                "avatar_url": "https://gh.example.com/avatar.png",
+                "provider_id": "g-sub-10086",
+                "email": "alice@gmail.com",
+                "login": "alice",
+                "avatar_url": "https://lh3.google.com/a/avatar.png",
             }
 
-        monkeypatch.setattr(oauth_service, "_exchange_code_for_token", fake_exchange)
-        monkeypatch.setattr(oauth_service, "_fetch_github_profile", fake_profile)
+        monkeypatch.setattr(oauth_service, "_exchange_google_code_for_token", fake_exchange)
+        monkeypatch.setattr(oauth_service, "_fetch_google_profile", fake_profile)
 
         resp = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"code": "abc", "state": state},
             follow_redirects=False,
         )
         assert resp.status_code == 302
-        loc = resp.headers["location"]
-        parsed = urlparse(loc)
+        parsed = urlparse(resp.headers["location"])
         assert parsed.scheme + "://" + parsed.netloc == "http://localhost:3000"
         assert parsed.path == "/oauth/callback"
         q = parse_qs(parsed.query)
         assert "access_token" in q and q["access_token"][0]
         assert "refresh_token" in q and q["refresh_token"][0]
 
-        # 用户应该已入库
         user = (
-            await db.execute(select(User).where(User.github_id == "10086"))
+            await db.execute(select(User).where(User.google_id == "g-sub-10086"))
         ).scalar_one_or_none()
         assert user is not None
-        assert user.email == "octocat@example.com"
-        assert user.username == "octocat"
+        assert user.email == "alice@gmail.com"
+        assert user.username == "alice"
         assert user.hashed_password is None
-        assert user.avatar_url == "https://gh.example.com/avatar.png"
+        assert user.avatar_url == "https://lh3.google.com/a/avatar.png"
 
     async def test_existing_email_gets_linked(
         self,
@@ -128,35 +127,34 @@ class TestCallback:
         monkeypatch: pytest.MonkeyPatch,
         _mock_state: dict[str, str],
     ) -> None:
-        await client.get("/api/v1/auth/github", follow_redirects=False)
-        state = next(iter(_mock_state.keys())).removeprefix("oauth:github:state:")
+        await client.get("/api/v1/auth/google", follow_redirects=False)
+        state = next(iter(_mock_state.keys())).removeprefix("oauth:google:state:")
 
         async def fake_exchange(code: str) -> str:  # noqa: ARG001
-            return "gh-token"
+            return "google-token"
 
         async def fake_profile(token: str) -> dict[str, str]:  # noqa: ARG001
             return {
-                "provider_id": "20001",
+                "provider_id": "g-sub-20001",
                 # 用 fixture 的邮箱 → 应该关联，不新建
                 "email": test_user.email,
                 "login": "someoneelse",
                 "avatar_url": "",
             }
 
-        monkeypatch.setattr(oauth_service, "_exchange_code_for_token", fake_exchange)
-        monkeypatch.setattr(oauth_service, "_fetch_github_profile", fake_profile)
+        monkeypatch.setattr(oauth_service, "_exchange_google_code_for_token", fake_exchange)
+        monkeypatch.setattr(oauth_service, "_fetch_google_profile", fake_profile)
 
         resp = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"code": "abc", "state": state},
             follow_redirects=False,
         )
         assert resp.status_code == 302
 
         await db.refresh(test_user)
-        assert test_user.github_id == "20001"
+        assert test_user.google_id == "g-sub-20001"
 
-        # 只有一条记录（没有新建）
         rows = (await db.execute(select(User))).scalars().all()
         assert len(rows) == 1
 
@@ -166,20 +164,19 @@ class TestCallback:
         _mock_state: dict[str, str],  # noqa: ARG002
     ) -> None:
         resp = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"code": "abc", "state": "does-not-exist"},
             follow_redirects=False,
         )
         assert resp.status_code == 302
-        loc = resp.headers["location"]
-        q = parse_qs(urlparse(loc).query)
+        q = parse_qs(urlparse(resp.headers["location"]).query)
         assert q["error"][0] == "OAUTH_STATE_INVALID"
 
     async def test_provider_error_forwarded(
         self, client: AsyncClient, _mock_state: dict[str, str]  # noqa: ARG002
     ) -> None:
         resp = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"error": "access_denied", "error_description": "用户拒绝授权"},
             follow_redirects=False,
         )
@@ -188,24 +185,24 @@ class TestCallback:
         assert q["error"][0] == "OAUTH_PROVIDER_ERROR"
         assert "用户拒绝授权" in q["error_description"][0]
 
+
 class TestUnlink:
-    async def test_unlink_github_success(
+    async def test_unlink_google_success(
         self,
         client: AsyncClient,
         db: AsyncSession,
         test_user: User,
         auth_headers: dict[str, str],
     ) -> None:
-        # 先关联一个 github_id
-        test_user.github_id = "88888"
+        test_user.google_id = "g-88888"
         await db.commit()
 
-        resp = await client.delete("/api/v1/auth/me/github", headers=auth_headers)
+        resp = await client.delete("/api/v1/auth/me/google", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.json()["githubId"] is None
+        assert resp.json()["googleId"] is None
 
         await db.refresh(test_user)
-        assert test_user.github_id is None
+        assert test_user.google_id is None
 
     async def test_unlink_rejected_when_no_local_password(
         self,
@@ -214,18 +211,16 @@ class TestUnlink:
         auth_headers: dict[str, str],
         test_user: User,
     ) -> None:
-        # 纯 OAuth 用户（没有本地密码），解绑必须被拒绝，避免账号失去所有登录途径
         test_user.hashed_password = None
-        test_user.github_id = "77777"
+        test_user.google_id = "g-77777"
         await db.commit()
 
-        resp = await client.delete("/api/v1/auth/me/github", headers=auth_headers)
+        resp = await client.delete("/api/v1/auth/me/google", headers=auth_headers)
         assert resp.status_code == 400
         assert resp.json()["detail"]["code"] == "OAUTH_ONLY_ACCOUNT"
 
         await db.refresh(test_user)
-        # github_id 未被清除
-        assert test_user.github_id == "77777"
+        assert test_user.google_id == "g-77777"
 
 
 class TestStateLifecycle:
@@ -235,34 +230,32 @@ class TestStateLifecycle:
         monkeypatch: pytest.MonkeyPatch,
         _mock_state: dict[str, str],
     ) -> None:
-        await client.get("/api/v1/auth/github", follow_redirects=False)
-        state = next(iter(_mock_state.keys())).removeprefix("oauth:github:state:")
+        await client.get("/api/v1/auth/google", follow_redirects=False)
+        state = next(iter(_mock_state.keys())).removeprefix("oauth:google:state:")
 
         async def fake_exchange(code: str) -> str:  # noqa: ARG001
-            return "gh-token"
+            return "google-token"
 
         async def fake_profile(token: str) -> dict[str, str]:  # noqa: ARG001
             return {
-                "provider_id": "99999",
-                "email": "once@example.com",
+                "provider_id": "g-99999",
+                "email": "once@gmail.com",
                 "login": "onceuser",
                 "avatar_url": "",
             }
 
-        monkeypatch.setattr(oauth_service, "_exchange_code_for_token", fake_exchange)
-        monkeypatch.setattr(oauth_service, "_fetch_github_profile", fake_profile)
+        monkeypatch.setattr(oauth_service, "_exchange_google_code_for_token", fake_exchange)
+        monkeypatch.setattr(oauth_service, "_fetch_google_profile", fake_profile)
 
-        # 首次消费成功
         r1 = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"code": "abc", "state": state},
             follow_redirects=False,
         )
         assert "access_token" in parse_qs(urlparse(r1.headers["location"]).query)
 
-        # 同一 state 再用 → 应该被拒
         r2 = await client.get(
-            "/api/v1/auth/github/callback",
+            "/api/v1/auth/google/callback",
             params={"code": "abc", "state": state},
             follow_redirects=False,
         )

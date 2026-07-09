@@ -19,6 +19,8 @@ class User(Base):
     bio: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # 三方登录：GitHub 用户 id（字符串化）。同一 GitHub 账号只能关联一个本地账户
     github_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
+    # 三方登录：Google 用户 id（OpenID `sub`）。同一 Google 账号只能关联一个本地账户
+    google_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -29,9 +31,7 @@ class User(Base):
     time_format: Mapped[str] = mapped_column(String(5), nullable=False, default="24h")
     date_format: Mapped[str] = mapped_column(String(5), nullable=False, default="ymd")
     language: Mapped[str] = mapped_column(String(10), nullable=False, default="zh-CN")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

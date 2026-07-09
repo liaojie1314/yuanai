@@ -51,6 +51,14 @@ vi.mock('@yuanai/core/hooks', () => ({
   useDeleteMe: () => ({ mutate: mockDeleteMeMutate, isPending: false }),
   useUploadAvatar: () => ({ mutate: vi.fn(), isPending: false }),
   useUnlinkGithub: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUnlinkGoogle: () => ({ mutateAsync: vi.fn(), isPending: false }),
+}))
+
+// SettingsModal 引入了 @/lib/push（notif 开关联动 Web Push 订阅）；
+// 该模块依赖浏览器 SW/PushManager，测试环境下 mock 成 no-op 即可
+vi.mock('@/lib/push', () => ({
+  ensurePushSubscribed: vi.fn(),
+  removePushSubscription: vi.fn(),
 }))
 
 const mockReload = vi.fn()

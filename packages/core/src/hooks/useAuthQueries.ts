@@ -14,6 +14,7 @@ import {
   resetPassword,
   sendVerifyCode,
   unlinkGithub,
+  unlinkGoogle,
   updateMe,
   updateMyPreferences,
   uploadAvatar,
@@ -201,6 +202,17 @@ export function useUnlinkGithub() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: unlinkGithub,
+    onSuccess: (updatedUser: User) => {
+      qc.setQueryData<User>(['me'], updatedUser)
+    },
+  })
+}
+
+/** 解绑 Google 三方登录 mutation */
+export function useUnlinkGoogle() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: unlinkGoogle,
     onSuccess: (updatedUser: User) => {
       qc.setQueryData<User>(['me'], updatedUser)
     },

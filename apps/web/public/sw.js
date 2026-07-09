@@ -50,7 +50,21 @@ self.addEventListener('push', (event) => {
     tag: payload.tag || NOTIFICATION_TAG,
     data: { url: payload.url || '/' },
   }
-  event.waitUntil(self.registration.showNotification(title, options))
+  event.waitUntil(
+    (async () => {
+      // 若已有前台可见/聚焦的标签，用户正在看，无需再弹系统通知打扰；
+      // 前台的声音/角标由主线程 triggerAIReplyNotification 处理。
+      const clientList = await self.clients.matchAll({
+        type: 'window',
+        includeUncontrolled: true,
+      })
+      const foreground = clientList.some(
+        (c) => c.focused || c.visibilityState === 'visible'
+      )
+      if (foreground) return
+      await self.registration.showNotification(title, options)
+    })()
+  )
 })
 
 self.addEventListener('notificationclick', (event) => {
