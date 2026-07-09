@@ -75,5 +75,13 @@ class Settings(BaseSettings):
     # 前端回调页面；后端 exchange 完 code 后把 access/refresh token 通过 302 拼在 URL 中
     web_app_url: str = "http://localhost:3000"
 
+    # ── Web Push 推送（VAPID）─────────────────────────────────
+    # 用 `uv run python -m py_vapid` 或 pywebpush 生成密钥对；私钥切勿提交代码库
+    # 未配置时后端推送链路自动降级为 no-op（前端也不会发起订阅）
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    # VAPID subject：mailto: 或站点 URL，推送服务用它联系发送方
+    vapid_subject: str = "mailto:admin@yuanai.example"
+
 
 settings = Settings()  # type: ignore[call-arg]

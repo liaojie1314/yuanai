@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import auth, chat, models, share
+from app.api.v1 import auth, chat, models, notifications, share
 from app.api.v1 import files as files_router
 from app.core.config import settings
 
@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     yield
     # ── shutdown ─────────────────────────────────────────────
     from app.services.ai_service import _AI_CLIENTS
+
     for client in _AI_CLIENTS.values():
         await client.close()
     _AI_CLIENTS.clear()
@@ -55,13 +56,12 @@ app.add_middleware(
 # storage_backend=local 时才挂载本地上传目录；S3 走桶自身的 public URL，无需静态挂载
 if settings.storage_backend.lower() == "local":
     os.makedirs(settings.local_uploads_dir, exist_ok=True)
-    app.mount(
-        "/uploads", StaticFiles(directory=settings.local_uploads_dir), name="uploads"
-    )
+    app.mount("/uploads", StaticFiles(directory=settings.local_uploads_dir), name="uploads")
 
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(share.router, prefix="/api/v1")
 app.include_router(files_router.router, prefix="/api/v1")
 

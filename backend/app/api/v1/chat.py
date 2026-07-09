@@ -22,6 +22,7 @@ from app.schemas.chat import (
     UpdateConversationRequest,
 )
 from app.services.ai_service import stream_chat
+from app.services.push_service import send_to_user
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -70,22 +71,16 @@ async def update_conversation(
 
 
 @router.delete("/conversations/{conv_id}", status_code=204)
-async def delete_conversation(
-    conv_id: uuid.UUID, current_user: CurrentUser, db: DB
-) -> None:
+async def delete_conversation(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -> None:
     conv = await _get_user_conv(conv_id, current_user.id, db)
     await db.delete(conv)
     await db.commit()
 
 
 @router.delete("/conversations", status_code=200)
-async def delete_all_conversations(
-    current_user: CurrentUser, db: DB
-) -> dict[str, int]:
+async def delete_all_conversations(current_user: CurrentUser, db: DB) -> dict[str, int]:
     """一次性删除当前用户的所有会话（含消息，通过 ondelete=CASCADE 级联）。"""
-    result = await db.execute(
-        delete(Conversation).where(Conversation.user_id == current_user.id)
-    )
+    result = await db.execute(delete(Conversation).where(Conversation.user_id == current_user.id))
     await db.commit()
     return {"deleted": int(result.rowcount or 0)}
 
@@ -172,17 +167,21 @@ async def stream_chat_endpoint(
             content_parts: list[dict] = [{"type": "text", "text": m.content}]
             for af in attached_files:
                 if af.mime_type.startswith("image/"):
-                    content_parts.append(
-                        {"type": "image_url", "image_url": {"url": af.s3_key}}
-                    )
+                    content_parts.append({"type": "image_url", "image_url": {"url": af.s3_key}})
             openai_messages.append({"role": m.role.value, "content": content_parts})
         else:
             openai_messages.append({"role": m.role.value, "content": m.content})
 
     return StreamingResponse(
         _generate_sse(
-            openai_messages, req.model, assistant_msg.id, user_msg.id, db,
+            openai_messages,
+            req.model,
+            assistant_msg.id,
+            user_msg.id,
+            db,
             enable_thinking=req.enable_thinking,
+            user_id=current_user.id,
+            conv_id=conv.id,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -243,10 +242,7 @@ async def _generate_temp_sse(
             end_payload["thinking_duration_ms"] = thinking_duration_ms
         yield f"event: message_end\ndata: {json.dumps(end_payload)}\n\n"
     except Exception as e:
-        yield (
-            f"event: error\n"
-            f"data: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n"
-        )
+        yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 
     yield "data: [DONE]\n\n"
 
@@ -259,9 +255,15 @@ async def _generate_sse(
     db: AsyncSession,
     *,
     enable_thinking: bool = False,
+    user_id: uuid.UUID | None = None,
+    conv_id: uuid.UUID | None = None,
 ) -> AsyncGenerator[str, None]:
     payload = json.dumps(
-        {"user_message_id": str(user_msg_id), "assistant_message_id": str(assistant_msg_id), "model": model}  # noqa: E501
+        {
+            "user_message_id": str(user_msg_id),
+            "assistant_message_id": str(assistant_msg_id),
+            "model": model,
+        }  # noqa: E501
     )
     yield f"event: message_start\ndata: {payload}\n\n"
 
@@ -300,22 +302,35 @@ async def _generate_sse(
             msg.thinking_duration_ms = thinking_duration_ms
         await db.commit()
 
+        # AI 回复落库后，向该用户所有 Web Push 订阅推送「回复完成」通知。
+        # 标签页在前台时前端会跳过弹窗；未配置 VAPID 时 send_to_user 直接 no-op。
+        # 推送失败不影响已完成的回复，故整体包一层 try 兜底。
+        if user_id is not None:
+            try:
+                await send_to_user(
+                    db,
+                    user_id,
+                    {
+                        "title": "元AI",
+                        "body": "AI 回复已完成",
+                        "url": f"/chat/{conv_id}" if conv_id is not None else "/chat",
+                        "tag": "yuanai-ai-reply",
+                    },
+                )
+            except Exception:  # noqa: BLE001 - 推送为尽力而为，任何异常都不应打断响应
+                pass
+
         yield (
             f"event: message_end\n"
             f"data: {json.dumps({'tokens_used': 0, 'finish_reason': 'stop'})}\n\n"
         )
     except Exception as e:
-        yield (
-            f"event: error\n"
-            f"data: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n"
-        )
+        yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 
     yield "data: [DONE]\n\n"
 
 
-async def _get_user_conv(
-    conv_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
-) -> Conversation:
+async def _get_user_conv(conv_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Conversation:
     result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
     conv = result.scalar_one_or_none()
     if not conv:

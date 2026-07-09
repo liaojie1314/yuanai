@@ -22,6 +22,7 @@ from app.models import (  # noqa: F401, E402
     FileUploadSession,
     Message,
     MessageFile,
+    PushSubscription,
     User,
 )
 
