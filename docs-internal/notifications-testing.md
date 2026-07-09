@@ -61,9 +61,8 @@ pnpm dev  # 或 pnpm --filter web dev
 - 系统托盘弹出「元AI · AI 回复已完成」通知。
 - 通知点击后自动回到元AI 标签，并触发一次 WebAudio 提示音（若同时勾选「声音提示」）。
 
-若关闭浏览器窗口后**没有**收到通知：这是预期行为——目前后端未实现 Web Push 推送端点，
-SW 的 `push` 事件监听器为「预留链路」。真正的后台推送需后端提供 subscribe/推送服务，
-详见 `TODO.md · Web 通知` 里的服务端待办。
+若关闭浏览器窗口后收到通知：这是**服务端 Web Push** 推送生效（见下文第 7 节）。
+未配置 VAPID 密钥时后端推送链路自动降级为 no-op，此时关闭标签页收不到通知属预期。
 
 ### 5. 手动模拟一次 push 事件（可选）
 
@@ -86,6 +85,99 @@ SW 的 `push` 事件监听器为「预留链路」。真正的后台推送需后
 
 三个开关的偏好都存 `localStorage`，键前缀 `notif_`（`notif_browser` / `notif_sound` / `notif_ai`）。
 清空 localStorage 后默认 `browser=false, sound=false, ai=true`（与 SettingsModal 保持一致）。
+
+## 7. 服务端 Web Push（真正后台送达）
+
+标签页彻底关闭时也能收到通知，靠后端在 AI 回复结束时主动推送（pywebpush + VAPID）。
+链路：前端 `pushManager.subscribe` → `POST /api/v1/notifications/subscribe` 落库 `push_subscriptions`
+→ AI 流结束 `chat.py::_generate_sse` 在 `db.commit()` 后调 `push_service.send_to_user`
+→ 浏览器 `sw.js` 的 `push` 事件 `showNotification`（前台聚焦时跳过）。
+
+### 7.1 生成 VAPID 密钥对
+
+后端已装 `pywebpush`（含 `py-vapid`）。在 `backend/` 下运行：
+
+```bash
+cd backend
+uv run python - <<'PY'
+import base64
+from cryptography.hazmat.primitives import serialization
+from py_vapid import Vapid
+v = Vapid(); v.generate_keys()
+b = lambda x: base64.urlsafe_b64encode(x).rstrip(b"=").decode()
+pub = v.public_key.public_bytes(
+    serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+)
+priv = v.private_key.private_numbers().private_value.to_bytes(32, "big")
+print("VAPID_PUBLIC_KEY=" + b(pub))
+print("VAPID_PRIVATE_KEY=" + b(priv))
+PY
+```
+
+把两行输出写进 `backend/.env`（私钥切勿提交），再加一行 subject：
+
+```dotenv
+VAPID_PUBLIC_KEY=B:...        # 也是前端 applicationServerKey，公钥可公开
+VAPID_PRIVATE_KEY=...         # raw 32 字节 base64url，pywebpush 直接接受，切勿泄漏
+VAPID_SUBJECT=mailto:admin@yuanai.example
+```
+
+重启后端。未配置这三个变量时 `push_service.send_to_user` 直接返回 0（no-op），
+`GET /notifications/vapid-public-key` 返回空串，前端不会发起订阅——属预期降级。
+
+### 7.2 登记订阅
+
+前端 + 后端都起来后，浏览器打开 `http://localhost:3000` 登录，进入
+**设置 → 通知设置**，开启「AI 回复通知」并授予权限。此时 `ServiceWorkerProvider`
+会调用 `pushManager.subscribe` 并 `POST /notifications/subscribe`。核对：
+
+```bash
+# 用登录后拿到的 access_token（DevTools → Application → Local Storage → yuanai-auth）
+TOKEN=<access_token>
+curl -s http://localhost:8000/api/v1/notifications/vapid-public-key   # 应回非空 publicKey
+# DB 里应出现一行订阅
+docker compose exec postgres psql -U yuanai -d yuanai -c \
+  "select left(endpoint,40), left(p256dh,12) from push_subscriptions;"
+```
+
+### 7.3 触发一次推送验证
+
+**端到端**：保持登录，发一条消息后立刻**关闭该标签页**，等 AI 回复结束——
+几秒后系统托盘应弹出「元AI · AI 回复已完成」，点击回到 `/chat/{会话id}`。
+
+**直接触发**（不经聊天，快速验证推送本身）：在 `backend/` 下
+
+```bash
+cd backend
+uv run python - <<'PY'
+import asyncio, uuid
+from sqlalchemy import select
+from app.core.database import AsyncSessionLocal
+from app.models.push_subscription import PushSubscription
+from app.services import push_service
+
+async def main():
+    async with AsyncSessionLocal() as db:
+        sub = (await db.execute(select(PushSubscription))).scalars().first()
+        if not sub:
+            print("没有订阅，先在浏览器开启通知开关"); return
+        n = await push_service.send_to_user(
+            db, sub.user_id,
+            {"title": "元AI", "body": "手动推送测试", "url": "/chat"},
+        )
+        print(f"已向 user={sub.user_id} 推送 {n} 条")
+
+asyncio.run(main())
+PY
+```
+
+浏览器（哪怕标签在后台/已关闭，只要 SW 存活）应弹出「手动推送测试」。
+若 endpoint 已过期，`send_to_user` 会收到 404/410 并自动清理该订阅。
+
+### 7.4 关闭开关
+
+设置里关掉「AI 回复通知」会调用 `removePushSubscription`：
+`POST /notifications/unsubscribe` 删库 + 浏览器 `subscription.unsubscribe()`。之后不再收到后台推送。
 
 ## 常见问题
 

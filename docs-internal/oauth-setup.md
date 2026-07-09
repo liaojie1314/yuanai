@@ -2,9 +2,11 @@
 
 > 位置：`docs-internal/oauth-setup.md`（不受 `docs/` 只读约束）。本文档只面向开发者，请勿把 Client Secret 提交到代码库。
 
-当前落地：**GitHub**（推荐首个接入，无商务审核、流程最简）。
-计划中：Google（免费 GCP 项目 + OAuth Client，测试模式免审核）、微信开放平台（需企业主体认证，二期落地）。
-登录页 UI 保留三个入口（GitHub / Google / 微信），未落地的按 disabled + tooltip 「第三方登录即将开放」占位。Apple Sign-In 依赖 $99/年 Apple Developer 会员，已从占位列表移除。
+当前落地：**GitHub** + **Google**（均无商务审核、可免费本地测试；Google 用测试模式免审核）。
+计划中：微信开放平台（需企业主体认证，二期落地）。
+登录页 UI 保留三个入口（GitHub / Google / 微信），微信按 disabled + tooltip 「第三方登录即将开放」占位。Apple Sign-In 依赖 $99/年 Apple Developer 会员，已从占位列表移除。
+
+`oauth_service` 已抽象为 provider-keyed 流程：`_link_or_create_user(provider, profile, db)` 按 `_PROVIDER_ID_ATTR` 映射到 `users.{provider}_id` 列，账号关联规则对所有 provider 一致（见第六节）。新增 provider 只需补 `build_{p}_authorize_url` / `_exchange_{p}_code_for_token` / `_fetch_{p}_profile` / `complete_{p}_callback`、一列 `{p}_id` 和三条路由。
 
 ---
 
@@ -100,18 +102,55 @@ uv run alembic upgrade head
 
 ---
 
-## 七、扩展到其他 provider
+## 七、Google OAuth 申请与配置（已落地）
 
-新增 provider（例如 Google）时：
+### 7.1 在 Google Cloud Console 创建 OAuth Client
 
-1. `backend/app/core/config.py` 追加 `google_client_id / google_client_secret / google_redirect_uri`
-2. `backend/app/services/oauth_service.py` 内新增：
-   - `build_google_authorize_url()` — 拼 authorize URL + 写 state
-   - `_exchange_code_for_google_token(code)` — POST `oauth2.googleapis.com/token`
-   - `_fetch_google_profile(access_token)` — GET `openidconnect.googleapis.com/v1/userinfo`
-   - `complete_google_callback(code, state, db)` — 复用 `_link_or_create_user`（把 `github_id` 抽象成 `provider_id + provider_name` 或再加一列 `google_id`）
-3. `backend/app/api/v1/auth.py` 新增 `/google` 和 `/google/callback` 两个端点
-4. 数据库迁移新增 `users.google_id` 列
-5. 前端登录页把 Google 按钮的 `disabled` 去掉，onClick 改为跳 `${API_BASE_URL}/auth/google`
+1. 打开 <https://console.cloud.google.com/> → 新建（或选择）一个项目。
+2. 「API 和服务 → OAuth 同意屏幕」：User Type 选 **External**，填应用名/支持邮箱；测试阶段把自己的 Google 账号加到「测试用户」即可免正式审核（Testing 模式）。Scopes 用默认的 `openid` / `email` / `profile` 即可。
+3. 「API 和服务 → 凭据 → 创建凭据 → OAuth 客户端 ID」：应用类型选 **Web 应用**。
+   - **已获授权的重定向 URI**：**必须精确匹配** `http://localhost:8000/api/v1/auth/google/callback`
+     - 生产环境追加 `https://api.你的域名/api/v1/auth/google/callback`
+4. 创建后拿到 **客户端 ID** 和 **客户端密钥**。
 
-Apple 有额外要求：签名密钥 (JWT client_secret)、私有邮箱转发。参考 <https://developer.apple.com/documentation/sign_in_with_apple>。
+### 7.2 后端环境变量
+
+编辑 `backend/.env` 追加：
+
+```dotenv
+# 三方登录 - Google
+GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxxxxxx
+# 回调 URL - 必须与 Google Cloud「已获授权的重定向 URI」完全一致
+GOOGLE_REDIRECT_URI=http://localhost:8000/api/v1/auth/google/callback
+# WEB_APP_URL 复用 GitHub 那份即可（后端 exchange 后 302 回 /oauth/callback）
+```
+
+### 7.3 执行数据库迁移
+
+Google 关联列 `users.google_id`（唯一）由 migration `a1c4e8f0b2d6` 引入：
+
+```bash
+cd backend && uv run alembic upgrade head
+```
+
+### 7.4 验证
+
+同 GitHub 流程（第五节），点击登录页「Google」按钮 → 授权 → 跳回 `/oauth/callback` → 进入 `/chat`。
+账号关联规则见第六节（先按 `google_id` 命中，再按 email 关联，否则建 OAuth-only 用户）。
+Google userinfo 未验证邮箱（`email_verified=false`）会被拒绝（`OAUTH_EMAIL_UNAVAILABLE`），避免误关联。
+
+集成测试：`backend/tests/integration/test_oauth_google.py`（9 例，mock `_exchange_google_code_for_token` / `_fetch_google_profile`）。
+
+## 八、扩展到再新的 provider
+
+`oauth_service` 已 provider-keyed，新增一个 provider（如 GitLab）只需：
+
+1. `config.py` 追加 `{p}_client_id / {p}_client_secret / {p}_redirect_uri`
+2. `oauth_service.py` 补 `build_{p}_authorize_url` / `_exchange_{p}_code_for_token` / `_fetch_{p}_profile`（返回统一 `{provider_id, email, login, avatar_url}` dict）/ `complete_{p}_callback`，并在 `_PROVIDER_ID_ATTR` 与 `_ensure_configured` 登记该 provider
+3. `models/user.py` + 迁移新增 `{p}_id` 唯一列
+4. `auth.py` 新增 `/{p}`、`/{p}/callback`、`DELETE /me/{p}` 路由
+5. 前端：`packages/types` 加 `{p}Id`、`packages/core` 加 `unlink{P}` + `useUnlink{P}`、登录页与设置页接线
+
+微信开放平台需企业主体认证 + `unionid` 跨应用身份，二期落地。
+Apple 需签名密钥 (JWT client_secret) + 私有邮箱转发，参考 <https://developer.apple.com/documentation/sign_in_with_apple>。

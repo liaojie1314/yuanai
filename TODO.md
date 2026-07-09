@@ -5,11 +5,7 @@
 - [x] **设置 → 外观与主题**：字号档位驱动到聊天区/输入框/侧栏/设置面板（`--user-font-size` + `!important` 覆盖组件内联 px，档位 12/16/20 px），密度三档差距明显（`--density-gap` 6/20/40 等一整组变量）。相关 CSS 变量集中在 `apps/web/src/app/globals.css`。
 
 - [x] **设置 → 通知设置（前端 + SW）**：`apps/web/public/sw.js` 承担 `push` / `notificationclick`；`apps/web/src/lib/notifications.ts` 统一提供 `playNotificationSound` / `registerNotificationServiceWorker` / `requestNotificationPermission` / `triggerAIReplyNotification`；`ServiceWorkerProvider` 在应用挂载时注册 SW；`SettingsModal` 的「AI 回复通知」开关会同时申请权限。测试步骤：`docs-internal/notifications-testing.md`。
-  - [ ] **服务端推送（真正后台送达）**：目前 SW 已接入 `push` 事件但后端未提供订阅端点，标签页彻底关闭时仍收不到通知。仍需：
-    - 后端新增 `/api/v1/notifications/subscribe`（保存 Web Push Subscription JSON 到新表 `push_subscriptions`）和 `/unsubscribe`
-    - AI 流结束时服务端主动向所有活跃 subscription 推送（使用 pywebpush + VAPID 密钥）
-    - 前端在 `ServiceWorkerProvider` 里读取 SW registration 调用 `pushManager.subscribe({applicationServerKey})`，把 subscription POST 给后端
-    - 补一段测试文档：如何生成 VAPID keypair、本地用 `curl` 触发一次推送验证链路
+  - [x] **服务端推送（真正后台送达）**：已落地。后端 `push_subscriptions` 表（migration `b2d5f9a1c8e0`）+ `POST /api/v1/notifications/subscribe` / `/unsubscribe` + 公开的 `GET /notifications/vapid-public-key`；AI 流结束时 `chat.py::_generate_sse` 在 `db.commit()` 后调 `push_service.send_to_user`（pywebpush + VAPID，线程池执行，失效订阅 404/410 自动清理），未配置 VAPID 时降级为 no-op。前端 `apps/web/src/lib/push.ts` + `ServiceWorkerProvider` 登录后自动 `pushManager.subscribe` 并上报，设置页「AI 回复通知」开关联动订阅/退订；`sw.js` 前台聚焦时跳过弹窗。集成测试 `backend/tests/integration/test_notifications.py`（11 例）。VAPID 生成 + `curl` 触发验证见 `docs-internal/notifications-testing.md` 第 7 节。
 
 - [x] **临时对话（Temporary chat）**：侧栏头部 Ghost 图标切换；开启后消息仅存内存、不落库、不进侧栏列表；后端无状态端点 `POST /api/v1/chat/stream/temporary`（SSE 协议与 `/chat/stream` 完全一致，前端 `useStream.sendTemporary` 分支复用同一 store）；集成测试 `backend/tests/integration/test_chat.py::TestTemporaryChat`。
 
@@ -21,15 +17,16 @@
   - **摄像头拍照** — `CameraModal` 组件预览 + 拍照，共用同一 `addFilesToQueue` 入口
   - 能力探测：`isScreenCaptureSupported()` / `isCameraSupported()` 不支持时菜单项 disabled 并带 tooltip 说明
 
-- [x] **三方登录（GitHub 优先）**：完整 OAuth 链路已落地。
+- [x] **三方登录（GitHub + Google）**：完整 OAuth 链路已落地。
   - 后端：`app/services/oauth_service.py` 编排 `state → exchange → profile → 关联或建号 → 签 JWT`；`app/api/v1/auth.py` 新增 `GET /auth/github`（302 到 authorize）和 `GET /auth/github/callback`（302 回前端并带 token）
   - 数据模型：`users.github_id` 唯一列 + `hashed_password` 改为可空（migration `f9a3b7c214e5`），OAuth-only 用户走「忘记密码」补设本地密码
   - 前端：`login/page.tsx` GitHub 按钮跳 `${API_BASE_URL}/auth/github`；新建 `app/(auth)/oauth/callback/page.tsx` 读取 token → `getMeWithToken` → `setAuth` → replace 到 `/chat`；`middleware.ts` 把 `/oauth` 加入公开路径
   - 集成测试：`tests/integration/test_oauth.py` 覆盖 authorize URL 生成、新用户创建、邮箱关联现有账户、state 校验、provider 错误透传、state 一次性消费 6 个场景
   - 配置文档：`docs-internal/oauth-setup.md` 记录 OAuth App 申请、环境变量、账号关联规则、扩展到 Google / Apple 的步骤
-  - 微信 / Google / Apple 按钮统一显示为 disabled + tooltip「第三方登录即将开放」，待后续按同一模板扩展
+  - **Google** 已按同一模板扩展：`oauth_service` 泛化为 provider-keyed（`_link_or_create_user(provider, ...)`），新增 `build_google_authorize_url` / `_exchange_google_code_for_token` / `_fetch_google_profile`（`openid email profile` scope，取 OpenID `sub`，要求 `email_verified`）/ `complete_google_callback`；`users.google_id` 列（migration `a1c4e8f0b2d6`）；路由 `GET /auth/google`、`/auth/google/callback`、`DELETE /auth/me/google`；前端登录页启用 Google 按钮、设置页绑定/解绑（`useUnlinkGoogle`）；集成测试 `test_oauth_google.py`（9 例）。文档 `docs-internal/oauth-setup.md`。
+  - 微信按钮仍 disabled + tooltip「第三方登录即将开放」（需企业主体认证，二期）；Apple 因 $99/年会员已移除
 
-- [ ] **Artifact 面板 → 更完整的代码预览**：当前 `apps/web/src/components/chat/ArtifactPanel.tsx` 已能对 HTML / CSS / JS 走 iframe `srcdoc` 沙箱运行（`buildRunSrcDoc` in `chat/utils.ts`，`sandbox="allow-scripts allow-forms"`），但语言覆盖窄、无框架支持、无错误反馈。需要扩展：
+- [x] **Artifact 面板 → 更完整的代码预览**：已落地。新增 `apps/web/src/components/chat/artifact-runtimes.ts` 集中 esm.sh CDN 地址与各语言 `srcdoc` 模板（React/Vue/Svelte/Markdown/Mermaid）+ 控制台桥；`utils.ts::isRunnableLang` 扩展 jsx/tsx/vue/svelte/markdown/md/mermaid，`buildRunSrcDoc` 按语言分发，新增 `isDataPreviewLang`（json/csv）；`ArtifactPanel.tsx` 增加 JSON 折叠树 + CSV 表格（非 iframe）、可折叠控制台面板（校验不可信 postMessage、按运行重置、限 200 条）、全屏切换、view 模式 CodeMirror 编辑 + 重新运行。iframe 仍 `sandbox="allow-scripts allow-forms"`（不加 `allow-same-origin`），用户代码经 `JSON.stringify` 注入。单测 `__tests__/artifact-runtimes.test.ts`。下述为当初的拆解清单，均已覆盖：
   - **React / Vue / Svelte 单文件预览**：识别 `jsx` / `tsx` / `vue` / `svelte` 代码块 → 在 iframe 内挂载 esm.sh 版本的运行时（`import React from 'https://esm.sh/react'`），在 `<div id="app">` 上渲染；仍走 srcdoc，不联网仅拉 esm.sh CDN
   - **Markdown 预览**：`isRunnableLang` 增加 `markdown` / `md` 分支，用 `marked` + 内置 CSS 直接渲染成静态 HTML 页
   - **Mermaid / 流程图**：识别 ` ```mermaid ` 代码块 → iframe 加载 `mermaid.esm.mjs`，调用 `mermaid.run()` 渲染 SVG
