@@ -62,6 +62,17 @@ export async function getMe(): Promise<User> {
   return res.data
 }
 
+/**
+ * 用显式 token 拉取用户信息 —— 供 OAuth 回调页在还没写入 auth store 前，
+ * 用刚拿到的 access_token 补齐 user 数据。
+ */
+export async function getMeWithToken(accessToken: string): Promise<User> {
+  const res = await apiClient.get<User>('/auth/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return res.data
+}
+
 /** 更新当前用户资料 */
 export async function updateMe(data: {
   username?: string
@@ -128,6 +139,12 @@ export async function changePassword(oldPassword: string, newPassword: string): 
 /** 注销账号 */
 export async function deleteMe(): Promise<void> {
   await apiClient.delete('/auth/me')
+}
+
+/** 解绑当前账号的 GitHub 关联；返回更新后的用户信息 */
+export async function unlinkGithub(): Promise<User> {
+  const res = await apiClient.delete<User>('/auth/me/github')
+  return res.data
 }
 
 /** 上传头像，返回更新后的用户信息 */

@@ -16,6 +16,7 @@ export {
   useDeleteMe,
   useClearAllConversations,
   useUploadAvatar,
+  useUnlinkGithub,
 } from './useAuthQueries'
 export {
   useConversations,

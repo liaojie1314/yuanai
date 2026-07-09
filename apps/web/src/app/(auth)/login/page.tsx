@@ -3,10 +3,11 @@
 import { useState, useRef, useEffect, type JSX } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound } from 'lucide-react'
+import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound, Github } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
+import { API_BASE_URL } from '@yuanai/core/api'
 import { useToast } from '@/hooks/useToast'
 
 export default function LoginPage(): JSX.Element {
@@ -347,17 +348,35 @@ export default function LoginPage(): JSX.Element {
           </div>
 
           <div className="social-row">
-            <button className="soc-btn" aria-label={`${t('wechat')} ${t('login')}`}>
+            <button
+              className="soc-btn"
+              aria-label={`GitHub ${t('login')}`}
+              onClick={() => {
+                // 让浏览器直接跳后端 302 到 GitHub 授权页；state 由后端写 Redis
+                window.location.href = `${API_BASE_URL}/auth/github`
+              }}
+              title="使用 GitHub 登录"
+            >
+              <Github size={18} className="soc-icon" aria-hidden="true" />
+              <span>GitHub</span>
+            </button>
+            <button
+              className="soc-btn"
+              aria-label={`${t('wechat')} ${t('login')}`}
+              disabled
+              title="第三方登录即将开放"
+            >
               <img src="/icons/wechat.svg" alt="" className="soc-icon" />
               <span>{t('wechat')}</span>
             </button>
-            <button className="soc-btn" aria-label={`${t('google')} ${t('login')}`}>
+            <button
+              className="soc-btn"
+              aria-label={`${t('google')} ${t('login')}`}
+              disabled
+              title="第三方登录即将开放"
+            >
               <img src="/icons/google.svg" alt="" className="soc-icon" />
               <span>{t('google')}</span>
-            </button>
-            <button className="soc-btn" aria-label={`${t('apple')} ${t('login')}`}>
-              <img src="/icons/apple.svg" alt="" className="soc-icon" />
-              <span>{t('apple')}</span>
             </button>
           </div>
 

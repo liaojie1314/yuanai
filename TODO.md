@@ -13,24 +13,21 @@
 
 - [x] **临时对话（Temporary chat）**：侧栏头部 Ghost 图标切换；开启后消息仅存内存、不落库、不进侧栏列表；后端无状态端点 `POST /api/v1/chat/stream/temporary`（SSE 协议与 `/chat/stream` 完全一致，前端 `useStream.sendTemporary` 分支复用同一 store）；集成测试 `backend/tests/integration/test_chat.py::TestTemporaryChat`。
 
-- [ ] **用户输入框 → 语音输入**：`ChatInterface.tsx:1274` 的 `Mic` 按钮已渲染但无 `onClick` 处理器，是纯占位 UI，无任何语音 API 调用。需要：
-  - 使用 `window.SpeechRecognition ?? window.webkitSpeechRecognition`（Web Speech API）,根据实际企业项目的方案给出选择，是否可以添加端侧模型；不支持时（Firefox / 旧 Safari）隐藏按钮或显示 tooltip"当前浏览器不支持语音输入"
-  - 点击 Mic 进入 `listening` 状态：按钮变红色脉冲动画，textarea placeholder 改为"正在聆听…"；检测到 `result.isFinal` 或用户再次点击时停止识别
-  - 识别结果追加到 textarea 当前内容末尾（不覆盖已有文字）；`lang` 默认取 `navigator.language`（中文环境为 `zh-CN`）
-  - 识别中途出错（`onerror`）时恢复按钮状态并 toast 提示错误原因
+- [x] **用户输入框 → 语音输入**：Web Speech API 抽到 `apps/web/src/hooks/useSpeechRecognition.ts`；不支持的浏览器（Firefox）通过 `speech.isSupported` 直接隐藏按钮；识别时 Mic 变红色脉冲、textarea placeholder 改为「正在聆听…」，识别结果按 `result.isFinal` 追加到 textarea 末尾；错误自动 toast。语言默认 `navigator.language`。端侧模型（Whisper.wasm 等）留待二期评估。
 
-- [ ] **用户输入框 → 上传附件改为弹出菜单**：当前 `Paperclip` 按钮直接调用 `inputRef.current?.click()` 触发系统文件选择框，无中间弹层。需要：
-  - 将 `Paperclip` 按钮替换为 `shadcn/ui Popover` 触发器，弹出包含三项的操作菜单：
-    - **上传文件** — 保留现有 `<input type="file">` 逻辑（`useFileUpload` + 分片上传），附件进 `attachments` 队列不变
-    - **截屏** — 调用 `navigator.mediaDevices.getDisplayMedia({ video: true })`，获取屏幕流后截一帧到 canvas 并导出为 `image/png` File，送入 `attachments` 同一队列；用户选定区域后自动关闭流
-    - **摄像头拍照** — 调用 `getUserMedia({ video: true })`，在浮层内渲染 `<video>` 预览，点击"拍照"按钮后 canvas 捕获帧、关闭流、导出 File 并入队
-  - 两项媒体功能均需 HTTPS 或 `localhost`；运行时检测 `navigator.mediaDevices` 能力，不支持时 disable 对应菜单项并显示 tooltip
+- [x] **用户输入框 → 上传附件改为弹出菜单**：Paperclip 按钮切换成弹出菜单（`ch-attach-menu`，沿用项目原生的 fixed-position 下拉模式，未引入 Radix Popover）。三项：
+  - **上传文件** — 复用原 `<input type="file">` + `useFileUpload` 分片上传链路
+  - **截屏** — `apps/web/src/lib/mediaCapture.ts::captureScreenshot`，走 `getDisplayMedia` → canvas 导出 `image/png`；用户点取消自动 fallback null
+  - **摄像头拍照** — `CameraModal` 组件预览 + 拍照，共用同一 `addFilesToQueue` 入口
+  - 能力探测：`isScreenCaptureSupported()` / `isCameraSupported()` 不支持时菜单项 disabled 并带 tooltip 说明
 
-- [ ] **三方登录**：登录页微信 / Google / Apple 按钮无 `onClick`，设置页绑定行全部 `disabled="第三方登录即将开放"`，后端 `auth.py` 无任何 OAuth 端点。优先接入 GitHub（流程最简、无商务审核；Google 次之、受众更广但需 GCP 项目；微信最复杂、需企业认证，可二期）：
-  - 后端新增两个端点：`GET /api/v1/auth/github`（生成 `state` 写 Redis，返回 GitHub OAuth 授权 URL）和 `GET /api/v1/auth/github/callback`（exchange code → access_token → 获取 GitHub user email/id → 创建或关联账号 → 签发 JWT）；依赖 `httpx`，无需引入额外库
-  - 前端 `login/page.tsx` 替换 GitHub 按钮的 `onClick`：`window.location.href = API_URL + '/api/v1/auth/github'`；新建 `app/(auth)/oauth/callback/page.tsx` 读取 URL 中 `?token=` 参数并写入 auth store，再跳转首页
-  - 环境变量：后端需 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`，前端无需额外变量（回调由后端处理）
-  - 在项目根新建 `docs-internal/oauth-setup.md`（不受 `docs/` 只读约束）记录 GitHub OAuth App 申请步骤、Callback URL 配置、所需环境变量，供其他开发者自助接入 Google / Apple 等额外 provider
+- [x] **三方登录（GitHub 优先）**：完整 OAuth 链路已落地。
+  - 后端：`app/services/oauth_service.py` 编排 `state → exchange → profile → 关联或建号 → 签 JWT`；`app/api/v1/auth.py` 新增 `GET /auth/github`（302 到 authorize）和 `GET /auth/github/callback`（302 回前端并带 token）
+  - 数据模型：`users.github_id` 唯一列 + `hashed_password` 改为可空（migration `f9a3b7c214e5`），OAuth-only 用户走「忘记密码」补设本地密码
+  - 前端：`login/page.tsx` GitHub 按钮跳 `${API_BASE_URL}/auth/github`；新建 `app/(auth)/oauth/callback/page.tsx` 读取 token → `getMeWithToken` → `setAuth` → replace 到 `/chat`；`middleware.ts` 把 `/oauth` 加入公开路径
+  - 集成测试：`tests/integration/test_oauth.py` 覆盖 authorize URL 生成、新用户创建、邮箱关联现有账户、state 校验、provider 错误透传、state 一次性消费 6 个场景
+  - 配置文档：`docs-internal/oauth-setup.md` 记录 OAuth App 申请、环境变量、账号关联规则、扩展到 Google / Apple 的步骤
+  - 微信 / Google / Apple 按钮统一显示为 disabled + tooltip「第三方登录即将开放」，待后续按同一模板扩展
 
 - [ ] **Artifact 面板 → 更完整的代码预览**：当前 `apps/web/src/components/chat/ArtifactPanel.tsx` 已能对 HTML / CSS / JS 走 iframe `srcdoc` 沙箱运行（`buildRunSrcDoc` in `chat/utils.ts`，`sandbox="allow-scripts allow-forms"`），但语言覆盖窄、无框架支持、无错误反馈。需要扩展：
   - **React / Vue / Svelte 单文件预览**：识别 `jsx` / `tsx` / `vue` / `svelte` 代码块 → 在 iframe 内挂载 esm.sh 版本的运行时（`import React from 'https://esm.sh/react'`），在 `<div id="app">` 上渲染；仍走 srcdoc，不联网仅拉 esm.sh CDN

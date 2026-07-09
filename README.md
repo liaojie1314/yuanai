@@ -59,12 +59,22 @@ pnpm dev:real
 编辑 `backend/.env`，填写需要使用的模型的 API Key（留空的模型不会出现在前端）：
 
 ```bash
-DEEPSEEK_API_KEY=sk-xxxxxxxx    # DeepSeek V3
+DEEPSEEK_API_KEY=sk-xxxxxxxx    # DeepSeek V4
 OPENAI_API_KEY=sk-proj-xxxxxxx  # GPT-4o（可选）
 ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 ```
 
 详细说明、各平台注册步骤、新增模型方法见 [AI 大模型接入指南](docs/ai-providers.md)。
+
+## 三方登录（可选）
+
+已落地 **GitHub OAuth**。首次启用需：
+
+1. 在 [GitHub OAuth Apps](https://github.com/settings/developers) 创建 App，Callback URL 填 `http://localhost:8000/api/v1/auth/github/callback`
+2. 把 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 写入 `backend/.env`
+3. `cd backend && uv run alembic upgrade head`（新增 `users.github_id` 列）
+
+完整步骤见 [OAuth 配置指南](docs-internal/oauth-setup.md)。Google / 微信规划中；Apple 因 $99/年会员费不列入路线。
 
 ## 常用命令
 

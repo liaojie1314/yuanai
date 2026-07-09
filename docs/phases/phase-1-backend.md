@@ -192,8 +192,11 @@ class User(Base):
     )
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 纯 OAuth 注册的用户没有本地密码，允许 NULL
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
+    # 三方登录关联：GitHub 用户 id（字符串化，唯一）
+    github_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -484,7 +487,7 @@ AVAILABLE_MODELS = [
     },
     {
         "id": "deepseek-chat",
-        "name": "DeepSeek V3",
+        "name": "DeepSeek V4",
         "provider": "deepseek",
         "description": "高性价比国产大模型",
         "supports_vision": False,
@@ -611,6 +614,21 @@ def _build_auth_response(user: User) -> AuthResponse:
     )
 ```
 
+### `backend/app/services/oauth_service.py`
+
+三方登录（GitHub 已落地，Google / 微信 规划中）。以 GitHub 为例：
+
+- **`build_github_authorize_url()`** — 生成随机 state 写 Redis（TTL 5 分钟），返回 GitHub authorize URL。
+- **`_exchange_code_for_token(code)`** — POST `github.com/login/oauth/access_token` 换 access_token；`httpx.RequestError` → 抛 `OAuthFlowError("OAUTH_NETWORK_ERROR")` 避免跨境网络失败裸露成 500。
+- **`_fetch_github_profile(token)`** — GET `/user` + `/user/emails` 拿 primary email；无邮箱 → `OAUTH_EMAIL_UNAVAILABLE`。
+- **`_link_or_create_user(profile, db)`** — 按 `github_id → email` 查找账号：命中 → 直接返回；仅 email 命中 → 补写 `github_id` 完成关联；都没有 → 新建（`hashed_password=NULL`），username 从 GitHub `login` 生成，冲突加数字后缀。
+- **`complete_github_callback(code, state, db)`** — 编排以上四步 + 复用 `auth_service.build_auth_response` 签发 JWT。
+- **`build_frontend_redirect(resp)` / `build_frontend_error_redirect(code, msg)`** — 拼 `{WEB_APP_URL}/oauth/callback?...` 供 302。
+
+state 一次性消费 + `_verify_state` 立即 `DELETE` Redis key，防止重放。
+
+配置见 `docs-internal/oauth-setup.md`。
+
 ---
 
 ## Step 5：路由层（api/v1/）
@@ -726,6 +744,31 @@ async def logout(current_user: CurrentUser) -> dict[str, str]:
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: CurrentUser) -> UserResponse:
     return UserResponse.model_validate(current_user)
+
+
+# ── 三方登录：GitHub OAuth ──────────────────────────────────
+# 完整流程见 backend/app/services/oauth_service.py 与
+# docs-internal/oauth-setup.md
+@router.get("/github")
+async def github_authorize() -> RedirectResponse:
+    """302 到 GitHub 授权页；state 写 Redis 供 callback 校验。"""
+    url = await oauth_service.build_github_authorize_url()
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/github/callback")
+async def github_callback(
+    db: DB, code: str | None = None, state: str | None = None
+) -> RedirectResponse:
+    """GitHub 302 回此。失败 → 前端 /oauth/callback?error=...；成功 → 前端 /oauth/callback?access_token=..."""
+    resp = await oauth_service.complete_github_callback(code, state, db)
+    return RedirectResponse(oauth_service.build_frontend_redirect(resp), 302)
+
+
+@router.delete("/me/github", response_model=UserResponse)
+async def unlink_github(current_user: CurrentUser, db: DB) -> UserResponse:
+    """解绑；纯 OAuth 用户（无 hashed_password）拒绝，避免账号失去所有登录途径。"""
+    ...
 ```
 
 ### `backend/app/api/v1/chat.py`（关键流式接口）

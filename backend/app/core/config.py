@@ -60,5 +60,15 @@ class Settings(BaseSettings):
     # 测试环境后门：非空时跳过真实发送和 Redis 校验，任何 6 位数字都视作正确
     verify_code_debug_bypass: str = ""
 
+    # ── 三方登录 / OAuth ──────────────────────────────────────
+    # GitHub OAuth App：在 GitHub Settings → Developer settings → OAuth Apps 创建
+    # Client Secret 泄漏后立即在 GitHub 页面 revoke，切勿写入代码库
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    # 后端回调 URL；必须与 GitHub OAuth App 中「Authorization callback URL」完全一致
+    github_redirect_uri: str = "http://localhost:8000/api/v1/auth/github/callback"
+    # 前端回调页面；后端 exchange 完 code 后把 access/refresh token 通过 302 拼在 URL 中
+    web_app_url: str = "http://localhost:3000"
+
 
 settings = Settings()  # type: ignore[call-arg]

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 /** 不需要登录即可访问的路径前缀 */
-const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/share']
+const PUBLIC_PATHS = ['/login', '/register', '/forgot-password', '/share', '/oauth']
 
 /**
  * Next.js Edge 中间件 — 认证守卫

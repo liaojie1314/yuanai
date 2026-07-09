@@ -13,6 +13,7 @@ import {
   register,
   resetPassword,
   sendVerifyCode,
+  unlinkGithub,
   updateMe,
   updateMyPreferences,
   uploadAvatar,
@@ -191,6 +192,17 @@ export function useDeleteMe() {
     onSuccess: () => {
       clearAuth()
       qc.clear()
+    },
+  })
+}
+
+/** 解绑 GitHub 三方登录 mutation */
+export function useUnlinkGithub() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: unlinkGithub,
+    onSuccess: (updatedUser: User) => {
+      qc.setQueryData<User>(['me'], updatedUser)
     },
   })
 }

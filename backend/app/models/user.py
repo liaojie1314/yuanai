@@ -13,9 +13,12 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 纯 OAuth 注册的用户没有密码，允许 NULL；本地登录路径依旧要求非空（服务层校验）
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     bio: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 三方登录：GitHub 用户 id（字符串化）。同一 GitHub 账号只能关联一个本地账户
+    github_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     password_changed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

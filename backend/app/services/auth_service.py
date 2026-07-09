@@ -50,16 +50,20 @@ async def register(req: RegisterRequest, db: AsyncSession) -> AuthResponse:
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return await _build_auth_response(user)
+    return await build_auth_response(user)
 
 
 async def login(email: str, password: str, db: AsyncSession) -> AuthResponse:
-    """邮箱 + 密码登录，返回 token 对。"""
+    """邮箱 + 密码登录，返回 token 对。
+
+    纯 GitHub 注册的用户 hashed_password 为空，此时视为凭据无效 —
+    请通过 GitHub 登录 → /me/password 场景补设本地密码。
+    """
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(password, user.hashed_password):
+    if not user or not user.hashed_password or not verify_password(password, user.hashed_password):
         raise ValueError("INVALID_CREDENTIALS")
-    return await _build_auth_response(user)
+    return await build_auth_response(user)
 
 
 async def refresh_token(token: str) -> str:
@@ -110,8 +114,12 @@ async def get_stats(user_id: uuid.UUID, db: AsyncSession) -> UserStatsResponse:
 async def change_password(
     user: User, old_password: str, new_password: str, db: AsyncSession
 ) -> None:
-    """验证旧密码后更新为新密码。"""
-    if not verify_password(old_password, user.hashed_password):
+    """验证旧密码后更新为新密码。
+
+    纯 OAuth 用户 hashed_password 为空 → 视为旧密码错误，
+    引导用户走 /reset-password 邮箱验证码流程补设密码。
+    """
+    if not user.hashed_password or not verify_password(old_password, user.hashed_password):
         raise ValueError("OLD_PASSWORD_WRONG")
     user.hashed_password = hash_password(new_password)
     await db.commit()
@@ -145,7 +153,7 @@ async def delete_account(user: User, db: AsyncSession) -> None:
     await db.commit()
 
 
-async def _build_auth_response(user: User) -> AuthResponse:
+async def build_auth_response(user: User) -> AuthResponse:
     """构建 AuthResponse 并将 refresh token 存入 Redis。"""
     access_token = create_access_token(str(user.id))
     token = create_refresh_token(str(user.id))

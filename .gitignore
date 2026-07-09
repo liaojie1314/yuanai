@@ -42,6 +42,10 @@ coverage/
 .pytest_cache/
 playwright-report/
 test-results/
+# 后端 storage_backend=local 时集成测试写入的临时上传目录
+backend/uploads-test/
+# 生产/开发本地上传目录（配置 LOCAL_UPLOADS_DIR 时使用）
+backend/uploads/
 
 # Expo
 .expo/

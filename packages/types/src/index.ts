@@ -23,6 +23,8 @@ export interface User {
   bio?: string | null
   /** 上次修改密码时间；从未修改时为 null */
   passwordChangedAt?: string | null
+  /** 已关联的 GitHub 用户 ID；未绑定为 null */
+  githubId?: string | null
   createdAt: string
 }
 

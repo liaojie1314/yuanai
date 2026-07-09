@@ -55,6 +55,10 @@ import {
   GraduationCap,
   Paperclip,
   Mic,
+  MicOff,
+  FileUp,
+  Monitor,
+  Camera,
   SendHorizontal,
   ArrowDown,
   Menu,
@@ -70,6 +74,10 @@ import {
 } from 'lucide-react'
 
 import { triggerAIReplyNotification } from '@/lib/notifications'
+import { useToast } from '@/hooks/useToast'
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { captureScreenshot, isCameraSupported, isScreenCaptureSupported } from '@/lib/mediaCapture'
+import { CameraModal } from '@/components/chat/CameraModal'
 
 // ── Types ────────────────────────────────────────────
 interface Model {
@@ -278,6 +286,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // ── 附件菜单（上传文件 / 截屏 / 摄像头） ──
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const attachBtnRef = useRef<HTMLButtonElement>(null)
+
+  // ── 摄像头拍照浮层 ──
+  const [cameraOpen, setCameraOpen] = useState(false)
+
+  // ── Toast & 语音识别 ──
+  const toast = useToast()
+
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
 
@@ -424,6 +442,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setModelDropOpen(false)
     setUserPanelOpen(false)
     setCvMenuOpen(null)
+    setAttachMenuOpen(false)
   }
 
   const toggleTheme = (): void => {
@@ -692,6 +711,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
     const picked = Array.from(e.target.files ?? [])
+    addFilesToQueue(picked)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  /**
+   * 把 File 数组接入现有附件队列，与 <input type="file"> 走同一条上传路径。
+   * 供截屏 / 摄像头拍照复用，因此拆成独立方法。
+   */
+  const addFilesToQueue = useCallback((picked: File[]): void => {
+    if (!picked.length) return
     const newFiles: AttachFile[] = picked.map((f) => ({
       id: Math.random().toString(36).slice(2),
       file: f,
@@ -701,8 +730,56 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       progress: 0,
     }))
     setFiles((prev) => [...prev, ...newFiles])
-    if (fileInputRef.current) fileInputRef.current.value = ''
-  }
+  }, [])
+
+  // ── 语音识别（Web Speech API） ─────────────────────────────
+  const speech = useSpeechRecognition({
+    onResult: (text) => {
+      setInputValue((prev) => {
+        const needSpace = prev && !prev.endsWith(' ') && !prev.endsWith('\n')
+        return prev + (needSpace ? ' ' : '') + text
+      })
+      // 追加后同步调整 textarea 高度
+      requestAnimationFrame(() => {
+        const ta = inputRef.current
+        if (!ta) return
+        ta.style.height = 'auto'
+        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+      })
+    },
+    onError: (message) => toast.error(message),
+  })
+
+  const toggleVoiceInput = useCallback((): void => {
+    if (!speech.isSupported) {
+      toast.warning('当前浏览器不支持语音输入')
+      return
+    }
+    if (speech.isListening) speech.stop()
+    else speech.start()
+  }, [speech, toast])
+
+  // ── 附件菜单动作 ───────────────────────────────────────────
+  const openFilePicker = useCallback((): void => {
+    setAttachMenuOpen(false)
+    fileInputRef.current?.click()
+  }, [])
+
+  const runScreenshot = useCallback(async (): Promise<void> => {
+    setAttachMenuOpen(false)
+    try {
+      const file = await captureScreenshot()
+      if (file) addFilesToQueue([file])
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '截屏失败'
+      toast.error(msg)
+    }
+  }, [addFilesToQueue, toast])
+
+  const openCamera = useCallback((): void => {
+    setAttachMenuOpen(false)
+    setCameraOpen(true)
+  }, [])
 
   const removeFile = (id: string): void => {
     setFiles((prev) => {
@@ -844,7 +921,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   return (
     <div className={appClass} id="app">
       {/* ── Backdrop overlay ── */}
-      {(modelDropOpen || userPanelOpen || !!cvMenuOpen) && (
+      {(modelDropOpen || userPanelOpen || !!cvMenuOpen || attachMenuOpen) && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 99 }}
           onClick={closeAllPanels}
@@ -1355,7 +1432,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <textarea
               ref={inputRef}
               className="ch-input-ta"
-              placeholder={isLoggedIn ? t('inputPlaceholder') : t('inputPlaceholderLoggedOut')}
+              placeholder={
+                speech.isListening
+                  ? '正在聆听…'
+                  : isLoggedIn
+                    ? t('inputPlaceholder')
+                    : t('inputPlaceholderLoggedOut')
+              }
               rows={1}
               value={inputValue}
               onChange={onInputChange}
@@ -1364,16 +1447,27 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             />
             <div className="ch-input-tb">
               <button
-                className="ch-in-btn"
+                ref={attachBtnRef}
+                className={`ch-in-btn ${attachMenuOpen ? 'on' : ''}`}
                 title={temporary ? t('temporary.filesDisabled') : '添加附件'}
                 disabled={!isLoggedIn || temporary}
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setAttachMenuOpen((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={attachMenuOpen}
               >
                 <Paperclip size={18} />
               </button>
-              <button className="ch-in-btn" title="语音输入" disabled={!isLoggedIn}>
-                <Mic size={18} />
-              </button>
+              {speech.isSupported && (
+                <button
+                  className={`ch-in-btn ${speech.isListening ? 'ch-mic-on' : ''}`}
+                  title={speech.isListening ? '停止语音输入' : '语音输入'}
+                  disabled={!isLoggedIn}
+                  onClick={toggleVoiceInput}
+                  aria-pressed={speech.isListening}
+                >
+                  {speech.isListening ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
+              )}
               <button
                 className={`ch-in-btn ${webSearch ? 'on' : ''}`}
                 title="联网搜索"
@@ -1493,6 +1587,75 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           })}
         </div>
       )}
+
+      {/* ── 附件弹出菜单 ────────────────────────── */}
+      {attachMenuOpen && (
+        <div
+          className="ch-attach-menu"
+          onClick={(e) => e.stopPropagation()}
+          role="menu"
+          style={{
+            position: 'fixed',
+            zIndex: 200,
+            bottom: (() => {
+              const el = attachBtnRef.current
+              if (!el) return 100
+              return window.innerHeight - el.getBoundingClientRect().top + 8
+            })(),
+            left: (() => {
+              const el = attachBtnRef.current
+              if (!el) return 16
+              return el.getBoundingClientRect().left
+            })(),
+          }}
+        >
+          <button className="ch-attach-mi" onClick={openFilePicker} role="menuitem">
+            <FileUp size={16} />
+            <div className="ch-attach-mi-txt">
+              <div className="ch-attach-mi-t">上传文件</div>
+              <div className="ch-attach-mi-d">选择本地图片或文档</div>
+            </div>
+          </button>
+          <button
+            className="ch-attach-mi"
+            onClick={() => {
+              void runScreenshot()
+            }}
+            disabled={!isScreenCaptureSupported()}
+            title={
+              isScreenCaptureSupported() ? '' : '当前浏览器不支持屏幕截取（需 HTTPS 或 localhost）'
+            }
+            role="menuitem"
+          >
+            <Monitor size={16} />
+            <div className="ch-attach-mi-txt">
+              <div className="ch-attach-mi-t">截屏</div>
+              <div className="ch-attach-mi-d">选择窗口 / 屏幕，捕获一帧</div>
+            </div>
+          </button>
+          <button
+            className="ch-attach-mi"
+            onClick={openCamera}
+            disabled={!isCameraSupported()}
+            title={isCameraSupported() ? '' : '当前浏览器不支持摄像头（需 HTTPS 或 localhost）'}
+            role="menuitem"
+          >
+            <Camera size={16} />
+            <div className="ch-attach-mi-txt">
+              <div className="ch-attach-mi-t">摄像头拍照</div>
+              <div className="ch-attach-mi-d">预览后拍照，直接入队</div>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* ── 摄像头拍照浮层 ────────────────────────── */}
+      <CameraModal
+        open={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(file) => addFilesToQueue([file])}
+        onError={(msg) => toast.error(msg)}
+      />
 
       {/* ── User panel ───────────────────────────── */}
       {userPanelOpen && (
