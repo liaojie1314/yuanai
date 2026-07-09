@@ -7,7 +7,7 @@ import {
   buildMarkdownDoc,
   buildMermaidDoc,
 } from '../artifact-runtimes'
-import { isRunnableLang, isDataPreviewLang, buildRunSrcDoc } from '../utils'
+import { isRunnableLang, isDataPreviewLang, buildRunSrcDoc, normalizePrismLang } from '../utils'
 
 /** 控制台桥标记：所有模板 head 必含，用于确认桥被注入 */
 const BOOTSTRAP_MARKER = ARTIFACT_MSG_SOURCE
@@ -72,5 +72,32 @@ describe('buildRunSrcDoc 分发', () => {
     expect(buildRunSrcDoc('mermaid', 'x')).toContain(ESM_CDN.mermaid)
     expect(buildRunSrcDoc('html', '<h1>demo</h1>')).toContain('<h1>demo</h1>')
     expect(buildRunSrcDoc('css', 'body{}')).toContain(BOOTSTRAP_MARKER)
+  })
+})
+
+describe('normalizePrismLang 语言别名归一', () => {
+  it('把常见别名映射到 Prism 规范 key（否则 PrismAsyncLight 不加载语法）', () => {
+    expect(normalizePrismLang('html')).toBe('markup')
+    expect(normalizePrismLang('HTM')).toBe('markup')
+    expect(normalizePrismLang('xml')).toBe('markup')
+    expect(normalizePrismLang('vue')).toBe('markup')
+    expect(normalizePrismLang('ts')).toBe('typescript')
+    expect(normalizePrismLang('js')).toBe('javascript')
+    expect(normalizePrismLang('sh')).toBe('bash')
+    expect(normalizePrismLang('shell')).toBe('bash')
+    expect(normalizePrismLang('yml')).toBe('yaml')
+    expect(normalizePrismLang('py')).toBe('python')
+    expect(normalizePrismLang('c++')).toBe('cpp')
+    expect(normalizePrismLang('cs')).toBe('csharp')
+    expect(normalizePrismLang('golang')).toBe('go')
+    expect(normalizePrismLang('vb')).toBe('visualBasic')
+  })
+
+  it('已是规范 key 或未收录的语言原样返回（小写去空白）', () => {
+    expect(normalizePrismLang('javascript')).toBe('javascript')
+    expect(normalizePrismLang('  Python  ')).toBe('python')
+    expect(normalizePrismLang('json')).toBe('json')
+    expect(normalizePrismLang('rust')).toBe('rust')
+    expect(normalizePrismLang('unknownlang')).toBe('unknownlang')
   })
 })

@@ -284,6 +284,79 @@ export function langToExtension(lang: string): string {
 }
 
 /**
+ * 常见语言别名 → Prism（refractor）规范语言 key 的映射。
+ *
+ * `PrismAsyncLight` 只会为 refractor 中登记的规范 key 异步加载语法，别名不会命中，
+ * 于是像 `html`（Prism 归为 `markup`）、`ts`、`sh`、`yml`、`py` 等常见写法会退化成纯文本。
+ * 这里把别名归一到规范 key，让高亮覆盖到这些语言。仅收录会「不一致」的别名，
+ * 已与规范 key 同名的（javascript / css / json / python / go 等）无需列出。
+ */
+const PRISM_LANG_ALIASES: Record<string, string> = {
+  html: 'markup',
+  htm: 'markup',
+  xml: 'markup',
+  xhtml: 'markup',
+  svg: 'markup',
+  rss: 'markup',
+  vue: 'markup',
+  ts: 'typescript',
+  js: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  node: 'javascript',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  console: 'bash',
+  shellsession: 'bash',
+  yml: 'yaml',
+  py: 'python',
+  py3: 'python',
+  python3: 'python',
+  rb: 'ruby',
+  rs: 'rust',
+  golang: 'go',
+  kt: 'kotlin',
+  'c++': 'cpp',
+  cxx: 'cpp',
+  cc: 'cpp',
+  hpp: 'cpp',
+  h: 'c',
+  cs: 'csharp',
+  'c#': 'csharp',
+  dotnet: 'csharp',
+  md: 'markdown',
+  ps: 'powershell',
+  ps1: 'powershell',
+  pwsh: 'powershell',
+  dockerfile: 'docker',
+  yamlfrontmatter: 'yaml',
+  objc: 'objectivec',
+  'objective-c': 'objectivec',
+  proto: 'protobuf',
+  hs: 'haskell',
+  ex: 'elixir',
+  exs: 'elixir',
+  erl: 'erlang',
+  clj: 'clojure',
+  pl: 'perl',
+  gql: 'graphql',
+  tf: 'hcl',
+  terraform: 'hcl',
+  vb: 'visualBasic',
+}
+
+/**
+ * 把用户/模型给出的语言标识归一为 Prism 规范 key，供 `CodeHighlight` 高亮使用。
+ *
+ * 先小写去空白，命中别名表则返回规范 key，否则原样返回（已是规范 key 或 Prism 未收录）。
+ */
+export function normalizePrismLang(lang: string): string {
+  const l = lang.trim().toLowerCase()
+  return PRISM_LANG_ALIASES[l] ?? l
+}
+
+/**
  * 根据代码语言构造 iframe `srcdoc` 内容。
  *
  * 按小写语言分发到 `artifact-runtimes.ts` 中对应的文档模板；所有产物均已在

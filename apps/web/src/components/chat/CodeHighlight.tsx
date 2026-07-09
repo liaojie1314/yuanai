@@ -3,7 +3,7 @@
 import { useEffect, useState, type CSSProperties, type JSX } from 'react'
 import { PrismAsyncLight as SyntaxHighlighterRaw } from 'react-syntax-highlighter'
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { isDark } from './utils'
+import { isDark, normalizePrismLang } from './utils'
 
 // 用 PrismAsyncLight 而非 Prism：后者把全部 300+ 种语言语法同步打包，
 // 会话里代码块一多，光解析求值这个 bundle 就明显拖慢首屏；
@@ -61,7 +61,7 @@ export function CodeHighlight({
   const dark = useIsDarkTheme()
   return (
     <SyntaxHighlighter
-      language={lang.trim().toLowerCase()}
+      language={normalizePrismLang(lang)}
       style={dark ? oneDark : oneLight}
       className={className}
       customStyle={{
