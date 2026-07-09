@@ -86,18 +86,28 @@ async def _verify_state(state: str) -> bool:
 
 
 async def _exchange_code_for_token(code: str) -> str:
-    """用 authorization code 换 GitHub access_token。"""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(
-            GITHUB_TOKEN_URL,
-            data={
-                "client_id": settings.github_client_id,
-                "client_secret": settings.github_client_secret,
-                "code": code,
-                "redirect_uri": settings.github_redirect_uri,
-            },
-            headers={"Accept": "application/json"},
-        )
+    """用 authorization code 换 GitHub access_token。
+
+    包裹网络异常为 `OAuthFlowError`（跨境访问 github.com 常出现 ConnectTimeout /
+    ReadTimeout / DNS 失败等），让 callback 端点统一走前端错误重定向而非 500。
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                GITHUB_TOKEN_URL,
+                data={
+                    "client_id": settings.github_client_id,
+                    "client_secret": settings.github_client_secret,
+                    "code": code,
+                    "redirect_uri": settings.github_redirect_uri,
+                },
+                headers={"Accept": "application/json"},
+            )
+    except httpx.RequestError as e:
+        raise OAuthFlowError(
+            "OAUTH_NETWORK_ERROR",
+            f"无法连接 GitHub 授权服务，请检查网络或代理配置：{type(e).__name__}",
+        ) from e
     if resp.status_code != 200:
         raise OAuthFlowError("OAUTH_TOKEN_EXCHANGE_FAILED", "GitHub 拒绝换取访问令牌")
     payload = resp.json()
@@ -116,21 +126,27 @@ async def _fetch_github_profile(access_token: str) -> dict[str, str]:
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
     }
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        user_resp = await client.get(GITHUB_API_USER, headers=headers)
-        if user_resp.status_code != 200:
-            raise OAuthFlowError("OAUTH_PROFILE_FETCH_FAILED", "无法获取 GitHub 用户信息")
-        user = user_resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            user_resp = await client.get(GITHUB_API_USER, headers=headers)
+            if user_resp.status_code != 200:
+                raise OAuthFlowError("OAUTH_PROFILE_FETCH_FAILED", "无法获取 GitHub 用户信息")
+            user = user_resp.json()
 
-        # 若 profile 里已带 primary email 就不必再请求 emails 端点
-        email = user.get("email")
-        if not email:
-            emails_resp = await client.get(GITHUB_API_EMAILS, headers=headers)
-            if emails_resp.status_code == 200:
-                for item in emails_resp.json():
-                    if item.get("primary") and item.get("verified"):
-                        email = item.get("email")
-                        break
+            # 若 profile 里已带 primary email 就不必再请求 emails 端点
+            email = user.get("email")
+            if not email:
+                emails_resp = await client.get(GITHUB_API_EMAILS, headers=headers)
+                if emails_resp.status_code == 200:
+                    for item in emails_resp.json():
+                        if item.get("primary") and item.get("verified"):
+                            email = item.get("email")
+                            break
+    except httpx.RequestError as e:
+        raise OAuthFlowError(
+            "OAUTH_NETWORK_ERROR",
+            f"无法连接 GitHub API：{type(e).__name__}",
+        ) from e
 
     if not email:
         raise OAuthFlowError(
