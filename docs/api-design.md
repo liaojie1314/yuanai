@@ -192,25 +192,46 @@ Web 端点击二维码登录按钮时调用，轮询扫码状态。
 
 ---
 
-### GET `/auth/oauth/:provider` — 发起 OAuth 登录（无需认证）
+### GET `/auth/github` — 发起 GitHub OAuth 登录（无需认证）
 
-`:provider` 枚举：`wechat` | `google` | `apple`
+生成随机 state 写 Redis（TTL 5 分钟），302 重定向到 GitHub 授权页。
+scope 固定为 `read:user user:email`。
 
-**Response 302:** 重定向到对应 OAuth 授权页
+**Response 302:** 重定向到 `https://github.com/login/oauth/authorize?client_id=...&state=...`
+
+**Error 503:** `OAUTH_NOT_CONFIGURED` — 环境变量 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 未配置
+
+> 已落地：GitHub。规划中：Google（免费）、微信（需企业认证）；Apple 因 $99/年会员成本已从占位列表移除。
 
 ---
 
-### GET `/auth/oauth/:provider/callback` — OAuth 回调处理（无需认证）
+### GET `/auth/github/callback` — GitHub OAuth 回调（无需认证）
 
-由 OAuth 提供商重定向至此，后端完成 token 换取后重定向回前端。
+由 GitHub 302 至此。后端校验 state → exchange code → 拉取 profile & primary email → 按 `github_id` → `email` 顺序查找账号：命中直接登录；仅邮箱命中自动补 `github_id` 完成关联；都没有则新建账号（`hashed_password=NULL`）。
 
-**成功时重定向到：**
+**成功时 302 到前端：**
 
 ```
-https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
+{WEB_APP_URL}/oauth/callback?access_token=eyJ...&refresh_token=eyJ...&token_type=bearer&expires_in=900
 ```
 
-**账号不存在时**（首次 OAuth 登录自动注册）直接返回新用户的认证数据。
+**失败时 302 到前端并携带错误码：**
+
+```
+{WEB_APP_URL}/oauth/callback?error=OAUTH_STATE_INVALID&error_description=...
+```
+
+**错误码枚举：**
+
+| Code                          | 触发条件                                 |
+| ----------------------------- | ---------------------------------------- |
+| `OAUTH_PROVIDER_ERROR`        | GitHub 返回 error 参数（如用户拒绝授权） |
+| `OAUTH_MISSING_PARAMS`        | 回调缺 code 或 state                     |
+| `OAUTH_STATE_INVALID`         | state 不存在于 Redis / 已过期 / 已消费   |
+| `OAUTH_TOKEN_EXCHANGE_FAILED` | code 已过期、client_secret 错误等        |
+| `OAUTH_EMAIL_UNAVAILABLE`     | GitHub 账号无可用 primary email          |
+| `OAUTH_NETWORK_ERROR`         | 后端无法连接 github.com（跨境网络）      |
+| `OAUTH_NOT_CONFIGURED`        | 服务端未配置 client_id / secret          |
 
 ---
 
@@ -393,29 +414,21 @@ https://yuanai.app/auth/callback?access_token=eyJ...&refresh_token=eyJ...
 
 ---
 
-### POST `/auth/oauth/:provider/link` — 绑定第三方登录（需认证）
+### 绑定第三方登录 — 复用 `GET /auth/github`
 
-设置页「账号安全」-「第三方登录」绑定按钮。`:provider` 枚举：`wechat` | `google` | `github`
+设置页「账号安全 → 第三方登录」的「绑定」按钮直接跳到 `GET /auth/github` 走完整 OAuth 流程；后端 callback 时按邮箱命中当前账号后自动写入 `github_id`（见 `_link_or_create_user`）。不再需要独立的 `/link` 端点。
 
-**Response 302:** 重定向到对应 OAuth 授权页（携带 `access_token` 参数以关联当前用户）
-
-绑定成功后重定向回：
-
-```
-https://yuanai.app/settings?linked=:provider
-```
-
-**Error 409:** `AUTH_PROVIDER_ALREADY_LINKED`
+未来接入 Google / 微信时按同一模式扩展。
 
 ---
 
-### DELETE `/auth/oauth/:provider` — 解绑第三方登录（需认证）
+### DELETE `/auth/me/github` — 解绑 GitHub（需认证）
 
-设置页「账号安全」-「第三方登录」解绑按钮。
+设置页「账号安全 → 第三方登录」→ GitHub 行「解绑」。
 
-**Response 200:** `{ "message": "已解绑" }`
+**Response 200:** 返回更新后的 `User`（`githubId: null`）
 
-**Error 400:** `AUTH_PROVIDER_NOT_LINKED`
+**Error 400:** `OAUTH_ONLY_ACCOUNT` — 当前账号 `hashed_password IS NULL`（纯 OAuth 用户），解绑会让账号失去所有登录途径；要求用户先通过「忘记密码」流程走一次邮箱验证码补设本地密码，再解绑
 
 ---
 
@@ -460,7 +473,7 @@ https://yuanai.app/settings?linked=:provider
     },
     {
       "id": "deepseek-chat",
-      "name": "DeepSeek V3",
+      "name": "DeepSeek V4",
       "provider": "deepseek",
       "description": "高性价比国产大模型",
       "supports_vision": false,

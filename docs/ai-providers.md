@@ -64,7 +64,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
 2. 左侧菜单 → **API Keys** → **Create new secret key**
 3. 复制 `sk-` 开头的 Key 填入 `DEEPSEEK_API_KEY`
 
-> DeepSeek V3 性价比极高，新用户有免费额度，适合开发测试。
+> DeepSeek V4 性价比极高。
 
 ### OpenAI
 

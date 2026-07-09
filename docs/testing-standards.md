@@ -840,7 +840,7 @@ test.describe('聊天流程', () => {
 
   test('切换模型', async ({ page }) => {
     await page.click('[data-testid="model-selector"]')
-    await page.click('text=DeepSeek V3')
+    await page.click('text=DeepSeek V4')
     await expect(page.getByTestId('model-selector')).toContainText('DeepSeek')
   })
 })
