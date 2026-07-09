@@ -147,6 +147,12 @@ export async function unlinkGithub(): Promise<User> {
   return res.data
 }
 
+/** 解绑当前账号的 Google 关联；返回更新后的用户信息 */
+export async function unlinkGoogle(): Promise<User> {
+  const res = await apiClient.delete<User>('/auth/me/google')
+  return res.data
+}
+
 /** 上传头像，返回更新后的用户信息 */
 export async function uploadAvatar(file: File): Promise<User> {
   const formData = new FormData()

@@ -372,8 +372,11 @@ export default function LoginPage(): JSX.Element {
             <button
               className="soc-btn"
               aria-label={`${t('google')} ${t('login')}`}
-              disabled
-              title="第三方登录即将开放"
+              onClick={() => {
+                // 同 GitHub：浏览器直接跳后端 302 到 Google 授权页；state 由后端写 Redis
+                window.location.href = `${API_BASE_URL}/auth/google`
+              }}
+              title="使用 Google 登录"
             >
               <img src="/icons/google.svg" alt="" className="soc-icon" />
               <span>{t('google')}</span>

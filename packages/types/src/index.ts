@@ -25,6 +25,8 @@ export interface User {
   passwordChangedAt?: string | null
   /** 已关联的 GitHub 用户 ID；未绑定为 null */
   githubId?: string | null
+  /** 已关联的 Google 用户 ID（OpenID sub）；未绑定为 null */
+  googleId?: string | null
   createdAt: string
 }
 

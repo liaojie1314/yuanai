@@ -35,6 +35,7 @@ import {
   useClearAllConversations,
   useUploadAvatar,
   useUnlinkGithub,
+  useUnlinkGoogle,
 } from '@yuanai/core/hooks'
 import { API_BASE_URL } from '@yuanai/core/api'
 import { usePrefsStore } from '@yuanai/core/stores'
@@ -201,9 +202,10 @@ export default function SettingsModal({
     })
   }
 
-  // 第三方登录待解绑目标（仅 github 落地）
+  // 第三方登录待解绑目标
   const [unlinkTarget, setUnlinkTarget] = useState<'wechat' | 'google' | 'github' | null>(null)
   const unlinkGithubMutation = useUnlinkGithub()
+  const unlinkGoogleMutation = useUnlinkGoogle()
 
   // Profile editing state
   const [editingUsername, setEditingUsername] = useState(false)
@@ -841,8 +843,8 @@ export default function SettingsModal({
                       label: 'Google',
                       cls: 'st-sl-google',
                       icon: '/icons/google.svg',
-                      linked: false,
-                      available: false,
+                      linked: !!currentUser?.googleId,
+                      available: true,
                     },
                     {
                       key: 'wechat' as const,
@@ -1489,12 +1491,20 @@ export default function SettingsModal({
               </button>
               <button
                 className="st-btn-danger"
-                disabled={unlinkGithubMutation.isPending || unlinkTarget !== 'github'}
+                disabled={
+                  unlinkGithubMutation.isPending ||
+                  unlinkGoogleMutation.isPending ||
+                  (unlinkTarget !== 'github' && unlinkTarget !== 'google')
+                }
                 onClick={async () => {
-                  if (unlinkTarget !== 'github') return
+                  // 仅 github / google 有真实解绑链路；wechat 尚未落地
+                  if (unlinkTarget !== 'github' && unlinkTarget !== 'google') return
+                  const mutation =
+                    unlinkTarget === 'github' ? unlinkGithubMutation : unlinkGoogleMutation
+                  const label = unlinkTarget === 'github' ? 'GitHub' : 'Google'
                   try {
-                    await unlinkGithubMutation.mutateAsync()
-                    showToast('已解绑 GitHub', 'ok')
+                    await mutation.mutateAsync()
+                    showToast(`已解绑 ${label}`, 'ok')
                     setSubModal(null)
                     setUnlinkTarget(null)
                   } catch (err) {
@@ -1507,7 +1517,9 @@ export default function SettingsModal({
                   }
                 }}
               >
-                {unlinkGithubMutation.isPending ? '解绑中…' : '确认解绑'}
+                {unlinkGithubMutation.isPending || unlinkGoogleMutation.isPending
+                  ? '解绑中…'
+                  : '确认解绑'}
               </button>
             </div>
           </div>
