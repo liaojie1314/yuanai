@@ -4,6 +4,7 @@
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -228,9 +229,20 @@ class TestPublicShareRead:
         await db.commit()
         await db.refresh(conv)
 
-        msg1 = Message(conv_id=conv.id, role=MessageRole.user, content="你好")
+        # 显式给出递增的 created_at；不然同一事务内 msg1/msg2 会拿到相同的 server-side
+        # func.now() 时间戳，`ORDER BY created_at, id` 退化到 UUID4（随机），会翻转顺序
+        base = datetime.now(UTC)
+        msg1 = Message(
+            conv_id=conv.id,
+            role=MessageRole.user,
+            content="你好",
+            created_at=base,
+        )
         msg2 = Message(
-            conv_id=conv.id, role=MessageRole.assistant, content="你好，有什么可以帮您？"
+            conv_id=conv.id,
+            role=MessageRole.assistant,
+            content="你好，有什么可以帮您？",
+            created_at=base + timedelta(milliseconds=1),
         )
         db.add_all([msg1, msg2])
         await db.commit()
