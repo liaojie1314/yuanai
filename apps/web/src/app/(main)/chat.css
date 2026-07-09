@@ -2849,6 +2849,180 @@
   background: var(--surface);
 }
 
+/* ── Artifact panel: fullscreen ──────────────────── */
+.ch-artifact-panel.ch-ap-fullscreen {
+  left: 0;
+  width: 100%;
+  transform: none;
+  z-index: 30;
+}
+.ch-app.ap-open:has(.ch-ap-fullscreen) .ch-main {
+  margin-right: 0;
+}
+
+/* ── Artifact panel: CodeMirror edit ─────────────── */
+.ch-ap-body:has(.ch-ap-cm) {
+  padding: 0;
+}
+.ch-ap-cm {
+  height: 100%;
+  overflow: auto;
+  font-size: 12.5px;
+}
+.ch-ap-cm .cm-editor {
+  height: 100%;
+}
+
+/* ── Artifact panel: console panel ───────────────── */
+.ch-ap-console {
+  flex-shrink: 0;
+  border-top: 1px solid rgba(59, 130, 246, 0.12);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  max-height: 160px;
+}
+.ch-ap-console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.08);
+  flex-shrink: 0;
+}
+.ch-ap-console-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg2);
+  letter-spacing: 0.3px;
+}
+.ch-ap-console-clear {
+  font-size: 11px;
+  color: var(--brand);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.ch-ap-console-clear:hover {
+  background: var(--brand-light);
+}
+.ch-ap-console-body {
+  overflow: auto;
+  padding: 4px 0;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+.ch-ap-console-empty {
+  padding: 6px 12px;
+  color: var(--fg2);
+  opacity: 0.6;
+}
+.ch-ap-console-row {
+  padding: 2px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-bottom: 1px solid rgba(59, 130, 246, 0.04);
+}
+.ch-ap-console-log,
+.ch-ap-console-info {
+  color: var(--fg2);
+}
+.ch-ap-console-warn {
+  color: #b7791f;
+  background: rgba(237, 137, 54, 0.06);
+}
+.ch-ap-console-error {
+  color: #e53e3e;
+  background: rgba(229, 62, 62, 0.06);
+}
+
+/* ── Artifact panel: data preview (JSON / CSV) ───── */
+.ch-ap-data-wrap {
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: var(--fg);
+}
+.ch-ap-data-json {
+  line-height: 1.6;
+}
+.ch-ap-data-node {
+  padding-left: 14px;
+}
+.ch-ap-data-children {
+  padding-left: 14px;
+  border-left: 1px dashed rgba(59, 130, 246, 0.18);
+}
+.ch-ap-data-row {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ch-ap-data-branch {
+  cursor: pointer;
+  user-select: none;
+}
+.ch-ap-data-caret {
+  color: var(--brand);
+  width: 12px;
+  flex-shrink: 0;
+}
+.ch-ap-data-key {
+  color: #805ad5;
+}
+.ch-ap-data-brace {
+  color: var(--fg2);
+}
+.ch-ap-data-str {
+  color: #38a169;
+}
+.ch-ap-data-num {
+  color: #3182ce;
+}
+.ch-ap-data-bool {
+  color: #d69e2e;
+}
+.ch-ap-data-null {
+  color: var(--fg2);
+  opacity: 0.7;
+}
+.ch-ap-data-error {
+  color: #e53e3e;
+  font-family: 'SF Mono', monospace;
+  font-size: 12px;
+}
+.ch-ap-data-empty {
+  color: var(--fg2);
+  opacity: 0.7;
+}
+.ch-ap-data-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: system-ui, sans-serif;
+  font-size: 12.5px;
+}
+.ch-ap-data-table th,
+.ch-ap-data-table td {
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  padding: 5px 9px;
+  text-align: left;
+  color: var(--fg);
+}
+.ch-ap-data-table th {
+  background: var(--brand-light);
+  color: var(--brand);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+.ch-ap-data-table tbody tr:nth-child(even) {
+  background: rgba(59, 130, 246, 0.03);
+}
+
 /* ── Media parts (image / audio / video) ─────────── */
 .ch-media {
   margin: 8px 0;

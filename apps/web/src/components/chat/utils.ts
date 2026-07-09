@@ -1,5 +1,15 @@
 import type { Conversation, Message } from '@yuanai/types'
 import type { ConvGroup, MockConversation, MockMessage } from '@yuanai/core/stores'
+import {
+  buildHtmlDoc,
+  buildCssDoc,
+  buildJsDoc,
+  buildReactDoc,
+  buildVueDoc,
+  buildSvelteDoc,
+  buildMarkdownDoc,
+  buildMermaidDoc,
+} from './artifact-runtimes'
 
 /**
  * 消息对：一条用户消息 + 对应的多个 AI 回复（重新生成产生多版本）。
@@ -164,7 +174,10 @@ export function buildPairs(msgs: MockMessage[]): MsgPair[] {
 }
 
 /**
- * 判断代码语言是否支持沙箱运行（HTML/CSS/JS）。
+ * 判断代码语言是否支持 iframe 沙箱运行。
+ *
+ * 覆盖 HTML/CSS/JS 及需运行时渲染的 JSX/TSX、Vue、Svelte、Markdown、Mermaid。
+ * JSON/CSV 不在此列——它们走非 iframe 的数据预览分支（见 {@link isDataPreviewLang}）。
  */
 export function isRunnableLang(lang: string): boolean {
   const l = lang.toLowerCase()
@@ -175,8 +188,25 @@ export function isRunnableLang(lang: string): boolean {
     l === 'js' ||
     l === 'javascript' ||
     l === 'mjs' ||
-    l === 'cjs'
+    l === 'cjs' ||
+    l === 'jsx' ||
+    l === 'tsx' ||
+    l === 'vue' ||
+    l === 'svelte' ||
+    l === 'markdown' ||
+    l === 'md' ||
+    l === 'mermaid'
   )
+}
+
+/**
+ * 判断代码语言是否走「数据预览」分支（非 iframe，直接在面板内渲染）。
+ *
+ * JSON 渲染为可折叠树，CSV 渲染为表格。
+ */
+export function isDataPreviewLang(lang: string): boolean {
+  const l = lang.toLowerCase()
+  return l === 'json' || l === 'csv'
 }
 
 /** 代码语言 → 文件扩展名映射，用于下载代码块时生成合适的文件名 */
@@ -256,24 +286,35 @@ export function langToExtension(lang: string): string {
 /**
  * 根据代码语言构造 iframe `srcdoc` 内容。
  *
- * - HTML → 原样嵌入
- * - CSS → 注入 `<style>`，body 内插入示例段落用于展示
- * - JS → 注入 `<script>`
+ * 按小写语言分发到 `artifact-runtimes.ts` 中对应的文档模板；所有产物均已在
+ * `<head>` 注入控制台桥。未识别语言回退为 JS 运行时。
  */
 export function buildRunSrcDoc(lang: string, code: string): string {
   const l = lang.toLowerCase()
-  const base =
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">' +
-    '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<style>body{margin:0;padding:16px;font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;color:#1a2540;background:#fff}</style>'
-  if (l === 'html' || l === 'htm') {
-    return code.trim().startsWith('<!') ? code : `${base}</head><body>${code}</body></html>`
+  switch (l) {
+    case 'html':
+    case 'htm':
+      return buildHtmlDoc(code)
+    case 'css':
+      return buildCssDoc(code)
+    case 'js':
+    case 'javascript':
+    case 'mjs':
+    case 'cjs':
+      return buildJsDoc(code)
+    case 'jsx':
+    case 'tsx':
+      return buildReactDoc(code)
+    case 'vue':
+      return buildVueDoc(code)
+    case 'svelte':
+      return buildSvelteDoc(code)
+    case 'markdown':
+    case 'md':
+      return buildMarkdownDoc(code)
+    case 'mermaid':
+      return buildMermaidDoc(code)
+    default:
+      return buildJsDoc(code)
   }
-  if (l === 'css') {
-    return `${base}<style>${code}</style></head><body><h1>元 AI 预览</h1><p>已应用上面的样式规则。</p><button>示例按钮</button></body></html>`
-  }
-  // 默认按 JS 处理；用字符串拼接避免 `</script>` 被 HTML 解析器提前截断
-  return (
-    `${base}</head><body><div id="app"></div><` + `script>${code}\n</` + `script></body></html>`
-  )
 }
