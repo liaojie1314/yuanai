@@ -74,7 +74,9 @@ async def reset_password(req: ResetPasswordRequest, db: DB) -> dict[str, str]:
         raise HTTPException(400, {"code": e.code, "message": e.message}) from e
     except ValueError as e:
         if str(e) == "EMAIL_NOT_FOUND":
-            raise HTTPException(404, {"code": "EMAIL_NOT_FOUND", "message": "该邮箱尚未注册"}) from e
+            raise HTTPException(
+                404, {"code": "EMAIL_NOT_FOUND", "message": "该邮箱尚未注册"}
+            ) from e
         raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "密码重置失败"}) from e
     return {"message": "密码已重置"}
 
@@ -132,9 +134,7 @@ async def update_me(req: UpdateUserRequest, current_user: CurrentUser, db: DB) -
             select(User).where(User.username == req.username).where(User.id != current_user.id)
         )
         if exists.scalar_one_or_none():
-            raise HTTPException(
-                409, {"code": "USERNAME_TAKEN", "message": "该用户名已被使用"}
-            )
+            raise HTTPException(409, {"code": "USERNAME_TAKEN", "message": "该用户名已被使用"})
         current_user.username = req.username
     if req.avatar_url is not None:
         current_user.avatar_url = req.avatar_url
@@ -146,9 +146,7 @@ async def update_me(req: UpdateUserRequest, current_user: CurrentUser, db: DB) -
 
 
 @router.patch("/me/email", response_model=UserResponse)
-async def change_email(
-    req: ChangeEmailRequest, current_user: CurrentUser, db: DB
-) -> UserResponse:
+async def change_email(req: ChangeEmailRequest, current_user: CurrentUser, db: DB) -> UserResponse:
     """修改当前用户邮箱。需要先通过 send-verify-code(scene=change_email) 发码。"""
     # 邮箱唯一性检查
     existing = await db.execute(
@@ -209,7 +207,9 @@ async def change_password(
         await auth_service.change_password(current_user, req.old_password, req.new_password, db)
     except ValueError as e:
         if str(e) == "OLD_PASSWORD_WRONG":
-            raise HTTPException(400, {"code": "OLD_PASSWORD_WRONG", "message": "当前密码不正确"}) from e
+            raise HTTPException(
+                400, {"code": "OLD_PASSWORD_WRONG", "message": "当前密码不正确"}
+            ) from e
         raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "修改密码失败"}) from e
     current_user.password_changed_at = datetime.now(UTC)
     await db.commit()
@@ -222,9 +222,7 @@ async def upload_avatar(file: UploadFile, current_user: CurrentUser, db: DB) -> 
     from app.services.storage_service import storage
 
     if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(
-            400, {"code": "INVALID_FILE_TYPE", "message": "仅支持上传图片文件"}
-        )
+        raise HTTPException(400, {"code": "INVALID_FILE_TYPE", "message": "仅支持上传图片文件"})
 
     _EXT_MAP = {
         "image/jpeg": "jpg",
@@ -237,9 +235,7 @@ async def upload_avatar(file: UploadFile, current_user: CurrentUser, db: DB) -> 
     content = await file.read()
     max_size = 5 * 1024 * 1024
     if len(content) > max_size:
-        raise HTTPException(
-            413, {"code": "FILE_TOO_LARGE", "message": "头像文件不能超过 5 MB"}
-        )
+        raise HTTPException(413, {"code": "FILE_TOO_LARGE", "message": "头像文件不能超过 5 MB"})
 
     key = f"avatars/{current_user.id}/{uuid.uuid4()}.{ext}"
     url = await storage.put_object(key, content, file.content_type)
@@ -276,6 +272,28 @@ async def unlink_github(current_user: CurrentUser, db: DB) -> UserResponse:
     return UserResponse.model_validate(current_user)
 
 
+@router.delete("/me/google", response_model=UserResponse)
+async def unlink_google(current_user: CurrentUser, db: DB) -> UserResponse:
+    """解绑当前账号的 Google 关联。
+
+    与解绑 GitHub 同构：仅清空 `google_id`；若用户没有本地密码
+    （`hashed_password IS NULL`），解绑会让账号失去所有登录途径，此时拒绝
+    并要求先设置本地密码。
+    """
+    if not current_user.hashed_password:
+        raise HTTPException(
+            400,
+            {
+                "code": "OAUTH_ONLY_ACCOUNT",
+                "message": "该账号仅通过 Google 登录，请先设置本地密码后再解绑",
+            },
+        )
+    current_user.google_id = None
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
+
+
 # ── GitHub OAuth ─────────────────────────────────────────────
 @router.get("/github")
 async def github_authorize() -> RedirectResponse:
@@ -283,9 +301,7 @@ async def github_authorize() -> RedirectResponse:
     try:
         url = await oauth_service.build_github_authorize_url()
     except OAuthConfigError as e:
-        raise HTTPException(
-            503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}
-        ) from e
+        raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
     return RedirectResponse(url, status_code=302)
 
 
@@ -318,6 +334,59 @@ async def github_callback(
         )
     try:
         resp = await oauth_service.complete_github_callback(code, state, db)
+    except OAuthConfigError as e:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
+            status_code=302,
+        )
+    except OAuthFlowError as e:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(e.code, e.message),
+            status_code=302,
+        )
+    return RedirectResponse(oauth_service.build_frontend_redirect(resp), status_code=302)
+
+
+# ── Google OAuth ─────────────────────────────────────────────
+@router.get("/google")
+async def google_authorize() -> RedirectResponse:
+    """302 到 Google 授权页；state 写入 Redis 供 callback 校验。"""
+    try:
+        url = await oauth_service.build_google_authorize_url()
+    except OAuthConfigError as e:
+        raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/google/callback")
+async def google_callback(
+    db: DB,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> RedirectResponse:
+    """Google 回调：exchange code → 创建/关联用户 → 带 token 跳回前端。
+
+    与 GitHub 回调同构：任何失败都以 `error` / `error_description` 参数回跳前端
+    callback 页面，由前端统一渲染成 toast。
+    """
+    if error:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(
+                "OAUTH_PROVIDER_ERROR", error_description or error
+            ),
+            status_code=302,
+        )
+    if not code or not state:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(
+                "OAUTH_MISSING_PARAMS", "回调缺少 code 或 state 参数"
+            ),
+            status_code=302,
+        )
+    try:
+        resp = await oauth_service.complete_google_callback(code, state, db)
     except OAuthConfigError as e:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),

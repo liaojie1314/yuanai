@@ -113,6 +113,7 @@ class UserResponse(BaseModel):
     bio: str | None = None
     password_changed_at: datetime | None = None
     github_id: str | None = None
+    google_id: str | None = None
     created_at: datetime
 
 
