@@ -30,6 +30,19 @@ export interface User {
   createdAt: string
 }
 
+/** 浏览器 Web Push 订阅（`PushSubscription.toJSON()` 的结构） */
+export interface PushSubscriptionPayload {
+  /** 推送服务分配的端点 URL */
+  endpoint: string
+  /** 客户端加密公钥对 */
+  keys: {
+    /** ECDH 公钥（base64url） */
+    p256dh: string
+    /** auth secret（base64url） */
+    auth: string
+  }
+}
+
 /** 服务端文件引用 */
 export interface FileRef {
   id: string

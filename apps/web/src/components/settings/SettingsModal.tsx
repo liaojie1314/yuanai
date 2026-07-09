@@ -42,6 +42,7 @@ import { usePrefsStore } from '@yuanai/core/stores'
 import type { FontSize, Density, ThemeChoice } from '@yuanai/core/stores'
 import type { UserPreferences } from '@yuanai/core/api'
 import { requestNotificationPermission } from '@/lib/notifications'
+import { ensurePushSubscribed, removePushSubscription } from '@/lib/push'
 
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
@@ -188,15 +189,20 @@ export default function SettingsModal({
     setNotifAIRaw((prev) => {
       const next = typeof v === 'function' ? v(prev) : v
       localStorage.setItem('notif_ai', String(next))
-      // 「AI 回复通知」是桌面弹窗的实际开关，打开时也要申请权限
+      // 「AI 回复通知」是桌面弹窗的实际开关，打开时申请权限并登记 Web Push 订阅
+      // （标签页关闭也能收到服务端推送）；关闭时退订。
       if (next) {
         void requestNotificationPermission().then((perm) => {
           if (perm === 'denied') {
             showToast(t('notifications.permissionDenied'), 'err')
           } else if (perm === 'unsupported') {
             showToast(t('notifications.unsupported'), 'err')
+          } else if (perm === 'granted') {
+            void ensurePushSubscribed()
           }
         })
+      } else {
+        void removePushSubscription()
       }
       return next
     })

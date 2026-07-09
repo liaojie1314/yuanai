@@ -9,5 +9,6 @@ export {
 export * from './auth.js'
 export * from './chat.js'
 export * from './models.js'
+export * from './notifications.js'
 export * from './share.js'
 export * from './files.js'
