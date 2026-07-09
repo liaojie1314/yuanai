@@ -34,7 +34,9 @@ import {
   useDeleteMe,
   useClearAllConversations,
   useUploadAvatar,
+  useUnlinkGithub,
 } from '@yuanai/core/hooks'
+import { API_BASE_URL } from '@yuanai/core/api'
 import { usePrefsStore } from '@yuanai/core/stores'
 import type { FontSize, Density, ThemeChoice } from '@yuanai/core/stores'
 import type { UserPreferences } from '@yuanai/core/api'
@@ -199,8 +201,9 @@ export default function SettingsModal({
     })
   }
 
-  // 第三方登录待解绑目标（暂时仅 UI）
-  const [, setUnlinkTarget] = useState<'wechat' | 'google' | 'github' | null>(null)
+  // 第三方登录待解绑目标（仅 github 落地）
+  const [unlinkTarget, setUnlinkTarget] = useState<'wechat' | 'google' | 'github' | null>(null)
+  const unlinkGithubMutation = useUnlinkGithub()
 
   // Profile editing state
   const [editingUsername, setEditingUsername] = useState(false)
@@ -826,11 +829,12 @@ export default function SettingsModal({
                   </div>
                   {[
                     {
-                      key: 'wechat' as const,
-                      label: '微信',
-                      cls: 'st-sl-wechat',
-                      icon: '/icons/wechat.svg',
-                      linked: false,
+                      key: 'github' as const,
+                      label: 'GitHub',
+                      cls: 'st-sl-github',
+                      icon: '/icons/github.svg',
+                      linked: !!currentUser?.githubId,
+                      available: true,
                     },
                     {
                       key: 'google' as const,
@@ -838,15 +842,17 @@ export default function SettingsModal({
                       cls: 'st-sl-google',
                       icon: '/icons/google.svg',
                       linked: false,
+                      available: false,
                     },
                     {
-                      key: 'github' as const,
-                      label: 'GitHub',
-                      cls: 'st-sl-github',
-                      icon: '/icons/github.svg',
+                      key: 'wechat' as const,
+                      label: '微信',
+                      cls: 'st-sl-wechat',
+                      icon: '/icons/wechat.svg',
                       linked: false,
+                      available: false,
                     },
-                  ].map(({ key, label, cls, icon, linked }) => (
+                  ].map(({ key, label, cls, icon, linked, available }) => (
                     <div className="st-row" key={key}>
                       <div
                         className="st-row-r"
@@ -862,8 +868,26 @@ export default function SettingsModal({
                           {linked ? t('security.bound') : t('security.notBound')}
                         </span>
                         {linked ? (
-                          <button className="st-btn-err-link" onClick={() => setUnlinkTarget(key)}>
+                          <button
+                            className="st-btn-err-link"
+                            onClick={() => {
+                              setUnlinkTarget(key)
+                              setSubModal('unlink-third')
+                            }}
+                          >
                             解绑
+                          </button>
+                        ) : available ? (
+                          <button
+                            className="st-btn-link"
+                            onClick={() => {
+                              // 直接走后端 authorize；成功后 302 回 /oauth/callback 写入新的
+                              // access_token（含更新后的 github_id），下一次 useCurrentUser 刷新
+                              // 就能拿到 linked 状态
+                              window.location.href = `${API_BASE_URL}/auth/${key}`
+                            }}
+                          >
+                            绑定
                           </button>
                         ) : (
                           <button
@@ -1406,6 +1430,84 @@ export default function SettingsModal({
                 disabled={clearConvsMutation.isPending}
               >
                 {t('dialogs.clearConversations.confirmText')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Sub-modal: 解绑三方登录 ── */}
+      {subModal === 'unlink-third' && unlinkTarget && (
+        <div
+          className="st-sub-ov"
+          onClick={() => {
+            setSubModal(null)
+            setUnlinkTarget(null)
+          }}
+        >
+          <div className="st-sub-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="st-sub-hd">
+              <span className="st-sub-title" style={{ color: '#ef4444' }}>
+                解绑{' '}
+                {unlinkTarget === 'github'
+                  ? 'GitHub'
+                  : unlinkTarget === 'google'
+                    ? 'Google'
+                    : '微信'}
+              </span>
+              <button
+                className="st-close-btn"
+                onClick={() => {
+                  setSubModal(null)
+                  setUnlinkTarget(null)
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="st-sub-body">
+              <p style={{ fontSize: 14, color: 'var(--fg2)', lineHeight: 1.7 }}>
+                解绑后将无法使用{' '}
+                {unlinkTarget === 'github'
+                  ? 'GitHub'
+                  : unlinkTarget === 'google'
+                    ? 'Google'
+                    : '微信'}{' '}
+                快速登录， 下次可通过邮箱密码方式登录。若你尚未设置本地密码，请先前往「账号安全 →
+                修改密码」补设， 否则解绑会被拒绝。
+              </p>
+            </div>
+            <div className="st-sub-ft">
+              <button
+                className="st-btn st-btn-ghost"
+                onClick={() => {
+                  setSubModal(null)
+                  setUnlinkTarget(null)
+                }}
+              >
+                {tc('cancel')}
+              </button>
+              <button
+                className="st-btn-danger"
+                disabled={unlinkGithubMutation.isPending || unlinkTarget !== 'github'}
+                onClick={async () => {
+                  if (unlinkTarget !== 'github') return
+                  try {
+                    await unlinkGithubMutation.mutateAsync()
+                    showToast('已解绑 GitHub', 'ok')
+                    setSubModal(null)
+                    setUnlinkTarget(null)
+                  } catch (err) {
+                    const detail = (
+                      err as {
+                        response?: { data?: { detail?: { message?: string } } }
+                      }
+                    )?.response?.data?.detail
+                    showToast(detail?.message ?? '解绑失败', 'err')
+                  }
+                }}
+              >
+                {unlinkGithubMutation.isPending ? '解绑中…' : '确认解绑'}
               </button>
             </div>
           </div>

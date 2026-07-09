@@ -378,15 +378,6 @@ export default function LoginPage(): JSX.Element {
               <img src="/icons/google.svg" alt="" className="soc-icon" />
               <span>{t('google')}</span>
             </button>
-            <button
-              className="soc-btn"
-              aria-label={`${t('apple')} ${t('login')}`}
-              disabled
-              title="第三方登录即将开放"
-            >
-              <img src="/icons/apple.svg" alt="" className="soc-icon" />
-              <span>{t('apple')}</span>
-            </button>
           </div>
 
           <p className="signup-cta">

@@ -112,6 +112,7 @@ class UserResponse(BaseModel):
     avatar_url: str | None
     bio: str | None = None
     password_changed_at: datetime | None = None
+    github_id: str | None = None
     created_at: datetime
 
 

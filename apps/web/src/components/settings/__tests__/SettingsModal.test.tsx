@@ -50,6 +50,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useClearAllConversations: () => ({ mutate: mockClearConvsMutate, isPending: false }),
   useDeleteMe: () => ({ mutate: mockDeleteMeMutate, isPending: false }),
   useUploadAvatar: () => ({ mutate: vi.fn(), isPending: false }),
+  useUnlinkGithub: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 const mockReload = vi.fn()

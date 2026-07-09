@@ -255,6 +255,27 @@ async def delete_me(current_user: CurrentUser, db: DB) -> dict[str, str]:
     return {"message": "账号已注销"}
 
 
+@router.delete("/me/github", response_model=UserResponse)
+async def unlink_github(current_user: CurrentUser, db: DB) -> UserResponse:
+    """解绑当前账号的 GitHub 关联。
+
+    仅清空 `github_id`；若用户没有本地密码（`hashed_password IS NULL`），
+    解绑会让账号失去所有登录途径，此时拒绝并要求先设置本地密码。
+    """
+    if not current_user.hashed_password:
+        raise HTTPException(
+            400,
+            {
+                "code": "OAUTH_ONLY_ACCOUNT",
+                "message": "该账号仅通过 GitHub 登录，请先设置本地密码后再解绑",
+            },
+        )
+    current_user.github_id = None
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
+
+
 # ── GitHub OAuth ─────────────────────────────────────────────
 @router.get("/github")
 async def github_authorize() -> RedirectResponse:

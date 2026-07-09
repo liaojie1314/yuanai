@@ -188,6 +188,47 @@ class TestCallback:
         assert q["error"][0] == "OAUTH_PROVIDER_ERROR"
         assert "用户拒绝授权" in q["error_description"][0]
 
+class TestUnlink:
+    async def test_unlink_github_success(
+        self,
+        client: AsyncClient,
+        db: AsyncSession,
+        test_user: User,
+        auth_headers: dict[str, str],
+    ) -> None:
+        # 先关联一个 github_id
+        test_user.github_id = "88888"
+        await db.commit()
+
+        resp = await client.delete("/api/v1/auth/me/github", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["githubId"] is None
+
+        await db.refresh(test_user)
+        assert test_user.github_id is None
+
+    async def test_unlink_rejected_when_no_local_password(
+        self,
+        client: AsyncClient,
+        db: AsyncSession,
+        auth_headers: dict[str, str],
+        test_user: User,
+    ) -> None:
+        # 纯 OAuth 用户（没有本地密码），解绑必须被拒绝，避免账号失去所有登录途径
+        test_user.hashed_password = None
+        test_user.github_id = "77777"
+        await db.commit()
+
+        resp = await client.delete("/api/v1/auth/me/github", headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.json()["detail"]["code"] == "OAUTH_ONLY_ACCOUNT"
+
+        await db.refresh(test_user)
+        # github_id 未被清除
+        assert test_user.github_id == "77777"
+
+
+class TestStateLifecycle:
     async def test_state_consumed_after_first_use(
         self,
         client: AsyncClient,

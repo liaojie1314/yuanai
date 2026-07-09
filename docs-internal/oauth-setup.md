@@ -3,7 +3,8 @@
 > 位置：`docs-internal/oauth-setup.md`（不受 `docs/` 只读约束）。本文档只面向开发者，请勿把 Client Secret 提交到代码库。
 
 当前落地：**GitHub**（推荐首个接入，无商务审核、流程最简）。
-计划中：Google（需 GCP 项目 + 品牌审核）、Apple（需 Apple Developer 会员）、微信开放平台（需企业主体认证）。
+计划中：Google（免费 GCP 项目 + OAuth Client，测试模式免审核）、微信开放平台（需企业主体认证，二期落地）。
+登录页 UI 保留三个入口（GitHub / Google / 微信），未落地的按 disabled + tooltip 「第三方登录即将开放」占位。Apple Sign-In 依赖 $99/年 Apple Developer 会员，已从占位列表移除。
 
 ---
 

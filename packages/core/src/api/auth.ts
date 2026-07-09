@@ -141,6 +141,12 @@ export async function deleteMe(): Promise<void> {
   await apiClient.delete('/auth/me')
 }
 
+/** 解绑当前账号的 GitHub 关联；返回更新后的用户信息 */
+export async function unlinkGithub(): Promise<User> {
+  const res = await apiClient.delete<User>('/auth/me/github')
+  return res.data
+}
+
 /** 上传头像，返回更新后的用户信息 */
 export async function uploadAvatar(file: File): Promise<User> {
   const formData = new FormData()
