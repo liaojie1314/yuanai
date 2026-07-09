@@ -62,6 +62,17 @@ export async function getMe(): Promise<User> {
   return res.data
 }
 
+/**
+ * 用显式 token 拉取用户信息 —— 供 OAuth 回调页在还没写入 auth store 前，
+ * 用刚拿到的 access_token 补齐 user 数据。
+ */
+export async function getMeWithToken(accessToken: string): Promise<User> {
+  const res = await apiClient.get<User>('/auth/me', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  return res.data
+}
+
 /** 更新当前用户资料 */
 export async function updateMe(data: {
   username?: string

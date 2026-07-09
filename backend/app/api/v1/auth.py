@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
@@ -21,7 +22,8 @@ from app.schemas.auth import (
     UserResponse,
     UserStatsResponse,
 )
-from app.services import auth_service, verify_code_service
+from app.services import auth_service, oauth_service, verify_code_service
+from app.services.oauth_service import OAuthConfigError, OAuthFlowError
 from app.services.verify_code_service import Scene, VerifyCodeError
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -251,3 +253,58 @@ async def upload_avatar(file: UploadFile, current_user: CurrentUser, db: DB) -> 
 async def delete_me(current_user: CurrentUser, db: DB) -> dict[str, str]:
     await auth_service.delete_account(current_user, db)
     return {"message": "账号已注销"}
+
+
+# ── GitHub OAuth ─────────────────────────────────────────────
+@router.get("/github")
+async def github_authorize() -> RedirectResponse:
+    """302 到 GitHub 授权页；state 写入 Redis 供 callback 校验。"""
+    try:
+        url = await oauth_service.build_github_authorize_url()
+    except OAuthConfigError as e:
+        raise HTTPException(
+            503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}
+        ) from e
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/github/callback")
+async def github_callback(
+    db: DB,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    error_description: str | None = None,
+) -> RedirectResponse:
+    """GitHub 回调：exchange code → 创建/关联用户 → 带 token 跳回前端。
+
+    任何失败都以 `error` / `error_description` 参数回跳前端 callback 页面，
+    由前端统一渲染成 toast，不在此处返回 JSON（避免用户看到裸 500 页面）。
+    """
+    if error:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(
+                "OAUTH_PROVIDER_ERROR", error_description or error
+            ),
+            status_code=302,
+        )
+    if not code or not state:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(
+                "OAUTH_MISSING_PARAMS", "回调缺少 code 或 state 参数"
+            ),
+            status_code=302,
+        )
+    try:
+        resp = await oauth_service.complete_github_callback(code, state, db)
+    except OAuthConfigError as e:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
+            status_code=302,
+        )
+    except OAuthFlowError as e:
+        return RedirectResponse(
+            oauth_service.build_frontend_error_redirect(e.code, e.message),
+            status_code=302,
+        )
+    return RedirectResponse(oauth_service.build_frontend_redirect(resp), status_code=302)
