@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
 import { API_BASE_URL } from '../api/client.js'
+import { getPlatformAdapter } from '../platform/index.js'
+import type { SseMessage, StreamHandle } from '../platform/index.js'
 import { useAuthStore } from '../stores/auth.store.js'
 import { useChatStore } from '../stores/chat.store.js'
 
@@ -53,8 +55,8 @@ export interface StreamParams {
 /**
  * 流式消息发送 hook
  *
- * 调用 `POST /api/v1/chat/stream` 并通过 `ReadableStream` 解析 SSE 事件，
- * 将 token 增量写入 `useChatStore`，流结束后通过 TanStack Query 刷新消息列表。
+ * 通过 `getPlatformAdapter().stream(...)` 屏蔽 Web (`fetch + ReadableStream`) 与
+ * Mobile (`react-native-sse`) 的传输差异，本 hook 只负责根据事件名调度到 chat store。
  *
  * 支持的 SSE 事件：
  * - `content_delta`：追加正文 token
@@ -75,7 +77,73 @@ export function useStream() {
     finalizeStream,
   } = useChatStore()
   const qc = useQueryClient()
-  const abortRef = useRef<AbortController | null>(null)
+  const streamRef = useRef<StreamHandle | null>(null)
+
+  const dispatchMessage = useCallback(
+    (msg: SseMessage): void => {
+      let data: Record<string, unknown>
+      try {
+        data = JSON.parse(msg.data) as Record<string, unknown>
+      } catch {
+        return
+      }
+      switch (msg.event) {
+        case 'content_delta':
+          if (typeof data['token'] === 'string') {
+            appendToken(data['token'])
+          }
+          break
+        case 'thinking_delta':
+          if (typeof data['token'] === 'string') {
+            appendThink(data['token'])
+          }
+          break
+        case 'tool_call_start': {
+          const id = data['tool_call_id']
+          const name = data['name']
+          if (typeof id === 'string' && typeof name === 'string') {
+            startToolCall({
+              id,
+              name,
+              arguments: '',
+              status: 'running',
+            })
+          }
+          break
+        }
+        case 'tool_call_delta': {
+          const id = data['tool_call_id']
+          const chunk = data['args_chunk']
+          if (typeof id === 'string' && typeof chunk === 'string') {
+            appendToolCallArgs(id, chunk)
+          }
+          break
+        }
+        case 'tool_call_end': {
+          const id = data['tool_call_id']
+          if (typeof id === 'string') {
+            const status =
+              typeof data['status'] === 'string' &&
+              ['pending', 'running', 'done', 'error'].includes(data['status'])
+                ? (data['status'] as 'pending' | 'running' | 'done' | 'error')
+                : 'done'
+            updateToolCall(id, {
+              status,
+              ...(typeof data['result'] === 'string' ? { result: data['result'] } : {}),
+              ...(typeof data['error'] === 'string' ? { error: data['error'] } : {}),
+              ...(typeof data['duration_ms'] === 'number'
+                ? { durationMs: data['duration_ms'] }
+                : {}),
+            })
+          }
+          break
+        }
+        default:
+          break
+      }
+    },
+    [appendToken, appendThink, startToolCall, appendToolCallArgs, updateToolCall]
+  )
 
   const send = useCallback(
     async ({
@@ -90,139 +158,51 @@ export function useStream() {
       onError,
     }: StreamParams): Promise<void> => {
       const token = useAuthStore.getState().accessToken
-      abortRef.current = new AbortController()
 
       startStreaming(convId, skipOptimistic ? null : content)
       onStart?.()
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/chat/stream`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      await new Promise<void>((resolve) => {
+        const handle = getPlatformAdapter().stream(
+          {
+            url: `${API_BASE_URL}/chat/stream`,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              conversation_id: convId,
+              model,
+              message: { content, fileIds: fileIds ?? [] },
+              enable_thinking: enableThinking ?? false,
+            }),
           },
-          body: JSON.stringify({
-            conversation_id: convId,
-            model,
-            message: { content, fileIds: fileIds ?? [] },
-            enable_thinking: enableThinking ?? false,
-          }),
-          signal: abortRef.current.signal,
-        })
-
-        if (!response.ok || !response.body) {
-          throw new Error(`HTTP ${String(response.status)}`)
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let currentEvent = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          // 保留最后一段不完整的行继续等待后续数据
-          buffer = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim()
-            } else if (line.startsWith('data: ') && currentEvent) {
-              try {
-                const data = JSON.parse(line.slice(6)) as Record<string, unknown>
-                switch (currentEvent) {
-                  case 'content_delta':
-                    if (typeof data['token'] === 'string') {
-                      appendToken(data['token'])
-                    }
-                    break
-                  case 'thinking_delta':
-                    if (typeof data['token'] === 'string') {
-                      appendThink(data['token'])
-                    }
-                    break
-                  case 'tool_call_start': {
-                    const id = data['tool_call_id']
-                    const name = data['name']
-                    if (typeof id === 'string' && typeof name === 'string') {
-                      startToolCall({
-                        id,
-                        name,
-                        arguments: '',
-                        status: 'running',
-                      })
-                    }
-                    break
-                  }
-                  case 'tool_call_delta': {
-                    const id = data['tool_call_id']
-                    const chunk = data['args_chunk']
-                    if (typeof id === 'string' && typeof chunk === 'string') {
-                      appendToolCallArgs(id, chunk)
-                    }
-                    break
-                  }
-                  case 'tool_call_end': {
-                    const id = data['tool_call_id']
-                    if (typeof id === 'string') {
-                      const status =
-                        typeof data['status'] === 'string' &&
-                        ['pending', 'running', 'done', 'error'].includes(data['status'])
-                          ? (data['status'] as 'pending' | 'running' | 'done' | 'error')
-                          : 'done'
-                      updateToolCall(id, {
-                        status,
-                        ...(typeof data['result'] === 'string' ? { result: data['result'] } : {}),
-                        ...(typeof data['error'] === 'string' ? { error: data['error'] } : {}),
-                        ...(typeof data['duration_ms'] === 'number'
-                          ? { durationMs: data['duration_ms'] }
-                          : {}),
-                      })
-                    }
-                    break
-                  }
-                  // message_start / message_end / error 识别但暂不影响 UI
-                  default:
-                    break
-                }
-              } catch {
-                // 忽略无效 JSON
-              }
-              currentEvent = ''
-            }
+          {
+            onMessage: dispatchMessage,
+            onError: (err) => {
+              finalizeStream()
+              onError?.(err)
+              resolve()
+            },
+            onClose: () => {
+              void Promise.all([
+                qc.refetchQueries({ queryKey: ['messages', convId] }),
+                qc.refetchQueries({ queryKey: ['conversations'] }),
+              ]).finally(() => {
+                finalizeStream()
+                resolve()
+              })
+            },
           }
-        }
+        )
+        streamRef.current = handle
+      })
 
-        // 先等新数据写入缓存，再清除流式 overlay，避免内容跳动
-        await Promise.all([
-          qc.refetchQueries({ queryKey: ['messages', convId] }),
-          qc.refetchQueries({ queryKey: ['conversations'] }),
-        ])
-        finalizeStream()
-      } catch (err) {
-        finalizeStream()
-        if (err instanceof Error && err.name !== 'AbortError') {
-          onError?.(err)
-        }
-      } finally {
-        onEnd?.()
-      }
+      streamRef.current = null
+      onEnd?.()
     },
-    [
-      startStreaming,
-      appendToken,
-      appendThink,
-      startToolCall,
-      appendToolCallArgs,
-      updateToolCall,
-      finalizeStream,
-      qc,
-    ]
+    [startStreaming, finalizeStream, qc, dispatchMessage]
   )
 
   /**
@@ -244,89 +224,68 @@ export function useStream() {
       onError,
     }: TemporaryStreamParams): Promise<void> => {
       const token = useAuthStore.getState().accessToken
-      abortRef.current = new AbortController()
 
       startStreaming(TEMPORARY_CONV_ID, content)
       onStart?.()
 
       let finalContent = ''
 
-      try {
-        const response = await fetch(`${API_BASE_URL}/chat/stream/temporary`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      await new Promise<void>((resolve) => {
+        const handle = getPlatformAdapter().stream(
+          {
+            url: `${API_BASE_URL}/chat/stream/temporary`,
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            },
+            body: JSON.stringify({
+              model,
+              messages: [...history, { role: 'user', content }],
+              enableThinking: enableThinking ?? false,
+            }),
           },
-          body: JSON.stringify({
-            model,
-            messages: [...history, { role: 'user', content }],
-            enableThinking: enableThinking ?? false,
-          }),
-          signal: abortRef.current.signal,
-        })
-
-        if (!response.ok || !response.body) {
-          throw new Error(`HTTP ${String(response.status)}`)
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        let currentEvent = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7).trim()
-            } else if (line.startsWith('data: ') && currentEvent) {
-              try {
-                const data = JSON.parse(line.slice(6)) as Record<string, unknown>
-                switch (currentEvent) {
-                  case 'content_delta':
-                    if (typeof data['token'] === 'string') {
-                      finalContent += data['token']
-                      appendToken(data['token'])
-                    }
-                    break
-                  case 'thinking_delta':
-                    if (typeof data['token'] === 'string') {
-                      appendThink(data['token'])
-                    }
-                    break
-                  default:
-                    break
+          {
+            onMessage: (msg) => {
+              // 单独处理 content_delta 以累积 finalContent
+              if (msg.event === 'content_delta') {
+                try {
+                  const data = JSON.parse(msg.data) as { token?: unknown }
+                  if (typeof data.token === 'string') {
+                    finalContent += data.token
+                    appendToken(data.token)
+                    return
+                  }
+                } catch {
+                  return
                 }
-              } catch {
-                /* ignore malformed JSON */
               }
-              currentEvent = ''
-            }
+              dispatchMessage(msg)
+            },
+            onError: (err) => {
+              finalizeStream()
+              onError?.(err)
+              onEnd?.(finalContent)
+              resolve()
+            },
+            onClose: () => {
+              finalizeStream()
+              onEnd?.(finalContent)
+              resolve()
+            },
           }
-        }
+        )
+        streamRef.current = handle
+      })
 
-        finalizeStream()
-        onEnd?.(finalContent)
-      } catch (err) {
-        finalizeStream()
-        if (err instanceof Error && err.name !== 'AbortError') {
-          onError?.(err)
-        }
-        onEnd?.(finalContent)
-      }
+      streamRef.current = null
     },
-    [startStreaming, appendToken, appendThink, finalizeStream]
+    [startStreaming, finalizeStream, appendToken, dispatchMessage]
   )
 
   const stop = useCallback(() => {
-    abortRef.current?.abort()
+    streamRef.current?.close()
+    streamRef.current = null
     finalizeStream()
   }, [finalizeStream])
 

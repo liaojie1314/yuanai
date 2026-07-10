@@ -7,7 +7,8 @@
     "./stores": "./src/stores/index.ts",
     "./hooks": "./src/hooks/index.ts",
     "./api": "./src/api/index.ts",
-    "./utils": "./src/utils/index.ts"
+    "./utils": "./src/utils/index.ts",
+    "./platform": "./src/platform/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

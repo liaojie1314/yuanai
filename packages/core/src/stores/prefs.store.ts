@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import { getPlatformAdapter } from '../platform/index.js'
 
 /** 24 小时制 / 12 小时制 */
 export type TimeFmt = '24h' | '12h'
@@ -50,8 +51,12 @@ interface PrefsState {
 /**
  * 用户偏好设置 store（Zustand + persist）
  *
- * 持久化到 localStorage（key: `yuanai-prefs`），跨组件共享时间/日期格式、主题、字号、
- * 密度及思考过程等设置。登录状态下会与后端 `/auth/me/preferences` 双向同步。
+ * 持久化通过 {@link getPlatformAdapter} 暴露的 `storage` 桥接：
+ * - Web：localStorage
+ * - Mobile：AsyncStorage
+ *
+ * 跨组件共享时间/日期格式、主题、字号、密度及思考过程等设置。
+ * 登录状态下会与后端 `/auth/me/preferences` 双向同步。
  */
 export const usePrefsStore = create<PrefsState>()(
   persist(
@@ -70,6 +75,9 @@ export const usePrefsStore = create<PrefsState>()(
       setDensity: (density) => set({ density }),
       replaceAll: (partial) => set(partial),
     }),
-    { name: 'yuanai-prefs' }
+    {
+      name: 'yuanai-prefs',
+      storage: createJSONStorage(() => getPlatformAdapter().storage),
+    }
   )
 )
