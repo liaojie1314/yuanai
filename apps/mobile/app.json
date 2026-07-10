@@ -1,0 +1,90 @@
+{
+  "expo": {
+    "name": "元AI",
+    "slug": "yuanai",
+    "scheme": "yuanai",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "assetBundlePatterns": ["**/*"],
+    "updates": {
+      "url": "https://u.expo.dev/PROJECT_ID_PLACEHOLDER",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": { "policy": "appVersion" },
+    "ios": {
+      "bundleIdentifier": "com.yuanai.app",
+      "supportsTablet": true,
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "元AI 需要访问相机以拍照上传",
+        "NSPhotoLibraryUsageDescription": "元AI 需要访问相册以上传图片",
+        "NSMicrophoneUsageDescription": "元AI 需要访问麦克风以进行语音输入",
+        "NSSpeechRecognitionUsageDescription": "元AI 需要访问语音识别以进行语音输入",
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true
+      },
+      "associatedDomains": ["applinks:yuanai.example.com"],
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.yuanai.app",
+      "versionCode": 1,
+      "permissions": [
+        "CAMERA",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "READ_EXTERNAL_STORAGE",
+        "RECORD_AUDIO",
+        "POST_NOTIFICATIONS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "yuanai.example.com" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-updates",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FAFAF8",
+          "dark": {
+            "backgroundColor": "#0F1117"
+          }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "元AI 需要访问相册以上传图片",
+          "cameraPermission": "元AI 需要访问相机以拍照上传"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#6366F1"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": { "projectId": "PROJECT_ID_PLACEHOLDER" },
+      "apiBaseUrl": "https://api.yuanai.example.com/api/v1",
+      "githubOauthUrl": "https://api.yuanai.example.com/api/v1/auth/github/authorize"
+    }
+  }
+}
