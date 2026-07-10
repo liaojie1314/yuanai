@@ -7,6 +7,7 @@
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "assetBundlePatterns": ["**/*"],
     "updates": {
       "url": "https://u.expo.dev/PROJECT_ID_PLACEHOLDER",
@@ -34,6 +35,10 @@
     "android": {
       "package": "com.yuanai.app",
       "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#6366F1"
+      },
       "permissions": [
         "CAMERA",
         "READ_MEDIA_IMAGES",
@@ -61,8 +66,11 @@
       [
         "expo-splash-screen",
         {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
           "backgroundColor": "#FAFAF8",
           "dark": {
+            "image": "./assets/splash-dark.png",
             "backgroundColor": "#0F1117"
           }
         }
@@ -77,6 +85,7 @@
       [
         "expo-notifications",
         {
+          "icon": "./assets/notification-icon.png",
           "color": "#6366F1"
         }
       ]
