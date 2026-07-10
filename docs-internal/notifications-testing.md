@@ -117,10 +117,19 @@ PY
 把两行输出写进 `backend/.env`（私钥切勿提交），再加一行 subject：
 
 ```dotenv
-VAPID_PUBLIC_KEY=B:...        # 也是前端 applicationServerKey，公钥可公开
+VAPID_PUBLIC_KEY=B...         # 也是前端 applicationServerKey，公钥可公开（约 87 位 base64url，无冒号）
 VAPID_PRIVATE_KEY=...         # raw 32 字节 base64url，pywebpush 直接接受，切勿泄漏
-VAPID_SUBJECT=mailto:admin@yuanai.example
+VAPID_SUBJECT=mailto:admin@yuanai.example   # 见下方说明
 ```
+
+> **关于 `VAPID_SUBJECT`**：它标识**「本应用服务器」的联系方式**（`mailto:` 邮箱或 `https://` 站点 URL），
+> 整个部署**共用一个**、由运维方填写。当推送服务（Chrome→FCM、Firefox→Mozilla 等）发现某台
+> 应用服务器行为异常时，据此联系**服务器运营方**——而非终端用户。它**与用户无关**：
+> 每个用户/设备的「一份订阅」是浏览器自动生成的 `PushSubscription`（存 `push_subscriptions` 表），
+> 不涉及 subject。本地开发用占位邮箱即可，生产环境建议填真实可达邮箱。
+>
+> **前端无需任何 VAPID 配置**：公钥由前端在运行时经 `GET /notifications/vapid-public-key` 拉取
+> 后作 `applicationServerKey`；改密钥只需改后端 `.env` 并重启，前端零改动。
 
 重启后端。未配置这三个变量时 `push_service.send_to_user` 直接返回 0（no-op），
 `GET /notifications/vapid-public-key` 返回空串，前端不会发起订阅——属预期降级。
