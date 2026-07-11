@@ -56,9 +56,16 @@ function RootLayoutContent(): React.JSX.Element | null {
   return <Stack screenOptions={{ headerShown: false }} />
 }
 
+// `react-native-gesture-handler@2.20` 的 props 类型漏声明 children——
+// 组件运行时接受 children，但 TS types 里缺 React.PropsWithChildren。
+// 断言为一个允许 children 的宽松类型规避该库上游缺陷。
+const RootView = GestureHandlerRootView as React.ComponentType<
+  React.PropsWithChildren<{ style?: { flex: number } }>
+>
+
 function RootLayout(): React.JSX.Element {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <RootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
           <QueryClientProvider client={queryClient}>
@@ -72,7 +79,7 @@ function RootLayout(): React.JSX.Element {
           </QueryClientProvider>
         </KeyboardProvider>
       </SafeAreaProvider>
-    </GestureHandlerRootView>
+    </RootView>
   )
 }
 

@@ -17,5 +17,10 @@ export function initSentry(): void {
   })
 }
 
-/** 让根组件用 `Sentry.wrap(...)` 包装以启用错误边界 / Profiler */
-export const wrapWithSentry = Sentry.wrap
+/**
+ * 让根组件用 `Sentry.wrap(...)` 包装以启用错误边界 / Profiler。
+ * 未配置 DSN 时降级为 identity（Sentry 未 init 会警告 "App Start Span could not be finished"）。
+ */
+export const wrapWithSentry: typeof Sentry.wrap = process.env.EXPO_PUBLIC_SENTRY_DSN
+  ? Sentry.wrap
+  : (Component) => Component

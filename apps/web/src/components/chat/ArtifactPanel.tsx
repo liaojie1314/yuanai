@@ -401,7 +401,7 @@ export function ArtifactPanel(): JSX.Element {
               value={editedCode}
               extensions={langExtensions(shown.lang)}
               theme={dark ? 'dark' : 'light'}
-              onChange={(v) => setEditedCode(v)}
+              onChange={(v: string) => setEditedCode(v)}
               height="100%"
             />
           ) : (

@@ -1,3 +1,15 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# 阻止 pnpm 把 @types/react / @types/react-dom 提升到 .pnpm/node_modules/。
+# apps/web 用 React 19，apps/mobile 用 React 18；提升会二选一，破坏另一端 typecheck。
+# 每个 workspace 依靠自己的 node_modules/@types/react 解析（都保持直接软链到 store 内正确版本）。
+hoistPattern:
+  - '*'
+  - '!@types/react'
+  - '!@types/react-dom'
+publicHoistPattern:
+  - '*'
+  - '!@types/react'
+  - '!@types/react-dom'

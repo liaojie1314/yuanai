@@ -133,7 +133,7 @@ export function MessageList({
 
   return (
     <Virtuoso<Row>
-      ref={virtuosoRef}
+      ref={virtuosoRef as React.Ref<VirtuosoHandle>}
       data={rows}
       followOutput="auto"
       initialTopMostItemIndex={rows.length > 0 ? rows.length - 1 : 0}

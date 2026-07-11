@@ -19,8 +19,10 @@ export function ThemeShell({ children }: { children: ReactNode }): ReactNode {
   const { colorScheme, setColorScheme } = useColorScheme()
 
   useEffect(() => {
-    // nativewind 的类型定义把 setColorScheme 声明为 'light' | 'dark' | 'system'
-    setColorScheme(theme === 'auto' ? 'system' : theme)
+    // NativeWind 4 需要 tailwind.config.js 设 darkMode: 'class' 才允许手动切换。
+    // 用户偏好 auto 时不覆盖（让 NativeWind 跟随系统 Appearance）；light/dark 显式切换。
+    if (theme === 'auto') return
+    setColorScheme(theme)
   }, [theme, setColorScheme])
 
   return (

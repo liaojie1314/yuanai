@@ -92,5 +92,20 @@ PY
   echo "✅ settings.gradle: 已在 pluginManagement 中注入 repositories 镜像"
 fi
 
+# 4. android/gradle.properties：把 Kotlin 版本回退到 1.9.24。
+#    Expo SDK 52 默认 kotlinVersion=1.9.25，而 expo-modules-core@2.2.3 的 Compose
+#    Compiler 版本映射表只覆盖到 1.9.24 → compose 1.5.14；用 1.9.25 会命中
+#    compose 1.5.15 但两者不兼容，导致 :expo-modules-core:compileDebugKotlin 失败。
+GRADLE_PROPS="$ANDROID_DIR/gradle.properties"
+if [ -f "$GRADLE_PROPS" ] && ! grep -q "^android.kotlinVersion=" "$GRADLE_PROPS"; then
+  {
+    echo ""
+    echo "# 由 scripts/patch-android-mirrors.sh 注入 —— 与 expo-modules-core 的"
+    echo "# Compose 版本映射表对齐，避免 kotlin 1.9.25 → compose 1.5.15 不兼容错误"
+    echo "android.kotlinVersion=1.9.24"
+  } >> "$GRADLE_PROPS"
+  echo "✅ gradle.properties: 已固定 android.kotlinVersion=1.9.24"
+fi
+
 echo ""
 echo "🎉 完成。可以 pnpm --filter @yuanai/mobile android"
