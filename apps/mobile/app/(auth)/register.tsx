@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from 'expo-router'
-import { Eye, EyeOff, KeyRound, Mail, User } from 'lucide-react-native'
+import { Eye, EyeOff, Mail, User } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { Alert, Pressable, Text, View } from 'react-native'
@@ -147,7 +147,7 @@ export default function RegisterScreen(): React.JSX.Element {
             error={errors.email?.message}
             rightAdornment={
               <View style={{ paddingRight: spacing.md }}>
-                <Mail size={16} color={text.muted} />
+                <Mail size={16} color={brand.solid} />
               </View>
             }
           />
@@ -169,7 +169,7 @@ export default function RegisterScreen(): React.JSX.Element {
             error={errors.username?.message}
             rightAdornment={
               <View style={{ paddingRight: spacing.md }}>
-                <User size={16} color={text.muted} />
+                <User size={16} color={brand.solid} />
               </View>
             }
           />
@@ -198,9 +198,9 @@ export default function RegisterScreen(): React.JSX.Element {
                 style={{ paddingRight: spacing.md, paddingLeft: spacing.sm }}
               >
                 {showPwd ? (
-                  <EyeOff size={18} color={text.muted} />
+                  <EyeOff size={18} color={brand.solid} />
                 ) : (
-                  <Eye size={18} color={text.muted} />
+                  <Eye size={18} color={brand.solid} />
                 )}
               </Pressable>
             }
@@ -229,21 +229,22 @@ export default function RegisterScreen(): React.JSX.Element {
                 }}
                 disabled={codeButtonDisabled}
                 hitSlop={6}
+                android_ripple={{ color: 'rgba(59,130,246,0.15)' }}
                 style={{
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.xs,
-                  opacity: codeButtonDisabled ? 0.4 : 1,
+                  height: 36,
+                  minWidth: 96,
+                  paddingHorizontal: 12,
+                  marginRight: 6,
+                  borderRadius: 8,
+                  borderWidth: 1,
+                  borderColor: brand.solid,
+                  backgroundColor: brand.light,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  opacity: codeButtonDisabled ? 0.55 : 1,
                 }}
               >
-                <KeyRound size={14} color={brand.solid} />
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: brand.solid,
-                    marginTop: 2,
-                    fontWeight: '600',
-                  }}
-                >
+                <Text style={{ fontSize: 13, fontWeight: '500', color: brand.solid }}>
                   {codeButtonLabel}
                 </Text>
               </Pressable>

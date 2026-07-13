@@ -50,12 +50,21 @@ const coreExports = {
   '@yuanai/types': path.resolve(monorepoRoot, 'packages/types/src/index.ts'),
 }
 
-// 强制 React / React Native 走 apps/mobile 本地那份，防止 pnpm hoist 出
-// apps/web 用的 React 19 混进 bundle，导致 "Cannot read property 'useMemo'
-// of null"（React 只能有一份 dispatcher 实例）。
+// 强制单例的 npm 包：pnpm 会为 react18/19 peer 生成两份变体，
+// 一份在 apps/mobile/node_modules 下（react-18），一份在
+// packages/core/node_modules 下（react-19，因为 core 也被 apps/web 用）。
+// 如果两份同时进 bundle：
+//   - react 双份 → "Cannot read property 'useMemo' of null"
+//   - @tanstack/react-query 双份 → Context 不一致，QueryClientProvider
+//     在 A 变体里 set，core hooks 在 B 变体里 get 到 undefined
+// 都强行走 apps/mobile 本地那份即可。
 const singletons = {
   react: path.resolve(projectRoot, 'node_modules/react'),
   'react-native': path.resolve(projectRoot, 'node_modules/react-native'),
+  '@tanstack/react-query': path.resolve(
+    projectRoot,
+    'node_modules/@tanstack/react-query'
+  ),
 }
 
 const defaultResolveRequest = config.resolver.resolveRequest
@@ -65,6 +74,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'sourceFile', filePath: target }
   }
   if (singletons[moduleName]) {
+    if (process.env.YUANAI_METRO_TRACE) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[metro-singleton] ${moduleName} <- ${context.originModulePath} => ${singletons[moduleName]}`
+      )
+    }
     return context.resolveRequest(context, singletons[moduleName], platform)
   }
   // packages/core 内部 .js 相对导入 → 重定向到 .ts 源

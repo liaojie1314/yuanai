@@ -37,7 +37,7 @@
       "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#6366F1"
+        "backgroundColor": "#3b82f6"
       },
       "permissions": [
         "CAMERA",
@@ -86,7 +86,7 @@
         "expo-notifications",
         {
           "icon": "./assets/notification-icon.png",
-          "color": "#6366F1"
+          "color": "#3b82f6"
         }
       ]
     ],

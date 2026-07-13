@@ -1,18 +1,6 @@
-import { LinearGradient as RawLinearGradient } from 'expo-linear-gradient'
 import { ActivityIndicator, Pressable, StyleSheet, Text, type ViewStyle } from 'react-native'
 
 import { brand, radius, spacing } from '@/theme/tokens'
-
-// expo-linear-gradient@14 的 class 组件签名与本地 @types/react 18.3 存在细微
-// ViewProps 差异（react-native 的 AccessibilityRole 补丁），走一次 as 断言
-// 让 JSX 层面认它为宽松组件；运行时行为不变。
-type GradientProps = React.PropsWithChildren<{
-  colors: readonly [string, string]
-  start?: { x: number; y: number }
-  end?: { x: number; y: number }
-  style?: ViewStyle | ViewStyle[] | Array<ViewStyle | false | undefined | null>
-}>
-const LinearGradient = RawLinearGradient as unknown as React.ComponentType<GradientProps>
 
 interface AuthButtonProps {
   label: string
@@ -25,7 +13,7 @@ interface AuthButtonProps {
 
 /**
  * 认证页主按钮。
- * - primary：品牌渐变底 + 白字，高 48
+ * - primary：品牌纯色底 + 白字，高 48（对齐 web `.btn` — flat solid #3b82f6）
  * - secondary：透明底 + 品牌色描边 + 品牌色字，用于三方登录 / 次要 action
  * - loading：显示 ActivityIndicator 替代文字，disabled 状态
  */
@@ -55,27 +43,20 @@ export function AuthButton({
     )
   }
 
-  // expo-linear-gradient 14 的 colors 需要 tuple 而非 string[]
-  const gradientColors = [brand.from, brand.to] as readonly [string, string]
-
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      style={[isDisabled && styles.disabled, style]}
+      // 用 android_ripple + opacity 提供按压反馈；不用 style 函数（会被
+      // NativeWind css-interop 的 jsx-runtime 忽略）
+      android_ripple={{ color: 'rgba(255,255,255,0.18)' }}
+      style={[styles.base, styles.primary, isDisabled && styles.disabled, style]}
     >
-      <LinearGradient
-        colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={[styles.base, styles.primary]}
-      >
-        {loading ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={styles.primaryLabel}>{label}</Text>
-        )}
-      </LinearGradient>
+      {loading ? (
+        <ActivityIndicator size="small" color="#FFFFFF" />
+      ) : (
+        <Text style={styles.primaryLabel}>{label}</Text>
+      )}
     </Pressable>
   )
 }
@@ -88,7 +69,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
   },
-  primary: {},
+  primary: {
+    backgroundColor: brand.solid,
+  },
   primaryLabel: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
   secondary: {
     backgroundColor: 'transparent',

@@ -7,10 +7,11 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          from: '#6366F1',
-          to: '#8B5CF6',
-          solid: '#7C3AED',
-          light: '#EDE9FE',
+          from: '#1d4ed8',
+          to: '#3b82f6',
+          solid: '#3b82f6',
+          hover: '#2563eb',
+          light: '#eff6ff',
         },
         bg: {
           base: '#FAFAF8',
@@ -24,7 +25,7 @@ module.exports = {
         },
         border: {
           default: '#E5E7EB',
-          focus: '#6366F1',
+          focus: '#3b82f6',
         },
         'bg-dark': {
           base: '#0F1117',

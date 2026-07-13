@@ -113,7 +113,7 @@ export default function LoginScreen(): React.JSX.Element {
             error={errors.email?.message}
             rightAdornment={
               <View style={{ paddingRight: spacing.md }}>
-                <Mail size={16} color={text.muted} />
+                <Mail size={16} color={brand.solid} />
               </View>
             }
           />
@@ -142,9 +142,9 @@ export default function LoginScreen(): React.JSX.Element {
                 style={{ paddingRight: spacing.md, paddingLeft: spacing.sm }}
               >
                 {showPwd ? (
-                  <EyeOff size={18} color={text.muted} />
+                  <EyeOff size={18} color={brand.solid} />
                 ) : (
-                  <Eye size={18} color={text.muted} />
+                  <Eye size={18} color={brand.solid} />
                 )}
               </Pressable>
             }

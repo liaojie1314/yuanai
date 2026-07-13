@@ -5,11 +5,16 @@
  * 的地方（如 gradient 起止色、Animated 值），从本文件读取以保持单一真相源。
  */
 
+// 与 web `apps/web/src/app/globals.css` 的 --brand / --brand-h / --brand-light
+// 保持一致：主色 blue-500，hover blue-600，light blue-50。
+// from/to 用于极少数需要渐变的场景（如启动屏、logo），使用 web 的 --auth-grad
+// 深浅两端色以保持视觉延续。
 export const brand = {
-  from: '#6366F1',
-  to: '#8B5CF6',
-  solid: '#7C3AED',
-  light: '#EDE9FE',
+  from: '#1d4ed8', // blue-700
+  to: '#3b82f6', // blue-500
+  solid: '#3b82f6', // = web --brand
+  hover: '#2563eb', // = web --brand-h
+  light: '#eff6ff', // = web --brand-light
 } as const
 
 export const bg = {
@@ -34,7 +39,7 @@ export const text = {
 
 export const border = {
   default: '#E5E7EB',
-  focus: '#6366F1',
+  focus: '#3b82f6',
   danger: '#EF4444',
 } as const
 
