@@ -9,7 +9,9 @@ hoistPattern:
   - '*'
   - '!@types/react'
   - '!@types/react-dom'
+  - '!zod'
 publicHoistPattern:
   - '*'
   - '!@types/react'
   - '!@types/react-dom'
+  - '!zod'
