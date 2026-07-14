@@ -18,6 +18,7 @@ import { TABLET_MIN_WIDTH, useConversations, useMessages, useModels, useStream }
 import { useChatStore } from '@yuanai/core/stores'
 
 import { ChatInput } from '@/components/chat/ChatInput'
+import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
 import { bg, border, spacing, text } from '@/theme/tokens'
 
@@ -143,6 +144,9 @@ export default function ChatConversationScreen(): React.JSX.Element {
           bottomInset={insets.bottom}
         />
       </View>
+
+      {/* Artifact 面板（Modal，覆盖全屏；不受键盘影响） */}
+      <ArtifactSurface />
     </KeyboardAvoidingView>
   )
 }
