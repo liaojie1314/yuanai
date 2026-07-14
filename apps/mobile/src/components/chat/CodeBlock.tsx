@@ -1,0 +1,99 @@
+import * as Clipboard from 'expo-clipboard'
+import { Check, Copy } from 'lucide-react-native'
+import { useState } from 'react'
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+
+import { border, radius, spacing, text } from '@/theme/tokens'
+
+interface CodeBlockProps {
+  code: string
+  language?: string | undefined
+}
+
+/**
+ * 代码块（MVP 版）：monospace + 中性底 + 语言标签 + 复制按钮。
+ *
+ * MVP 决定不上 react-native-syntax-highlighter：
+ * - MVP 目标是"能读"，语法高亮属于视觉锦上添花
+ * - RN 版 syntax-highlighter 会把每个 token 渲染成独立 `<Text>`，大代码块性能骤降
+ *   Step 7 收尾时再评估是否引入并做 memo/懒渲染
+ *
+ * 长代码用水平 ScrollView 承载，避免自动换行破坏缩进结构。
+ */
+export function CodeBlock({ code, language }: CodeBlockProps): React.JSX.Element {
+  const [copied, setCopied] = useState(false)
+
+  const onCopy = async (): Promise<void> => {
+    await Clipboard.setStringAsync(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.lang}>{language || 'text'}</Text>
+        <Pressable
+          onPress={() => {
+            void onCopy()
+          }}
+          hitSlop={6}
+          style={styles.copyBtn}
+          accessibilityLabel="复制代码"
+        >
+          {copied ? (
+            <Check size={13} color={text.secondary} />
+          ) : (
+            <Copy size={13} color={text.secondary} />
+          )}
+          <Text style={styles.copyLabel}>{copied ? '已复制' : '复制'}</Text>
+        </Pressable>
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
+        <Text selectable style={styles.code}>
+          {code}
+        </Text>
+      </ScrollView>
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    marginVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: border.default,
+    backgroundColor: '#F7F7F5',
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs + 2,
+    backgroundColor: '#EFEEEA',
+  },
+  lang: {
+    fontSize: 11,
+    color: text.secondary,
+    fontFamily: 'monospace',
+    textTransform: 'lowercase',
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+  },
+  copyLabel: { fontSize: 11, color: text.secondary },
+  codeScroll: { padding: spacing.md },
+  code: {
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 19,
+    color: text.primary,
+  },
+})
