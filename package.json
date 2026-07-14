@@ -11,6 +11,7 @@
     "dev:mock": "pnpm --filter @yuanai/web dev:mock",
     "dev:real": "node scripts/dev.mjs",
     "dev:mobile": "node scripts/dev-mobile.mjs",
+    "dev:mobile:mock": "node scripts/dev-mobile-mock.mjs",
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint",

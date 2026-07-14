@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 /**
- * 元AI — 移动端一键启动开发环境（对齐 pnpm dev:real）
- * 用法：pnpm dev:mobile
- * 平台：macOS / Linux / Windows；启动的模拟器沿用宿主 Android SDK
+ * 元AI — 移动端 Mock 模式一键启动（对齐 pnpm dev:mock）
+ * 用法：pnpm dev:mobile:mock
+ * 平台：macOS / Linux / Windows
  *
- * 启动顺序：先决条件 → Android SDK 定位 → env 配置 → Docker → 后端 →
- *          启动 Android 模拟器 → adb reverse → Metro（前台）
+ * 启动顺序：先决条件 → env 配置（EXPO_PUBLIC_MOCK=1）→
+ *          Android 模拟器 → adb reverse tcp:8081 → Metro（前台）
  *
- * 退出（Ctrl+C）时后端 / Metro 都会被 kill；模拟器不动，方便下次复用。
+ * 与 pnpm dev:mobile 的差异：
+ *   - 不启动 Docker / PostgreSQL / Redis / MinIO
+ *   - 不跑 alembic 迁移、不启动后端
+ *   - 写入 EXPO_PUBLIC_MOCK=1，让 app 后续接入 msw/native 时按开关激活
+ *   - adb reverse 只做 8081（Metro reload），不做 8000（无后端）
+ *
+ * ⚠️ 当前 mobile 端 MSW 拦截尚未接入。脚本先落地"启动通道"，
+ *    跑起来后 app 会向 EXPO_PUBLIC_API_URL 发真请求，无后端时会全部 fail。
+ *    用途：验证冷启动 / Splash / router / 主题；真正 mock 数据待 Step 7 后
+ *    单独接入 msw/native handlers。
+ *
+ * 退出（Ctrl+C）时 Metro 会被 kill；模拟器不动，方便下次复用。
  */
 import { existsSync as _existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -15,15 +26,13 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  WIN, log, ok, warn, err, step, banner, prompt,
+  WIN, log, ok, warn, err, step, banner,
   run, hasCmd, bg, killProc, capture,
-  waitPort, waitHttp, sleep,
-  existsSync, copyFileSync, patchEnvFile,
+  sleep, patchEnvFile,
 } from './_utils.mjs'
 
-const ROOT      = join(dirname(fileURLToPath(import.meta.url)), '..')
-const BACKEND   = join(ROOT, 'backend')
-const MOBILE    = join(ROOT, 'apps', 'mobile')
+const ROOT       = join(dirname(fileURLToPath(import.meta.url)), '..')
+const MOBILE     = join(ROOT, 'apps', 'mobile')
 const MOBILE_ENV = join(MOBILE, '.env')
 
 const procs = []
@@ -35,7 +44,7 @@ process.on('SIGINT', () => process.exit(0))
 process.on('SIGTERM', () => process.exit(0))
 if (WIN) process.on('SIGHUP', () => process.exit(0))
 
-// ── Android SDK 定位 ─────────────────────────────────────────────────
+// ── Android SDK 定位（与 dev-mobile.mjs 同款）────────────────────────
 function resolveAndroidSdk() {
   const candidates = [
     process.env.ANDROID_HOME,
@@ -52,12 +61,10 @@ function resolveAndroidSdk() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-step('【1/7】检查先决条件')
+step('【1/5】检查先决条件（Mock 模式：只需 pnpm + Android SDK）')
 // ════════════════════════════════════════════════════════════════════════
 
-hasCmd('docker') || err('未找到 docker，请先安装 Docker Desktop')
-hasCmd('uv')     || err('未找到 uv：curl -LsSf https://astral.sh/uv/install.sh | sh')
-hasCmd('pnpm')   || err('未找到 pnpm：npm install -g pnpm')
+hasCmd('pnpm') || err('未找到 pnpm：npm install -g pnpm')
 
 const ANDROID_HOME = resolveAndroidSdk()
 if (!ANDROID_HOME) {
@@ -71,72 +78,28 @@ const ADB = join(ANDROID_HOME, 'platform-tools', WIN ? 'adb.exe' : 'adb')
 const EMULATOR = join(ANDROID_HOME, 'emulator', WIN ? 'emulator.exe' : 'emulator')
 _existsSync(EMULATOR) || err(`emulator 命令未找到（${EMULATOR}）\n   请在 Android Studio 里安装 Emulator SDK 组件。`)
 
-// 环境变量透传给子进程（Metro / gradle 都需要）
 process.env.ANDROID_HOME = ANDROID_HOME
 process.env.ANDROID_SDK_ROOT = ANDROID_HOME
 process.env.PATH = `${join(ANDROID_HOME, 'platform-tools')}${WIN ? ';' : ':'}${join(ANDROID_HOME, 'emulator')}${WIN ? ';' : ':'}${process.env.PATH}`
 
-run('docker', ['info'], { silent: true, ignoreError: true }) ||
-  err('Docker 守护进程未运行，请先启动 Docker Desktop')
-
 ok(`Android SDK: ${ANDROID_HOME}`)
 
 // ════════════════════════════════════════════════════════════════════════
-step('【2/7】配置环境变量')
+step('【2/5】切换 apps/mobile/.env 到 Mock 模式')
 // ════════════════════════════════════════════════════════════════════════
 
-const backendEnv = join(BACKEND, '.env')
-if (!existsSync(backendEnv)) {
-  copyFileSync(join(BACKEND, '.env.example'), backendEnv)
-  warn('backend/.env 已从 .env.example 创建，请填写 AI Key 后再继续。')
-  await prompt('  按回车继续... ')
-}
-
-// 用 localhost — 下面 adb reverse tcp:8000 会把设备端 localhost:8000
-// 映射到宿主机 8000，模拟器和真机（USB 调试）都通吃。
-// 只有 Wi-Fi 真机或无 adb 场景才需要手动改成局域网 IP。
-// 同时清掉 EXPO_PUBLIC_MOCK：切回真实后端时若不清，app 会误进 mock 分支。
+// EXPO_PUBLIC_MOCK=1 是 app 启动时判断"是否激活 MSW"的开关（当前 mobile 端未接入 msw/native，
+// 见文件头 ⚠️）。同时 process.env.EXPO_PUBLIC_MOCK 也写一份，避免 Expo 优先读进程 env 时漏读。
 patchEnvFile(MOBILE_ENV, {
-  EXPO_PUBLIC_API_URL: 'http://localhost:8000/api/v1',
-  EXPO_PUBLIC_MOCK: null,
+  EXPO_PUBLIC_MOCK: '1',
 })
-ok('apps/mobile/.env → EXPO_PUBLIC_API_URL=http://localhost:8000/api/v1 (MOCK 已清除)')
+process.env.EXPO_PUBLIC_MOCK = '1'
+ok('apps/mobile/.env → EXPO_PUBLIC_MOCK=1（对应 pnpm dev:mobile 会清除该变量）')
 
 // ════════════════════════════════════════════════════════════════════════
-step('【3/7】启动 Docker 基础设施')
+step('【3/5】启动 Android 模拟器')
 // ════════════════════════════════════════════════════════════════════════
 
-log('启动 PostgreSQL + Redis + MinIO...')
-run('docker', ['compose', '-f', join(ROOT, 'docker-compose.yml'), 'up', '-d'])
-log('等待 PostgreSQL 就绪（5433）...')
-await waitPort(5433, '127.0.0.1', 60).catch((e) => err(`${e.message}\n   docker compose ps`))
-ok('PostgreSQL 就绪')
-
-// ════════════════════════════════════════════════════════════════════════
-step('【4/7】数据库迁移 + 启动后端')
-// ════════════════════════════════════════════════════════════════════════
-
-run('uv', ['run', 'alembic', 'upgrade', 'head'], { cwd: BACKEND })
-ok('数据库迁移完成')
-
-// --host 0.0.0.0 是给模拟器 10.0.2.2 走宿主机 NAT 用的
-const backend = bg('uv', [
-  'run', 'uvicorn', 'app.main:app',
-  '--host', '0.0.0.0', '--port', '8000', '--reload',
-], { cwd: BACKEND })
-procs.push(backend)
-backend.on('exit', (code) => {
-  if (code !== null && code !== 0) err(`后端意外退出 (exit ${code})`)
-})
-await waitHttp('http://localhost:8000/docs', 30).catch(() =>
-  warn('后端健康检查超时，但进程仍在，继续启动模拟器...'))
-ok('后端就绪  →  http://localhost:8000/docs')
-
-// ════════════════════════════════════════════════════════════════════════
-step('【5/7】启动 Android 模拟器')
-// ════════════════════════════════════════════════════════════════════════
-
-// 先看有没有已经跑着的 device / emulator
 run(ADB, ['start-server'], { silent: true, ignoreError: true })
 let deviceList = capture(ADB, ['devices']).split(/\r?\n/).slice(1).filter((l) => /\bdevice\b/.test(l))
 
@@ -164,11 +127,14 @@ if (deviceList.length === 0) {
 
 ok(`Android 设备：${deviceList.map((l) => l.split(/\s+/)[0]).join(', ')}`)
 
-// 端口反向转发（模拟器 & 真机均适用，比走 10.0.2.2 更稳）
-run(ADB, ['reverse', 'tcp:8081', 'tcp:8081'], { silent: true, ignoreError: true })
-run(ADB, ['reverse', 'tcp:8000', 'tcp:8000'], { silent: true, ignoreError: true })
+// ════════════════════════════════════════════════════════════════════════
+step('【4/5】adb reverse 端口（Metro reload / HMR）')
+// ════════════════════════════════════════════════════════════════════════
 
-// 检查目标 app 是否已装
+// Mock 模式不需要 tcp:8000（无后端）；只反转 tcp:8081 给 Metro 用。
+run(ADB, ['reverse', 'tcp:8081', 'tcp:8081'], { silent: true, ignoreError: true })
+ok('adb reverse tcp:8081 tcp:8081')
+
 const installed = capture(ADB, ['shell', 'pm', 'list', 'packages', 'com.yuanai.app']).includes('com.yuanai.app')
 if (!installed) {
   banner([
@@ -184,31 +150,32 @@ if (!installed) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-step('【6/7】启动 Metro Bundler')
+step('【5/5】启动 Metro Bundler（Mock 模式）')
 // ════════════════════════════════════════════════════════════════════════
 
+warn('mobile 端 MSW 尚未接入 — 本脚本只负责启动通道。')
+warn('  API 请求会走 EXPO_PUBLIC_API_URL（默认 localhost:8000），无后端时会失败。')
+warn('  用途：验证冷启动 / Splash / router / 主题；真数据待后续接 msw/native。')
+
 banner([
-  '元AI 移动端开发环境已就绪',
+  '元AI 移动端开发环境（Mock 模式）已就绪',
   '',
-  '  后端 API  →  http://localhost:8000',
-  '  API 文档  →  http://localhost:8000/docs',
-  '  Metro     →  http://localhost:8081  (即将启动)',
-  '  MinIO     →  http://localhost:9001',
+  '  Metro                →  http://localhost:8081  (即将启动)',
+  '  EXPO_PUBLIC_MOCK     →  1',
+  '  EXPO_PUBLIC_API_URL  →  见 apps/mobile/.env',
   '',
-  '  按 Ctrl+C 退出（后端 + Metro 一起停）',
+  '  切回真实后端：pnpm dev:mobile （会清除 EXPO_PUBLIC_MOCK）',
+  '  按 Ctrl+C 退出（Metro 一起停）',
 ])
 
-// 前台运行 Metro，阻塞到 Ctrl+C
+// 前台运行 Metro，阻塞到 Ctrl+C。透传 EXPO_PUBLIC_MOCK 让 Expo 环境变量注入生效。
 const metro = bg('pnpm', [
   '--filter', '@yuanai/mobile', 'exec',
   'expo', 'start', '--dev-client', '--port', '8081',
 ], { cwd: ROOT })
 procs.push(metro)
 
-// ════════════════════════════════════════════════════════════════════════
-step('【7/7】等待 Metro 退出')
-// ════════════════════════════════════════════════════════════════════════
-// 若 app 已装，等 Metro up 后自动 launch（用 deep link + adb 触发）
+// 若 app 已装，等 Metro up 后自动 launch（用 monkey 触发默认 Launcher intent）
 if (installed) {
   setTimeout(() => {
     run(ADB, ['shell', 'monkey', '-p', 'com.yuanai.app',
