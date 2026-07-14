@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router'
 import {
   Check,
   CheckSquare,
+  LogOut,
   MoreVertical,
   Pin,
   Search,
@@ -446,7 +447,7 @@ export function ConversationList({
             style={styles.iconBtn}
             accessibilityLabel="退出登录"
           >
-            <Trash2 size={16} color={border.danger} />
+            <LogOut size={16} color={text.secondary} />
           </Pressable>
         </View>
       )}

@@ -1,6 +1,6 @@
-import { Send, Square } from 'lucide-react-native'
+import { Globe, Mic, Paperclip, Send, Sparkles, Square } from 'lucide-react-native'
 import { useRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
 
@@ -13,16 +13,26 @@ interface ChatInputProps {
 }
 
 /**
- * 底部输入区（MVP 版）：多行 TextInput + 发送/停止按钮。
+ * 底部输入区（Step 7 视觉美化版）。
  *
- * 覆盖点：
- * - Enter/Return：iOS 键盘"发送"按钮走 `onSubmitEditing`；Android 上仍作为换行
- *   （这与主流 IM 一致，避免 Android 用户误发）
- * - 按钮态：streaming → 停止 (Square)；空文本 → 半透明 disabled；有文本 → 品牌色 Send
- * - `paddingBottom = bottomInset` 兜住 Home Indicator；键盘弹起时上层已用
- *   `KeyboardStickyView`/`KeyboardAvoidingView` 处理，本组件不管
+ * 结构（从外到内）：
+ *   wrap（安全区背景带）
+ *     card（白底大圆角 + 轻投影，视觉主体）
+ *       tools 行：📎 附件 / 🎙 语音 / Globe 联网 / Sparkles 思考（**占位**，弹「稍后」）
+ *       input 行：多行 TextInput + 发送/停止 pill 按钮
  *
- * 不含（待后续 Step）：附件按钮 / 模型切换 / 语音 / 联网 & 思考 toggle
+ * 交互：
+ * - iOS 键盘"发送"键：`onSubmitEditing` 触发 handleSend；Android 保留换行（IM 惯例）
+ * - streaming 中：pill 变深色 + Square 图标 = 停止
+ * - 空文本：pill 半透明 disabled
+ *
+ * 占位按钮说明：MVP 有意保留视觉密度但不落功能。
+ * 附件/语音/联网/思考 的真实实现分别依赖：
+ *   - expo-image-picker / expo-document-picker + /files 上传接口
+ *   - expo-av + Whisper 或 /audio 接口
+ *   - 后端 online-search tool + 流式协议扩展
+ *   - 后端 reasoning-mode 标记 + 模型侧支持
+ * 一次落 UI + 后端接线较重，Step 7 只做视觉；点击弹 Alert 表明"稍后"。
  */
 export function ChatInput({
   disabled = false,
@@ -43,43 +53,86 @@ export function ChatInput({
     onSend(content)
   }
 
+  const notReady = (label: string) => (): void => {
+    Alert.alert(label, '此功能稍后开放，敬请期待。')
+  }
+
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(bottomInset, spacing.sm) }]}>
-      <View style={styles.inner}>
-        <TextInput
-          ref={inputRef}
-          value={value}
-          onChangeText={setValue}
-          placeholder="输入你的问题…"
-          placeholderTextColor={text.muted}
-          style={styles.input}
-          multiline
-          // iOS 键盘"发送"键触发；Android 上换行走系统默认
-          onSubmitEditing={Platform.OS === 'ios' ? handleSend : undefined}
-          blurOnSubmit={Platform.OS === 'ios'}
-          editable={!disabled}
-          maxLength={4000}
-        />
-        <Pressable
-          onPress={streaming ? onStop : handleSend}
-          disabled={!streaming && !canSend}
-          style={[
-            styles.btn,
-            streaming
-              ? styles.btnStop
-              : canSend
-                ? styles.btnSend
-                : [styles.btnSend, styles.btnDisabled],
-          ]}
-          hitSlop={4}
-          accessibilityLabel={streaming ? '停止生成' : '发送'}
-        >
-          {streaming ? (
-            <Square size={16} color="#FFFFFF" fill="#FFFFFF" />
-          ) : (
-            <Send size={16} color="#FFFFFF" />
-          )}
-        </Pressable>
+      <View style={styles.card}>
+        {/* 工具行：占位按钮，视觉密度对齐 web */}
+        <View style={styles.tools}>
+          <Pressable
+            onPress={notReady('附件')}
+            hitSlop={6}
+            style={styles.toolBtn}
+            accessibilityLabel="附件（稍后开放）"
+          >
+            <Paperclip size={17} color={text.secondary} />
+          </Pressable>
+          <Pressable
+            onPress={notReady('语音')}
+            hitSlop={6}
+            style={styles.toolBtn}
+            accessibilityLabel="语音输入（稍后开放）"
+          >
+            <Mic size={17} color={text.secondary} />
+          </Pressable>
+          <Pressable
+            onPress={notReady('联网搜索')}
+            hitSlop={6}
+            style={styles.toolBtn}
+            accessibilityLabel="联网搜索（稍后开放）"
+          >
+            <Globe size={17} color={text.secondary} />
+          </Pressable>
+          <Pressable
+            onPress={notReady('深度思考')}
+            hitSlop={6}
+            style={styles.toolBtn}
+            accessibilityLabel="深度思考（稍后开放）"
+          >
+            <Sparkles size={17} color={text.secondary} />
+          </Pressable>
+        </View>
+
+        {/* 输入行 */}
+        <View style={styles.inputRow}>
+          <TextInput
+            ref={inputRef}
+            value={value}
+            onChangeText={setValue}
+            placeholder="问点什么…"
+            placeholderTextColor={text.muted}
+            style={styles.input}
+            multiline
+            onSubmitEditing={Platform.OS === 'ios' ? handleSend : undefined}
+            blurOnSubmit={Platform.OS === 'ios'}
+            editable={!disabled}
+            maxLength={4000}
+            textAlignVertical="top"
+          />
+          <Pressable
+            onPress={streaming ? onStop : handleSend}
+            disabled={!streaming && !canSend}
+            style={[
+              styles.sendBtn,
+              streaming
+                ? styles.sendBtnStop
+                : canSend
+                  ? styles.sendBtnActive
+                  : styles.sendBtnDisabled,
+            ]}
+            hitSlop={4}
+            accessibilityLabel={streaming ? '停止生成' : '发送'}
+          >
+            {streaming ? (
+              <Square size={15} color="#FFFFFF" fill="#FFFFFF" />
+            ) : (
+              <Send size={15} color="#FFFFFF" />
+            )}
+          </Pressable>
+        </View>
       </View>
     </View>
   )
@@ -87,38 +140,64 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: bg.surface,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
+    backgroundColor: bg.base,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
-  inner: {
+  card: {
+    backgroundColor: bg.surface,
+    borderRadius: radius.xl,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: border.default,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+    // 轻投影，iOS/Android 分别调
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  tools: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingBottom: spacing.xs,
+  },
+  toolBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: bg.elevated,
+  },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: spacing.sm,
-    backgroundColor: bg.elevated,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingTop: spacing.xs,
   },
   input: {
     flex: 1,
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 22,
     color: text.primary,
-    minHeight: 24,
-    maxHeight: 140,
-    paddingVertical: 4,
+    minHeight: 32,
+    maxHeight: 120,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
   },
-  btn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  sendBtn: {
+    height: 34,
+    minWidth: 34,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnSend: { backgroundColor: brand.solid },
-  btnStop: { backgroundColor: text.primary },
-  btnDisabled: { opacity: 0.35 },
+  sendBtnActive: { backgroundColor: brand.solid },
+  sendBtnStop: { backgroundColor: text.primary },
+  sendBtnDisabled: { backgroundColor: text.muted, opacity: 0.4 },
 })

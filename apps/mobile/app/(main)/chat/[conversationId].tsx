@@ -4,14 +4,13 @@ import { useCallback, useMemo, useRef } from 'react'
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   useWindowDimensions,
   View,
 } from 'react-native'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { TABLET_MIN_WIDTH, useConversations, useMessages, useModels, useStream } from '@yuanai/core'
@@ -36,8 +35,9 @@ import { bg, border, spacing, text } from '@/theme/tokens'
  * - `useChatStore`          → 读 streamingConvId 判断本页是否处于流式态
  * - `useModels()`           → 取默认模型；MVP 未做手动选择
  *
- * 键盘：Android 用 `padding` 策略把输入区推起；iOS 用 `height` 兼容 SafeArea。
- *      MVP 不上 `KeyboardStickyView`（那需要额外配置 provider），基础方案够用。
+ * 键盘：统一走 `react-native-keyboard-controller` 的 `KeyboardAvoidingView`
+ *      + `behavior="padding"`，双端一致；接管 root 层 `KeyboardProvider`
+ *      的事件（RN 原版在 Android 上跟 `adjustResize` 冲突不推起）。
  */
 export default function ChatConversationScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
@@ -89,8 +89,8 @@ export default function ChatConversationScreen(): React.JSX.Element {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      // iOS 顶部 SafeArea 已由外层 View 承担，避键盘时不再重复偏移
+      behavior="padding"
+      // 顶栏高度由外层 View paddingTop:insets.top 承担；避键盘时不重复偏移
       keyboardVerticalOffset={0}
     >
       <View style={[styles.inner, { paddingTop: insets.top }]}>

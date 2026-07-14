@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native'
+import { ScrollView, Text, View } from 'react-native'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { bg, brand, spacing, text } from '@/theme/tokens'
@@ -8,7 +9,10 @@ import { bg, brand, spacing, text } from '@/theme/tokens'
  * 认证页统一外壳：品牌头 + 表单区。
  *
  * - SafeArea 顶/底 padding
- * - iOS 用 KeyboardAvoidingView padding；Android 依赖 react-native-keyboard-controller 的 windowSoftInputMode=adjustResize
+ * - 键盘避让统一走 `react-native-keyboard-controller` 的 `KeyboardAvoidingView`
+ *   （替换 RN 内置版本）：RN 原版在 Android 上跟 `windowSoftInputMode=adjustResize`
+ *   语义冲突，导致内容不被推起；RNKC 版接管 provider 层事件，Android/iOS 表现一致。
+ *   `behavior="padding"` 两端通用（RNKC 支持），不再区分 Platform。
  * - ScrollView 允许小屏（如 iPhone SE）滚动查看底部
  */
 export function AuthShell({
@@ -24,10 +28,7 @@ export function AuthShell({
 }): React.JSX.Element {
   const insets = useSafeAreaInsets()
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1, backgroundColor: bg.base }}
-    >
+    <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: bg.base }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
