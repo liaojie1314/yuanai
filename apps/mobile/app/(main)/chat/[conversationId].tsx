@@ -1,9 +1,8 @@
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { ChevronLeft, Menu } from 'lucide-react-native'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   StyleSheet,
   Text,
@@ -19,6 +18,7 @@ import { useChatStore } from '@yuanai/core/stores'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
+import { useDialog } from '@/components/ui/Dialog'
 import { bg, border, spacing, text } from '@/theme/tokens'
 
 /**
@@ -43,9 +43,13 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
-  const { conversationId } = useLocalSearchParams<{ conversationId: string }>()
+  const { conversationId, draft } = useLocalSearchParams<{
+    conversationId: string
+    draft?: string
+  }>()
   const router = useRouter()
   const navigation = useNavigation()
+  const dialog = useDialog()
 
   const { data: conversations = [] } = useConversations()
   const { data: models = [] } = useModels()
@@ -72,19 +76,36 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const handleSend = useCallback(
     (content: string): void => {
       if (!conversationId) return
-      // 发送后立即滚到底；send 是 async 但我们不 await，让 UI 立刻响应
+      // 发送后立即滚到底；send 是 async 但我们不 await，让 UI 立刻响应。
+      // 实际的自动贴底由 MessageList 监听 rows.length 变化完成，这里再补一次兜底。
       void send({
         convId: conversationId,
         content,
         model: currentModel,
         onError: (err) => {
-          Alert.alert('发送失败', err instanceof Error ? err.message : '请稍后重试')
+          void dialog.alert({
+            title: '发送失败',
+            message: err instanceof Error ? err.message : '请稍后重试',
+          })
         },
       })
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
     },
-    [conversationId, currentModel, send]
+    [conversationId, currentModel, send, dialog]
   )
+
+  // 从新会话落地屏跳转过来时带 draft（首条消息）→ 挂载后自动发送一次。
+  // 用 ref 上锁避免 React 严格模式/重渲染重复触发；发送后清掉 URL 上的 draft，
+  // 防止返回/刷新再次重发。
+  const draftSentRef = useRef(false)
+  useEffect(() => {
+    if (draftSentRef.current) return
+    const text = typeof draft === 'string' ? draft.trim() : ''
+    if (!text || !conversationId) return
+    draftSentRef.current = true
+    handleSend(text)
+    router.setParams({ draft: '' })
+  }, [draft, conversationId, handleSend, router])
 
   return (
     <KeyboardAvoidingView

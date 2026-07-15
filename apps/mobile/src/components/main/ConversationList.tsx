@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react-native'
 import { useMemo, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
@@ -29,6 +29,7 @@ import {
 } from '@yuanai/core'
 
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { useDialog } from '@/components/ui/Dialog'
 
 const GROUP_ORDER: readonly ConvGroup[] = ['pinned', 'today', 'yesterday', 'week']
 const GROUP_LABEL: Record<ConvGroup, string> = {
@@ -54,7 +55,7 @@ interface ConversationListProps {
  * - 顶部：品牌 logo + 「新建对话」按钮
  * - 搜索：本地对 title 做 includes 过滤（长列表体验用户后续可换 fuzzy）
  * - 分组：置顶 / 今天 / 昨天 / 本周，同组按 updatedAt 倒序
- * - 每项 ⋮ 按钮：Alert.alert 呈现原生 ActionSheet 语义（置顶 / 重命名 / 删除）
+ * - 每项 ⋮ 按钮：自定义 ActionSheet 弹窗（置顶 / 重命名 / 删除），重命名走 prompt 弹窗
  * - 底部：用户信息 + 设置入口 + 退出
  *
  * 多选模式（Step 7 新增）：
@@ -76,6 +77,7 @@ export function ConversationList({
 }: ConversationListProps): React.JSX.Element {
   const router = useRouter()
   const insets = useSafeAreaInsets()
+  const dialog = useDialog()
   const [search, setSearch] = useState('')
   const [selectionMode, setSelectionMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
@@ -152,101 +154,98 @@ export function ConversationList({
   const handleBatchDelete = (): void => {
     const ids = [...selected]
     if (ids.length === 0) return
-    Alert.alert('批量删除', `确定删除已选中的 ${ids.length} 个会话？删除后不可恢复。`, [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: () => {
-          deleteConvs.mutate(ids, {
-            onSuccess: () => {
-              // 若当前活跃会话在被删列表里，回到空态
-              if (activeId && ids.includes(activeId)) router.replace('/(main)/chat')
-              exitSelection()
-            },
-            onError: (err) => {
-              Alert.alert('删除失败', err instanceof Error ? err.message : '请稍后重试')
-            },
+    void (async () => {
+      const ok = await dialog.confirm({
+        title: '批量删除',
+        message: `确定删除已选中的 ${ids.length} 个会话？删除后不可恢复。`,
+        confirmText: '删除',
+        destructive: true,
+      })
+      if (!ok) return
+      deleteConvs.mutate(ids, {
+        onSuccess: () => {
+          // 若当前活跃会话在被删列表里，回到空态
+          if (activeId && ids.includes(activeId)) router.replace('/(main)/chat')
+          exitSelection()
+        },
+        onError: (err) => {
+          void dialog.alert({
+            title: '删除失败',
+            message: err instanceof Error ? err.message : '请稍后重试',
           })
         },
-      },
-    ])
+      })
+    })()
   }
 
   const handleNew = async (): Promise<void> => {
     try {
-      // model 默认走 web 端一致的 deepseek-v4-flash；Step 7 会实现"新对话前不建 conv、
-      // 首次发送时按输入创建"的路径，届时移除这里的直接 create。
+      // model 默认走 web 端一致的 deepseek-v4-flash；首次发送时才真正建 conv 的路径
+      // 由 /chat（新会话页）承担，这里保留侧栏「新建」显式建空会话的入口。
       const conv = await createConv.mutateAsync({ model: 'deepseek-v4-flash' })
       handlePick(conv.id)
     } catch (err) {
-      Alert.alert('新建对话失败', err instanceof Error ? err.message : '请稍后重试')
+      void dialog.alert({
+        title: '新建对话失败',
+        message: err instanceof Error ? err.message : '请稍后重试',
+      })
     }
   }
 
   const openContextMenu = (id: string, title: string, isPinned: boolean): void => {
-    Alert.alert(title, undefined, [
-      {
-        text: isPinned ? '取消置顶' : '置顶',
-        onPress: () => {
-          updateConv.mutate({ id, isPinned: !isPinned })
-        },
-      },
-      {
-        text: '重命名',
-        onPress: () => {
-          // 简版：Alert.prompt 只在 iOS 支持；先用一个通用的 prompt 占位，
-          // Step 7 UI 阶段再替换为 BottomSheet 输入框
-          Alert.prompt?.(
-            '重命名会话',
-            '',
-            (newTitle) => {
-              const trimmed = newTitle?.trim()
-              if (trimmed && trimmed !== title) {
-                updateConv.mutate({ id, title: trimmed })
-              }
-            },
-            'plain-text',
-            title
-          )
-        },
-      },
-      {
-        text: '删除',
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert('删除会话', '删除后不可恢复，确定要删除吗？', [
-            { text: '取消', style: 'cancel' },
-            {
-              text: '删除',
-              style: 'destructive',
-              onPress: () => {
-                deleteConv.mutate(id)
-                if (activeId === id) router.replace('/(main)/chat')
-              },
-            },
-          ])
-        },
-      },
-      { text: '取消', style: 'cancel' },
-    ])
+    void (async () => {
+      const choice = await dialog.actionSheet({
+        title,
+        actions: [
+          { label: isPinned ? '取消置顶' : '置顶' },
+          { label: '重命名' },
+          { label: '删除', destructive: true },
+        ],
+      })
+      if (choice === 0) {
+        updateConv.mutate({ id, isPinned: !isPinned })
+      } else if (choice === 1) {
+        const newTitle = await dialog.prompt({
+          title: '重命名会话',
+          placeholder: '输入新的会话名称',
+          defaultValue: title,
+          confirmText: '保存',
+          maxLength: 50,
+        })
+        const trimmed = newTitle?.trim()
+        if (trimmed && trimmed !== title) {
+          updateConv.mutate({ id, title: trimmed })
+        }
+      } else if (choice === 2) {
+        const ok = await dialog.confirm({
+          title: '删除会话',
+          message: '删除后不可恢复，确定要删除吗？',
+          confirmText: '删除',
+          destructive: true,
+        })
+        if (ok) {
+          deleteConv.mutate(id)
+          if (activeId === id) router.replace('/(main)/chat')
+        }
+      }
+    })()
   }
 
   const openLogout = (): void => {
-    Alert.alert('退出登录', '确认退出当前账号？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '退出',
-        style: 'destructive',
-        onPress: () => {
-          doLogout(undefined, {
-            onSettled: () => {
-              router.replace('/(auth)/login')
-            },
-          })
+    void (async () => {
+      const ok = await dialog.confirm({
+        title: '退出登录',
+        message: '确认退出当前账号？',
+        confirmText: '退出',
+        destructive: true,
+      })
+      if (!ok) return
+      doLogout(undefined, {
+        onSettled: () => {
+          router.replace('/(auth)/login')
         },
-      },
-    ])
+      })
+    })()
   }
 
   const userInitial = user?.username?.charAt(0).toUpperCase() ?? '?'

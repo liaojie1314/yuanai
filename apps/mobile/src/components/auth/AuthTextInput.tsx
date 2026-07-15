@@ -19,8 +19,13 @@ export interface AuthTextInputProps extends TextInputProps {
  * - 高 48pt，圆角 10，focus 时边框变品牌色
  * - error 时边框变红 + 下方红字提示
  * - placeholder 用 text.muted
- * - 右侧支持一个 adornment（如密码眼睛、验证码按钮）
+ * - 右侧支持一个 adornment（如密码显示切换、发送验证码）
+ *
+ * 布局稳定性：错误信息槽位**始终占据固定高度**（ERROR_SLOT_HEIGHT），
+ * 无论有无错误都不改变外层高度 —— 避免错误出现/消失时输入框整列上下跳动。
  */
+const ERROR_SLOT_HEIGHT = 18
+
 export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function AuthTextInput(
   { label, error, rightAdornment, style, onFocus, onBlur, ...props },
   ref
@@ -29,7 +34,7 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
   const borderColor = error ? border.danger : focused ? border.focus : border.default
 
   return (
-    <View style={{ marginBottom: spacing.md }}>
+    <View style={{ marginBottom: spacing.sm }}>
       {label ? (
         <Text
           style={{
@@ -51,7 +56,6 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
           borderColor,
           borderRadius: radius.md,
           backgroundColor: bg.surface,
-          paddingRight: rightAdornment ? spacing.sm : 0,
         }}
       >
         <TextInput
@@ -61,6 +65,7 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
               flex: 1,
               height: 48,
               paddingHorizontal: spacing.lg,
+              paddingVertical: 0,
               fontSize: 15,
               color: text.primary,
             },
@@ -77,12 +82,29 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
           }}
           {...props}
         />
-        {rightAdornment}
+        {/* adornment 用 48pt 高居中容器包裹，保证图标/按钮垂直居中 */}
+        {rightAdornment ? (
+          <View
+            style={{
+              height: 48,
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingRight: spacing.sm,
+            }}
+          >
+            {rightAdornment}
+          </View>
+        ) : null}
       </View>
 
-      {error ? (
-        <Text style={{ marginTop: spacing.xs, fontSize: 12, color: border.danger }}>{error}</Text>
-      ) : null}
+      {/* 固定高度错误槽：有错误显示红字，无错误留白，杜绝布局位移 */}
+      <View style={{ height: ERROR_SLOT_HEIGHT, justifyContent: 'center' }}>
+        {error ? (
+          <Text style={{ fontSize: 12, color: border.danger }} numberOfLines={1}>
+            {error}
+          </Text>
+        ) : null}
+      </View>
     </View>
   )
 })

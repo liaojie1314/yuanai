@@ -2,6 +2,7 @@ import { FlashList, type FlashListProps } from '@shopify/flash-list'
 import type { Message } from '@yuanai/types'
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { StyleSheet, View } from 'react-native'
+import { useKeyboardState } from 'react-native-keyboard-controller'
 
 import { useChatStore } from '@yuanai/core/stores'
 
@@ -63,6 +64,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   const streamingContent = useChatStore((s) => s.streamingContent)
   const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
   const isStreaming = streamingConvId === convId
+  // 键盘弹起时列表视口收缩，原本贴底的内容会被推到视口下方看不见 —— 监听
+  // 键盘可见性，弹起瞬间重新滚到底，保证最新消息始终可见（配合 KeyboardAvoidingView）。
+  const keyboardVisible = useKeyboardState((s) => s.isVisible)
 
   const listRef = useRef<FlashList<Row> | null>(null)
   useImperativeHandle(ref, () => ({
@@ -87,15 +91,19 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     return base
   }, [messages, isStreaming, optimisticUserMsg, streamingContent])
 
-  // 自动滚到底：真实消息数变化立即滚；流式内容每 ~20 字符滚一次
-  const lastMsgCount = useRef(messages.length)
+  // 自动滚到底：
+  //  - 行数变化（真实消息到达 / 乐观用户消息 / 流式 AI 占位加入）→ 立即滚
+  //    ⚠️ 用 rows.length 而非 messages.length：乐观用户消息与流式占位不在 messages
+  //    数组里，只反映在合成后的 rows 上；发送瞬间就是靠这里把新气泡带进视口的。
+  //  - 流式内容每 ~20 字符滚一次（避免每 token 都触发 layout）
+  const lastRowCount = useRef(rows.length)
   const lastStreamTick = useRef(0)
   useEffect(() => {
-    if (messages.length !== lastMsgCount.current) {
-      lastMsgCount.current = messages.length
+    if (rows.length !== lastRowCount.current) {
+      lastRowCount.current = rows.length
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.({ animated: true }))
     }
-  }, [messages.length])
+  }, [rows.length])
   useEffect(() => {
     if (!isStreaming) return
     const tick = Math.floor(streamingContent.length / 20)
@@ -104,6 +112,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.({ animated: false }))
     }
   }, [streamingContent, isStreaming])
+  // 键盘弹起 → 重新贴底（延迟一帧等 KAV 完成收缩再滚，位置才准）
+  useEffect(() => {
+    if (!keyboardVisible) return
+    const t = setTimeout(() => listRef.current?.scrollToEnd?.({ animated: true }), 50)
+    return () => clearTimeout(t)
+  }, [keyboardVisible])
 
   return (
     <TypedFlashList

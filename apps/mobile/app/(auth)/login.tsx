@@ -4,7 +4,7 @@ import * as WebBrowser from 'expo-web-browser'
 import { Eye, EyeOff, Github, Mail } from 'lucide-react-native'
 import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Alert, Pressable, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { z } from 'zod'
 
 import { API_BASE_URL, useLogin } from '@yuanai/core'
@@ -12,6 +12,7 @@ import { API_BASE_URL, useLogin } from '@yuanai/core'
 import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
+import { useDialog } from '@/components/ui/Dialog'
 import { brand, spacing, text } from '@/theme/tokens'
 
 const schema = z.object({
@@ -37,6 +38,7 @@ type FormValues = z.infer<typeof schema>
 export default function LoginScreen(): React.JSX.Element {
   const router = useRouter()
   const loginMutation = useLogin()
+  const dialog = useDialog()
   const [showPwd, setShowPwd] = useState(false)
 
   const {
@@ -59,7 +61,7 @@ export default function LoginScreen(): React.JSX.Element {
       router.replace('/(main)/chat')
     } catch (err) {
       const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
-      Alert.alert('登录失败', msg)
+      void dialog.alert({ title: '登录失败', message: msg })
     }
   }
 
@@ -77,7 +79,7 @@ export default function LoginScreen(): React.JSX.Element {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '三方登录失败'
-      Alert.alert('三方登录失败', msg)
+      void dialog.alert({ title: '三方登录失败', message: msg })
     }
   }
 
@@ -111,11 +113,7 @@ export default function LoginScreen(): React.JSX.Element {
             onChangeText={onChange}
             onBlur={onBlur}
             error={errors.email?.message}
-            rightAdornment={
-              <View style={{ paddingRight: spacing.md }}>
-                <Mail size={16} color={brand.solid} />
-              </View>
-            }
+            rightAdornment={<Mail size={16} color={brand.solid} />}
           />
         )}
       />
@@ -139,7 +137,7 @@ export default function LoginScreen(): React.JSX.Element {
               <Pressable
                 onPress={() => setShowPwd((v) => !v)}
                 hitSlop={8}
-                style={{ paddingRight: spacing.md, paddingLeft: spacing.sm }}
+                style={{ paddingLeft: spacing.sm }}
               >
                 {showPwd ? (
                   <EyeOff size={18} color={brand.solid} />

@@ -3,7 +3,7 @@ import { Link, useRouter } from 'expo-router'
 import { Eye, EyeOff, Mail, User } from 'lucide-react-native'
 import { useEffect, useRef, useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
-import { Alert, Pressable, Text, View } from 'react-native'
+import { Pressable, Text, View } from 'react-native'
 import { z } from 'zod'
 
 import { useRegister, useSendVerifyCode } from '@yuanai/core'
@@ -11,6 +11,7 @@ import { useRegister, useSendVerifyCode } from '@yuanai/core'
 import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
+import { useDialog } from '@/components/ui/Dialog'
 import { brand, spacing, text } from '@/theme/tokens'
 
 const schema = z.object({
@@ -41,6 +42,7 @@ export default function RegisterScreen(): React.JSX.Element {
   const router = useRouter()
   const registerMutation = useRegister()
   const sendCodeMutation = useSendVerifyCode()
+  const dialog = useDialog()
 
   const [showPwd, setShowPwd] = useState(false)
   const [countdown, setCountdown] = useState(0)
@@ -90,10 +92,13 @@ export default function RegisterScreen(): React.JSX.Element {
     try {
       await sendCodeMutation.mutateAsync({ email, scene: 'register' })
       startCountdown()
-      Alert.alert('验证码已发送', `我们已向 ${email} 发送 6 位验证码，5 分钟内有效。`)
+      void dialog.alert({
+        title: '验证码已发送',
+        message: `我们已向 ${email} 发送 6 位验证码，5 分钟内有效。`,
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : '验证码发送失败'
-      Alert.alert('发送失败', msg)
+      void dialog.alert({ title: '发送失败', message: msg })
     }
   }
 
@@ -108,7 +113,7 @@ export default function RegisterScreen(): React.JSX.Element {
       router.replace('/(main)/chat')
     } catch (err) {
       const msg = err instanceof Error ? err.message : '注册失败，请稍后重试'
-      Alert.alert('注册失败', msg)
+      void dialog.alert({ title: '注册失败', message: msg })
     }
   }
 
@@ -145,11 +150,7 @@ export default function RegisterScreen(): React.JSX.Element {
             onChangeText={onChange}
             onBlur={onBlur}
             error={errors.email?.message}
-            rightAdornment={
-              <View style={{ paddingRight: spacing.md }}>
-                <Mail size={16} color={brand.solid} />
-              </View>
-            }
+            rightAdornment={<Mail size={16} color={brand.solid} />}
           />
         )}
       />
@@ -167,11 +168,7 @@ export default function RegisterScreen(): React.JSX.Element {
             onChangeText={onChange}
             onBlur={onBlur}
             error={errors.username?.message}
-            rightAdornment={
-              <View style={{ paddingRight: spacing.md }}>
-                <User size={16} color={brand.solid} />
-              </View>
-            }
+            rightAdornment={<User size={16} color={brand.solid} />}
           />
         )}
       />
@@ -195,7 +192,7 @@ export default function RegisterScreen(): React.JSX.Element {
               <Pressable
                 onPress={() => setShowPwd((v) => !v)}
                 hitSlop={8}
-                style={{ paddingRight: spacing.md, paddingLeft: spacing.sm }}
+                style={{ paddingLeft: spacing.sm }}
               >
                 {showPwd ? (
                   <EyeOff size={18} color={brand.solid} />
@@ -234,7 +231,6 @@ export default function RegisterScreen(): React.JSX.Element {
                   height: 36,
                   minWidth: 96,
                   paddingHorizontal: 12,
-                  marginRight: 6,
                   borderRadius: 8,
                   borderWidth: 1,
                   borderColor: brand.solid,

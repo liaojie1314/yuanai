@@ -13,6 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { setPlatformAdapter } from '@yuanai/core'
 
 import { ThemeShell } from '@/components/ThemeShell'
+import { DialogProvider } from '@/components/ui/Dialog'
 import { useAppStateStream } from '@/hooks/useAppStateStream'
 import { useHydrateAuth } from '@/hooks/useHydrateAuth'
 import { useLinkingHandler } from '@/hooks/useLinkingHandler'
@@ -72,7 +73,9 @@ function RootLayout(): React.JSX.Element {
             <BottomSheetModalProvider>
               <I18nProvider>
                 <ThemeShell>
-                  <RootLayoutContent />
+                  <DialogProvider>
+                    <RootLayoutContent />
+                  </DialogProvider>
                 </ThemeShell>
               </I18nProvider>
             </BottomSheetModalProvider>

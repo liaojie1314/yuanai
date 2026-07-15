@@ -1,8 +1,9 @@
 import { Globe, Mic, Paperclip, Send, Sparkles, Square } from 'lucide-react-native'
 import { useRef, useState } from 'react'
-import { Alert, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { useDialog } from '@/components/ui/Dialog'
 
 interface ChatInputProps {
   disabled?: boolean
@@ -32,7 +33,7 @@ interface ChatInputProps {
  *   - expo-av + Whisper 或 /audio 接口
  *   - 后端 online-search tool + 流式协议扩展
  *   - 后端 reasoning-mode 标记 + 模型侧支持
- * 一次落 UI + 后端接线较重，Step 7 只做视觉；点击弹 Alert 表明"稍后"。
+ * 一次落 UI + 后端接线较重，Step 7 只做视觉；点击弹自定义 Dialog 表明"稍后"。
  */
 export function ChatInput({
   disabled = false,
@@ -43,6 +44,7 @@ export function ChatInput({
 }: ChatInputProps): React.JSX.Element {
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
+  const dialog = useDialog()
 
   const canSend = value.trim().length > 0 && !streaming && !disabled
 
@@ -54,7 +56,7 @@ export function ChatInput({
   }
 
   const notReady = (label: string) => (): void => {
-    Alert.alert(label, '此功能稍后开放，敬请期待。')
+    void dialog.alert({ title: label, message: '此功能稍后开放，敬请期待。' })
   }
 
   return (

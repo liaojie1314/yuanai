@@ -1,86 +1,120 @@
-import { useNavigation } from 'expo-router'
-import { Menu, MessageSquarePlus } from 'lucide-react-native'
-import { useCallback } from 'react'
-import { Alert, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { useNavigation, useRouter } from 'expo-router'
+import { Menu } from 'lucide-react-native'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { StyleSheet, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { TABLET_MIN_WIDTH, useCreateConversation } from '@yuanai/core'
+import { TABLET_MIN_WIDTH, useCreateConversation, useModels } from '@yuanai/core'
 
-import { bg, brand, radius, spacing, text } from '@/theme/tokens'
+import { ChatInput } from '@/components/chat/ChatInput'
+import { useDialog } from '@/components/ui/Dialog'
+import { bg, brand, spacing, text } from '@/theme/tokens'
 
 /**
- * `/chat` 空状态页：登录后的默认落地屏。
+ * `/chat` 新会话落地屏：登录后的默认页，直接可聊天。
  *
- * - 顶部左侧：手机端渲染打开抽屉按钮（平板不显示，因为侧栏本就固定展开）
- * - 中部：品牌 logo + 引导文案 + 「新建对话」快捷按钮
- * - Step 7 会把这里换成"含输入框的欢迎页"（用户直接输入即触发 conv 创建）
+ * - 顶栏：手机端渲染打开抽屉按钮（平板侧栏固定展开，不显示）
+ * - 中部：品牌 logo + 欢迎语（空态视觉）
+ * - 底部：ChatInput —— 用户直接输入即可开始
+ *
+ * 首次发送流程（对齐 web `ChatInterface`）：
+ * 1. 用输入内容前 30 字作为标题创建会话
+ * 2. `router.replace` 到 `/(main)/chat/[id]`，并把这条消息作为 `draft` 参数带过去
+ * 3. 目标会话页在挂载时检测到 `draft` → 自动发送并触发流式
+ *
+ * 用 `replace` 而非 `push`：避免返回键回到空的新会话页。
  */
-export default function ChatEmptyScreen(): React.JSX.Element {
+export default function ChatNewScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
   const navigation = useNavigation()
+  const router = useRouter()
+  const dialog = useDialog()
+
   const createConv = useCreateConversation()
+  const { data: models = [] } = useModels()
+  const [submitting, setSubmitting] = useState(false)
+  // 防抖：创建 + 跳转有异步窗口，避免连点发送创建多个会话
+  const busyRef = useRef(false)
+
+  const defaultModel = useMemo(() => {
+    const def = models.find((m) => m.isDefault)
+    return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
+  }, [models])
 
   const openDrawer = useCallback(() => {
-    // expo-router Drawer 挂在 navigation 上；非 Drawer（如平板双栏）不存在此方法
     const nav = navigation as unknown as { openDrawer?: () => void }
     nav.openDrawer?.()
   }, [navigation])
 
-  const handleNew = useCallback(async (): Promise<void> => {
-    try {
-      await createConv.mutateAsync({ model: 'deepseek-v4-flash' })
-      // 新会话创建后 useConversations 缓存会更新；用户从侧边栏点开即可
-      // Step 7 会改成直接 router.push 到新会话
-    } catch (err) {
-      Alert.alert('新建对话失败', err instanceof Error ? err.message : '请稍后重试')
-    }
-  }, [createConv])
+  const handleSend = useCallback(
+    (content: string): void => {
+      if (busyRef.current) return
+      busyRef.current = true
+      setSubmitting(true)
+      void (async () => {
+        try {
+          const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
+          const conv = await createConv.mutateAsync({ model: defaultModel, title })
+          // 把首条消息作为 draft 带到会话页，由其自动发送
+          router.replace({
+            pathname: '/(main)/chat/[conversationId]',
+            params: { conversationId: conv.id, draft: content },
+          })
+        } catch (err) {
+          void dialog.alert({
+            title: '发送失败',
+            message: err instanceof Error ? err.message : '创建会话失败，请稍后重试',
+          })
+          busyRef.current = false
+          setSubmitting(false)
+        }
+        // 成功后不复位 busyRef：本屏即将被 replace 卸载
+      })()
+    },
+    [createConv, defaultModel, router, dialog]
+  )
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Top bar：只在手机端渲染 Drawer 按钮 */}
-      {!isTablet ? (
-        <View style={styles.topBar}>
-          <Pressable
-            onPress={openDrawer}
-            hitSlop={8}
-            style={styles.topBtn}
-            accessibilityLabel="打开侧边栏"
-          >
-            <Menu size={20} color={text.primary} />
-          </Pressable>
-          <Text style={styles.topTitle}>元AI</Text>
-          <View style={styles.topBtn} />
-        </View>
-      ) : null}
+    <KeyboardAvoidingView style={styles.container} behavior="padding" keyboardVerticalOffset={0}>
+      <View style={[styles.inner, { paddingTop: insets.top }]}>
+        {/* 顶栏：手机端渲染 Drawer 按钮 */}
+        {!isTablet ? (
+          <View style={styles.topBar}>
+            <Pressable
+              onPress={openDrawer}
+              hitSlop={8}
+              style={styles.topBtn}
+              accessibilityLabel="打开侧边栏"
+            >
+              <Menu size={20} color={text.primary} />
+            </Pressable>
+            <Text style={styles.topTitle}>元AI</Text>
+            <View style={styles.topBtn} />
+          </View>
+        ) : null}
 
-      {/* 空状态内容 */}
-      <View style={styles.body}>
-        <View style={styles.brandBadge}>
-          <Text style={styles.brandBadgeText}>元</Text>
+        {/* 欢迎空态 */}
+        <View style={styles.body}>
+          <View style={styles.brandBadge}>
+            <Text style={styles.brandBadgeText}>元</Text>
+          </View>
+          <Text style={styles.title}>你好，我是元AI</Text>
+          <Text style={styles.subtitle}>有什么可以帮你的？在下面直接输入开始对话吧</Text>
         </View>
-        <Text style={styles.title}>你好，我是元AI</Text>
-        <Text style={styles.subtitle}>选择左侧对话继续，或开启一个新话题</Text>
 
-        <Pressable
-          onPress={() => {
-            void handleNew()
-          }}
-          style={({ pressed }) => [styles.newBtn, pressed && { opacity: 0.85 }]}
-          disabled={createConv.isPending}
-        >
-          <MessageSquarePlus size={16} color="#FFFFFF" />
-          <Text style={styles.newBtnLabel}>{createConv.isPending ? '创建中…' : '开始新对话'}</Text>
-        </Pressable>
+        {/* 输入区 */}
+        <ChatInput streaming={submitting} onSend={handleSend} bottomInset={insets.bottom} />
       </View>
-    </View>
+    </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: bg.base },
+  inner: { flex: 1 },
   topBar: {
     height: 52,
     flexDirection: 'row',
@@ -108,15 +142,5 @@ const styles = StyleSheet.create({
   },
   brandBadgeText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
   title: { fontSize: 20, fontWeight: '600', color: text.primary },
-  subtitle: { fontSize: 14, color: text.secondary, textAlign: 'center', marginBottom: spacing.lg },
-  newBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    height: 44,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    backgroundColor: brand.solid,
-  },
-  newBtnLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  subtitle: { fontSize: 14, color: text.secondary, textAlign: 'center' },
 })
