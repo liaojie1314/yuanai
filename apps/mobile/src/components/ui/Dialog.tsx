@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
@@ -137,40 +137,48 @@ export function DialogProvider({ children }: { children: ReactNode }): React.JSX
     close()
   }, [close])
 
+  // Android 硬件返回键 = 取消（原生 Modal 的 onRequestClose 等价物）
+  useEffect(() => {
+    if (active === null) return
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onDismiss()
+      return true
+    })
+    return () => sub.remove()
+  }, [active, onDismiss])
+
+  // 不用 RN <Modal>：RN 0.76 Fabric 上首帧后再挂载的 Modal 不给内容根节点
+  // 窗口约束，flex:1 塌缩成 0 尺寸 → 弹窗隐形但整屏挡触摸（根 layout 常驻
+  // visible 的 Modal 则正常）。改为 DialogProvider（root layout）内的绝对
+  // 定位 overlay，天然覆盖全屏且不受该缺陷影响。
   return (
     <DialogContext.Provider value={api}>
       {children}
-      <Modal
-        visible={active !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={onDismiss}
-      >
+      {active !== null && (
         <KeyboardAvoidingView behavior="padding" style={styles.overlayWrap}>
           <Pressable style={styles.backdrop} onPress={onDismiss} />
-          {active ? (
-            <View style={active.kind === 'actionSheet' ? styles.sheetCard : styles.card}>
-              {active.kind === 'actionSheet' ? (
-                <ActionSheetBody
-                  opts={active.opts}
-                  onPick={(i) => {
-                    active.resolve(i)
-                    close()
-                  }}
-                />
-              ) : (
-                <CenterDialogBody
-                  active={active}
-                  inputValue={inputValue}
-                  setInputValue={setInputValue}
-                  onClose={close}
-                />
-              )}
+          {active.kind === 'actionSheet' ? (
+            <View style={styles.sheetCard}>
+              <ActionSheetBody
+                opts={active.opts}
+                onPick={(i) => {
+                  active.resolve(i)
+                  close()
+                }}
+              />
             </View>
-          ) : null}
+          ) : (
+            <View style={styles.card}>
+              <CenterDialogBody
+                active={active}
+                inputValue={inputValue}
+                setInputValue={setInputValue}
+                onClose={close}
+              />
+            </View>
+          )}
         </KeyboardAvoidingView>
-      </Modal>
+      )}
     </DialogContext.Provider>
   )
 }
@@ -272,7 +280,7 @@ function ActionSheetBody({
             key={`${a.label}-${i}`}
             onPress={() => onPick(i)}
             android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-            style={({ pressed }) => [styles.sheetItem, pressed && { backgroundColor: bg.elevated }]}
+            style={[styles.sheetItem, i > 0 && styles.sheetItemDivider]}
           >
             <Text style={[styles.sheetItemText, a.destructive && { color: border.danger }]}>
               {a.label}
@@ -284,7 +292,7 @@ function ActionSheetBody({
         <Pressable
           onPress={() => onPick(-1)}
           android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-          style={({ pressed }) => [styles.sheetCancel, pressed && { backgroundColor: bg.elevated }]}
+          style={styles.sheetCancel}
         >
           <Text style={styles.sheetCancelText}>{opts.cancelText ?? '取消'}</Text>
         </Pressable>
@@ -305,15 +313,13 @@ function DialogButton({
   const bgColor =
     variant === 'primary' ? brand.solid : variant === 'danger' ? border.danger : bg.elevated
   const fgColor = variant === 'ghost' ? text.secondary : '#FFFFFF'
+  // 不用函数形式 style：NativeWind 4 的 cssInterop 会丢弃 Pressable 函数式
+  // style 的返回值（按钮 flex/背景全失效）。按压反馈由 android_ripple 提供。
   return (
     <Pressable
       onPress={onPress}
       android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
-      style={({ pressed }) => [
-        styles.btn,
-        { backgroundColor: bgColor },
-        pressed && { opacity: 0.85 },
-      ]}
+      style={[styles.btn, { backgroundColor: bgColor }]}
     >
       <Text style={[styles.btnText, { color: fgColor }]}>{label}</Text>
     </Pressable>
@@ -328,7 +334,13 @@ export function useDialog(): DialogApi {
 }
 
 const styles = StyleSheet.create({
-  overlayWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  overlayWrap: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    elevation: 1000,
+  },
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
   card: {
     width: '84%',
@@ -403,15 +415,24 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   sheetActions: { marginTop: spacing.xs },
-  sheetItem: { height: 52, alignItems: 'center', justifyContent: 'center' },
-  sheetItemText: { fontSize: 16, color: text.primary },
+  sheetItem: { minHeight: 52, justifyContent: 'center' },
+  sheetItemDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: border.default,
+  },
+  sheetItemText: { fontSize: 16, color: text.primary, textAlign: 'center', width: '100%' },
   sheetCancel: {
-    height: 52,
-    alignItems: 'center',
+    minHeight: 52,
     justifyContent: 'center',
     marginTop: spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: border.default,
   },
-  sheetCancelText: { fontSize: 16, fontWeight: '600', color: text.secondary },
+  sheetCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: text.secondary,
+    textAlign: 'center',
+    width: '100%',
+  },
 })
