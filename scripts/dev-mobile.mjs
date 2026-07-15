@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 import {
   WIN, log, ok, warn, err, step, banner, prompt,
-  run, hasCmd, bg, killProc, capture,
+  run, hasCmd, bg, killProc, capture, freePort,
   waitPort, waitHttp, sleep,
   existsSync, copyFileSync, patchEnvFile,
 } from './_utils.mjs'
@@ -119,6 +119,9 @@ step('【4/7】数据库迁移 + 启动后端')
 run('uv', ['run', 'alembic', 'upgrade', 'head'], { cwd: BACKEND })
 ok('数据库迁移完成')
 
+// 清掉上次会话残留的后端（占着 8000 会让本次 uvicorn 起不来）
+await freePort(8000, '残留后端')
+
 // --host 0.0.0.0 是给模拟器 10.0.2.2 走宿主机 NAT 用的
 const backend = bg('uv', [
   'run', 'uvicorn', 'app.main:app',
@@ -148,8 +151,8 @@ if (deviceList.length === 0) {
   log(`可用 AVD：${avds.join(', ')}`)
   const target = avds[0]
   log(`启动 ${target}（后台，headless=false）...`)
-  const emu = bg(EMULATOR, ['-avd', target, '-no-boot-anim', '-no-snapshot-save'])
-  procs.push(emu)
+  // detach：模拟器跨会话复用，不随本脚本退出；不 detach 会阻塞脚本退出流程
+  const emu = bg(EMULATOR, ['-avd', target, '-no-boot-anim', '-no-snapshot-save'], { detach: true })
   // 等 boot 完成（最长 3 分钟）
   const deadline = Date.now() + 180_000
   while (Date.now() < deadline) {
@@ -197,6 +200,10 @@ banner([
   '',
   '  按 Ctrl+C 退出（后端 + Metro 一起停）',
 ])
+
+// 清掉上次会话残留的 Metro —— 8081 被占时 expo 会交互式问"换端口？"，
+// 非交互环境（CI / 后台任务）下它直接跳过 dev server，脚本假死。
+await freePort(8081, '残留 Metro')
 
 // 前台运行 Metro，阻塞到 Ctrl+C
 const metro = bg('pnpm', [
