@@ -271,9 +271,18 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
         />
       </View>
 
-      <View style={{ marginTop: spacing.md }}>
-        <Text style={{ fontSize: 12, color: text.muted, textAlign: 'center' }}>
-          <Lock size={11} color={text.muted} /> 提交后你的旧密码将立即失效，请使用新密码登录。
+      <View
+        style={{
+          marginTop: spacing.md,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 4,
+        }}
+      >
+        <Lock size={11} color={text.muted} />
+        <Text style={{ fontSize: 12, color: text.muted }}>
+          提交后你的旧密码将立即失效，请使用新密码登录。
         </Text>
       </View>
     </AuthShell>

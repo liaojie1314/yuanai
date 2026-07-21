@@ -101,8 +101,10 @@ function mobileStream(req: StreamRequest, handlers: StreamHandlers): StreamHandl
         return
       }
       handlers.onMessage({ event: name, data: event.data ?? '' })
-      // 流的正常终止帧：dispatch 完 message 再 fire onClose，语义与 Web reader.done 对齐
-      if (name === 'message_end') {
+      // 终止帧：`message_end`（正常收尾）或带 payload 的 `error`（后端异常收尾，
+      // 之后只剩 [DONE]）。rn-sse 在 server 关连接时不发任何事件，不在这里
+      // 收尾的话上层 onClose 永远不触发，UI 会停在流式光标。
+      if (name === 'message_end' || name === 'error') {
         finishNormally()
       }
     })
