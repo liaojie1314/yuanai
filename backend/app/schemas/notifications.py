@@ -46,3 +46,15 @@ class SubscriptionResultResponse(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
 
     ok: bool
+
+
+class ExpoPushTokenRequest(BaseModel):
+    """移动端上报的 Expo Push token。
+
+    token 形如 `ExponentPushToken[xxxx]`；platform 是 RN `Platform.OS`。
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    token: str = Field(min_length=1, max_length=255)
+    platform: str = Field(min_length=1, max_length=16)

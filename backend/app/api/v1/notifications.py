@@ -1,8 +1,10 @@
-"""Web Push 订阅端点。
+"""推送订阅端点（Web Push + 移动端 Expo Push 两条通道）。
 
-- `GET  /notifications/vapid-public-key` —— 公开，前端拿它作 applicationServerKey
-- `POST /notifications/subscribe`        —— 鉴权，保存/更新当前用户的订阅
-- `POST /notifications/unsubscribe`      —— 鉴权，按 endpoint 删除订阅
+- `GET    /notifications/vapid-public-key` —— 公开，前端拿它作 applicationServerKey
+- `POST   /notifications/subscribe`        —— 鉴权，保存/更新当前用户的 Web 订阅
+- `POST   /notifications/unsubscribe`      —— 鉴权，按 endpoint 删除 Web 订阅
+- `POST   /notifications/expo`             —— 鉴权，保存/更新移动端 Expo token
+- `DELETE /notifications/expo/{token}`     —— 鉴权，移除设备 Expo token
 
 真正的推送发送在 AI 回复结束时由 `chat.py` 调 `push_service.send_to_user` 完成。
 """
@@ -12,8 +14,10 @@ from sqlalchemy import delete, select
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
+from app.models.expo_push_token import ExpoPushToken
 from app.models.push_subscription import PushSubscription
 from app.schemas.notifications import (
+    ExpoPushTokenRequest,
     PushSubscriptionRequest,
     SubscriptionResultResponse,
     UnsubscribeRequest,
@@ -65,6 +69,45 @@ async def unsubscribe(
         delete(PushSubscription)
         .where(PushSubscription.endpoint == req.endpoint)
         .where(PushSubscription.user_id == current_user.id)
+    )
+    await db.commit()
+    return SubscriptionResultResponse(ok=True)
+
+
+@router.post("/expo", response_model=SubscriptionResultResponse)
+async def register_expo_token(
+    req: ExpoPushTokenRequest, current_user: CurrentUser, db: DB
+) -> SubscriptionResultResponse:
+    """保存当前用户的 Expo Push token；同一 token 重复上报则幂等更新归属。"""
+    existing = (
+        await db.execute(select(ExpoPushToken).where(ExpoPushToken.token == req.token))
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        # token 已存在：更新归属用户与平台（用户换账号登录同一设备时会命中）
+        existing.user_id = current_user.id
+        existing.platform = req.platform
+    else:
+        db.add(
+            ExpoPushToken(
+                user_id=current_user.id,
+                token=req.token,
+                platform=req.platform,
+            )
+        )
+    await db.commit()
+    return SubscriptionResultResponse(ok=True)
+
+
+@router.delete("/expo/{token}", response_model=SubscriptionResultResponse)
+async def unregister_expo_token(
+    token: str, current_user: CurrentUser, db: DB
+) -> SubscriptionResultResponse:
+    """移除当前用户的 Expo Push token（仅能删自己的）。"""
+    await db.execute(
+        delete(ExpoPushToken)
+        .where(ExpoPushToken.token == token)
+        .where(ExpoPushToken.user_id == current_user.id)
     )
     await db.commit()
     return SubscriptionResultResponse(ok=True)

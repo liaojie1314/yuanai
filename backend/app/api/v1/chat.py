@@ -302,8 +302,8 @@ async def _generate_sse(
             msg.thinking_duration_ms = thinking_duration_ms
         await db.commit()
 
-        # AI 回复落库后，向该用户所有 Web Push 订阅推送「回复完成」通知。
-        # 标签页在前台时前端会跳过弹窗；未配置 VAPID 时 send_to_user 直接 no-op。
+        # AI 回复落库后，向该用户推送「回复完成」通知（Web Push + Expo Push）。
+        # 标签页/App 在前台时前端会跳过弹窗；未配置 VAPID 时 Web 通道 no-op。
         # 推送失败不影响已完成的回复，故整体包一层 try 兜底。
         if user_id is not None:
             try:
@@ -314,6 +314,8 @@ async def _generate_sse(
                         "title": "元AI",
                         "body": "AI 回复已完成",
                         "url": f"/chat/{conv_id}" if conv_id is not None else "/chat",
+                        # 移动端通知点击用 convId 直接路由到会话
+                        "convId": str(conv_id) if conv_id is not None else None,
                         "tag": "yuanai-ai-reply",
                     },
                 )

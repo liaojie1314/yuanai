@@ -30,6 +30,7 @@ import {
 
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
+import { unregisterPushNotifications } from '@/lib/pushNotifications'
 
 const GROUP_ORDER: readonly ConvGroup[] = ['pinned', 'today', 'yesterday', 'week']
 const GROUP_LABEL: Record<ConvGroup, string> = {
@@ -240,6 +241,8 @@ export function ConversationList({
         destructive: true,
       })
       if (!ok) return
+      // 需在 auth 清除前退订（DELETE 要带 token）；失败留给 DeviceNotRegistered 兜底
+      await unregisterPushNotifications()
       doLogout(undefined, {
         onSettled: () => {
           router.replace('/(auth)/login')

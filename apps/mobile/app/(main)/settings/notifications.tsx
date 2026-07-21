@@ -6,24 +6,16 @@ import { Platform } from 'react-native'
 import { SettingsGroup, SettingsSwitchRow } from '@/components/settings/SettingsRows'
 import { SettingsShell } from '@/components/settings/SettingsShell'
 import { useDialog } from '@/components/ui/Dialog'
-
-const KEYS = {
-  aiReply: 'notif_ai_reply',
-  sound: 'notif_sound',
-} as const
-
-async function loadBool(key: string, def: boolean): Promise<boolean> {
-  try {
-    const v = await AsyncStorage.getItem(key)
-    return v === null ? def : v === 'true'
-  } catch {
-    return def
-  }
-}
+import {
+  loadNotifPref,
+  NOTIF_KEYS as KEYS,
+  registerForPushNotifications,
+  unregisterPushNotifications,
+} from '@/lib/pushNotifications'
 
 /**
- * 通知屏：AI 回复通知（含系统权限申请）+ 声音开关。
- * 开关值落 AsyncStorage；推送 token 上报后端属 Step 9（Expo Push）范围。
+ * 通知屏：AI 回复通知（含系统权限申请 + Expo token 上报）+ 声音开关。
+ * 开关值落 AsyncStorage；开 → 上报 Expo push token，关 → 后端退订。
  */
 export default function NotificationsScreen(): React.JSX.Element {
   const dialog = useDialog()
@@ -32,8 +24,8 @@ export default function NotificationsScreen(): React.JSX.Element {
 
   useEffect(() => {
     void (async () => {
-      setAiReply(await loadBool(KEYS.aiReply, false))
-      setSound(await loadBool(KEYS.sound, false))
+      setAiReply(await loadNotifPref(KEYS.aiReply, false))
+      setSound(await loadNotifPref(KEYS.sound, false))
     })()
   }, [])
 
@@ -45,6 +37,7 @@ export default function NotificationsScreen(): React.JSX.Element {
     if (!next) {
       setAiReply(false)
       persist(KEYS.aiReply, false)
+      void unregisterPushNotifications()
       return
     }
     void (async () => {
@@ -68,6 +61,8 @@ export default function NotificationsScreen(): React.JSX.Element {
       }
       setAiReply(true)
       persist(KEYS.aiReply, true)
+      // token 上报失败（占位 projectId / 模拟器）不阻断开关——EAS 配好后自动生效
+      void registerForPushNotifications()
     })()
   }
 

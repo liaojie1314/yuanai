@@ -6,6 +6,7 @@ import { StyleSheet, useWindowDimensions, View } from 'react-native'
 import { TABLET_MIN_WIDTH, useAuthStore } from '@yuanai/core'
 
 import { ConversationList } from '@/components/main/ConversationList'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { bg, border } from '@/theme/tokens'
 
 /**
@@ -26,6 +27,7 @@ export default function MainLayout(): React.JSX.Element {
   const accessToken = useAuthStore((s) => s.accessToken)
   const router = useRouter()
   const segments = useSegments()
+  usePushNotifications()
 
   // segments 形如 ['(main)', 'chat', '<id>']；取第 3 段作为 activeId。
   // useSegments 返回 readonly string[]，无 tuple 断言时需按索引取字符串。
