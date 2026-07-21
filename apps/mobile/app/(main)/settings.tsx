@@ -12,10 +12,16 @@ import { bg, spacing, text } from '@/theme/tokens'
 export default function SettingsScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
   const router = useRouter()
+  // Drawer 场景下设置页可能是历史里的第一屏（冷启动恢复 / 深链），
+  // 直接 back() 会触发 GO_BACK not handled 警告，无历史时退回聊天首页。
+  const goBack = (): void => {
+    if (router.canGoBack()) router.back()
+    else router.replace('/(main)/chat')
+  }
   return (
     <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={8} style={styles.topBtn}>
+        <Pressable onPress={goBack} hitSlop={8} style={styles.topBtn}>
           <ChevronLeft size={22} color={text.primary} />
         </Pressable>
         <Text style={styles.topTitle}>设置</Text>
