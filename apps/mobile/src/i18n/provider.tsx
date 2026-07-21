@@ -9,8 +9,7 @@ import { initI18n } from './index'
 export function I18nProvider({ children }: { children: ReactNode }): ReactNode {
   const [ready, setReady] = useState(false)
   useEffect(() => {
-    initI18n()
-    setReady(true)
+    void initI18n().finally(() => setReady(true))
   }, [])
   if (!ready) return null
   return children

@@ -59,9 +59,10 @@ export default function MainLayout(): React.JSX.Element {
     <Drawer
       // 显式钉死初始路由与返回行为：Drawer 默认 backBehavior 回「注册顺序第一个
       // 路由」，而文件路由把 settings 排在 chat 前 → 硬件返回从会话页弹到设置页，
-      // 再返回一次触发 GO_BACK not handled。
+      // 再返回一次触发 GO_BACK not handled。history = 按实际访问序逐级返回
+      //（security → settings → chat），耗尽后交还系统正常退出。
       initialRouteName="chat/index"
-      backBehavior="initialRoute"
+      backBehavior="history"
       drawerContent={(props: { navigation: { closeDrawer: () => void } }) => (
         <DrawerContent
           activeId={activeId}
