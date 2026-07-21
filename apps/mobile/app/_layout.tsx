@@ -10,7 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { KeyboardProvider } from 'react-native-keyboard-controller'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
-import { setPlatformAdapter } from '@yuanai/core'
+import { setPlatformAdapter, useAuthStore, usePrefsStore } from '@yuanai/core'
 
 import { ThemeShell } from '@/components/ThemeShell'
 import { DialogProvider } from '@/components/ui/Dialog'
@@ -32,6 +32,10 @@ SplashScreen.preventAutoHideAsync().catch(() => {
   /* Splash 已被关掉时静默 */
 })
 setPlatformAdapter(mobileAdapter)
+// store 模块加载时 persist 已用 Web 默认 adapter 触发过一次 rehydrate（RN 上
+// 读到 null），必须在换成 mobileAdapter 后重放，token 才能从 SecureStore 恢复。
+void useAuthStore.persist.rehydrate()
+void usePrefsStore.persist.rehydrate()
 initSentry()
 initApiClientBridge()
 

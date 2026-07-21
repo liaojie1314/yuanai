@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { StateStorage } from 'zustand/middleware'
 import type { User } from '@yuanai/types'
 import { getPlatformAdapter } from '../platform/index.js'
 
@@ -24,6 +25,21 @@ interface AuthState {
  *
  * 在 QueryProvider 中调用 `setTokenGetter(() => useAuthStore.getState().accessToken)`。
  */
+/**
+ * 每次读写都从当前 adapter 取 authStorage 的转发层。
+ *
+ * createJSONStorage 在【模块加载时】立即执行工厂并把返回值捕获进闭包；
+ * store 模块 import 早于 app 入口的 setPlatformAdapter(mobileAdapter)，
+ * 直接写 `() => getPlatformAdapter().authStorage` 会把 Web 版 localStorage
+ * 实现（RN 上是 no-op）永久钉死 —— 移动端 token 永远落不了盘，
+ * 表现为冷启动始终回到登录页。
+ */
+const lazyAuthStorage: StateStorage = {
+  getItem: (name) => getPlatformAdapter().authStorage.getItem(name),
+  setItem: (name, value) => getPlatformAdapter().authStorage.setItem(name, value),
+  removeItem: (name) => getPlatformAdapter().authStorage.removeItem(name),
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -52,7 +68,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'yuanai-auth',
-      storage: createJSONStorage(() => getPlatformAdapter().authStorage),
+      storage: createJSONStorage(() => lazyAuthStorage),
       partialize: (s) => ({
         user: s.user,
         accessToken: s.accessToken,

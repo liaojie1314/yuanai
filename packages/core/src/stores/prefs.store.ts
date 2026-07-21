@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import type { StateStorage } from 'zustand/middleware'
 import { getPlatformAdapter } from '../platform/index.js'
 
 /** 24 小时制 / 12 小时制 */
@@ -58,6 +59,14 @@ interface PrefsState {
  * 跨组件共享时间/日期格式、主题、字号、密度及思考过程等设置。
  * 登录状态下会与后端 `/auth/me/preferences` 双向同步。
  */
+// 与 auth.store 同款转发层：createJSONStorage 工厂在模块加载时立即求值，
+// 若直接捕获 adapter 的 storage，会钉死在 setPlatformAdapter 之前的 Web 实现。
+const lazyPrefsStorage: StateStorage = {
+  getItem: (name) => getPlatformAdapter().storage.getItem(name),
+  setItem: (name, value) => getPlatformAdapter().storage.setItem(name, value),
+  removeItem: (name) => getPlatformAdapter().storage.removeItem(name),
+}
+
 export const usePrefsStore = create<PrefsState>()(
   persist(
     (set) => ({
@@ -77,7 +86,7 @@ export const usePrefsStore = create<PrefsState>()(
     }),
     {
       name: 'yuanai-prefs',
-      storage: createJSONStorage(() => getPlatformAdapter().storage),
+      storage: createJSONStorage(() => lazyPrefsStorage),
     }
   )
 )
