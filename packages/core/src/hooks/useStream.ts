@@ -1,10 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
-import { API_BASE_URL } from '../api/client.js'
+import type { Message } from '@yuanai/types'
+import { Role } from '@yuanai/types'
+import { API_BASE_URL, refreshAccessTokenForStream } from '../api/client.js'
 import { getPlatformAdapter } from '../platform/index.js'
 import type { SseMessage, StreamHandle } from '../platform/index.js'
 import { useAuthStore } from '../stores/auth.store.js'
 import { useChatStore } from '../stores/chat.store.js'
+
+/** SSE 传输层拿不到结构化 status；用错误文本识别 401/Token 失效 */
+function isAuthError(err: Error): boolean {
+  return /AUTH_TOKEN_INVALID|HTTP 401|401/.test(err.message)
+}
 
 /** 临时对话的历史消息条目（不携带附件、不落库） */
 export interface TemporaryChatMessage {
@@ -78,6 +85,47 @@ export function useStream() {
   } = useChatStore()
   const qc = useQueryClient()
   const streamRef = useRef<StreamHandle | null>(null)
+  // 本轮流式的服务端消息 ID（message_start 携带）；stop() 用它把部分内容写回缓存
+  const streamMetaRef = useRef<{
+    convId: string
+    userMsgId: string
+    assistantMsgId: string
+  } | null>(null)
+  // 用户主动停止标记：让 close 回调跳过 refetch（此刻后端 assistant 占位可能尚未
+  // 写入部分内容，refetch 会用空内容覆盖界面）
+  const stoppedRef = useRef(false)
+
+  // ── token 批量合并 ─────────────────────────────────────────────
+  // 模型 token 到达频率可达每秒几十上百次；若每个 token 都 set 一次 store，
+  // 订阅者（消息列表 + Markdown 渲染）会以同频率全量重渲染，长回复时 JS 线程
+  // 直接被打满（真机已复现 ANR）。这里把 delta 缓冲 ~80ms 合并成一次提交。
+  const pendingContentRef = useRef('')
+  const pendingThinkRef = useRef('')
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const flushDeltas = useCallback((): void => {
+    if (flushTimerRef.current !== null) {
+      clearTimeout(flushTimerRef.current)
+      flushTimerRef.current = null
+    }
+    if (pendingThinkRef.current) {
+      appendThink(pendingThinkRef.current)
+      pendingThinkRef.current = ''
+    }
+    if (pendingContentRef.current) {
+      appendToken(pendingContentRef.current)
+      pendingContentRef.current = ''
+    }
+  }, [appendThink, appendToken])
+
+  const queueDelta = useCallback(
+    (kind: 'content' | 'think', token: string): void => {
+      if (kind === 'content') pendingContentRef.current += token
+      else pendingThinkRef.current += token
+      flushTimerRef.current ??= setTimeout(flushDeltas, 80)
+    },
+    [flushDeltas]
+  )
 
   const dispatchMessage = useCallback(
     (msg: SseMessage): void => {
@@ -90,12 +138,12 @@ export function useStream() {
       switch (msg.event) {
         case 'content_delta':
           if (typeof data['token'] === 'string') {
-            appendToken(data['token'])
+            queueDelta('content', data['token'])
           }
           break
         case 'thinking_delta':
           if (typeof data['token'] === 'string') {
-            appendThink(data['token'])
+            queueDelta('think', data['token'])
           }
           break
         case 'tool_call_start': {
@@ -142,7 +190,7 @@ export function useStream() {
           break
       }
     },
-    [appendToken, appendThink, startToolCall, appendToolCallArgs, updateToolCall]
+    [queueDelta, startToolCall, appendToolCallArgs, updateToolCall]
   )
 
   const send = useCallback(
@@ -157,52 +205,106 @@ export function useStream() {
       onEnd,
       onError,
     }: StreamParams): Promise<void> => {
-      const token = useAuthStore.getState().accessToken
-
       startStreaming(convId, skipOptimistic ? null : content)
+      stoppedRef.current = false
+      streamMetaRef.current = null
       onStart?.()
 
-      await new Promise<void>((resolve) => {
-        const handle = getPlatformAdapter().stream(
-          {
-            url: `${API_BASE_URL}/chat/stream`,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      // 单次流式尝试；resolve('auth') 表示未开流就撞上 token 失效（可刷新后重试）
+      const attempt = (accessToken: string | null): Promise<'ok' | 'auth'> =>
+        new Promise<'ok' | 'auth'>((resolve) => {
+          const handle = getPlatformAdapter().stream(
+            {
+              url: `${API_BASE_URL}/chat/stream`,
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+              },
+              body: JSON.stringify({
+                conversation_id: convId,
+                model,
+                message: { content, fileIds: fileIds ?? [] },
+                enable_thinking: enableThinking ?? false,
+              }),
             },
-            body: JSON.stringify({
-              conversation_id: convId,
-              model,
-              message: { content, fileIds: fileIds ?? [] },
-              enable_thinking: enableThinking ?? false,
-            }),
-          },
-          {
-            onMessage: dispatchMessage,
-            onError: (err) => {
-              finalizeStream()
-              onError?.(err)
-              resolve()
-            },
-            onClose: () => {
-              void Promise.all([
-                qc.refetchQueries({ queryKey: ['messages', convId] }),
-                qc.refetchQueries({ queryKey: ['conversations'] }),
-              ]).finally(() => {
+            {
+              onMessage: (msg) => {
+                // 记录本轮消息 ID：stop() 时把已收到的部分内容写回缓存要用
+                if (msg.event === 'message_start') {
+                  try {
+                    const data = JSON.parse(msg.data) as {
+                      user_message_id?: unknown
+                      assistant_message_id?: unknown
+                    }
+                    if (
+                      typeof data.user_message_id === 'string' &&
+                      typeof data.assistant_message_id === 'string'
+                    ) {
+                      streamMetaRef.current = {
+                        convId,
+                        userMsgId: data.user_message_id,
+                        assistantMsgId: data.assistant_message_id,
+                      }
+                    }
+                  } catch {
+                    /* 忽略解析失败，stop 时退化为 refetch */
+                  }
+                }
+                dispatchMessage(msg)
+              },
+              onError: (err) => {
+                flushDeltas()
+                // token 过期：SSE 不经过 axios 401 拦截器，这里手动走刷新重试通道。
+                // 只在流还没产出任何内容时才重试（有 meta 说明已开流，中途 401 不该发生）
+                if (isAuthError(err) && streamMetaRef.current === null) {
+                  resolve('auth')
+                  return
+                }
                 finalizeStream()
-                resolve()
-              })
-            },
-          }
-        )
-        streamRef.current = handle
-      })
+                onError?.(err)
+                resolve('ok')
+              },
+              onClose: () => {
+                // 收尾前先把缓冲中的尾部 delta 刷进 store，避免短暂丢尾
+                flushDeltas()
+                // 用户主动停止：close 由 stop() 触发，缓存已在 stop() 内写好，
+                // 不 refetch（后端占位行内容为空，会覆盖掉刚写入的部分内容）
+                if (stoppedRef.current) {
+                  resolve('ok')
+                  return
+                }
+                void Promise.all([
+                  qc.refetchQueries({ queryKey: ['messages', convId] }),
+                  qc.refetchQueries({ queryKey: ['conversations'] }),
+                ]).finally(() => {
+                  finalizeStream()
+                  resolve('ok')
+                })
+              },
+            }
+          )
+          streamRef.current = handle
+        })
+
+      let result = await attempt(useAuthStore.getState().accessToken)
+      if (result === 'auth') {
+        // 刷新失败时 onAuthFailure 已 clearAuth → 路由守卫自动重定向登录页
+        const newToken = await refreshAccessTokenForStream()
+        if (newToken) {
+          result = await attempt(newToken)
+        }
+        if (!newToken || result === 'auth') {
+          if (result === 'auth') useAuthStore.getState().clearAuth()
+          finalizeStream()
+          onError?.(new Error('登录已过期，请重新登录'))
+        }
+      }
 
       streamRef.current = null
       onEnd?.()
     },
-    [startStreaming, finalizeStream, qc, dispatchMessage]
+    [startStreaming, finalizeStream, qc, dispatchMessage, flushDeltas]
   )
 
   /**
@@ -247,13 +349,13 @@ export function useStream() {
           },
           {
             onMessage: (msg) => {
-              // 单独处理 content_delta 以累积 finalContent
+              // 单独处理 content_delta 以累积 finalContent（走同一个批量缓冲）
               if (msg.event === 'content_delta') {
                 try {
                   const data = JSON.parse(msg.data) as { token?: unknown }
                   if (typeof data.token === 'string') {
                     finalContent += data.token
-                    appendToken(data.token)
+                    queueDelta('content', data.token)
                     return
                   }
                 } catch {
@@ -263,12 +365,14 @@ export function useStream() {
               dispatchMessage(msg)
             },
             onError: (err) => {
+              flushDeltas()
               finalizeStream()
               onError?.(err)
               onEnd?.(finalContent)
               resolve()
             },
             onClose: () => {
+              flushDeltas()
               finalizeStream()
               onEnd?.(finalContent)
               resolve()
@@ -280,14 +384,55 @@ export function useStream() {
 
       streamRef.current = null
     },
-    [startStreaming, finalizeStream, appendToken, dispatchMessage]
+    [startStreaming, finalizeStream, queueDelta, flushDeltas, dispatchMessage]
   )
 
+  /**
+   * 停止生成。
+   *
+   * 关闭传输前先把「已收到的部分内容」写进消息查询缓存：占位的流式行会随
+   * finalizeStream 消失，若不写缓存，已输出的文字会整段闪没（后端 assistant
+   * 占位此刻还是空串，refetch 也救不回来）。服务端的部分内容落库由后端在
+   * 连接断开时自行完成，两边各自兜底。
+   */
   const stop = useCallback(() => {
+    stoppedRef.current = true
+    flushDeltas() // 把缓冲中的尾部 delta 先落进 store，写缓存才完整
+    const s = useChatStore.getState()
+    const meta = streamMetaRef.current
+
+    if (meta && s.streamingConvId === meta.convId) {
+      const now = new Date().toISOString()
+      qc.setQueryData<Message[]>(['messages', meta.convId], (prev) => {
+        const base = prev ? [...prev] : []
+        if (s.optimisticUserMsg && !base.some((m) => m.id === meta.userMsgId)) {
+          base.push({
+            id: meta.userMsgId,
+            role: Role.User,
+            content: s.optimisticUserMsg,
+            files: [],
+            createdAt: now,
+          })
+        }
+        if (s.streamingContent && !base.some((m) => m.id === meta.assistantMsgId)) {
+          base.push({
+            id: meta.assistantMsgId,
+            role: Role.Assistant,
+            content: s.streamingContent,
+            ...(s.streamingThink ? { thinkingContent: s.streamingThink } : {}),
+            files: [],
+            createdAt: now,
+          })
+        }
+        return base
+      })
+    }
+
+    streamMetaRef.current = null
+    finalizeStream()
     streamRef.current?.close()
     streamRef.current = null
-    finalizeStream()
-  }, [finalizeStream])
+  }, [finalizeStream, qc, flushDeltas])
 
   return { send, sendTemporary, stop }
 }

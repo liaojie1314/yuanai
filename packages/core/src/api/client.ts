@@ -3,8 +3,7 @@ import axios, { type InternalAxiosRequestConfig } from 'axios'
 function getEnv(key: string): string | undefined {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const proc = (globalThis as any).process as
-    | { env?: Record<string, string | undefined> }
-    | undefined
+    { env?: Record<string, string | undefined> } | undefined
   return proc?.env?.[key]
 }
 
@@ -139,4 +138,24 @@ export function setOnAuthFailure(fn: () => void): void {
  */
 export function setOnTokenRefreshed(fn: (accessToken: string) => void): void {
   onTokenRefreshed = fn
+}
+
+/**
+ * 供非 axios 通道（SSE 流）在收到 401 时手动刷新 access token。
+ *
+ * 与响应拦截器共用同一个 in-flight refreshPromise；刷新不可用/失败时触发
+ * onAuthFailure（清 auth → 由路由守卫重定向登录页）并返回 null。
+ */
+export async function refreshAccessTokenForStream(): Promise<string | null> {
+  const refreshToken = refreshTokenGetter?.()
+  if (!refreshToken) {
+    authFailureCallback?.()
+    return null
+  }
+  try {
+    return await getRefreshedAccessToken(refreshToken)
+  } catch {
+    authFailureCallback?.()
+    return null
+  }
 }

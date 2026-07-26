@@ -8,7 +8,9 @@ SSE 行格式：event: <name>\ndata: <json>\n\n
 import uuid
 from unittest.mock import patch
 
+import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token
 
@@ -308,6 +310,72 @@ class TestStream:
             headers=auth_headers,
         )
         assert response.status_code == 404
+
+    async def test_cancelled_stream_persists_partial_content(
+        self,
+        client: AsyncClient,
+        db: AsyncSession,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """回归：用户中途停止（连接取消）后，已生成的部分内容必须落库，
+        不能让 assistant 占位永远停留在空串（表现为前端已输出内容消失）。"""
+        import asyncio
+
+        import app.api.v1.chat as chat_mod
+        from app.api.v1.chat import _generate_sse
+        from app.models.message import Message, MessageRole
+        from tests.conftest import TestSessionLocal
+
+        # _persist_partial 内部自建 session；测试里换成 NullPool 的工厂，
+        # 避免应用默认连接池跨事件循环复用连接
+        monkeypatch.setattr(chat_mod, "AsyncSessionLocal", TestSessionLocal)
+
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = uuid.UUID(conv_res.json()["id"])
+
+        user_msg = Message(conv_id=conv_id, role=MessageRole.user, content="数到一千")
+        assistant_msg = Message(conv_id=conv_id, role=MessageRole.assistant, content="")
+        db.add_all([user_msg, assistant_msg])
+        await db.commit()
+        await db.refresh(user_msg)
+        await db.refresh(assistant_msg)
+
+        async def slow_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            for i in range(1000):
+                yield ("content", f"{i + 1}\n")
+                await asyncio.sleep(0)
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=slow_stream):
+            gen = _generate_sse(
+                [{"role": "user", "content": "数到一千"}],
+                "gpt-4o",
+                assistant_msg.id,
+                user_msg.id,
+                db,
+            )
+            # 消费 message_start + 若干 content_delta 后模拟客户端断开
+            received = 0
+            async for _chunk in gen:
+                received += 1
+                if received >= 5:
+                    break
+            with pytest.raises(asyncio.CancelledError):
+                await gen.athrow(asyncio.CancelledError())
+
+        # 部分内容应已写入 assistant 占位
+        async with TestSessionLocal() as check:
+            from sqlalchemy import select
+
+            row = (
+                await check.execute(select(Message).where(Message.id == assistant_msg.id))
+            ).scalar_one()
+            assert row.content.startswith("1\n")
+            assert len(row.content) > 0
 
 
 class TestTemporaryChat:
