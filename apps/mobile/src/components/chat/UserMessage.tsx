@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
 import { brand, radius, spacing } from '@/theme/tokens'
@@ -12,8 +13,11 @@ interface UserMessageProps {
  * - 不做 Markdown 渲染（用户输入是纯文本，避免 XSS-like 注入错觉）
  * - `selectable` 让长按 → 系统选中/复制生效，无需自建 ActionSheet（MVP 够用）
  * - 宽度 max 78% —— 与 iOS iMessage / Web 版视觉一致，超长会自动换行
+ * - memo：流式期间列表高频重渲染，历史气泡 props 不变直接跳过
  */
-export function UserMessage({ content }: UserMessageProps): React.JSX.Element {
+export const UserMessage = memo(function UserMessage({
+  content,
+}: UserMessageProps): React.JSX.Element {
   return (
     <View style={styles.row}>
       <View style={styles.bubble}>
@@ -23,7 +27,7 @@ export function UserMessage({ content }: UserMessageProps): React.JSX.Element {
       </View>
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   row: {
