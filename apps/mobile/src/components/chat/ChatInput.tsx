@@ -2,6 +2,8 @@ import { Globe, Mic, Paperclip, Send, Sparkles, Square } from 'lucide-react-nati
 import { useRef, useState } from 'react'
 import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
+import { usePrefsStore } from '@yuanai/core/stores'
+
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
 
@@ -45,6 +47,10 @@ export function ChatInput({
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
+  // 深度思考开关：直接复用两端共享的 prefs store（web 端同一字段），
+  // 发送时聊天页从 store 读取 showThinking 组装 enableThinking。
+  const showThinking = usePrefsStore((s) => s.showThinking)
+  const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
   const canSend = value.trim().length > 0 && !streaming && !disabled
 
@@ -89,12 +95,13 @@ export function ChatInput({
             <Globe size={17} color={text.secondary} />
           </Pressable>
           <Pressable
-            onPress={notReady('深度思考')}
+            onPress={() => setShowThinking(!showThinking)}
             hitSlop={6}
-            style={styles.toolBtn}
-            accessibilityLabel="深度思考（稍后开放）"
+            style={[styles.toolBtn, showThinking && styles.toolBtnActive]}
+            accessibilityLabel={showThinking ? '关闭深度思考' : '开启深度思考'}
+            accessibilityState={{ selected: showThinking }}
           >
-            <Sparkles size={17} color={text.secondary} />
+            <Sparkles size={17} color={showThinking ? brand.solid : text.secondary} />
           </Pressable>
         </View>
 
@@ -175,6 +182,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: bg.elevated,
   },
+  toolBtnActive: { backgroundColor: brand.light },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',

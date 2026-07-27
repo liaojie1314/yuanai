@@ -5,3 +5,5 @@ export {
   groupConversations,
   type ConversationSummary,
 } from './conversations.js'
+export { buildMessagePairs, clampVersionIdx, type MessagePair } from './messagePairs.js'
+export { stripMarkdown } from './markdown.js'

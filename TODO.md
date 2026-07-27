@@ -38,16 +38,6 @@
 
 ## backend
 
-- [ ] **引入 LangChain + LangGraph 作为 Agent 运行时**：当前 `backend/app/services/ai_service.py` 只做 provider 透传，`_generate_sse` 里预留的 `tool_call_start/delta/end` 事件从未被 emit——纯占位。要真正跑 Agent（tool-loop / planner-executor / checkpoint 恢复 / 多 agent 协作），需要在 service 层引入编排框架。选型：**LangChain 只作为 LLM/Tool 抽象层**（`ChatOpenAI(base_url=...)` 复用现有 OpenAI-compat 端点，Anthropic 走 `ChatAnthropic` 拿 `cache_control` / extended thinking），**LangGraph 作为 agent 图**（`StateGraph` + Postgres `AsyncPostgresSaver` checkpointer，天然支持中断/续跑/时间旅行）：
-  - `pyproject.toml` 加 `langchain-core` / `langchain-openai` / `langchain-anthropic` / `langgraph` / `langgraph-checkpoint-postgres`；本地/CI 用 SQLite checkpointer 免依赖
-  - 新增 `backend/app/services/agent_service.py`：定义 `AgentState`（messages / plan / tool*results / iteration），节点 `plan → call_model → dispatch_tool → observe → end`，`add_conditional_edges` 判断是否继续 tool-loop；用 `graph.astream_events(version='v2')` 把节点事件映射为现有 SSE 协议（`on_chat_model_stream` → `content_delta`，`on_tool_start/end` → `tool_call*\*`）——**前端 `useStream.ts` 协议保持不变\*\*
-  - 新增 `backend/app/services/tools/` 目录 + `ToolRegistry`：每个 tool 一个文件（`web_search.py` / `code_exec.py` / `file_read.py` 等），用 LangChain `@tool` 装饰器暴露 schema；通过 `settings.enabled_tools` 白名单控制加载
-  - `Message` 表加 `tool_calls: JSONB nullable`（历史消息回放 tool 结果）、`parent_message_id: UUID nullable`（同一轮 tool-round 内的中间产物归属主 assistant 消息），配套 alembic 迁移
-  - 灰度路径：新增 `POST /api/v1/chat/agent/stream` 端点（同现有 `chat/stream` 请求体 + `enable_agent: bool`），走 LangGraph；老 `chat/stream` 保留为「纯对话」通道；前端 `sendMessage` 根据用户开关（settings 里加"启用 Agent"）选择目标端点；稳定后再合并
-  - 观测：LangSmith 官方 SDK 一行接入（`LANGSMITH_TRACING=true` 环境变量），trace agent 每一步；生产可换 Langfuse（自托管 + OpenTelemetry）
-  - 集成测试：`tests/integration/test_agent.py` 用 `AsyncSqliteSaver` 内存 checkpointer + mock LLM，跑通「用户问 → planner 拆 → 调 mock web_search → observe → 汇总回复」，断言 SSE 事件序列符合协议
-  - 前置文档：项目根 `docs-internal/agent-architecture.md`（不受 `docs/` 只读约束）记录 state schema、tool 契约、checkpointer 数据模型、扩展新 tool 的步骤
-
 - [ ] **实现真正的联网搜索功能**：作为上条 LangGraph agent 的第一个落地 tool。选型：**默认 Tavily**（专为 LLM 优化，返回 answer + 带 score 的 snippet 列表，单次查询成本低）；备选 SerpAPI（Google 结果最全、贵）、Bing Web Search（性价比中间、需 Azure）、Brave Search（隐私+便宜、结果覆盖略差）。需要：
   - `backend/app/services/tools/web_search.py`：LangChain `@tool` 定义，参数 `query: str, max_results: int = 5, search_depth: Literal['basic', 'advanced'] = 'basic'`；调用 `langchain-community` 的 `TavilySearchAPIWrapper`（或裸 httpx）
   - `settings.tavily_api_key` 环境变量；未配置时 `ToolRegistry` 跳过注册，模型看不到该 tool（避免"AI 说要调用但报没 key"）

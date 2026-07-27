@@ -5,6 +5,7 @@ import { StyleSheet, Text, View } from 'react-native'
 import { brand, radius, spacing, text } from '@/theme/tokens'
 
 import { CodeBlock } from './CodeBlock'
+import { StreamingThinkBlock, ThinkBlock } from './ThinkBlock'
 
 interface AIMessageProps {
   content: string
@@ -14,6 +15,18 @@ interface AIMessageProps {
   isFirst?: boolean
   /** 该消息的末块：下内边距 */
   isLast?: boolean
+  /**
+   * 与下一块的接缝在同一个 markdown 块内部（长列表/长段落被拦腰切开）：
+   * 用负 marginBottom 吃掉本块最后一个 block 的尾部外边距，跨块行距与块内一致。
+   * 若不吃掉，每个切块边界会多出一份 block margin，渲染成一条谜之空行。
+   */
+  seamlessBottom?: boolean
+  /** 本块属于正在流式输出的那条消息（思考块改读 store） */
+  streamingMsg?: boolean
+  /** 历史消息的思考原文（流式态不用，改由 StreamingThinkBlock 订阅 store） */
+  thinkContent?: string
+  /** 历史消息的思考耗时（毫秒） */
+  thinkDurationMs?: number | undefined
 }
 
 const mdRules = {
@@ -34,13 +47,28 @@ const mdRules = {
  * - 流式态：末块尾部追加光标（用 `▊` + 静态展示；MVP 不做动画避免与 markdown 排版冲突）
  * - memo：流式期间列表高频重渲染，历史块 props 不变直接跳过（只有末块重新 parse）
  *
+ * 块级职责划分：
+ * - **首块**：头像 + 思考块 / 工具调用（属于整条消息的元信息）
+ * - 操作行（版本切换 / 复制 / 重新生成 / 点赞踩）**不在本组件里**——它是 MessageList
+ *   的独立列表行。挂在末块内会让末块在布局后长高，RLV 的内容总高度跟不上，
+ *   贴底偏移再次越界（docs-internal 第 9 条的变体，真机已复现：末块被顶出视口）。
+ *   交互一律直点操作行图标，无长按菜单（用户明确要求）。
+ *
+ * ⚠️ props 全部是**扁平的数据 + 回调**，不要收成对象再传：列表 `renderItem` 每次渲染
+ * 都会新建对象/箭头函数，套一层对象会让下面的 memo 比较必然失败 →
+ * 回到「每个 token 全量重渲」的 ANR 老路（docs-internal 第 8 条）。
+ *
  * 头像放在气泡外侧顶部，与 web AIMessage 一致；不用 SVG 以省一个包。
  */
-export const AIMessage = memo(function AIMessage({
+function AIMessageBase({
   content,
   streaming = false,
   isFirst = true,
   isLast = true,
+  seamlessBottom = false,
+  streamingMsg = false,
+  thinkContent = '',
+  thinkDurationMs,
 }: AIMessageProps): React.JSX.Element {
   const display = streaming ? `${content}▊` : content
 
@@ -54,14 +82,37 @@ export const AIMessage = memo(function AIMessage({
         // 非首块：等宽占位，保证多块文本左边缘对齐
         <View style={styles.avatarPlaceholder} />
       )}
-      <View style={styles.bubbleWrap}>
-        <Markdown style={mdStyles} rules={mdRules}>
-          {display}
-        </Markdown>
+      <View style={[styles.bubbleWrap, seamlessBottom && styles.bubbleSeamless]}>
+        {isFirst && streamingMsg ? <StreamingThinkBlock /> : null}
+        {isFirst && !streamingMsg && thinkContent ? (
+          <ThinkBlock content={thinkContent} durationMs={thinkDurationMs} />
+        ) : null}
+        {display ? (
+          <Markdown style={mdStyles} rules={mdRules}>
+            {display}
+          </Markdown>
+        ) : null}
       </View>
     </View>
   )
-})
+}
+
+/**
+ * 自定义比较：`renderItem` 每次渲染都会为每行新建箭头函数回调，回调身份变化本身
+ * 不代表内容变化，所以只比较数据类 props（与 web `AIMessage` 的 memo 同策略）。
+ */
+export const AIMessage = memo(
+  AIMessageBase,
+  (prev, next) =>
+    prev.content === next.content &&
+    prev.streaming === next.streaming &&
+    prev.isFirst === next.isFirst &&
+    prev.isLast === next.isLast &&
+    prev.seamlessBottom === next.seamlessBottom &&
+    prev.streamingMsg === next.streamingMsg &&
+    prev.thinkContent === next.thinkContent &&
+    prev.thinkDurationMs === next.thinkDurationMs
+)
 
 const styles = StyleSheet.create({
   row: {
@@ -88,6 +139,9 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: '86%',
   },
+  // 吃掉块内最后一个 markdown block 的尾部外边距（paragraph/list 均为 spacing.sm），
+  // 让被拦腰切开的段落/列表跨块行距与块内一致（否则每个切缝多一条 8px 空带）。
+  bubbleSeamless: { marginBottom: -spacing.sm },
 })
 
 // Markdown 全局样式（覆盖 react-native-markdown-display 默认值以对齐主题）。

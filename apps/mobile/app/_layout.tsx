@@ -14,6 +14,7 @@ import { setPlatformAdapter, useAuthStore, usePrefsStore } from '@yuanai/core'
 
 import { ThemeShell } from '@/components/ThemeShell'
 import { DialogProvider } from '@/components/ui/Dialog'
+import { ToastProvider } from '@/components/ui/Toast'
 import { useAppStateStream } from '@/hooks/useAppStateStream'
 import { useHydrateAuth } from '@/hooks/useHydrateAuth'
 import { useLinkingHandler } from '@/hooks/useLinkingHandler'
@@ -78,7 +79,9 @@ function RootLayout(): React.JSX.Element {
               <I18nProvider>
                 <ThemeShell>
                   <DialogProvider>
-                    <RootLayoutContent />
+                    <ToastProvider>
+                      <RootLayoutContent />
+                    </ToastProvider>
                   </DialogProvider>
                 </ThemeShell>
               </I18nProvider>

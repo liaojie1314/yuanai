@@ -117,23 +117,10 @@ export function formatMsgTime(
 }
 
 /**
- * 移除常见 Markdown 语法，返回可直接展示的纯文本。
- * 用于"复制纯文本"功能。
+ * 移除常见 Markdown 语法，返回可直接展示的纯文本（用于"复制纯文本"）。
+ * 实现已下沉到 `packages/core`，与移动端共用同一份；此处保留导出以免改动调用点。
  */
-export function stripMarkdown(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, '')
-    .replace(/`([^`]+)`/g, '$1')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/~~(.+?)~~/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^\s*[-*+]\s+/gm, '')
-    .replace(/^\s*\d+\.\s+/gm, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/^>\s+/gm, '')
-    .trim()
-}
+export { stripMarkdown } from '@yuanai/core/utils'
 
 /**
  * 将扁平消息列表分组为 `(用户消息, AI回复[])` 对。

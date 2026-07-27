@@ -164,6 +164,52 @@
 
 ---
 
+## 11. 消息操作行不能挂在末块内
+
+**症状**：给 AI 消息末块塞「版本切换 / 复制 / 重新生成 / 反馈」操作条后，
+流式结束或版本切换时末块被顶出视口，且「回到底部」FAB 也不出现——
+列表自认为已贴底，但视觉上末块看不到。
+
+**根因**：操作条在思考块/内容布局完成后才异步长高，末块的 `layout.height`
+比 RLV 拿到的 `contentDimension.height` 大数百像素。这是第 9 号问题的变体：
+只要末块自身高度可能后于内容量出，滚动数学就会越界。
+
+**修法**（未提交前的迭代）：把操作条抽成 `ActionsRow` 独立列表项
+（`kind: 'actions'`），高度稳定且小；末块只承担正文与光标。
+
+## 12. AI 回复切块处每 12 行多一条空行
+
+**症状**：长回复按 12 行切块后，块与块之间视觉上多出一条 8px 空带，
+观感上「像调试留下的空行」。
+
+**根因**：`react-native-markdown-display` 的 paragraph/list 默认 `marginBottom = spacing.sm`，
+每个切块最后一个 block 都吃到这份外边距；跨块又叠一份 `paddingVertical`，
+在源文本本是「相邻非空行」的位置就多出一份视觉间距。
+
+**修法**：切块时判断接缝两侧的行是否都非空——是则给该块加 `seamlessBottom` 标记
+（`marginBottom: -spacing.sm`）吃掉外边距；真正的段落边界（任一侧空行）不加，
+保留正常块间距。
+
+## 13. 深度思考开关直接复用 prefs.showThinking
+
+后端 `enable_thinking` 只对 DeepSeek 系列生效（`extra_body.thinking`）；
+前端两端共享 `usePrefsStore.showThinking`，Web 侧已用，移动侧 ChatInput
+直接读写同字段即可，发送时聊天页从 store `getState()` 取值传给 `useStream.send`
+（用 getState 而非订阅：开关变化不必重渲聊天页）。
+
+## 14. 消息交互一律直点，无长按菜单
+
+**约束**：用户明确要求：所有消息操作（复制 / 编辑 / 重新生成 / 反馈）都做成
+气泡下方的直点小图标，**不要**长按弹 ActionSheet，也**不要**反馈弹层。
+
+- 用户气泡下：复制 / 编辑
+- AI 消息下：版本切换 ‹ x/y › + 复制 / 重新生成 / 👍 / 👎
+- 反馈是即点即记的 toggle（再点同一个 = 取消），只存内存（同 Web）
+- 反馈图标激活态用 lucide 的 `fill` 属性变实心，不再改颜色边框
+- 复制 / 点赞成功由居中 Toast 反馈（`components/ui/Toast.tsx`，深底白字）
+
+---
+
 ## 调试手法备忘
 
 - **真机埋点**：`console.log` → `adb logcat -d | grep -o "TAG.*"`，比截图推断可靠得多。
