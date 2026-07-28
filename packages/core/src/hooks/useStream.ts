@@ -31,8 +31,13 @@ export interface TemporaryStreamParams {
   enableThinking?: boolean
   /** 流启动时回调 */
   onStart?: () => void
-  /** 流结束时回调，参数为累计的正文内容 */
-  onEnd?: (finalContent: string) => void
+  /**
+   * 流结束时回调（正常收尾 / 出错都会触发）。回传本轮流式累计的状态快照。
+   * 快照来自 chat store 而非闭包变量：`content` 有 80ms 批量合并，闭包里 `finalContent`
+   * 只保证正文部分，思考文本 / 耗时只在 store 里活着。onEnd 在 `finalizeStream` **之前**
+   * 拍快照，之后 store 就被清空。
+   */
+  onEnd?: (result: { content: string; think: string; thinkDurationMs: number }) => void
   /** 流出错时回调 */
   onError?: (err: Error) => void
 }
@@ -366,15 +371,29 @@ export function useStream() {
             },
             onError: (err) => {
               flushDeltas()
+              // ⚠️ 顺序：flush → 快照 → finalize；finalizeStream 会清空 store，
+              // 快照必须在它之前拿。
+              const snap = useChatStore.getState()
+              const result = {
+                content: finalContent,
+                think: snap.streamingThink,
+                thinkDurationMs: snap.streamingThinkDurationMs,
+              }
               finalizeStream()
               onError?.(err)
-              onEnd?.(finalContent)
+              onEnd?.(result)
               resolve()
             },
             onClose: () => {
               flushDeltas()
+              const snap = useChatStore.getState()
+              const result = {
+                content: finalContent,
+                think: snap.streamingThink,
+                thinkDurationMs: snap.streamingThinkDurationMs,
+              }
               finalizeStream()
-              onEnd?.(finalContent)
+              onEnd?.(result)
               resolve()
             },
           }

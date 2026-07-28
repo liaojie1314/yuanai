@@ -1,5 +1,5 @@
 import type { BottomSheetModal } from '@gorhom/bottom-sheet'
-import { useNavigation, useRouter } from 'expo-router'
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, ChevronLeft, Ghost, Menu } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
@@ -88,6 +88,25 @@ export default function TemporaryChatScreen(): React.JSX.Element {
     nav.openDrawer?.()
   }, [navigation])
 
+  // 「离场即忘」：屏幕失焦时清空 state 并中断进行中的流（对齐 web 端「切走
+  // 即丢弃」，phase-3 §0.1 也是这样规定）。用 useFocusEffect 的 cleanup —— 无论
+  // 是抽屉切正式会话、返回、还是新建对话都会触发。切回临时对话会重新聚焦并渲染
+  // 一个空的对话。
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        if (useChatStore.getState().streamingConvId === TEMPORARY_CONV_ID) {
+          stop()
+        }
+        setMessages([])
+        setVersionIdxs({})
+        setEditingMsgId(null)
+        setMsgFeedback({})
+      },
+      [stop]
+    )
+  )
+
   // ── 发送（临时流）────────────────────────────────────────────
   // ⚠️ 用户消息不在这里立刻 push：sendTemporary 内部 startStreaming 已设
   // optimisticUserMsg，MessageList 会渲染乐观气泡；本地若同时 push 一条，
@@ -105,7 +124,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         history,
         model: activeModelId,
         enableThinking: usePrefsStore.getState().showThinking,
-        onEnd: (finalContent) => {
+        onEnd: ({ content: finalContent, think, thinkDurationMs }) => {
           const now = Date.now()
           setMessages((prev) => {
             const next: Message[] = [
@@ -119,10 +138,13 @@ export default function TemporaryChatScreen(): React.JSX.Element {
               },
             ]
             if (finalContent) {
+              // 保留思考文本/耗时（对齐正式会话，流结束后仍可展开查看）
               next.push({
                 id: `temp-assistant-${String(now)}`,
                 role: Role.Assistant,
                 content: finalContent,
+                ...(think ? { thinkingContent: think } : {}),
+                ...(thinkDurationMs > 0 ? { thinkingDurationMs: thinkDurationMs } : {}),
                 files: [],
                 createdAt: new Date(now + 1).toISOString(),
               })
