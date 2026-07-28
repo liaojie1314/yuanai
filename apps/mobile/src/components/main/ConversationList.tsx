@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router'
 import {
   Check,
   CheckSquare,
+  Ghost,
   LogOut,
   MoreVertical,
   Pin,
@@ -305,6 +306,17 @@ export function ConversationList({
             <Text style={styles.brandName}>元AI</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Pressable
+              onPress={() => {
+                onClose?.()
+                router.push('/(main)/chat/temporary')
+              }}
+              hitSlop={8}
+              style={styles.iconBtn}
+              accessibilityLabel="临时对话"
+            >
+              <Ghost size={18} color={text.primary} />
+            </Pressable>
             <Pressable
               onPress={() => {
                 void handleNew()
