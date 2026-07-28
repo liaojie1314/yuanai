@@ -1,13 +1,16 @@
+import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useNavigation, useRouter } from 'expo-router'
-import { Menu } from 'lucide-react-native'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { ChevronDown, Menu } from 'lucide-react-native'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { StyleSheet, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { TABLET_MIN_WIDTH, useCreateConversation, useModels } from '@yuanai/core'
+import type { AIModel } from '@yuanai/types'
 
 import { ChatInput } from '@/components/chat/ChatInput'
+import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
 import { bg, brand, spacing, text } from '@/theme/tokens'
 
@@ -36,13 +39,41 @@ export default function ChatNewScreen(): React.JSX.Element {
   const createConv = useCreateConversation()
   const { data: models = [] } = useModels()
   const [submitting, setSubmitting] = useState(false)
+  // 用户在空态屏选的模型（会话尚未创建，暂存本地；创建时作为 model 参数带出）
+  const [pickedModelId, setPickedModelId] = useState<string | null>(null)
+  const modelSheetRef = useRef<BottomSheetModal>(null)
   // 防抖：创建 + 跳转有异步窗口，避免连点发送创建多个会话
   const busyRef = useRef(false)
 
-  const defaultModel = useMemo(() => {
+  // 已选或默认或列表首个（后两个是 fallback；本屏一定有 models 之后再展示）
+  const activeModelId = useMemo(() => {
+    if (pickedModelId && models.some((m) => m.id === pickedModelId)) return pickedModelId
     const def = models.find((m) => m.isDefault)
     return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
-  }, [models])
+  }, [pickedModelId, models])
+  const activeModel = useMemo(
+    () => models.find((m) => m.id === activeModelId),
+    [models, activeModelId]
+  )
+
+  // models 首次到达时若用户还没手动选过，同步一次默认到 pickedModelId，
+  // 保证 chip 显示与实际发送的一致；后续手动切换不再被覆盖。
+  useEffect(() => {
+    if (pickedModelId === null && models.length > 0) {
+      const def = models.find((m) => m.isDefault) ?? models[0]
+      if (def) setPickedModelId(def.id)
+    }
+  }, [models, pickedModelId])
+
+  const openModelSheet = useCallback(() => {
+    if (models.length === 0) return
+    modelSheetRef.current?.present()
+  }, [models.length])
+
+  const handleSelectModel = useCallback((m: AIModel) => {
+    setPickedModelId(m.id)
+    modelSheetRef.current?.dismiss()
+  }, [])
 
   const openDrawer = useCallback(() => {
     const nav = navigation as unknown as { openDrawer?: () => void }
@@ -57,7 +88,7 @@ export default function ChatNewScreen(): React.JSX.Element {
       void (async () => {
         try {
           const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
-          const conv = await createConv.mutateAsync({ model: defaultModel, title })
+          const conv = await createConv.mutateAsync({ model: activeModelId, title })
           // 把首条消息作为 draft 带到会话页，由其自动发送
           router.replace({
             pathname: '/(main)/chat/[conversationId]',
@@ -74,13 +105,13 @@ export default function ChatNewScreen(): React.JSX.Element {
         // 成功后不复位 busyRef：本屏即将被 replace 卸载
       })()
     },
-    [createConv, defaultModel, router, dialog]
+    [createConv, activeModelId, router, dialog]
   )
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior="padding" keyboardVerticalOffset={0}>
       <View style={[styles.inner, { paddingTop: insets.top }]}>
-        {/* 顶栏：手机端渲染 Drawer 按钮 */}
+        {/* 顶栏：手机端渲染 Drawer 按钮；中央可点击的模型选择 chip（对齐会话页） */}
         {!isTablet ? (
           <View style={styles.topBar}>
             <Pressable
@@ -91,7 +122,23 @@ export default function ChatNewScreen(): React.JSX.Element {
             >
               <Menu size={20} color={text.primary} />
             </Pressable>
-            <Text style={styles.topTitle}>元AI</Text>
+            <View style={styles.topCenter}>
+              <Text style={styles.topTitle}>元AI</Text>
+              {models.length > 0 ? (
+                <Pressable
+                  onPress={openModelSheet}
+                  hitSlop={4}
+                  style={styles.modelChip}
+                  accessibilityRole="button"
+                  accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
+                >
+                  <Text style={styles.modelChipText} numberOfLines={1}>
+                    {activeModel?.name ?? activeModelId}
+                  </Text>
+                  <ChevronDown size={12} color={text.secondary} />
+                </Pressable>
+              ) : null}
+            </View>
             <View style={styles.topBtn} />
           </View>
         ) : null}
@@ -108,6 +155,14 @@ export default function ChatNewScreen(): React.JSX.Element {
         {/* 输入区 */}
         <ChatInput streaming={submitting} onSend={handleSend} bottomInset={insets.bottom} />
       </View>
+
+      {/* 模型选择 BottomSheet：与会话页共用组件 */}
+      <ModelSelectorSheet
+        ref={modelSheetRef}
+        models={models}
+        currentId={activeModelId}
+        onSelect={handleSelectModel}
+      />
     </KeyboardAvoidingView>
   )
 }
@@ -123,7 +178,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  topTitle: { fontSize: 16, fontWeight: '600', color: text.primary },
+  topCenter: { flex: 1, alignItems: 'center', gap: 2 },
+  topTitle: { fontSize: 15, fontWeight: '600', color: text.primary },
+  modelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
+  },
+  modelChipText: { fontSize: 11, color: text.secondary },
   body: {
     flex: 1,
     alignItems: 'center',

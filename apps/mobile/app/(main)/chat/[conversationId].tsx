@@ -1,5 +1,6 @@
+import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
-import { ChevronLeft, Menu } from 'lucide-react-native'
+import { ChevronDown, ChevronLeft, Menu } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -12,14 +13,24 @@ import {
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { TABLET_MIN_WIDTH, useConversations, useMessages, useModels, useStream } from '@yuanai/core'
+import {
+  TABLET_MIN_WIDTH,
+  useConversations,
+  useMessages,
+  useModels,
+  useStream,
+  useUpdateConversation,
+} from '@yuanai/core'
 import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import type { AIModel } from '@yuanai/types'
 
 import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
+import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
+import { useToast } from '@/components/ui/Toast'
 import { bg, border, spacing, text } from '@/theme/tokens'
 
 /**
@@ -65,8 +76,11 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const { send, stop } = useStream()
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const isStreaming = streamingConvId === conversationId
+  const updateConv = useUpdateConversation()
+  const toast = useToast()
 
   const listRef = useRef<MessageListHandle>(null)
+  const modelSheetRef = useRef<BottomSheetModal>(null)
 
   // ── 消息交互状态 ────────────────────────────────────────────
   const [versionIdxs, setVersionIdxs] = useState<Record<string, number>>({})
@@ -94,6 +108,38 @@ export default function ChatConversationScreen(): React.JSX.Element {
     const def = models.find((m) => m.isDefault)
     return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
   }, [conv, models])
+  const currentModelInfo = useMemo(
+    () => models.find((m) => m.id === currentModel),
+    [models, currentModel]
+  )
+
+  const openModelSheet = useCallback(() => {
+    if (models.length === 0) return
+    modelSheetRef.current?.present()
+  }, [models.length])
+
+  // 选择模型：立刻 dismiss（不等 PATCH 回来避免卡顿感）→ 后端更新会话绑定 →
+  // 失败回退（Query onError 会自动回滚 cache，这里补 toast + 提示重试）。
+  // ⚠️ 只在 currentModel 是「已绑定值」时才 PATCH：新会话在首次发送前 conv.model
+  // 已存在（chat/index.tsx createConv 时写入）；这里再 PATCH 是覆盖用户此后的选择。
+  const handleSelectModel = useCallback(
+    (m: AIModel) => {
+      modelSheetRef.current?.dismiss()
+      if (!conversationId || conv?.model === m.id) return
+      updateConv.mutate(
+        { id: conversationId, model: m.id },
+        {
+          onSuccess: () => toast.show(`已切换到 ${m.name}`),
+          onError: (err) =>
+            void dialog.alert({
+              title: '切换失败',
+              message: err instanceof Error ? err.message : '请稍后重试',
+            }),
+        }
+      )
+    },
+    [conversationId, conv?.model, updateConv, toast, dialog]
+  )
 
   const openDrawer = useCallback(() => {
     const nav = navigation as unknown as { openDrawer?: () => void }
@@ -239,9 +285,25 @@ export default function ChatConversationScreen(): React.JSX.Element {
               <Menu size={20} color={text.primary} />
             </Pressable>
           )}
-          <Text style={styles.topTitle} numberOfLines={1}>
-            {conv?.title ?? '对话'}
-          </Text>
+          <View style={styles.topCenter}>
+            <Text style={styles.topTitle} numberOfLines={1}>
+              {conv?.title ?? '对话'}
+            </Text>
+            {models.length > 0 ? (
+              <Pressable
+                onPress={openModelSheet}
+                hitSlop={4}
+                style={styles.modelChip}
+                accessibilityRole="button"
+                accessibilityLabel={`当前模型 ${currentModelInfo?.name ?? currentModel}，点击切换`}
+              >
+                <Text style={styles.modelChipText} numberOfLines={1}>
+                  {currentModelInfo?.name ?? currentModel}
+                </Text>
+                <ChevronDown size={12} color={text.secondary} />
+              </Pressable>
+            ) : null}
+          </View>
           <View style={styles.topBtn} />
         </View>
 
@@ -285,6 +347,14 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
       {/* Artifact 面板（Modal，覆盖全屏；不受键盘影响） */}
       <ArtifactSurface />
+
+      {/* 模型选择 BottomSheet：Portal 挂在 root，不受本页布局约束 */}
+      <ModelSelectorSheet
+        ref={modelSheetRef}
+        models={models}
+        currentId={currentModel}
+        onSelect={handleSelectModel}
+      />
     </KeyboardAvoidingView>
   )
 }
@@ -302,13 +372,16 @@ const styles = StyleSheet.create({
     borderBottomColor: border.default,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  topTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '600',
-    color: text.primary,
-    textAlign: 'center',
+  topCenter: { flex: 1, alignItems: 'center', gap: 2 },
+  topTitle: { fontSize: 15, fontWeight: '600', color: text.primary, maxWidth: '90%' },
+  modelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
   },
+  modelChipText: { fontSize: 11, color: text.secondary },
   listArea: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyHint: { fontSize: 13, color: text.muted },
