@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
-import { ChevronDown, ChevronLeft, Menu } from 'lucide-react-native'
+import { ChevronDown, ChevronLeft, Menu, Share2 } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
@@ -31,6 +31,7 @@ import { ChatInput } from '@/components/chat/ChatInput'
 import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
+import { ShareSheet } from '@/components/chat/ShareSheet'
 import { useDialog } from '@/components/ui/Dialog'
 import { useToast } from '@/components/ui/Toast'
 import { spacing } from '@/theme/tokens'
@@ -87,6 +88,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
   const listRef = useRef<MessageListHandle>(null)
   const modelSheetRef = useRef<BottomSheetModal>(null)
+  const shareSheetRef = useRef<BottomSheetModal>(null)
 
   // ── 消息交互状态 ────────────────────────────────────────────
   const [versionIdxs, setVersionIdxs] = useState<Record<string, number>>({})
@@ -321,7 +323,14 @@ export default function ChatConversationScreen(): React.JSX.Element {
               </Pressable>
             ) : null}
           </View>
-          <View style={styles.topBtn} />
+          <Pressable
+            onPress={() => shareSheetRef.current?.present()}
+            hitSlop={8}
+            style={styles.topBtn}
+            accessibilityLabel={t('share.title')}
+          >
+            <Share2 size={18} color={theme.text.primary} />
+          </Pressable>
         </View>
 
         {/* 消息区。外层用 Pressable：tap 未被子孙可交互元素消费时触发关键盘。
@@ -368,6 +377,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
       <ArtifactSurface />
 
+      <ShareSheet ref={shareSheetRef} convId={conversationId ?? ''} />
       <ModelSelectorSheet
         ref={modelSheetRef}
         models={models}
