@@ -165,13 +165,13 @@ export function SettingsSegmentRow({
               style={[
                 styles.segmentItem,
                 { borderColor: t.border.default, backgroundColor: t.bg.base },
-                active && { borderColor: brand.solid, backgroundColor: brand.light },
+                active && { borderColor: t.brand.solid, backgroundColor: t.brand.selected },
               ]}
             >
               <Text
                 style={[
                   styles.segmentText,
-                  { color: t.text.secondary },
+                  { color: active ? t.brand.selectedFg : t.text.secondary },
                   active && styles.segmentTextActive,
                 ]}
               >
@@ -228,5 +228,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   segmentText: { fontSize: 13 },
-  segmentTextActive: { color: brand.solid, fontWeight: '600' },
+  segmentTextActive: { fontWeight: '600' },
 })

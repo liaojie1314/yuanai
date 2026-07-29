@@ -2,7 +2,7 @@ import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, ChevronLeft, Ghost, Menu } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
+import { Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -263,8 +263,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
           <View style={styles.topBtn} />
         </View>
 
-        {/* 消息区 */}
-        <View style={styles.listArea}>
+        {/* 消息区：Pressable 包一层，tap 空白区域关键盘（对齐 [conversationId].tsx） */}
+        <Pressable style={styles.listArea} onPress={Keyboard.dismiss}>
           {messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
               <Ghost size={40} color={t.text.muted} />
@@ -290,7 +290,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
               onCancelEdit={handleCancelEdit}
             />
           )}
-        </View>
+        </Pressable>
 
         {/* 输入区 */}
         <ChatInput

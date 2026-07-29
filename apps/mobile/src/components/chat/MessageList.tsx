@@ -2,7 +2,7 @@ import { FlashList, type FlashListProps } from '@shopify/flash-list'
 import type { Message } from '@yuanai/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useState } from 'react'
-import { StyleSheet, View } from 'react-native'
+import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { useKeyboardState } from 'react-native-keyboard-controller'
 
@@ -526,8 +526,11 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
             ? 'user-edit'
             : item.role
         }
-        ListHeaderComponent={<View style={styles.pad} />}
-        ListFooterComponent={<View style={styles.pad} />}
+        // header/footer 用 Pressable 拦一次 tap 关键盘（配合列表本身的
+        // keyboardShouldPersistTaps="handled" —— tap 消息内的可交互元素时
+        // 保留键盘，tap 空白区域时通过这里主动 dismiss）。
+        ListHeaderComponent={<Pressable style={styles.pad} onPress={Keyboard.dismiss} />}
+        ListFooterComponent={<Pressable style={styles.pad} onPress={Keyboard.dismiss} />}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={handleScrollBeginDrag}

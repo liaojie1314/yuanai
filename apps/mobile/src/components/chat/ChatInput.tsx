@@ -5,7 +5,7 @@ import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { usePrefsStore } from '@yuanai/core/stores'
 
 import { AttachmentTray } from '@/components/chat/AttachmentTray'
-import { brand, radius, spacing } from '@/theme/tokens'
+import { radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
 import { useTheme } from '@/theme/useTheme'
 import { useAttachments } from '@/hooks/useAttachments'
@@ -107,12 +107,14 @@ export function ChatInput({
             hitSlop={6}
             style={[
               styles.toolBtn,
-              { backgroundColor: t.bg.elevated },
-              attachments.length > 0 && styles.toolBtnActive,
+              { backgroundColor: attachments.length > 0 ? t.brand.selected : t.bg.elevated },
             ]}
             accessibilityLabel="附件"
           >
-            <Paperclip size={17} color={attachments.length > 0 ? brand.solid : t.text.secondary} />
+            <Paperclip
+              size={17}
+              color={attachments.length > 0 ? t.brand.selectedFg : t.text.secondary}
+            />
           </Pressable>
           <Pressable
             onPress={notReady('语音')}
@@ -135,13 +137,12 @@ export function ChatInput({
             hitSlop={6}
             style={[
               styles.toolBtn,
-              { backgroundColor: t.bg.elevated },
-              showThinking && styles.toolBtnActive,
+              { backgroundColor: showThinking ? t.brand.selected : t.bg.elevated },
             ]}
             accessibilityLabel={showThinking ? '关闭深度思考' : '开启深度思考'}
             accessibilityState={{ selected: showThinking }}
           >
-            <Sparkles size={17} color={showThinking ? brand.solid : t.text.secondary} />
+            <Sparkles size={17} color={showThinking ? t.brand.selectedFg : t.text.secondary} />
           </Pressable>
         </View>
 
@@ -169,7 +170,7 @@ export function ChatInput({
               streaming
                 ? { backgroundColor: t.text.primary }
                 : canSend
-                  ? styles.sendBtnActive
+                  ? { backgroundColor: t.brand.solid }
                   : styles.sendBtnDisabled,
             ]}
             hitSlop={4}
@@ -217,7 +218,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  toolBtnActive: { backgroundColor: brand.light },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -241,6 +241,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sendBtnActive: { backgroundColor: brand.solid },
   sendBtnDisabled: { backgroundColor: '#9CA3AF', opacity: 0.4 },
 })

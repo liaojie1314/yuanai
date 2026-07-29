@@ -2,7 +2,7 @@ import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, Menu } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { StyleSheet, Pressable, Text, useWindowDimensions, View } from 'react-native'
+import { Keyboard, StyleSheet, Pressable, Text, useWindowDimensions, View } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
@@ -155,7 +155,7 @@ export default function ChatNewScreen(): React.JSX.Element {
           </View>
         ) : null}
 
-        <View style={styles.body}>
+        <Pressable style={styles.body} onPress={Keyboard.dismiss}>
           <View style={styles.brandBadge}>
             <Text style={styles.brandBadgeText}>元</Text>
           </View>
@@ -163,7 +163,7 @@ export default function ChatNewScreen(): React.JSX.Element {
           <Text style={[styles.subtitle, { color: t.text.secondary }]}>
             有什么可以帮你的？在下面直接输入开始对话吧
           </Text>
-        </View>
+        </Pressable>
 
         <ChatInput streaming={submitting} onSend={handleSend} bottomInset={insets.bottom} />
       </View>

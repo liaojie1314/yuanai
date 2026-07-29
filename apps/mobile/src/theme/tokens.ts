@@ -64,12 +64,31 @@ export const spacing = {
 // ThemeTokens — 动态主题接口（明色 / 暗色双套）
 // useTheme() hook 消费；colorScheme 字段用于少数需要条件判断的场景（如 ripple 颜色）
 // ─────────────────────────────────────────────────────
+/**
+ * 主题内 brand 派生色。solid/hover 主题无关；`selected` / `selectedFg` 是
+ * 「淡蓝底选中态」在明暗下的不同表达：
+ * - 明色：淡蓝底（brand.light）+ 深蓝字（brand.hover）
+ * - 暗色：深蓝底（半透明品牌色）+ 亮蓝字（brand.solid）
+ * 直接沿用 brand.light（#eff6ff）在深黑背景上会产生刺眼的白色块，需要分主题。
+ */
+export interface ThemeBrand {
+  solid: string
+  hover: string
+  light: string
+  from: string
+  to: string
+  /** 选中态背景色 */
+  selected: string
+  /** 选中态前景（文字/图标）色 */
+  selectedFg: string
+}
+
 export interface ThemeTokens {
   colorScheme: 'light' | 'dark'
   bg: { base: string; surface: string; elevated: string }
   text: { primary: string; secondary: string; muted: string; inverse: string }
   border: { default: string; focus: string; danger: string }
-  brand: typeof brand
+  brand: ThemeBrand
   radius: typeof radius
   spacing: typeof spacing
 }
@@ -79,7 +98,7 @@ export const lightTheme: ThemeTokens = {
   bg: { base: '#FAFAF8', surface: '#FFFFFF', elevated: '#F4F4F2' },
   text: { primary: '#1A1A2E', secondary: '#6B7280', muted: '#9CA3AF', inverse: '#FFFFFF' },
   border: { default: '#E5E7EB', focus: '#3b82f6', danger: '#EF4444' },
-  brand,
+  brand: { ...brand, selected: '#eff6ff', selectedFg: '#2563eb' },
   radius,
   spacing,
 }
@@ -89,7 +108,8 @@ export const darkTheme: ThemeTokens = {
   bg: { base: '#0F1117', surface: '#171A22', elevated: '#20242E' },
   text: { primary: '#F5F5F5', secondary: '#9AA0A6', muted: '#6B7280', inverse: '#0F1117' },
   border: { default: '#2A2F3A', focus: '#60A5FA', danger: '#F87171' },
-  brand,
+  // 品牌色在暗底上用半透明表达"选中"，前景配亮蓝
+  brand: { ...brand, selected: 'rgba(59,130,246,0.18)', selectedFg: '#93C5FD' },
   radius,
   spacing,
 }

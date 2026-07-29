@@ -4,6 +4,7 @@ import { ChevronDown, ChevronLeft, Menu } from 'lucide-react-native'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -318,8 +319,10 @@ export default function ChatConversationScreen(): React.JSX.Element {
           <View style={styles.topBtn} />
         </View>
 
-        {/* 消息区 */}
-        <View style={styles.listArea}>
+        {/* 消息区。外层用 Pressable：tap 未被子孙可交互元素消费时触发关键盘。
+            列表内的 UserMessage/AIMessage 图标按钮、模型 chip 等都是 Pressable，
+            会先拦住 tap；消息之间的空白 tap 冒泡到这里 → 键盘落下。 */}
+        <Pressable style={styles.listArea} onPress={Keyboard.dismiss}>
           {isLoading && messages.length === 0 ? (
             <View style={styles.center}>
               <ActivityIndicator />
@@ -347,7 +350,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
               onCancelEdit={handleCancelEdit}
             />
           )}
-        </View>
+        </Pressable>
 
         {/* 输入区 */}
         <ChatInput
