@@ -4,79 +4,104 @@ import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { usePrefsStore } from '@yuanai/core/stores'
 
+import { AttachmentTray } from '@/components/chat/AttachmentTray'
 import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
+import { useAttachments } from '@/hooks/useAttachments'
 
 interface ChatInputProps {
   disabled?: boolean
   streaming?: boolean
   bottomInset?: number
-  onSend: (content: string) => void
+  /**
+   * 附件功能是否禁用（临时对话不支持附件，传 true 以禁掉 Paperclip 按钮）
+   */
+  disableAttachments?: boolean
+  /**
+   * 发送回调：收到文本内容和（若有）已上传文件 ID 列表
+   */
+  onSend: (content: string, fileIds?: string[]) => void
   onStop?: () => void
 }
 
 /**
- * 底部输入区（Step 7 视觉美化版）。
+ * 底部输入区（附件版）。
  *
  * 结构（从外到内）：
  *   wrap（安全区背景带）
  *     card（白底大圆角 + 轻投影，视觉主体）
- *       tools 行：📎 附件 / 🎙 语音 / Globe 联网 / Sparkles 思考（**占位**，弹「稍后」）
+ *       AttachmentTray — 横向附件预览条（有附件时显示）
+ *       tools 行：📎 附件 / 🎙 语音 / Globe 联网 / Sparkles 思考
  *       input 行：多行 TextInput + 发送/停止 pill 按钮
  *
- * 交互：
- * - iOS 键盘"发送"键：`onSubmitEditing` 触发 handleSend；Android 保留换行（IM 惯例）
- * - streaming 中：pill 变深色 + Square 图标 = 停止
- * - 空文本：pill 半透明 disabled
+ * 附件状态由内部 useAttachments hook 管理：
+ * - Paperclip 点击 → openAttachSheet (相册/拍照/文件)
+ * - 上传中显示进度圈；出错显示红色感叹号
+ * - 发送时把已上传 fileId 数组透传给 onSend，然后 clear()
+ * - disableAttachments=true 时（临时对话）Paperclip 弹「稍后」提示
  *
- * 占位按钮说明：MVP 有意保留视觉密度但不落功能。
- * 附件/语音/联网/思考 的真实实现分别依赖：
- *   - expo-image-picker / expo-document-picker + /files 上传接口
- *   - expo-av + Whisper 或 /audio 接口
- *   - 后端 online-search tool + 流式协议扩展
- *   - 后端 reasoning-mode 标记 + 模型侧支持
- * 一次落 UI + 后端接线较重，Step 7 只做视觉；点击弹自定义 Dialog 表明"稍后"。
+ * 非附件占位按钮说明：语音/联网/思考 的真实实现依赖额外后端能力，当前仍为占位。
  */
 export function ChatInput({
   disabled = false,
   streaming = false,
   bottomInset = 0,
+  disableAttachments = false,
   onSend,
   onStop,
 }: ChatInputProps): React.JSX.Element {
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
-  // 深度思考开关：直接复用两端共享的 prefs store（web 端同一字段），
-  // 发送时聊天页从 store 读取 showThinking 组装 enableThinking。
+
   const showThinking = usePrefsStore((s) => s.showThinking)
   const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
-  const canSend = value.trim().length > 0 && !streaming && !disabled
+  const { attachments, openAttachSheet, remove, clear, getFileIds, isUploading } = useAttachments(
+    disabled || disableAttachments
+  )
+
+  // 发送条件：有文本或有已上传完成的附件；且不在流式中、不在禁用状态、不在上传中
+  const hasReadyAttachment = attachments.some((a) => a.fileId !== null)
+  const canSend =
+    (value.trim().length > 0 || hasReadyAttachment) && !streaming && !disabled && !isUploading
 
   const handleSend = (): void => {
     const content = value.trim()
-    if (!content || streaming || disabled) return
+    if ((!content && !hasReadyAttachment) || streaming || disabled || isUploading) return
+    const fileIds = getFileIds()
     setValue('')
-    onSend(content)
+    clear()
+    onSend(content, fileIds.length > 0 ? fileIds : undefined)
   }
 
   const notReady = (label: string) => (): void => {
     void dialog.alert({ title: label, message: '此功能稍后开放，敬请期待。' })
   }
 
+  const handlePaperclip = (): void => {
+    if (disableAttachments) {
+      void dialog.alert({ title: '附件', message: '临时对话暂不支持附件。' })
+      return
+    }
+    void openAttachSheet()
+  }
+
   return (
     <View style={[styles.wrap, { paddingBottom: Math.max(bottomInset, spacing.sm) }]}>
       <View style={styles.card}>
-        {/* 工具行：占位按钮，视觉密度对齐 web */}
+        {/* 附件预览条 */}
+        <AttachmentTray attachments={attachments} onRemove={remove} />
+
+        {/* 工具行 */}
         <View style={styles.tools}>
           <Pressable
-            onPress={notReady('附件')}
+            onPress={handlePaperclip}
             hitSlop={6}
-            style={styles.toolBtn}
-            accessibilityLabel="附件（稍后开放）"
+            style={[styles.toolBtn, attachments.length > 0 && styles.toolBtnActive]}
+            accessibilityLabel="附件"
           >
-            <Paperclip size={17} color={text.secondary} />
+            <Paperclip size={17} color={attachments.length > 0 ? brand.solid : text.secondary} />
           </Pressable>
           <Pressable
             onPress={notReady('语音')}
@@ -161,7 +186,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
-    // 轻投影，iOS/Android 分别调
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06,

@@ -113,7 +113,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   // 流式期间会出现两个相同的用户气泡。统一在 onEnd（出错时也会触发，
   // finalContent 为空）里把 user +（非空时）assistant 一起落进本地列表。
   const handleSend = useCallback(
-    (content: string): void => {
+    // fileIds 参数签名与 ChatInput.onSend 对齐，临时对话忽略附件（后端不支持）
+    (content: string, _fileIds?: string[]): void => {
       if (isStreaming) return
       const history = messagesRef.current.map((m) => ({
         role: m.role === Role.User ? ('user' as const) : ('assistant' as const),
@@ -291,6 +292,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
           onSend={handleSend}
           onStop={stop}
           bottomInset={insets.bottom}
+          disableAttachments
         />
       </View>
 

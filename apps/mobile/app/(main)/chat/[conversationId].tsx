@@ -62,9 +62,10 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
-  const { conversationId, draft } = useLocalSearchParams<{
+  const { conversationId, draft, draftFileIds } = useLocalSearchParams<{
     conversationId: string
     draft?: string
+    draftFileIds?: string
   }>()
   const router = useRouter()
   const navigation = useNavigation()
@@ -157,7 +158,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
   )
 
   const handleSend = useCallback(
-    (content: string): void => {
+    (content: string, fileIds?: string[]): void => {
       if (!conversationId) return
       // 发送后立即滚到底；send 是 async 但我们不 await，让 UI 立刻响应。
       // 实际的自动贴底由 MessageList 监听 rows.length 变化完成，这里再补一次兜底。
@@ -166,6 +167,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
         convId: conversationId,
         content,
         model: currentModel,
+        fileIds: fileIds && fileIds.length > 0 ? fileIds : undefined,
         enableThinking: usePrefsStore.getState().showThinking,
         onError: showSendError,
       })
@@ -252,9 +254,17 @@ export default function ChatConversationScreen(): React.JSX.Element {
     const text = typeof draft === 'string' ? draft.trim() : ''
     if (!text || !conversationId) return
     draftSentRef.current = true
-    handleSend(text)
-    router.setParams({ draft: '' })
-  }, [draft, conversationId, handleSend, router])
+    let parsedFileIds: string[] | undefined
+    if (typeof draftFileIds === 'string' && draftFileIds) {
+      try {
+        parsedFileIds = JSON.parse(draftFileIds) as string[]
+      } catch {
+        // ignore malformed param
+      }
+    }
+    handleSend(text, parsedFileIds)
+    router.setParams({ draft: '', draftFileIds: '' })
+  }, [draft, draftFileIds, conversationId, handleSend, router])
 
   return (
     <KeyboardAvoidingView

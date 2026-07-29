@@ -81,7 +81,7 @@ export default function ChatNewScreen(): React.JSX.Element {
   }, [navigation])
 
   const handleSend = useCallback(
-    (content: string): void => {
+    (content: string, fileIds?: string[]): void => {
       if (busyRef.current) return
       busyRef.current = true
       setSubmitting(true)
@@ -89,10 +89,14 @@ export default function ChatNewScreen(): React.JSX.Element {
         try {
           const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
           const conv = await createConv.mutateAsync({ model: activeModelId, title })
-          // 把首条消息作为 draft 带到会话页，由其自动发送
+          // 首条消息和附件 fileIds 作为 params 带到会话页，由其自动发送
           router.replace({
             pathname: '/(main)/chat/[conversationId]',
-            params: { conversationId: conv.id, draft: content },
+            params: {
+              conversationId: conv.id,
+              draft: content,
+              ...(fileIds && fileIds.length > 0 ? { draftFileIds: JSON.stringify(fileIds) } : {}),
+            },
           })
         } catch (err) {
           void dialog.alert({
