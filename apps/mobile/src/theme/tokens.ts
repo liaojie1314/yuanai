@@ -59,3 +59,37 @@ export const spacing = {
   xl: 24,
   xxl: 32,
 } as const
+
+// ─────────────────────────────────────────────────────
+// ThemeTokens — 动态主题接口（明色 / 暗色双套）
+// useTheme() hook 消费；colorScheme 字段用于少数需要条件判断的场景（如 ripple 颜色）
+// ─────────────────────────────────────────────────────
+export interface ThemeTokens {
+  colorScheme: 'light' | 'dark'
+  bg: { base: string; surface: string; elevated: string }
+  text: { primary: string; secondary: string; muted: string; inverse: string }
+  border: { default: string; focus: string; danger: string }
+  brand: typeof brand
+  radius: typeof radius
+  spacing: typeof spacing
+}
+
+export const lightTheme: ThemeTokens = {
+  colorScheme: 'light',
+  bg: { base: '#FAFAF8', surface: '#FFFFFF', elevated: '#F4F4F2' },
+  text: { primary: '#1A1A2E', secondary: '#6B7280', muted: '#9CA3AF', inverse: '#FFFFFF' },
+  border: { default: '#E5E7EB', focus: '#3b82f6', danger: '#EF4444' },
+  brand,
+  radius,
+  spacing,
+}
+
+export const darkTheme: ThemeTokens = {
+  colorScheme: 'dark',
+  bg: { base: '#0F1117', surface: '#171A22', elevated: '#20242E' },
+  text: { primary: '#F5F5F5', secondary: '#9AA0A6', muted: '#6B7280', inverse: '#0F1117' },
+  border: { default: '#2A2F3A', focus: '#60A5FA', danger: '#F87171' },
+  brand,
+  radius,
+  spacing,
+}
