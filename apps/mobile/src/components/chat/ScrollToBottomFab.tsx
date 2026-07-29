@@ -1,6 +1,8 @@
 import { ArrowDown } from 'lucide-react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
+import { useTranslation } from 'react-i18next'
+
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -24,19 +26,25 @@ export function ScrollToBottomFab({
   onPress,
   streaming = false,
 }: ScrollToBottomFabProps): React.JSX.Element | null {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   if (!visible) return null
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Pressable
         onPress={onPress}
         android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: true }}
-        style={[styles.fab, { borderColor: t.border.default, backgroundColor: t.bg.surface }]}
+        style={[
+          styles.fab,
+          { borderColor: theme.border.default, backgroundColor: theme.bg.surface },
+        ]}
         accessibilityRole="button"
-        accessibilityLabel="回到最新消息"
+        accessibilityLabel={t('chat.scrollToLatest')}
       >
         <ArrowDown size={16} color={brand.solid} />
-        {streaming ? <Text style={[styles.label, { color: t.text.secondary }]}>新内容</Text> : null}
+        {streaming ? (
+          <Text style={[styles.label, { color: theme.text.secondary }]}>{t('chat.thinking')}</Text>
+        ) : null}
       </Pressable>
     </View>
   )

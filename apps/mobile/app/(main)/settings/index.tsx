@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useRouter } from 'expo-router'
 import * as ImagePicker from 'expo-image-picker'
 import {
@@ -25,7 +26,8 @@ import { useTheme } from '@/theme/useTheme'
  * 设置首屏：个人资料卡（头像/用户名/简介直接编辑）+ 5 个子屏入口。
  */
 export default function SettingsIndexScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const router = useRouter()
   const dialog = useDialog()
   const { data: user } = useCurrentUser()
@@ -36,16 +38,19 @@ export default function SettingsIndexScreen(): React.JSX.Element {
 
   const onEditUsername = async (): Promise<void> => {
     const next = await dialog.prompt({
-      title: '修改用户名',
+      title: t('settings.editUsername'),
       placeholder: '2 - 20 个字符',
       defaultValue: user?.username ?? '',
-      confirmText: '保存',
+      confirmText: t('common.save'),
       maxLength: 20,
     })
     const trimmed = next?.trim()
     if (!trimmed || trimmed === user?.username) return
     if (trimmed.length < 2) {
-      void dialog.alert({ title: '用户名太短', message: '至少 2 个字符' })
+      void dialog.alert({
+        title: t('settings.usernameTooShort'),
+        message: t('settings.usernameMin'),
+      })
       return
     }
     updateMe.mutate(
@@ -53,8 +58,8 @@ export default function SettingsIndexScreen(): React.JSX.Element {
       {
         onError: (err) => {
           void dialog.alert({
-            title: '修改失败',
-            message: err instanceof Error ? err.message : '请稍后重试',
+            title: t('settings.updateFailed'),
+            message: err instanceof Error ? err.message : t('common.retryLater'),
           })
         },
       }
@@ -63,10 +68,10 @@ export default function SettingsIndexScreen(): React.JSX.Element {
 
   const onEditBio = async (): Promise<void> => {
     const next = await dialog.prompt({
-      title: '编辑简介',
-      placeholder: '介绍一下自己（80 字内）',
+      title: t('settings.editBio'),
+      placeholder: t('settings.bioPlaceholder'),
       defaultValue: user?.bio ?? '',
-      confirmText: '保存',
+      confirmText: t('common.save'),
       maxLength: 80,
     })
     if (next === null || next === user?.bio) return
@@ -75,8 +80,8 @@ export default function SettingsIndexScreen(): React.JSX.Element {
       {
         onError: (err) => {
           void dialog.alert({
-            title: '修改失败',
-            message: err instanceof Error ? err.message : '请稍后重试',
+            title: t('settings.updateFailed'),
+            message: err instanceof Error ? err.message : t('common.retryLater'),
           })
         },
       }
@@ -86,7 +91,10 @@ export default function SettingsIndexScreen(): React.JSX.Element {
   const onPickAvatar = async (): Promise<void> => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (!perm.granted) {
-      void dialog.alert({ title: '无相册权限', message: '请到系统设置里授权后重试' })
+      void dialog.alert({
+        title: t('settings.noAlbumPermission'),
+        message: t('settings.grantInSystem'),
+      })
       return
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -108,8 +116,8 @@ export default function SettingsIndexScreen(): React.JSX.Element {
       await uploadAvatar.mutateAsync(rnFile)
     } catch (err) {
       void dialog.alert({
-        title: '头像上传失败',
-        message: err instanceof Error ? err.message : '请稍后重试',
+        title: t('settings.avatarFailed'),
+        message: err instanceof Error ? err.message : t('common.retryLater'),
       })
     } finally {
       setAvatarBusy(false)
@@ -119,12 +127,12 @@ export default function SettingsIndexScreen(): React.JSX.Element {
   const initial = user?.username?.charAt(0).toUpperCase() ?? '?'
 
   return (
-    <SettingsShell title="设置">
+    <SettingsShell title={t('settings.title')}>
       {/* 个人资料卡 */}
       <View
         style={[
           styles.profileCard,
-          { backgroundColor: t.bg.surface, borderColor: t.border.default },
+          { backgroundColor: theme.bg.surface, borderColor: theme.border.default },
         ]}
       >
         <Pressable
@@ -132,7 +140,7 @@ export default function SettingsIndexScreen(): React.JSX.Element {
             void onPickAvatar()
           }}
           style={styles.avatarWrap}
-          accessibilityLabel="更换头像"
+          accessibilityLabel={t('settings.profile')}
           disabled={avatarBusy}
         >
           {user?.avatarUrl ? (
@@ -142,7 +150,7 @@ export default function SettingsIndexScreen(): React.JSX.Element {
               <Text style={styles.avatarInitial}>{initial}</Text>
             </View>
           )}
-          <View style={[styles.avatarBadge, { borderColor: t.bg.surface }]}>
+          <View style={[styles.avatarBadge, { borderColor: theme.bg.surface }]}>
             <Camera size={12} color="#FFFFFF" />
           </View>
         </Pressable>
@@ -153,10 +161,12 @@ export default function SettingsIndexScreen(): React.JSX.Element {
           }}
           style={styles.nameRow}
         >
-          <Text style={[styles.nameText, { color: t.text.primary }]}>{user?.username ?? '—'}</Text>
-          <ChevronRight size={16} color={t.text.muted} />
+          <Text style={[styles.nameText, { color: theme.text.primary }]}>
+            {user?.username ?? '—'}
+          </Text>
+          <ChevronRight size={16} color={theme.text.muted} />
         </Pressable>
-        <Text style={[styles.emailText, { color: t.text.secondary }]}>{user?.email ?? ''}</Text>
+        <Text style={[styles.emailText, { color: theme.text.secondary }]}>{user?.email ?? ''}</Text>
 
         <Pressable
           onPress={() => {
@@ -167,32 +177,34 @@ export default function SettingsIndexScreen(): React.JSX.Element {
           <Text
             style={
               user?.bio
-                ? [styles.bioText, { color: t.text.primary }]
-                : [styles.bioPlaceholder, { color: t.text.muted }]
+                ? [styles.bioText, { color: theme.text.primary }]
+                : [styles.bioPlaceholder, { color: theme.text.muted }]
             }
             numberOfLines={2}
           >
-            {user?.bio || '点这里写一句简介…'}
+            {user?.bio || t('settings.bioPlaceholder')}
           </Text>
         </Pressable>
 
         {stats ? (
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: t.text.primary }]}>
+              <Text style={[styles.statNum, { color: theme.text.primary }]}>
                 {stats.conversationCount}
               </Text>
-              <Text style={[styles.statLabel, { color: t.text.muted }]}>会话</Text>
+              <Text style={[styles.statLabel, { color: theme.text.muted }]}>会话</Text>
             </View>
-            <View style={[styles.statDivider, { backgroundColor: t.border.default }]} />
+            <View style={[styles.statDivider, { backgroundColor: theme.border.default }]} />
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: t.text.primary }]}>{stats.totalTokens}</Text>
-              <Text style={[styles.statLabel, { color: t.text.muted }]}>Tokens</Text>
+              <Text style={[styles.statNum, { color: theme.text.primary }]}>
+                {stats.totalTokens}
+              </Text>
+              <Text style={[styles.statLabel, { color: theme.text.muted }]}>Tokens</Text>
             </View>
-            <View style={[styles.statDivider, { backgroundColor: t.border.default }]} />
+            <View style={[styles.statDivider, { backgroundColor: theme.border.default }]} />
             <View style={styles.statItem}>
-              <Text style={[styles.statNum, { color: t.text.primary }]}>{stats.fileCount}</Text>
-              <Text style={[styles.statLabel, { color: t.text.muted }]}>文件</Text>
+              <Text style={[styles.statNum, { color: theme.text.primary }]}>{stats.fileCount}</Text>
+              <Text style={[styles.statLabel, { color: theme.text.muted }]}>文件</Text>
             </View>
           </View>
         ) : null}
@@ -200,36 +212,36 @@ export default function SettingsIndexScreen(): React.JSX.Element {
 
       <SettingsGroup>
         <SettingsRow
-          label="安全"
-          icon={<Shield size={18} color={t.text.secondary} />}
+          label={t('settings.security')}
+          icon={<Shield size={18} color={theme.text.secondary} />}
           onPress={() => router.push('/(main)/settings/security')}
         />
         <SettingsRow
-          label="外观"
-          icon={<Palette size={18} color={t.text.secondary} />}
+          label={t('settings.appearance')}
+          icon={<Palette size={18} color={theme.text.secondary} />}
           onPress={() => router.push('/(main)/settings/appearance')}
         />
         <SettingsRow
-          label="通知"
-          icon={<Bell size={18} color={t.text.secondary} />}
+          label={t('settings.notifications')}
+          icon={<Bell size={18} color={theme.text.secondary} />}
           onPress={() => router.push('/(main)/settings/notifications')}
         />
         <SettingsRow
-          label="语言"
-          icon={<Globe size={18} color={t.text.secondary} />}
+          label={t('settings.language')}
+          icon={<Globe size={18} color={theme.text.secondary} />}
           onPress={() => router.push('/(main)/settings/language')}
         />
         <SettingsRow
-          label="关于"
-          icon={<Info size={18} color={t.text.secondary} />}
+          label={t('settings.about')}
+          icon={<Info size={18} color={theme.text.secondary} />}
           divider={false}
           onPress={() => router.push('/(main)/settings/about')}
         />
       </SettingsGroup>
 
       <View style={styles.footerHint}>
-        <UserIcon size={12} color={t.text.muted} />
-        <Text style={[styles.footerHintText, { color: t.text.muted }]}>
+        <UserIcon size={12} color={theme.text.muted} />
+        <Text style={[styles.footerHintText, { color: theme.text.muted }]}>
           注册于 {formatDate(user?.createdAt)}
         </Text>
       </View>

@@ -8,6 +8,7 @@ import { AttachmentTray } from '@/components/chat/AttachmentTray'
 import { radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
 import { useTheme } from '@/theme/useTheme'
+import { useTranslation } from 'react-i18next'
 import { useAttachments } from '@/hooks/useAttachments'
 
 interface ChatInputProps {
@@ -51,7 +52,8 @@ export function ChatInput({
   onSend,
   onStop,
 }: ChatInputProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
@@ -78,12 +80,12 @@ export function ChatInput({
   }
 
   const notReady = (label: string) => (): void => {
-    void dialog.alert({ title: label, message: '此功能稍后开放，敬请期待。' })
+    void dialog.alert({ title: label, message: t('chat.comingSoonTitle') })
   }
 
   const handlePaperclip = (): void => {
     if (disableAttachments) {
-      void dialog.alert({ title: '附件', message: '临时对话暂不支持附件。' })
+      void dialog.alert({ title: t('chat.attach'), message: t('chat.tempNoAttach') })
       return
     }
     void openAttachSheet()
@@ -93,10 +95,15 @@ export function ChatInput({
     <View
       style={[
         styles.wrap,
-        { paddingBottom: Math.max(bottomInset, spacing.sm), backgroundColor: t.bg.base },
+        { paddingBottom: Math.max(bottomInset, spacing.sm), backgroundColor: theme.bg.base },
       ]}
     >
-      <View style={[styles.card, { backgroundColor: t.bg.surface, borderColor: t.border.default }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: theme.bg.surface, borderColor: theme.border.default },
+        ]}
+      >
         {/* 附件预览条 */}
         <AttachmentTray attachments={attachments} onRemove={remove} />
 
@@ -107,42 +114,47 @@ export function ChatInput({
             hitSlop={6}
             style={[
               styles.toolBtn,
-              { backgroundColor: attachments.length > 0 ? t.brand.selected : t.bg.elevated },
+              {
+                backgroundColor: attachments.length > 0 ? theme.brand.selected : theme.bg.elevated,
+              },
             ]}
-            accessibilityLabel="附件"
+            accessibilityLabel={t('chat.attach')}
           >
             <Paperclip
               size={17}
-              color={attachments.length > 0 ? t.brand.selectedFg : t.text.secondary}
+              color={attachments.length > 0 ? theme.brand.selectedFg : theme.text.secondary}
             />
           </Pressable>
           <Pressable
-            onPress={notReady('语音')}
+            onPress={notReady(t('chat.voice'))}
             hitSlop={6}
-            style={[styles.toolBtn, { backgroundColor: t.bg.elevated }]}
-            accessibilityLabel="语音输入（稍后开放）"
+            style={[styles.toolBtn, { backgroundColor: theme.bg.elevated }]}
+            accessibilityLabel={t('chat.voiceSoon')}
           >
-            <Mic size={17} color={t.text.secondary} />
+            <Mic size={17} color={theme.text.secondary} />
           </Pressable>
           <Pressable
-            onPress={notReady('联网搜索')}
+            onPress={notReady(t('chat.webSearch'))}
             hitSlop={6}
-            style={[styles.toolBtn, { backgroundColor: t.bg.elevated }]}
-            accessibilityLabel="联网搜索（稍后开放）"
+            style={[styles.toolBtn, { backgroundColor: theme.bg.elevated }]}
+            accessibilityLabel={t('chat.webSearchSoon')}
           >
-            <Globe size={17} color={t.text.secondary} />
+            <Globe size={17} color={theme.text.secondary} />
           </Pressable>
           <Pressable
             onPress={() => setShowThinking(!showThinking)}
             hitSlop={6}
             style={[
               styles.toolBtn,
-              { backgroundColor: showThinking ? t.brand.selected : t.bg.elevated },
+              { backgroundColor: showThinking ? theme.brand.selected : theme.bg.elevated },
             ]}
-            accessibilityLabel={showThinking ? '关闭深度思考' : '开启深度思考'}
+            accessibilityLabel={showThinking ? t('chat.deepThinkOff') : t('chat.deepThinkOn')}
             accessibilityState={{ selected: showThinking }}
           >
-            <Sparkles size={17} color={showThinking ? t.brand.selectedFg : t.text.secondary} />
+            <Sparkles
+              size={17}
+              color={showThinking ? theme.brand.selectedFg : theme.text.secondary}
+            />
           </Pressable>
         </View>
 
@@ -152,16 +164,16 @@ export function ChatInput({
             ref={inputRef}
             value={value}
             onChangeText={setValue}
-            placeholder="问点什么…"
-            placeholderTextColor={t.text.muted}
+            placeholder={t('chat.inputPlaceholder')}
+            placeholderTextColor={theme.text.muted}
             style={[
               styles.input,
               {
-                color: t.text.primary,
-                fontSize: t.typography.body,
-                lineHeight: t.typography.bodyLineHeight,
-                minHeight: Math.max(32, t.density.inputMinH - 16),
-                paddingVertical: Math.max(4, Math.round(t.density.inputPy / 2)),
+                color: theme.text.primary,
+                fontSize: theme.typography.body,
+                lineHeight: theme.typography.bodyLineHeight,
+                minHeight: Math.max(32, theme.density.inputMinH - 16),
+                paddingVertical: Math.max(4, Math.round(theme.density.inputPy / 2)),
               },
             ]}
             multiline
@@ -177,16 +189,16 @@ export function ChatInput({
             style={[
               styles.sendBtn,
               streaming
-                ? { backgroundColor: t.text.primary }
+                ? { backgroundColor: theme.text.primary }
                 : canSend
-                  ? { backgroundColor: t.brand.solid }
+                  ? { backgroundColor: theme.brand.solid }
                   : styles.sendBtnDisabled,
             ]}
             hitSlop={4}
-            accessibilityLabel={streaming ? '停止生成' : '发送'}
+            accessibilityLabel={streaming ? t('chat.stop') : t('chat.send')}
           >
             {streaming ? (
-              <Square size={15} color={t.text.inverse} fill={t.text.inverse} />
+              <Square size={15} color={theme.text.inverse} fill={theme.text.inverse} />
             ) : (
               <Send size={15} color="#FFFFFF" />
             )}

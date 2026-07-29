@@ -11,6 +11,8 @@ import {
 import { memo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
+import { useTranslation } from 'react-i18next'
+
 import { useToast } from '@/components/ui/Toast'
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
@@ -52,22 +54,23 @@ export const AIMessageActions = memo(function AIMessageActions({
   feedback,
   busy,
 }: AIMessageActionsProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const toast = useToast()
 
   const handleCopy = (): void => {
     void Clipboard.setStringAsync(content)
     setCopied(true)
-    toast.show('已复制到剪贴板')
+    toast.show(t('chat.copiedToast'))
     setTimeout(() => setCopied(false), 1500)
   }
 
   const handleFeedback = (type: FeedbackType): void => {
     const removing = feedback === type
     onFeedback(type)
-    if (removing) toast.show('已取消反馈')
-    else toast.show(type === 'like' ? '感谢反馈' : '感谢反馈，我们会改进')
+    if (removing) toast.show(t('chat.feedbackRemoved'))
+    else toast.show(type === 'like' ? t('chat.feedbackThanks') : t('chat.feedbackThanksImprove'))
   }
 
   const canPrev = versionIdx > 0
@@ -83,12 +86,12 @@ export const AIMessageActions = memo(function AIMessageActions({
             hitSlop={8}
             style={styles.verBtn}
             accessibilityRole="button"
-            accessibilityLabel="上一个版本"
+            accessibilityLabel={t('chat.prevVersion')}
             accessibilityState={{ disabled: !canPrev }}
           >
-            <ChevronLeft size={13} color={canPrev ? t.text.secondary : t.text.muted} />
+            <ChevronLeft size={13} color={canPrev ? theme.text.secondary : theme.text.muted} />
           </Pressable>
-          <Text style={[styles.verLabel, { color: t.text.secondary }]}>
+          <Text style={[styles.verLabel, { color: theme.text.secondary }]}>
             {versionIdx + 1} / {versionCount}
           </Text>
           <Pressable
@@ -97,10 +100,10 @@ export const AIMessageActions = memo(function AIMessageActions({
             hitSlop={8}
             style={styles.verBtn}
             accessibilityRole="button"
-            accessibilityLabel="下一个版本"
+            accessibilityLabel={t('chat.nextVersion')}
             accessibilityState={{ disabled: !canNext }}
           >
-            <ChevronRight size={13} color={canNext ? t.text.secondary : t.text.muted} />
+            <ChevronRight size={13} color={canNext ? theme.text.secondary : theme.text.muted} />
           </Pressable>
         </View>
       ) : null}
@@ -110,9 +113,13 @@ export const AIMessageActions = memo(function AIMessageActions({
         hitSlop={8}
         style={styles.iconBtn}
         accessibilityRole="button"
-        accessibilityLabel="复制回复"
+        accessibilityLabel={t('chat.copy')}
       >
-        {copied ? <Check size={15} color={brand.solid} /> : <Copy size={15} color={t.text.muted} />}
+        {copied ? (
+          <Check size={15} color={brand.solid} />
+        ) : (
+          <Copy size={15} color={theme.text.muted} />
+        )}
       </Pressable>
 
       <Pressable
@@ -121,10 +128,10 @@ export const AIMessageActions = memo(function AIMessageActions({
         hitSlop={8}
         style={styles.iconBtn}
         accessibilityRole="button"
-        accessibilityLabel="重新生成"
+        accessibilityLabel={t('chat.regenerate')}
         accessibilityState={{ disabled: busy }}
       >
-        <RotateCcw size={15} color={busy ? t.border.default : t.text.muted} />
+        <RotateCcw size={15} color={busy ? theme.border.default : theme.text.muted} />
       </Pressable>
 
       <Pressable
@@ -132,12 +139,12 @@ export const AIMessageActions = memo(function AIMessageActions({
         hitSlop={8}
         style={styles.iconBtn}
         accessibilityRole="button"
-        accessibilityLabel="有帮助"
+        accessibilityLabel={t('chat.like')}
         accessibilityState={{ selected: feedback === 'like' }}
       >
         <ThumbsUp
           size={15}
-          color={feedback === 'like' ? brand.solid : t.text.muted}
+          color={feedback === 'like' ? brand.solid : theme.text.muted}
           fill={feedback === 'like' ? brand.solid : 'none'}
         />
       </Pressable>
@@ -146,13 +153,13 @@ export const AIMessageActions = memo(function AIMessageActions({
         hitSlop={8}
         style={styles.iconBtn}
         accessibilityRole="button"
-        accessibilityLabel="有问题"
+        accessibilityLabel={t('chat.dislike')}
         accessibilityState={{ selected: feedback === 'dislike' }}
       >
         <ThumbsDown
           size={15}
-          color={feedback === 'dislike' ? t.border.danger : t.text.muted}
-          fill={feedback === 'dislike' ? t.border.danger : 'none'}
+          color={feedback === 'dislike' ? theme.border.danger : theme.text.muted}
+          fill={feedback === 'dislike' ? theme.border.danger : 'none'}
         />
       </Pressable>
     </View>

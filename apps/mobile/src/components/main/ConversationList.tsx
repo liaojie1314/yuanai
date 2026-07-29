@@ -33,14 +33,10 @@ import { brand, radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
 import { unregisterPushNotifications } from '@/lib/pushNotifications'
 import { useTheme } from '@/theme/useTheme'
+import { useTranslation } from 'react-i18next'
 
 const GROUP_ORDER: readonly ConvGroup[] = ['pinned', 'today', 'yesterday', 'week']
-const GROUP_LABEL: Record<ConvGroup, string> = {
-  pinned: '置顶',
-  today: '今天',
-  yesterday: '昨天',
-  week: '本周',
-}
+// labels via t('chat.groups.*') at render time
 
 interface ConversationListProps {
   /** 当前活跃会话 ID，用于高亮 */
@@ -78,7 +74,8 @@ export function ConversationList({
   onPickConversation,
   onClose,
 }: ConversationListProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const dialog = useDialog()
@@ -160,9 +157,9 @@ export function ConversationList({
     if (ids.length === 0) return
     void (async () => {
       const ok = await dialog.confirm({
-        title: '批量删除',
-        message: `确定删除已选中的 ${ids.length} 个会话？删除后不可恢复。`,
-        confirmText: '删除',
+        title: t('chat.batchDelete'),
+        message: t('chat.batchDeleteMessage', { count: ids.length }),
+        confirmText: t('common.delete'),
         destructive: true,
       })
       if (!ok) return
@@ -174,8 +171,8 @@ export function ConversationList({
         },
         onError: (err) => {
           void dialog.alert({
-            title: '删除失败',
-            message: err instanceof Error ? err.message : '请稍后重试',
+            title: t('chat.deleteFailed'),
+            message: err instanceof Error ? err.message : t('common.retryLater'),
           })
         },
       })
@@ -190,8 +187,8 @@ export function ConversationList({
       handlePick(conv.id)
     } catch (err) {
       void dialog.alert({
-        title: '新建对话失败',
-        message: err instanceof Error ? err.message : '请稍后重试',
+        title: t('chat.newChatFailed'),
+        message: err instanceof Error ? err.message : t('common.retryLater'),
       })
     }
   }
@@ -201,19 +198,19 @@ export function ConversationList({
       const choice = await dialog.actionSheet({
         title,
         actions: [
-          { label: isPinned ? '取消置顶' : '置顶' },
-          { label: '重命名' },
-          { label: '删除', destructive: true },
+          { label: isPinned ? t('chat.unpin') : t('chat.pin') },
+          { label: t('chat.rename') },
+          { label: t('common.delete'), destructive: true },
         ],
       })
       if (choice === 0) {
         updateConv.mutate({ id, isPinned: !isPinned })
       } else if (choice === 1) {
         const newTitle = await dialog.prompt({
-          title: '重命名会话',
-          placeholder: '输入新的会话名称',
+          title: t('chat.renameTitle'),
+          placeholder: t('chat.renamePlaceholder'),
           defaultValue: title,
-          confirmText: '保存',
+          confirmText: t('common.save'),
           maxLength: 50,
         })
         const trimmed = newTitle?.trim()
@@ -222,9 +219,9 @@ export function ConversationList({
         }
       } else if (choice === 2) {
         const ok = await dialog.confirm({
-          title: '删除会话',
-          message: '删除后不可恢复，确定要删除吗？',
-          confirmText: '删除',
+          title: t('chat.deleteConvTitle'),
+          message: t('chat.deleteConvMessage'),
+          confirmText: t('common.delete'),
           destructive: true,
         })
         if (ok) {
@@ -238,9 +235,9 @@ export function ConversationList({
   const openLogout = (): void => {
     void (async () => {
       const ok = await dialog.confirm({
-        title: '退出登录',
-        message: '确认退出当前账号？',
-        confirmText: '退出',
+        title: t('settings.logout'),
+        message: t('settings.logout'),
+        confirmText: t('settings.logout'),
         destructive: true,
       })
       if (!ok) return
@@ -255,42 +252,42 @@ export function ConversationList({
   }
 
   const userInitial = user?.username?.charAt(0).toUpperCase() ?? '?'
-  const userName = user?.username ?? '未登录'
+  const userName = user?.username ?? t('auth.loginRequired')
   const userEmail = user?.email ?? ''
 
   return (
     <View
       style={[
         styles.container,
-        { backgroundColor: t.bg.surface },
+        { backgroundColor: theme.bg.surface },
         { paddingTop: insets.top, paddingBottom: insets.bottom },
       ]}
     >
       {/* Header：常规态 / 多选态双分支 */}
       {selectionMode ? (
-        <View style={[styles.header, { borderBottomColor: t.border.default }]}>
+        <View style={[styles.header, { borderBottomColor: theme.border.default }]}>
           <Pressable
             onPress={exitSelection}
             hitSlop={8}
             style={styles.iconBtn}
-            accessibilityLabel="退出多选"
+            accessibilityLabel={t('common.cancel')}
           >
-            <X size={18} color={t.text.primary} />
+            <X size={18} color={theme.text.primary} />
           </Pressable>
-          <Text style={[styles.selectionCount, { color: t.text.primary }]}>
-            {selected.size} 已选中
+          <Text style={[styles.selectionCount, { color: theme.text.primary }]}>
+            {t('chat.selectedCount', { count: selected.size })}
           </Text>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <Pressable
               onPress={toggleSelectAll}
               hitSlop={8}
               style={styles.iconBtn}
-              accessibilityLabel={allSelected ? '取消全选' : '全选'}
+              accessibilityLabel={allSelected ? t('chat.multiSelect') : t('chat.multiSelect')}
             >
               {allSelected ? (
                 <CheckSquare size={18} color={brand.solid} />
               ) : (
-                <Square size={18} color={t.text.primary} />
+                <Square size={18} color={theme.text.primary} />
               )}
             </Pressable>
             <Pressable
@@ -301,19 +298,21 @@ export function ConversationList({
                 styles.iconBtn,
                 (selected.size === 0 || deleteConvs.isPending) && { opacity: 0.4 },
               ]}
-              accessibilityLabel="删除已选中"
+              accessibilityLabel={t('chat.deleteSelected')}
             >
-              <Trash2 size={18} color={t.border.danger} />
+              <Trash2 size={18} color={theme.border.danger} />
             </Pressable>
           </View>
         </View>
       ) : (
-        <View style={[styles.header, { borderBottomColor: t.border.default }]}>
+        <View style={[styles.header, { borderBottomColor: theme.border.default }]}>
           <View style={styles.brand}>
             <View style={styles.logoBadge}>
               <Text style={styles.logoText}>元</Text>
             </View>
-            <Text style={[styles.brandName, { color: t.text.primary }]}>元AI</Text>
+            <Text style={[styles.brandName, { color: theme.text.primary }]}>
+              {t('common.appName')}
+            </Text>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <Pressable
@@ -323,9 +322,9 @@ export function ConversationList({
               }}
               hitSlop={8}
               style={styles.iconBtn}
-              accessibilityLabel="临时对话"
+              accessibilityLabel={t('chat.exitTemporary')}
             >
-              <Ghost size={18} color={t.text.primary} />
+              <Ghost size={18} color={theme.text.primary} />
             </Pressable>
             <Pressable
               onPress={() => {
@@ -333,18 +332,18 @@ export function ConversationList({
               }}
               hitSlop={8}
               style={styles.iconBtn}
-              accessibilityLabel="新建对话"
+              accessibilityLabel={t('chat.newChat')}
             >
-              <SquarePen size={18} color={t.text.primary} />
+              <SquarePen size={18} color={theme.text.primary} />
             </Pressable>
             {onClose ? (
               <Pressable
                 onPress={onClose}
                 hitSlop={8}
                 style={styles.iconBtn}
-                accessibilityLabel="关闭侧边栏"
+                accessibilityLabel={t('common.close')}
               >
-                <X size={18} color={t.text.primary} />
+                <X size={18} color={theme.text.primary} />
               </Pressable>
             ) : null}
           </View>
@@ -352,14 +351,14 @@ export function ConversationList({
       )}
 
       {/* Search */}
-      <View style={[styles.searchWrap, { backgroundColor: t.bg.elevated }]}>
-        <Search size={14} color={t.text.muted} />
+      <View style={[styles.searchWrap, { backgroundColor: theme.bg.elevated }]}>
+        <Search size={14} color={theme.text.muted} />
         <TextInput
           value={search}
           onChangeText={setSearch}
-          placeholder="搜索对话"
-          placeholderTextColor={t.text.muted}
-          style={[styles.searchInput, { color: t.text.primary }]}
+          placeholder={t('chat.searchPlaceholder')}
+          placeholderTextColor={theme.text.muted}
+          style={[styles.searchInput, { color: theme.text.primary }]}
           autoCapitalize="none"
           autoCorrect={false}
           editable={!selectionMode}
@@ -374,8 +373,8 @@ export function ConversationList({
       >
         {totalCount === 0 ? (
           <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, color: t.text.muted }}>
-              {search ? '没有匹配的对话' : '还没有对话，点右上角开始'}
+            <Text style={{ fontSize: 13, color: theme.text.muted }}>
+              {search ? t('chat.emptyList') : t('chat.emptyList')}
             </Text>
           </View>
         ) : (
@@ -384,7 +383,9 @@ export function ConversationList({
             if (items.length === 0) return null
             return (
               <View key={g} style={{ marginBottom: spacing.md }}>
-                <Text style={[styles.groupLabel, { color: t.text.muted }]}>{GROUP_LABEL[g]}</Text>
+                <Text style={[styles.groupLabel, { color: theme.text.muted }]}>
+                  {t(`chat.groups.${g}`)}
+                </Text>
                 {items.map((c) => {
                   const isActive = c.id === activeId
                   const isSelected = selected.has(c.id)
@@ -395,7 +396,7 @@ export function ConversationList({
                       onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
                       style={[
                         styles.convItem,
-                        { paddingVertical: t.density.convPy },
+                        { paddingVertical: theme.density.convPy },
                         isActive && !selectionMode && styles.convItemActive,
                         selectionMode && isSelected && styles.convItemSelected,
                       ]}
@@ -404,7 +405,7 @@ export function ConversationList({
                         isSelected ? (
                           <CheckSquare size={14} color={brand.solid} />
                         ) : (
-                          <Square size={14} color={t.text.muted} />
+                          <Square size={14} color={theme.text.muted} />
                         )
                       ) : c.isPinned ? (
                         <Pin size={12} color={brand.solid} fill={brand.solid} />
@@ -415,8 +416,8 @@ export function ConversationList({
                         style={[
                           styles.convTitle,
                           {
-                            color: t.text.primary,
-                            fontSize: t.typography.title,
+                            color: theme.text.primary,
+                            fontSize: theme.typography.title,
                           },
                           isActive && styles.convTitleActive,
                         ]}
@@ -433,9 +434,9 @@ export function ConversationList({
                           onPress={() => openContextMenu(c.id, c.title, c.isPinned)}
                           hitSlop={8}
                           style={styles.convMore}
-                          accessibilityLabel="更多操作"
+                          accessibilityLabel={t('common.edit')}
                         >
-                          <MoreVertical size={14} color={t.text.muted} />
+                          <MoreVertical size={14} color={theme.text.muted} />
                         </Pressable>
                       )}
                     </Pressable>
@@ -448,16 +449,16 @@ export function ConversationList({
       </ScrollView>
 
       {selectionMode ? null : (
-        <View style={[styles.footer, { borderTopColor: t.border.default }]}>
+        <View style={[styles.footer, { borderTopColor: theme.border.default }]}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{userInitial}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.userName, { color: t.text.primary }]} numberOfLines={1}>
+            <Text style={[styles.userName, { color: theme.text.primary }]} numberOfLines={1}>
               {userName}
             </Text>
             {userEmail ? (
-              <Text style={[styles.userEmail, { color: t.text.secondary }]} numberOfLines={1}>
+              <Text style={[styles.userEmail, { color: theme.text.secondary }]} numberOfLines={1}>
                 {userEmail}
               </Text>
             ) : null}
@@ -466,17 +467,17 @@ export function ConversationList({
             onPress={() => router.push('/(main)/settings')}
             hitSlop={6}
             style={styles.iconBtn}
-            accessibilityLabel="设置"
+            accessibilityLabel={t('settings.title')}
           >
-            <Settings size={16} color={t.text.secondary} />
+            <Settings size={16} color={theme.text.secondary} />
           </Pressable>
           <Pressable
             onPress={openLogout}
             hitSlop={6}
             style={styles.iconBtn}
-            accessibilityLabel="退出登录"
+            accessibilityLabel={t('settings.logout')}
           >
-            <LogOut size={16} color={t.text.secondary} />
+            <LogOut size={16} color={theme.text.secondary} />
           </Pressable>
         </View>
       )}

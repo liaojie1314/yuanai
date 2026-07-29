@@ -27,6 +27,7 @@ import { useArtifactStore } from '@yuanai/core/stores'
 
 import { radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
+import { useTranslation } from 'react-i18next'
 
 import { normalizeHighlightLang } from './codeLang'
 
@@ -68,7 +69,8 @@ const CodeBlockInner = memo(function CodeBlockInner({
   colorScheme,
   codeFontSize,
 }: CodeBlockInnerProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const openView = useArtifactStore((s) => s.openView)
   const displayLang = language || 'text'
@@ -92,7 +94,7 @@ const CodeBlockInner = memo(function CodeBlockInner({
       style={[
         styles.container,
         {
-          borderColor: t.border.default,
+          borderColor: theme.border.default,
           backgroundColor: colorScheme === 'dark' ? '#1C2130' : '#F7F7F5',
         },
       ]}
@@ -100,10 +102,10 @@ const CodeBlockInner = memo(function CodeBlockInner({
       <View
         style={[
           styles.header,
-          { backgroundColor: colorScheme === 'dark' ? t.bg.elevated : '#EFEEEA' },
+          { backgroundColor: colorScheme === 'dark' ? theme.bg.elevated : '#EFEEEA' },
         ]}
       >
-        <Text style={[styles.lang, { color: t.text.secondary }]}>{displayLang}</Text>
+        <Text style={[styles.lang, { color: theme.text.secondary }]}>{displayLang}</Text>
         <View style={styles.actions}>
           <Pressable
             onPress={() => {
@@ -111,25 +113,27 @@ const CodeBlockInner = memo(function CodeBlockInner({
             }}
             hitSlop={6}
             style={styles.actBtn}
-            accessibilityLabel="复制代码"
+            accessibilityLabel={t('chat.copyCode')}
           >
             {copied ? (
-              <Check size={13} color={t.text.secondary} />
+              <Check size={13} color={theme.text.secondary} />
             ) : (
-              <Copy size={13} color={t.text.secondary} />
+              <Copy size={13} color={theme.text.secondary} />
             )}
-            <Text style={[styles.actLabel, { color: t.text.secondary }]}>
-              {copied ? '已复制' : '复制'}
+            <Text style={[styles.actLabel, { color: theme.text.secondary }]}>
+              {copied ? t('chat.copied') : t('chat.copy')}
             </Text>
           </Pressable>
           <Pressable
             onPress={onOpenPanel}
             hitSlop={6}
             style={styles.actBtn}
-            accessibilityLabel="在面板中查看"
+            accessibilityLabel={t('chat.openPanel')}
           >
-            <ExternalLink size={13} color={t.text.secondary} />
-            <Text style={[styles.actLabel, { color: t.text.secondary }]}>面板</Text>
+            <ExternalLink size={13} color={theme.text.secondary} />
+            <Text style={[styles.actLabel, { color: theme.text.secondary }]}>
+              {t('chat.panel')}
+            </Text>
           </Pressable>
         </View>
       </View>
@@ -155,7 +159,7 @@ const CodeBlockInner = memo(function CodeBlockInner({
             style={[
               styles.code,
               {
-                color: t.text.primary,
+                color: theme.text.primary,
                 fontSize: codeFontSize,
                 lineHeight: Math.round(codeFontSize * 1.45),
               },

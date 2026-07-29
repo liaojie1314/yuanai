@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import * as Application from 'expo-application'
 import { StyleSheet, Text, View } from 'react-native'
 
@@ -9,46 +10,47 @@ import { useTheme } from '@/theme/useTheme'
 
 /** 关于屏：logo + 版本号 + 协议/隐私入口（v1 文案先内置弹窗展示） */
 export default function AboutScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const dialog = useDialog()
   const version = Application.nativeApplicationVersion ?? '—'
   const build = Application.nativeBuildVersion ?? '—'
 
   return (
-    <SettingsShell title="关于">
+    <SettingsShell title={t('settings.about')}>
       <View style={styles.hero}>
         <View style={styles.logo}>
           <Text style={styles.logoText}>元</Text>
         </View>
-        <Text style={[styles.appName, { color: t.text.primary }]}>元AI</Text>
-        <Text style={[styles.version, { color: t.text.secondary }]}>
+        <Text style={[styles.appName, { color: theme.text.primary }]}>元AI</Text>
+        <Text style={[styles.version, { color: theme.text.secondary }]}>
           版本 {version} (build {build})
         </Text>
       </View>
 
       <SettingsGroup>
         <SettingsRow
-          label="用户协议"
+          label={t('settings.userAgreement')}
           onPress={() => {
             void dialog.alert({
-              title: '用户协议',
-              message: '正式协议文本将在发布前由运营提供；当前为开发版本。',
+              title: t('settings.userAgreement'),
+              message: t('settings.placeholderLegal'),
             })
           }}
         />
         <SettingsRow
-          label="隐私政策"
+          label={t('settings.privacyPolicy')}
           divider={false}
           onPress={() => {
             void dialog.alert({
-              title: '隐私政策',
-              message: '正式隐私政策将在发布前由运营提供；当前为开发版本。',
+              title: t('settings.privacyPolicy'),
+              message: t('settings.placeholderLegal'),
             })
           }}
         />
       </SettingsGroup>
 
-      <Text style={[styles.copyright, { color: t.text.muted }]}>© 2026 yuanai</Text>
+      <Text style={[styles.copyright, { color: theme.text.muted }]}>© 2026 yuanai</Text>
     </SettingsShell>
   )
 }

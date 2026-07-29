@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, ChevronLeft, Ghost, Menu } from 'lucide-react-native'
@@ -30,7 +31,8 @@ import { useTheme } from '@/theme/useTheme'
  * - 模型选择存本地（无会话可 PATCH），换模型只影响后续发送
  */
 export default function TemporaryChatScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -157,14 +159,14 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         },
         onError: (err) => {
           void dialog.alert({
-            title: '发送失败',
-            message: err instanceof Error ? err.message : '请稍后重试',
+            title: t('chat.sendFailed'),
+            message: err instanceof Error ? err.message : t('common.retryLater'),
           })
         },
       })
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
     },
-    [isStreaming, sendTemporary, activeModelId, dialog]
+    [isStreaming, sendTemporary, activeModelId, dialog, t]
   )
 
   // ── 交互 handlers（复用正式会话屏语义）───────────────────────
@@ -212,36 +214,36 @@ export default function TemporaryChatScreen(): React.JSX.Element {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: t.bg.base }]}
+      style={[styles.container, { backgroundColor: theme.bg.base }]}
       behavior="padding"
       keyboardVerticalOffset={0}
     >
       <View style={[styles.inner, { paddingTop: insets.top }]}>
         {/* 顶栏：Ghost 标识 + 模型 chip */}
-        <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
+        <View style={[styles.topBar, { borderBottomColor: theme.border.default }]}>
           {isTablet ? (
             <Pressable
               onPress={() => router.replace('/(main)/chat')}
               hitSlop={8}
               style={styles.topBtn}
-              accessibilityLabel="退出临时对话"
+              accessibilityLabel={t('chat.exitTemporary')}
             >
-              <ChevronLeft size={22} color={t.text.primary} />
+              <ChevronLeft size={22} color={theme.text.primary} />
             </Pressable>
           ) : (
             <Pressable
               onPress={openDrawer}
               hitSlop={8}
               style={styles.topBtn}
-              accessibilityLabel="打开侧边栏"
+              accessibilityLabel={t('common.openSidebar')}
             >
-              <Menu size={20} color={t.text.primary} />
+              <Menu size={20} color={theme.text.primary} />
             </Pressable>
           )}
           <View style={styles.topCenter}>
             <View style={styles.titleRow}>
               <Ghost size={14} color={brand.solid} />
-              <Text style={[styles.topTitle, { color: t.text.primary }]} numberOfLines={1}>
+              <Text style={[styles.topTitle, { color: theme.text.primary }]} numberOfLines={1}>
                 临时对话
               </Text>
             </View>
@@ -253,10 +255,13 @@ export default function TemporaryChatScreen(): React.JSX.Element {
                 accessibilityRole="button"
                 accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
               >
-                <Text style={[styles.modelChipText, { color: t.text.secondary }]} numberOfLines={1}>
+                <Text
+                  style={[styles.modelChipText, { color: theme.text.secondary }]}
+                  numberOfLines={1}
+                >
                   {activeModel?.name ?? activeModelId}
                 </Text>
-                <ChevronDown size={12} color={t.text.secondary} />
+                <ChevronDown size={12} color={theme.text.secondary} />
               </Pressable>
             ) : null}
           </View>
@@ -267,9 +272,9 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         <Pressable style={styles.listArea} onPress={Keyboard.dismiss}>
           {messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
-              <Ghost size={40} color={t.text.muted} />
-              <Text style={[styles.emptyTitle, { color: t.text.primary }]}>临时对话</Text>
-              <Text style={[styles.emptyHint, { color: t.text.muted }]}>
+              <Ghost size={40} color={theme.text.muted} />
+              <Text style={[styles.emptyTitle, { color: theme.text.primary }]}>临时对话</Text>
+              <Text style={[styles.emptyHint, { color: theme.text.muted }]}>
                 此对话不会保存，也不会出现在历史列表中；{'\n'}离开本页即被遗忘
               </Text>
             </View>

@@ -3,6 +3,7 @@ import { memo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import type { ToolCall, ToolCallStatus } from '@yuanai/types'
+import { useTranslation } from 'react-i18next'
 
 import { border, brand, radius, spacing } from '@/theme/tokens'
 import type { ThemeTokens } from '@/theme/tokens'
@@ -15,17 +16,36 @@ interface StatusMeta {
 }
 
 /** 工具调用状态 → 文案 / 配色 / 图标（与 web `ToolCallRow` 的语义一一对应） */
-function statusMeta(status: ToolCallStatus): StatusMeta {
+function statusMeta(
+  status: ToolCallStatus,
+  label: (key: 'toolRunning' | 'toolDone' | 'toolFailed' | 'toolPending') => string
+): StatusMeta {
   switch (status) {
     case 'running':
-      return { label: '进行中', color: brand.solid, icon: <Loader size={11} color={brand.solid} /> }
+      return {
+        label: label('toolRunning'),
+        color: brand.solid,
+        icon: <Loader size={11} color={brand.solid} />,
+      }
     case 'done':
-      return { label: '已完成', color: '#16A34A', icon: <Check size={11} color="#16A34A" /> }
+      return {
+        label: label('toolDone'),
+        color: '#16A34A',
+        icon: <Check size={11} color="#16A34A" />,
+      }
     case 'error':
-      return { label: '失败', color: border.danger, icon: <X size={11} color={border.danger} /> }
+      return {
+        label: label('toolFailed'),
+        color: border.danger,
+        icon: <X size={11} color={border.danger} />,
+      }
     case 'pending':
     default:
-      return { label: '等待中', color: '#9CA3AF', icon: <Clock size={11} color="#9CA3AF" /> }
+      return {
+        label: label('toolPending'),
+        color: '#9CA3AF',
+        icon: <Clock size={11} color="#9CA3AF" />,
+      }
   }
 }
 
@@ -55,59 +75,71 @@ interface ToolCallRowProps {
 export const ToolCallRow = memo(function ToolCallRow({
   toolCall,
 }: ToolCallRowProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  const meta = statusMeta(toolCall.status)
+  const meta = statusMeta(toolCall.status, (k) => t(`chat.${k}`))
   const argsPreview = toolCall.arguments.replace(/\s+/g, ' ').slice(0, 40)
   const durationLabel =
     toolCall.durationMs !== undefined ? `${(toolCall.durationMs / 1000).toFixed(1)}s` : null
 
   return (
-    <View style={[styles.card, { borderColor: t.border.default, backgroundColor: t.bg.surface }]}>
+    <View
+      style={[
+        styles.card,
+        { borderColor: theme.border.default, backgroundColor: theme.bg.surface },
+      ]}
+    >
       <Pressable
         onPress={() => setOpen((o) => !o)}
         android_ripple={{
-          color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+          color: theme.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
         }}
         style={styles.header}
         accessibilityRole="button"
         accessibilityLabel={`工具调用 ${toolCall.name}，${meta.label}`}
         accessibilityState={{ expanded: open }}
       >
-        <Wrench size={12} color={t.text.secondary} />
-        <Text style={[styles.name, { color: t.text.primary }]} numberOfLines={1}>
+        <Wrench size={12} color={theme.text.secondary} />
+        <Text style={[styles.name, { color: theme.text.primary }]} numberOfLines={1}>
           {toolCall.name}
           {argsPreview ? (
-            <Text style={[styles.args, { color: t.text.muted }]}>({argsPreview})</Text>
+            <Text style={[styles.args, { color: theme.text.muted }]}>({argsPreview})</Text>
           ) : null}
         </Text>
         {durationLabel ? (
-          <Text style={[styles.duration, { color: t.text.muted }]}>{durationLabel}</Text>
+          <Text style={[styles.duration, { color: theme.text.muted }]}>{durationLabel}</Text>
         ) : null}
         <View style={styles.status}>
           {meta.icon}
           <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
         </View>
         {open ? (
-          <ChevronDown size={12} color={t.text.muted} />
+          <ChevronDown size={12} color={theme.text.muted} />
         ) : (
-          <ChevronRight size={12} color={t.text.muted} />
+          <ChevronRight size={12} color={theme.text.muted} />
         )}
       </Pressable>
 
       {open ? (
-        <View style={[styles.body, { borderTopColor: t.border.default }]}>
+        <View style={[styles.body, { borderTopColor: theme.border.default }]}>
           {toolCall.arguments ? (
-            <Section label="调用参数" content={tryFormatJson(toolCall.arguments)} t={t} />
+            <Section
+              label={t('chat.toolArgs')}
+              content={tryFormatJson(toolCall.arguments)}
+              t={theme}
+            />
           ) : null}
           {toolCall.status === 'done' && toolCall.result ? (
-            <Section label="执行结果" content={toolCall.result} t={t} />
+            <Section label={t('chat.toolResult')} content={toolCall.result} t={theme} />
           ) : null}
           {toolCall.status === 'error' && toolCall.error ? (
-            <Section label="错误" content={toolCall.error} danger t={t} />
+            <Section label={t('chat.toolError')} content={toolCall.error} danger t={theme} />
           ) : null}
           {toolCall.status === 'running' ? (
-            <Text style={[styles.runningHint, { color: t.text.muted }]}>正在执行工具，请稍候…</Text>
+            <Text style={[styles.runningHint, { color: theme.text.muted }]}>
+              {t('common.loading')}
+            </Text>
           ) : null}
         </View>
       ) : null}

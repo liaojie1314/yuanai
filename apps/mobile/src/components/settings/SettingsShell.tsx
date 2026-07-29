@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useRouter } from 'expo-router'
 import { ChevronLeft } from 'lucide-react-native'
 import type { ReactNode } from 'react'
@@ -20,7 +21,8 @@ export function SettingsShell({
   title: string
   children: ReactNode
 }): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
 
@@ -30,12 +32,17 @@ export function SettingsShell({
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: t.bg.base }]}>
-      <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
-        <Pressable onPress={goBack} hitSlop={8} style={styles.topBtn} accessibilityLabel="返回">
-          <ChevronLeft size={22} color={t.text.primary} />
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg.base }]}>
+      <View style={[styles.topBar, { borderBottomColor: theme.border.default }]}>
+        <Pressable
+          onPress={goBack}
+          hitSlop={8}
+          style={styles.topBtn}
+          accessibilityLabel={t('common.back')}
+        >
+          <ChevronLeft size={22} color={theme.text.primary} />
         </Pressable>
-        <Text style={[styles.topTitle, { color: t.text.primary }]}>{title}</Text>
+        <Text style={[styles.topTitle, { color: theme.text.primary }]}>{title}</Text>
         <View style={styles.topBtn} />
       </View>
       <ScrollView

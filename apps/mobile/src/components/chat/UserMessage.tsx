@@ -3,6 +3,8 @@ import { Check, Copy, Pencil } from 'lucide-react-native'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
+import { useTranslation } from 'react-i18next'
+
 import { useToast } from '@/components/ui/Toast'
 import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
@@ -40,7 +42,8 @@ function UserMessageBase({
   onCancelEdit,
   prefsKey: _prefsKey,
 }: UserMessageProps): React.JSX.Element {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const [draft, setDraft] = useState(content)
   const [copied, setCopied] = useState(false)
   const inputRef = useRef<TextInput>(null)
@@ -54,22 +57,25 @@ function UserMessageBase({
   const handleCopy = (): void => {
     void Clipboard.setStringAsync(content)
     setCopied(true)
-    toast.show('已复制到剪贴板')
+    toast.show(t('chat.copiedToast'))
     setTimeout(() => setCopied(false), 1500)
   }
 
   const typeStyle = {
-    fontSize: t.typography.body,
-    lineHeight: t.typography.bodyLineHeight,
+    fontSize: theme.typography.body,
+    lineHeight: theme.typography.bodyLineHeight,
   }
-  const rowPad = { paddingVertical: t.density.messagePy }
+  const rowPad = { paddingVertical: theme.density.messagePy }
 
   if (editing) {
     const trimmed = draft.trim()
     return (
       <View style={[styles.editRow, rowPad]}>
         <View
-          style={[styles.editCard, { borderColor: t.border.focus, backgroundColor: t.bg.surface }]}
+          style={[
+            styles.editCard,
+            { borderColor: theme.border.focus, backgroundColor: theme.bg.surface },
+          ]}
         >
           <TextInput
             ref={inputRef}
@@ -77,21 +83,23 @@ function UserMessageBase({
             onChangeText={setDraft}
             multiline
             autoFocus
-            style={[styles.editInput, typeStyle, { color: t.text.primary }]}
-            placeholderTextColor={t.text.muted}
-            accessibilityLabel="编辑消息内容"
+            style={[styles.editInput, typeStyle, { color: theme.text.primary }]}
+            placeholderTextColor={theme.text.muted}
+            accessibilityLabel={t('chat.editMessage')}
           />
           <View style={styles.editActions}>
             <Pressable
               onPress={onCancelEdit}
               android_ripple={{
-                color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                color: theme.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
               }}
-              style={[styles.editBtn, styles.editBtnGhost, { backgroundColor: t.bg.elevated }]}
+              style={[styles.editBtn, styles.editBtnGhost, { backgroundColor: theme.bg.elevated }]}
               accessibilityRole="button"
-              accessibilityLabel="取消编辑"
+              accessibilityLabel={t('chat.cancelEdit')}
             >
-              <Text style={[styles.editBtnGhostText, { color: t.text.secondary }]}>取消</Text>
+              <Text style={[styles.editBtnGhostText, { color: theme.text.secondary }]}>
+                {t('common.cancel')}
+              </Text>
             </Pressable>
             <Pressable
               onPress={() => onSubmitEdit?.(trimmed)}
@@ -99,10 +107,10 @@ function UserMessageBase({
               android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
               style={[styles.editBtn, trimmed.length === 0 && styles.editBtnDisabled]}
               accessibilityRole="button"
-              accessibilityLabel="提交编辑"
+              accessibilityLabel={t('chat.submitEdit')}
               accessibilityState={{ disabled: trimmed.length === 0 }}
             >
-              <Text style={styles.editBtnText}>提交</Text>
+              <Text style={styles.editBtnText}>{t('common.submit')}</Text>
             </Pressable>
           </View>
         </View>
@@ -124,12 +132,12 @@ function UserMessageBase({
             hitSlop={8}
             style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel="复制消息"
+            accessibilityLabel={t('chat.copyMessage')}
           >
             {copied ? (
               <Check size={14} color={brand.solid} />
             ) : (
-              <Copy size={14} color={t.text.muted} />
+              <Copy size={14} color={theme.text.muted} />
             )}
           </Pressable>
           <Pressable
@@ -137,9 +145,9 @@ function UserMessageBase({
             hitSlop={8}
             style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel="编辑消息"
+            accessibilityLabel={t('chat.editMessage')}
           >
-            <Pencil size={14} color={t.text.muted} />
+            <Pencil size={14} color={theme.text.muted} />
           </Pressable>
         </View>
       ) : null}

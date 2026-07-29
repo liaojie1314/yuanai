@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
@@ -16,12 +17,14 @@ import { useDialog } from '@/components/ui/Dialog'
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
-const schema = z.object({
-  email: z.string().email('请输入有效的邮箱地址'),
-  password: z.string().min(1, '请输入密码'),
-})
+type FormValues = { email: string; password: string }
 
-type FormValues = z.infer<typeof schema>
+function makeSchema(t: (k: string) => string) {
+  return z.object({
+    email: z.string().email(t('auth.errors.invalidEmail')),
+    password: z.string().min(1, t('auth.errors.passwordRequired')),
+  })
+}
 
 /**
  * 登录屏。
@@ -37,7 +40,9 @@ type FormValues = z.infer<typeof schema>
  * → 系统识别 yuanai:// scheme → 回到 App，Linking 事件由 `useLinkingHandler` 处理。
  */
 export default function LoginScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const schema = makeSchema(t)
+  const theme = useTheme()
   const router = useRouter()
   const loginMutation = useLogin()
   const dialog = useDialog()
@@ -62,8 +67,8 @@ export default function LoginScreen(): React.JSX.Element {
       // 又回到登录页。
       router.replace('/(main)/chat')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '登录失败，请检查邮箱和密码'
-      void dialog.alert({ title: '登录失败', message: msg })
+      const msg = err instanceof Error ? err.message : t('auth.loginFailedHint')
+      void dialog.alert({ title: t('auth.loginFailed'), message: msg })
     }
   }
 
@@ -80,21 +85,21 @@ export default function LoginScreen(): React.JSX.Element {
         // 交给全局 Linking handler；这里不解析 token
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '三方登录失败'
-      void dialog.alert({ title: '三方登录失败', message: msg })
+      const msg = err instanceof Error ? err.message : t('auth.oauthFailed')
+      void dialog.alert({ title: t('auth.oauthFailed'), message: msg })
     }
   }
 
   return (
     <AuthShell
-      title="欢迎回来"
-      subtitle="登录你的元AI 账号"
+      title={t('auth.welcomeBack')}
+      subtitle={t('auth.loginSubtitle')}
       footer={
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: t.text.secondary }}>
+          <Text style={{ fontSize: 13, color: theme.text.secondary }}>
             还没有账号？{' '}
             <Link href="/(auth)/register" replace>
-              <Text style={{ color: brand.solid, fontWeight: '600' }}>立即注册</Text>
+              <Text style={{ color: brand.solid, fontWeight: '600' }}>{t('auth.signUpNow')}</Text>
             </Link>
           </Text>
         </View>
@@ -105,7 +110,7 @@ export default function LoginScreen(): React.JSX.Element {
         name="email"
         render={({ field: { onChange, onBlur, value } }) => (
           <AuthTextInput
-            label="邮箱"
+            label={t('auth.email')}
             placeholder="your@email.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -125,8 +130,8 @@ export default function LoginScreen(): React.JSX.Element {
         name="password"
         render={({ field: { onChange, onBlur, value } }) => (
           <AuthTextInput
-            label="密码"
-            placeholder="至少 8 位"
+            label={t('auth.password')}
+            placeholder={t('auth.passwordPlaceholder')}
             secureTextEntry={!showPwd}
             autoCapitalize="none"
             autoCorrect={false}
@@ -155,19 +160,23 @@ export default function LoginScreen(): React.JSX.Element {
       <View style={{ alignItems: 'flex-end', marginBottom: spacing.lg }}>
         <Link href="/(auth)/forgot-password" asChild>
           <Pressable hitSlop={8}>
-            <Text style={{ fontSize: 13, color: brand.solid }}>忘记密码？</Text>
+            <Text style={{ fontSize: 13, color: brand.solid }}>{t('auth.forgotPassword')}</Text>
           </Pressable>
         </Link>
       </View>
 
-      <AuthButton label="登录" onPress={handleSubmit(onSubmit)} loading={loginMutation.isPending} />
+      <AuthButton
+        label={t('auth.login')}
+        onPress={handleSubmit(onSubmit)}
+        loading={loginMutation.isPending}
+      />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: spacing.xl }}>
-        <View style={{ flex: 1, height: 1, backgroundColor: t.border.default }} />
-        <Text style={{ marginHorizontal: spacing.md, fontSize: 12, color: t.text.muted }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: theme.border.default }} />
+        <Text style={{ marginHorizontal: spacing.md, fontSize: 12, color: theme.text.muted }}>
           或使用三方登录
         </Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: t.border.default }} />
+        <View style={{ flex: 1, height: 1, backgroundColor: theme.border.default }} />
       </View>
 
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
@@ -180,15 +189,15 @@ export default function LoginScreen(): React.JSX.Element {
             height: 46,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: t.border.default,
+            borderColor: theme.border.default,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: spacing.sm,
           }}
         >
-          <Github size={18} color={t.text.primary} />
-          <Text style={{ fontSize: 14, color: t.text.primary }}>GitHub</Text>
+          <Github size={18} color={theme.text.primary} />
+          <Text style={{ fontSize: 14, color: theme.text.primary }}>{t('auth.github')}</Text>
         </Pressable>
         <Pressable
           onPress={() => {
@@ -199,15 +208,15 @@ export default function LoginScreen(): React.JSX.Element {
             height: 46,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: t.border.default,
+            borderColor: theme.border.default,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: spacing.sm,
           }}
         >
-          <Text style={{ fontSize: 16, color: t.text.primary, fontWeight: '600' }}>G</Text>
-          <Text style={{ fontSize: 14, color: t.text.primary }}>Google</Text>
+          <Text style={{ fontSize: 16, color: theme.text.primary, fontWeight: '600' }}>G</Text>
+          <Text style={{ fontSize: 14, color: theme.text.primary }}>{t('auth.google')}</Text>
         </Pressable>
       </View>
     </AuthShell>

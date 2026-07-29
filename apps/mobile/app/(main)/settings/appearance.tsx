@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import { useMyPreferences, useUpdateMyPreferences, usePrefsStore } from '@yuanai/core'
 import type { Density, FontSize, ThemeChoice, UserPreferences } from '@yuanai/core'
 
+import { useTranslation } from 'react-i18next'
+
 import { SettingsGroup, SettingsSegmentRow } from '@/components/settings/SettingsRows'
 import { SettingsShell } from '@/components/settings/SettingsShell'
 
@@ -11,6 +13,7 @@ import { SettingsShell } from '@/components/settings/SettingsShell'
  * 本地 store 立即生效；变更同时防抖同步到后端 preferences（多端漫游）。
  */
 export default function AppearanceScreen(): React.JSX.Element {
+  const { t } = useTranslation()
   const theme = usePrefsStore((s) => s.theme)
   const fontSize = usePrefsStore((s) => s.fontSize)
   const density = usePrefsStore((s) => s.density)
@@ -42,14 +45,14 @@ export default function AppearanceScreen(): React.JSX.Element {
   }
 
   return (
-    <SettingsShell title="外观">
-      <SettingsGroup label="主题">
+    <SettingsShell title={t('settings.appearance')}>
+      <SettingsGroup label={t('settings.themeGroup')}>
         <SettingsSegmentRow
-          label="外观模式"
+          label={t('settings.themeMode')}
           options={[
-            { value: 'auto', label: '跟随系统' },
-            { value: 'light', label: '浅色' },
-            { value: 'dark', label: '深色' },
+            { value: 'auto', label: t('settings.themeAuto') },
+            { value: 'light', label: t('settings.themeLight') },
+            { value: 'dark', label: t('settings.themeDark') },
           ]}
           selected={theme}
           divider={false}
@@ -60,13 +63,13 @@ export default function AppearanceScreen(): React.JSX.Element {
         />
       </SettingsGroup>
 
-      <SettingsGroup label="显示">
+      <SettingsGroup label={t('settings.displayGroup')}>
         <SettingsSegmentRow
-          label="字号"
+          label={t('settings.fontSize')}
           options={[
-            { value: 'small', label: '小' },
-            { value: 'medium', label: '标准' },
-            { value: 'large', label: '大' },
+            { value: 'small', label: t('settings.fontSmall') },
+            { value: 'medium', label: t('settings.fontMedium') },
+            { value: 'large', label: t('settings.fontLarge') },
           ]}
           selected={fontSize}
           onSelect={(v) => {
@@ -75,11 +78,11 @@ export default function AppearanceScreen(): React.JSX.Element {
           }}
         />
         <SettingsSegmentRow
-          label="密度"
+          label={t('settings.density')}
           options={[
-            { value: 'compact', label: '紧凑' },
-            { value: 'standard', label: '标准' },
-            { value: 'loose', label: '宽松' },
+            { value: 'compact', label: t('settings.densityCompact') },
+            { value: 'standard', label: t('settings.densityStandard') },
+            { value: 'loose', label: t('settings.densityLoose') },
           ]}
           selected={density}
           divider={false}

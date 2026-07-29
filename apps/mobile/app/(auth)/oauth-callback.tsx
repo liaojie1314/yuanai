@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import * as SecureStore from 'expo-secure-store'
 import { useEffect, useRef } from 'react'
@@ -21,7 +22,8 @@ import { useTheme } from '@/theme/useTheme'
  * 避免 token 缺失时长时间卡在 loading。
  */
 export default function OAuthCallbackScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const router = useRouter()
   const params = useLocalSearchParams<{
     access_token?: string
@@ -41,7 +43,7 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
     const error = params.error
 
     if (error) {
-      const desc = params.error_description ?? '三方登录失败'
+      const desc = params.error_description ?? t('auth.oauthFailed')
       // 用 setTimeout 让页面先挂载，避免直接同步 replace 引发 warning
       setTimeout(() => {
         console.warn('OAuth error:', desc)
@@ -72,7 +74,7 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
         router.replace('/(auth)/login')
       }
     })()
-  }, [params, router, setAuth])
+  }, [params, router, setAuth, t])
 
   return (
     <View
@@ -80,12 +82,12 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: t.bg.base,
+        backgroundColor: theme.bg.base,
       }}
     >
       <ActivityIndicator size="large" color={brand.solid} />
-      <Text style={{ marginTop: spacing.md, fontSize: 14, color: t.text.secondary }}>
-        正在完成登录…
+      <Text style={{ marginTop: spacing.md, fontSize: 14, color: theme.text.secondary }}>
+        {t('auth.completingLogin')}
       </Text>
     </View>
   )

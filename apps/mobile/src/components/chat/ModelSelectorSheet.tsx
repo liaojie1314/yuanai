@@ -13,6 +13,7 @@ import type { AIModel } from '@yuanai/types'
 
 import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
+import { useTranslation } from 'react-i18next'
 
 interface ModelSelectorSheetProps {
   models: readonly AIModel[]
@@ -44,7 +45,8 @@ function formatCtx(len: number): string {
  */
 export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorSheetProps>(
   function ModelSelectorSheet({ models, currentId, onSelect }, ref) {
-    const t = useTheme()
+    const theme = useTheme()
+    const { t } = useTranslation()
     const insets = useSafeAreaInsets()
 
     const renderBackdrop = useCallback(
@@ -64,11 +66,11 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
         ref={ref}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        backgroundStyle={[styles.sheetBg, { backgroundColor: t.bg.surface }]}
-        handleIndicatorStyle={[styles.handle, { backgroundColor: t.border.default }]}
+        backgroundStyle={[styles.sheetBg, { backgroundColor: theme.bg.surface }]}
+        handleIndicatorStyle={[styles.handle, { backgroundColor: theme.border.default }]}
       >
         <BottomSheetView style={[styles.body, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Text style={[styles.title, { color: t.text.primary }]}>选择模型</Text>
+          <Text style={[styles.title, { color: theme.text.primary }]}>{t('chat.selectModel')}</Text>
           {models.map((m) => {
             const selected = m.id === currentId
             const avatarColor = PROVIDER_COLORS[m.provider.toLowerCase()] ?? brand.solid
@@ -77,11 +79,12 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
                 key={m.id}
                 onPress={() => onSelect(m)}
                 android_ripple={{
-                  color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                  color:
+                    theme.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
                 }}
                 style={[styles.row, selected && styles.rowSelected]}
                 accessibilityRole="button"
-                accessibilityLabel={`选择模型 ${m.name}`}
+                accessibilityLabel={`${t('chat.selectModel')} ${m.name}`}
                 accessibilityState={{ selected }}
               >
                 <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
@@ -89,15 +92,17 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
                 </View>
                 <View style={styles.info}>
                   <View style={styles.nameRow}>
-                    <Text style={[styles.name, { color: t.text.primary }]} numberOfLines={1}>
+                    <Text style={[styles.name, { color: theme.text.primary }]} numberOfLines={1}>
                       {m.name}
                     </Text>
-                    {m.isDefault ? <Text style={styles.defaultBadge}>默认</Text> : null}
+                    {m.isDefault ? (
+                      <Text style={styles.defaultBadge}>{t('chat.defaultModel')}</Text>
+                    ) : null}
                   </View>
-                  <Text style={[styles.desc, { color: t.text.secondary }]} numberOfLines={1}>
+                  <Text style={[styles.desc, { color: theme.text.secondary }]} numberOfLines={1}>
                     {m.description || m.provider}
                     {' · '}
-                    {formatCtx(m.contextLength)} 上下文
+                    {t('chat.contextK', { n: formatCtx(m.contextLength) })}
                   </Text>
                 </View>
                 {selected ? <Check size={18} color={brand.solid} /> : null}

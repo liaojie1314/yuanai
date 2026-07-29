@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { useRouter } from 'expo-router'
 import { KeyRound, Link2, Mail, Trash2 } from 'lucide-react-native'
 import { useRef, useState } from 'react'
@@ -29,7 +30,8 @@ type Panel = null | 'password' | 'email'
  * 危险操作统一走 dialog.confirm(destructive)（决策记录：不用系统 Alert）。
  */
 export default function SecurityScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const router = useRouter()
   const dialog = useDialog()
   const { data: user } = useCurrentUser()
@@ -58,17 +60,23 @@ export default function SecurityScreen(): React.JSX.Element {
   const alertErr = (title: string, err: unknown): void => {
     void dialog.alert({
       title,
-      message: err instanceof Error ? err.message : '请稍后重试',
+      message: err instanceof Error ? err.message : t('common.retryLater'),
     })
   }
 
   const onSubmitPassword = async (): Promise<void> => {
     if (newPw.length < 8 || !/[A-Z]/.test(newPw) || !/[0-9]/.test(newPw)) {
-      void dialog.alert({ title: '新密码不符合要求', message: '至少 8 位，且包含大写字母和数字' })
+      void dialog.alert({
+        title: t('settings.passwordInvalid'),
+        message: t('settings.passwordInvalidBody'),
+      })
       return
     }
     if (newPw !== confPw) {
-      void dialog.alert({ title: '两次输入不一致', message: '请重新确认新密码' })
+      void dialog.alert({
+        title: t('settings.passwordMismatch'),
+        message: t('settings.passwordMismatchBody'),
+      })
       return
     }
     try {
@@ -77,16 +85,22 @@ export default function SecurityScreen(): React.JSX.Element {
       setOldPw('')
       setNewPw('')
       setConfPw('')
-      void dialog.alert({ title: '密码已修改', message: '下次登录请使用新密码' })
+      void dialog.alert({
+        title: t('settings.passwordChanged'),
+        message: t('settings.passwordChangedBody'),
+      })
     } catch (err) {
-      alertErr('修改失败', err)
+      alertErr(t('settings.updateFailed'), err)
     }
   }
 
   const onSendEmailCode = async (): Promise<void> => {
     const email = newEmail.trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      void dialog.alert({ title: '邮箱格式不正确', message: '请先填写有效的新邮箱' })
+      void dialog.alert({
+        title: t('settings.emailInvalid'),
+        message: t('settings.emailInvalidBody'),
+      })
       return
     }
     try {
@@ -103,7 +117,7 @@ export default function SecurityScreen(): React.JSX.Element {
         })
       }, 1000)
     } catch (err) {
-      alertErr('验证码发送失败', err)
+      alertErr(t('auth.sendCodeFailed'), err)
     }
   }
 
@@ -113,18 +127,21 @@ export default function SecurityScreen(): React.JSX.Element {
       setPanel(null)
       setNewEmail('')
       setEmailCode('')
-      void dialog.alert({ title: '邮箱已更换', message: '之后请用新邮箱登录' })
+      void dialog.alert({
+        title: t('settings.emailChanged'),
+        message: t('settings.emailChangedBody'),
+      })
     } catch (err) {
-      alertErr('更换失败', err)
+      alertErr(t('settings.changeFailed'), err)
     }
   }
 
   const onUnlink = (provider: 'github' | 'google'): void => {
     void (async () => {
       const ok = await dialog.confirm({
-        title: `解绑 ${provider === 'github' ? 'GitHub' : 'Google'}`,
-        message: '解绑后将无法使用该账号快捷登录，确定解绑？',
-        confirmText: '解绑',
+        title: t('settings.unlinkTitle', { provider: provider === 'github' ? 'GitHub' : 'Google' }),
+        message: t('settings.unlinkMessage'),
+        confirmText: t('settings.unlink'),
         destructive: true,
       })
       if (!ok) return
@@ -132,7 +149,7 @@ export default function SecurityScreen(): React.JSX.Element {
         if (provider === 'github') await unlinkGithub.mutateAsync()
         else await unlinkGoogle.mutateAsync()
       } catch (err) {
-        alertErr('解绑失败', err)
+        alertErr(t('settings.unlinkFailed'), err)
       }
     })()
   }
@@ -140,17 +157,17 @@ export default function SecurityScreen(): React.JSX.Element {
   const onClearConversations = (): void => {
     void (async () => {
       const ok = await dialog.confirm({
-        title: '清空所有对话',
-        message: '所有会话与消息将被删除，不可恢复。确定清空？',
-        confirmText: '清空',
+        title: t('settings.clearAll'),
+        message: t('settings.clearAllDesc'),
+        confirmText: t('common.delete'),
         destructive: true,
       })
       if (!ok) return
       try {
         const res = await clearConvs.mutateAsync()
-        void dialog.alert({ title: '已清空', message: `共删除 ${res.deleted} 个会话` })
+        void dialog.alert({ title: t('common.success'), message: String(res.deleted) })
       } catch (err) {
-        alertErr('清空失败', err)
+        alertErr(t('settings.updateFailed'), err)
       }
     })()
   }
@@ -158,20 +175,20 @@ export default function SecurityScreen(): React.JSX.Element {
   const onDeleteAccount = (): void => {
     void (async () => {
       const ok = await dialog.confirm({
-        title: '注销账号',
-        message: '账号与全部数据将被永久删除，不可恢复。确定注销？',
-        confirmText: '注销',
+        title: t('settings.deleteAccount'),
+        message: t('settings.deleteAccountDesc'),
+        confirmText: t('settings.deleteAccount'),
         destructive: true,
       })
       if (!ok) return
       const typed = await dialog.prompt({
-        title: '再次确认',
+        title: t('common.confirm'),
         message: `输入你的邮箱 ${user?.email ?? ''} 以确认注销`,
         placeholder: user?.email ?? '',
       })
       if (typed?.trim() !== user?.email) {
         if (typed !== null) {
-          void dialog.alert({ title: '邮箱不匹配', message: '注销已取消' })
+          void dialog.alert({ title: t('settings.emailInvalid'), message: t('common.cancel') })
         }
         return
       }
@@ -179,25 +196,25 @@ export default function SecurityScreen(): React.JSX.Element {
         await deleteMe.mutateAsync()
         router.replace('/(auth)/login')
       } catch (err) {
-        alertErr('注销失败', err)
+        alertErr(t('settings.updateFailed'), err)
       }
     })()
   }
 
   return (
-    <SettingsShell title="安全">
-      <SettingsGroup label="登录凭据">
+    <SettingsShell title={t('settings.security')}>
+      <SettingsGroup label={t('settings.security')}>
         <SettingsRow
-          label="修改密码"
-          icon={<KeyRound size={18} color={t.text.secondary} />}
+          label={t('settings.changePassword')}
+          icon={<KeyRound size={18} color={theme.text.secondary} />}
           sublabel={
             user?.passwordChangedAt ? `上次修改 ${formatDate(user.passwordChangedAt)}` : undefined
           }
           onPress={() => setPanel(panel === 'password' ? null : 'password')}
         />
         <SettingsRow
-          label="更换邮箱"
-          icon={<Mail size={18} color={t.text.secondary} />}
+          label={t('settings.changeEmail')}
+          icon={<Mail size={18} color={theme.text.secondary} />}
           value={user?.email ?? ''}
           divider={false}
           onPress={() => setPanel(panel === 'email' ? null : 'email')}
@@ -207,28 +224,28 @@ export default function SecurityScreen(): React.JSX.Element {
       {panel === 'password' ? (
         <View style={styles.panel}>
           <AuthTextInput
-            label="当前密码"
-            placeholder="输入当前密码"
+            label={t('settings.currentPassword')}
+            placeholder={t('settings.currentPassword')}
             secureTextEntry
             value={oldPw}
             onChangeText={setOldPw}
           />
           <AuthTextInput
-            label="新密码"
-            placeholder="至少 8 位，含大写字母和数字"
+            label={t('settings.newPassword')}
+            placeholder={t('auth.passwordPlaceholderStrong')}
             secureTextEntry
             value={newPw}
             onChangeText={setNewPw}
           />
           <AuthTextInput
-            label="确认新密码"
-            placeholder="再次输入新密码"
+            label={t('settings.confirmPassword')}
+            placeholder={t('auth.confirmPasswordPlaceholder')}
             secureTextEntry
             value={confPw}
             onChangeText={setConfPw}
           />
           <AuthButton
-            label="确认修改"
+            label={t('common.confirm')}
             loading={changePassword.isPending}
             onPress={() => {
               void onSubmitPassword()
@@ -240,7 +257,7 @@ export default function SecurityScreen(): React.JSX.Element {
       {panel === 'email' ? (
         <View style={styles.panel}>
           <AuthTextInput
-            label="新邮箱"
+            label={t('settings.newEmail')}
             placeholder="new@email.com"
             keyboardType="email-address"
             autoCapitalize="none"
@@ -248,7 +265,7 @@ export default function SecurityScreen(): React.JSX.Element {
             onChangeText={setNewEmail}
           />
           <AuthTextInput
-            label="邮箱验证码"
+            label={t('settings.verifyCode')}
             placeholder="6 位数字"
             keyboardType="number-pad"
             maxLength={6}
@@ -259,14 +276,14 @@ export default function SecurityScreen(): React.JSX.Element {
                 onPress={() => {
                   if (codeCd === 0 && !sendCode.isPending) void onSendEmailCode()
                 }}
-                style={[styles.codeBtn, codeCd > 0 && { color: t.text.muted }]}
+                style={[styles.codeBtn, codeCd > 0 && { color: theme.text.muted }]}
               >
-                {codeCd > 0 ? `${codeCd}s` : '获取验证码'}
+                {codeCd > 0 ? `${codeCd}s` : t('auth.sendCode')}
               </Text>
             }
           />
           <AuthButton
-            label="确认更换"
+            label={t('common.confirm')}
             loading={changeEmail.isPending}
             onPress={() => {
               void onSubmitEmail()
@@ -275,33 +292,33 @@ export default function SecurityScreen(): React.JSX.Element {
         </View>
       ) : null}
 
-      <SettingsGroup label="第三方登录">
+      <SettingsGroup label={t('settings.thirdParty')}>
         <SettingsRow
           label="GitHub"
-          icon={<Link2 size={18} color={t.text.secondary} />}
-          value={user?.githubId ? '已绑定' : '未绑定'}
+          icon={<Link2 size={18} color={theme.text.secondary} />}
+          value={user?.githubId ? t('settings.bound') : t('settings.unbound')}
           disabled={!user?.githubId}
           onPress={() => onUnlink('github')}
         />
         <SettingsRow
           label="Google"
-          icon={<Link2 size={18} color={t.text.secondary} />}
-          value={user?.googleId ? '已绑定' : '未绑定'}
+          icon={<Link2 size={18} color={theme.text.secondary} />}
+          value={user?.googleId ? t('settings.bound') : t('settings.unbound')}
           disabled={!user?.googleId}
           divider={false}
           onPress={() => onUnlink('google')}
         />
       </SettingsGroup>
 
-      <SettingsGroup label="危险区">
+      <SettingsGroup label={t('settings.dangerous')}>
         <SettingsRow
-          label="清空所有对话"
+          label={t('settings.clearAll')}
           icon={<Trash2 size={18} color={border.danger} />}
           destructive
           onPress={onClearConversations}
         />
         <SettingsRow
-          label="注销账号"
+          label={t('settings.deleteAccount')}
           icon={<Trash2 size={18} color={border.danger} />}
           destructive
           divider={false}

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, Menu } from 'lucide-react-native'
@@ -30,7 +31,8 @@ import { useTheme } from '@/theme/useTheme'
  * 用 `replace` 而非 `push`：避免返回键回到空的新会话页。
  */
 export default function ChatNewScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -102,8 +104,8 @@ export default function ChatNewScreen(): React.JSX.Element {
           })
         } catch (err) {
           void dialog.alert({
-            title: '发送失败',
-            message: err instanceof Error ? err.message : '创建会话失败，请稍后重试',
+            title: t('chat.sendFailed'),
+            message: err instanceof Error ? err.message : t('chat.createConvFailed'),
           })
           busyRef.current = false
           setSubmitting(false)
@@ -111,12 +113,12 @@ export default function ChatNewScreen(): React.JSX.Element {
         // 成功后不复位 busyRef：本屏即将被 replace 卸载
       })()
     },
-    [createConv, activeModelId, router, dialog]
+    [createConv, activeModelId, router, dialog, t]
   )
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: t.bg.base }]}
+      style={[styles.container, { backgroundColor: theme.bg.base }]}
       behavior="padding"
       keyboardVerticalOffset={0}
     >
@@ -127,12 +129,12 @@ export default function ChatNewScreen(): React.JSX.Element {
               onPress={openDrawer}
               hitSlop={8}
               style={styles.topBtn}
-              accessibilityLabel="打开侧边栏"
+              accessibilityLabel={t('common.openSidebar')}
             >
-              <Menu size={20} color={t.text.primary} />
+              <Menu size={20} color={theme.text.primary} />
             </Pressable>
             <View style={styles.topCenter}>
-              <Text style={[styles.topTitle, { color: t.text.primary }]}>元AI</Text>
+              <Text style={[styles.topTitle, { color: theme.text.primary }]}>元AI</Text>
               {models.length > 0 ? (
                 <Pressable
                   onPress={openModelSheet}
@@ -142,12 +144,12 @@ export default function ChatNewScreen(): React.JSX.Element {
                   accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
                 >
                   <Text
-                    style={[styles.modelChipText, { color: t.text.secondary }]}
+                    style={[styles.modelChipText, { color: theme.text.secondary }]}
                     numberOfLines={1}
                   >
                     {activeModel?.name ?? activeModelId}
                   </Text>
-                  <ChevronDown size={12} color={t.text.secondary} />
+                  <ChevronDown size={12} color={theme.text.secondary} />
                 </Pressable>
               ) : null}
             </View>
@@ -159,8 +161,8 @@ export default function ChatNewScreen(): React.JSX.Element {
           <View style={styles.brandBadge}>
             <Text style={styles.brandBadgeText}>元</Text>
           </View>
-          <Text style={[styles.title, { color: t.text.primary }]}>你好，我是元AI</Text>
-          <Text style={[styles.subtitle, { color: t.text.secondary }]}>
+          <Text style={[styles.title, { color: theme.text.primary }]}>你好，我是元AI</Text>
+          <Text style={[styles.subtitle, { color: theme.text.secondary }]}>
             有什么可以帮你的？在下面直接输入开始对话吧
           </Text>
         </Pressable>

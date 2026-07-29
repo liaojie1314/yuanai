@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from 'expo-router'
 import { Eye, EyeOff, Mail, User } from 'lucide-react-native'
@@ -40,7 +41,8 @@ const RESEND_INTERVAL = 60
  *   router.replace 到主界面
  */
 export default function RegisterScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const router = useRouter()
   const registerMutation = useRegister()
   const sendCodeMutation = useSendVerifyCode()
@@ -87,7 +89,7 @@ export default function RegisterScreen(): React.JSX.Element {
   const onSendCode = async (): Promise<void> => {
     const email = getValues('email').trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('email', { message: '请先填写有效的邮箱地址' })
+      setError('email', { message: t('auth.fillEmailFirst') })
       return
     }
     clearErrors('email')
@@ -99,7 +101,7 @@ export default function RegisterScreen(): React.JSX.Element {
         message: `我们已向 ${email} 发送 6 位验证码，5 分钟内有效。`,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '验证码发送失败'
+      const msg = err instanceof Error ? err.message : t('auth.sendCodeFailed')
       void dialog.alert({ title: '发送失败', message: msg })
     }
   }
@@ -114,21 +116,21 @@ export default function RegisterScreen(): React.JSX.Element {
       })
       router.replace('/(main)/chat')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '注册失败，请稍后重试'
-      void dialog.alert({ title: '注册失败', message: msg })
+      const msg = err instanceof Error ? err.message : t('auth.registerFailedHint')
+      void dialog.alert({ title: t('auth.registerFailed'), message: msg })
     }
   }
 
-  const codeButtonLabel = countdown > 0 ? `${countdown}s` : '获取验证码'
+  const codeButtonLabel = countdown > 0 ? `${countdown}s` : t('auth.sendCode')
   const codeButtonDisabled = countdown > 0 || sendCodeMutation.isPending
 
   return (
     <AuthShell
-      title="创建账号"
-      subtitle="加入元AI，开始你的智能对话"
+      title={t('auth.createAccount')}
+      subtitle={t('auth.registerSubtitle')}
       footer={
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: t.text.secondary }}>
+          <Text style={{ fontSize: 13, color: theme.text.secondary }}>
             已有账号？{' '}
             <Link href="/(auth)/login" replace>
               <Text style={{ color: brand.solid, fontWeight: '600' }}>去登录</Text>

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link, useRouter } from 'expo-router'
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native'
@@ -43,7 +44,8 @@ const RESEND_INTERVAL = 60
  * - 提交 → useResetPassword mutation → 成功后 Alert + router.replace 到登录页
  */
 export default function ForgotPasswordScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const router = useRouter()
   const resetMutation = useResetPassword()
   const sendCodeMutation = useSendVerifyCode()
@@ -91,7 +93,7 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
   const onSendCode = async (): Promise<void> => {
     const email = getValues('email').trim()
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setError('email', { message: '请先填写有效的邮箱地址' })
+      setError('email', { message: t('auth.fillEmailFirst') })
       return
     }
     clearErrors('email')
@@ -103,7 +105,7 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
         message: `我们已向 ${email} 发送 6 位验证码，5 分钟内有效。`,
       })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '验证码发送失败'
+      const msg = err instanceof Error ? err.message : t('auth.sendCodeFailed')
       void dialog.alert({ title: '发送失败', message: msg })
     }
   }
@@ -115,21 +117,24 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
         verifyCode: values.verifyCode,
         newPassword: values.newPassword,
       })
-      await dialog.alert({ title: '重置成功', message: '请使用新密码登录' })
+      await dialog.alert({
+        title: t('auth.resetSuccessTitle'),
+        message: t('auth.resetSuccessBody'),
+      })
       router.replace('/(auth)/login')
     } catch (err) {
-      const msg = err instanceof Error ? err.message : '密码重置失败'
-      void dialog.alert({ title: '重置失败', message: msg })
+      const msg = err instanceof Error ? err.message : t('auth.resetFailedHint')
+      void dialog.alert({ title: t('auth.resetFailed'), message: msg })
     }
   }
 
-  const codeButtonLabel = countdown > 0 ? `${countdown}s` : '获取验证码'
+  const codeButtonLabel = countdown > 0 ? `${countdown}s` : t('auth.sendCode')
   const codeButtonDisabled = countdown > 0 || sendCodeMutation.isPending
 
   return (
     <AuthShell
-      title="重置密码"
-      subtitle="通过邮箱验证码设置新密码"
+      title={t('auth.resetTitle')}
+      subtitle={t('auth.resetSubtitle')}
       footer={
         <View style={{ alignItems: 'center' }}>
           <Link href="/(auth)/login" replace>
@@ -282,8 +287,8 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
           gap: 4,
         }}
       >
-        <Lock size={11} color={t.text.muted} />
-        <Text style={{ fontSize: 12, color: t.text.muted }}>
+        <Lock size={11} color={theme.text.muted} />
+        <Text style={{ fontSize: 12, color: theme.text.muted }}>
           提交后你的旧密码将立即失效，请使用新密码登录。
         </Text>
       </View>

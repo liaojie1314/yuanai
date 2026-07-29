@@ -18,6 +18,7 @@ import { TABLET_MIN_WIDTH } from '@yuanai/core'
 
 import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
+import { useTranslation } from 'react-i18next'
 
 /**
  * Artifact 面板承载屏（Step 7 MVP：仅 view，不运行）。
@@ -39,7 +40,8 @@ import { useTheme } from '@/theme/useTheme'
  * RN 大代码块性能坑（同 CodeBlock 决策）。
  */
 export function ArtifactSurface(): React.JSX.Element | null {
-  const t = useTheme()
+  const theme = useTheme()
+  const { t } = useTranslation()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -66,20 +68,24 @@ export function ArtifactSurface(): React.JSX.Element | null {
       transparent={false}
     >
       <View
-        style={[styles.container, isTablet && styles.tabletPad, { backgroundColor: t.bg.surface }]}
+        style={[
+          styles.container,
+          isTablet && styles.tabletPad,
+          { backgroundColor: theme.bg.surface },
+        ]}
       >
         {/* 顶栏 */}
         <View
           style={[
             styles.topBar,
-            { borderBottomColor: t.border.default, paddingTop: insets.top + spacing.sm },
+            { borderBottomColor: theme.border.default, paddingTop: insets.top + spacing.sm },
           ]}
         >
           <View style={styles.titleWrap}>
-            <Text style={[styles.title, { color: t.text.primary }]} numberOfLines={1}>
+            <Text style={[styles.title, { color: theme.text.primary }]} numberOfLines={1}>
               {payload.title || 'Artifact'}
             </Text>
-            <Text style={[styles.lang, { color: t.text.muted }]}>{payload.lang}</Text>
+            <Text style={[styles.lang, { color: theme.text.muted }]}>{payload.lang}</Text>
           </View>
           <Pressable
             onPress={() => {
@@ -87,16 +93,21 @@ export function ArtifactSurface(): React.JSX.Element | null {
             }}
             hitSlop={6}
             style={styles.actionBtn}
-            accessibilityLabel="复制"
+            accessibilityLabel={t('common.copy')}
           >
             {copied ? (
-              <Check size={16} color={t.text.secondary} />
+              <Check size={16} color={theme.text.secondary} />
             ) : (
-              <Copy size={16} color={t.text.secondary} />
+              <Copy size={16} color={theme.text.secondary} />
             )}
           </Pressable>
-          <Pressable onPress={close} hitSlop={6} style={styles.actionBtn} accessibilityLabel="关闭">
-            <X size={18} color={t.text.primary} />
+          <Pressable
+            onPress={close}
+            hitSlop={6}
+            style={styles.actionBtn}
+            accessibilityLabel={t('common.close')}
+          >
+            <X size={18} color={theme.text.primary} />
           </Pressable>
         </View>
 
@@ -104,20 +115,20 @@ export function ArtifactSurface(): React.JSX.Element | null {
         <ScrollView
           style={[
             styles.body,
-            { backgroundColor: t.colorScheme === 'dark' ? '#1C2130' : '#F7F7F5' },
+            { backgroundColor: theme.colorScheme === 'dark' ? '#1C2130' : '#F7F7F5' },
           ]}
           contentContainerStyle={{ padding: spacing.lg }}
         >
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text selectable style={[styles.code, { color: t.text.primary }]}>
+            <Text selectable style={[styles.code, { color: theme.text.primary }]}>
               {payload.code}
             </Text>
           </ScrollView>
         </ScrollView>
 
         {isTablet && payload.mode === 'run' ? (
-          <View style={[styles.footer, { borderTopColor: t.border.default }]}>
-            <Text style={[styles.footerHint, { color: t.text.secondary }]}>
+          <View style={[styles.footer, { borderTopColor: theme.border.default }]}>
+            <Text style={[styles.footerHint, { color: theme.text.secondary }]}>
               平板运行时（WebView + srcDoc）待后续 PR，当前只展示代码。
             </Text>
           </View>

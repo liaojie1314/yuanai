@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Notifications from 'expo-notifications'
 import { useEffect, useState } from 'react'
@@ -18,6 +19,7 @@ import {
  * 开关值落 AsyncStorage；开 → 上报 Expo push token，关 → 后端退订。
  */
 export default function NotificationsScreen(): React.JSX.Element {
+  const { t } = useTranslation()
   const dialog = useDialog()
   const [aiReply, setAiReply] = useState(false)
   const [sound, setSound] = useState(false)
@@ -48,14 +50,14 @@ export default function NotificationsScreen(): React.JSX.Element {
       }
       if (status !== 'granted') {
         void dialog.alert({
-          title: '通知权限被拒绝',
-          message: '请到系统设置 → 应用 → 元AI 里手动开启通知权限',
+          title: t('settings.permissionDeniedTitle'),
+          message: t('settings.permissionDeniedBody'),
         })
         return
       }
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync('default', {
-          name: '默认',
+          name: t('common.default'),
           importance: Notifications.AndroidImportance.DEFAULT,
         })
       }
@@ -67,17 +69,17 @@ export default function NotificationsScreen(): React.JSX.Element {
   }
 
   return (
-    <SettingsShell title="通知">
-      <SettingsGroup label="推送">
+    <SettingsShell title={t('settings.notifications')}>
+      <SettingsGroup label={t('settings.pushGroup')}>
         <SettingsSwitchRow
-          label="AI 回复通知"
-          sublabel="AI 在后台完成回复时提醒我"
+          label={t('settings.aiNotify')}
+          sublabel={t('settings.aiNotifyDesc')}
           value={aiReply}
           onValueChange={onToggleAiReply}
         />
         <SettingsSwitchRow
-          label="提示音"
-          sublabel="收到通知时播放声音"
+          label={t('settings.sound')}
+          sublabel={t('settings.soundDesc')}
           divider={false}
           value={sound}
           onValueChange={(v) => {

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { BottomSheetModal } from '@gorhom/bottom-sheet'
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router'
 import { ChevronDown, ChevronLeft, Menu } from 'lucide-react-native'
@@ -61,7 +62,8 @@ import { useTheme } from '@/theme/useTheme'
  *      的事件（RN 原版在 Android 上跟 `adjustResize` 冲突不推起）。
  */
 export default function ChatConversationScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -136,13 +138,13 @@ export default function ChatConversationScreen(): React.JSX.Element {
           onSuccess: () => toast.show(`已切换到 ${m.name}`),
           onError: (err) =>
             void dialog.alert({
-              title: '切换失败',
-              message: err instanceof Error ? err.message : '请稍后重试',
+              title: t('chat.switchFailed'),
+              message: err instanceof Error ? err.message : t('common.retryLater'),
             }),
         }
       )
     },
-    [conversationId, conv?.model, updateConv, toast, dialog]
+    [conversationId, conv?.model, updateConv, toast, dialog, t]
   )
 
   const openDrawer = useCallback(() => {
@@ -153,11 +155,11 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const showSendError = useCallback(
     (err: unknown): void => {
       void dialog.alert({
-        title: '发送失败',
-        message: err instanceof Error ? err.message : '请稍后重试',
+        title: t('chat.sendFailed'),
+        message: err instanceof Error ? err.message : t('common.retryLater'),
       })
     },
-    [dialog]
+    [dialog, t]
   )
 
   const handleSend = useCallback(
@@ -271,35 +273,35 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: t.bg.base }]}
+      style={[styles.container, { backgroundColor: theme.bg.base }]}
       behavior="padding"
       keyboardVerticalOffset={0}
     >
       <View style={[styles.inner, { paddingTop: insets.top }]}>
         {/* 顶栏 */}
-        <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
+        <View style={[styles.topBar, { borderBottomColor: theme.border.default }]}>
           {isTablet ? (
             <Pressable
               onPress={() => router.replace('/(main)/chat')}
               hitSlop={8}
               style={styles.topBtn}
-              accessibilityLabel="回到空状态"
+              accessibilityLabel={t('chat.backToEmpty')}
             >
-              <ChevronLeft size={22} color={t.text.primary} />
+              <ChevronLeft size={22} color={theme.text.primary} />
             </Pressable>
           ) : (
             <Pressable
               onPress={openDrawer}
               hitSlop={8}
               style={styles.topBtn}
-              accessibilityLabel="打开侧边栏"
+              accessibilityLabel={t('common.openSidebar')}
             >
-              <Menu size={20} color={t.text.primary} />
+              <Menu size={20} color={theme.text.primary} />
             </Pressable>
           )}
           <View style={styles.topCenter}>
-            <Text style={[styles.topTitle, { color: t.text.primary }]} numberOfLines={1}>
-              {conv?.title ?? '对话'}
+            <Text style={[styles.topTitle, { color: theme.text.primary }]} numberOfLines={1}>
+              {conv?.title ?? t('chat.conversation')}
             </Text>
             {models.length > 0 ? (
               <Pressable
@@ -309,10 +311,13 @@ export default function ChatConversationScreen(): React.JSX.Element {
                 accessibilityRole="button"
                 accessibilityLabel={`当前模型 ${currentModelInfo?.name ?? currentModel}，点击切换`}
               >
-                <Text style={[styles.modelChipText, { color: t.text.secondary }]} numberOfLines={1}>
+                <Text
+                  style={[styles.modelChipText, { color: theme.text.secondary }]}
+                  numberOfLines={1}
+                >
                   {currentModelInfo?.name ?? currentModel}
                 </Text>
-                <ChevronDown size={12} color={t.text.secondary} />
+                <ChevronDown size={12} color={theme.text.secondary} />
               </Pressable>
             ) : null}
           </View>
@@ -329,7 +334,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
             </View>
           ) : messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
-              <Text style={[styles.emptyHint, { color: t.text.muted }]}>
+              <Text style={[styles.emptyHint, { color: theme.text.muted }]}>
                 还没有消息，输入你的第一个问题
               </Text>
             </View>

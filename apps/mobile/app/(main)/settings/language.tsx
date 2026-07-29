@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { Check } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -16,7 +17,8 @@ const LOCALES: { value: AppLocale; label: string; native: string }[] = [
 
 /** 语言屏：切换 i18next 语言并持久化到 AsyncStorage */
 export default function LanguageScreen(): React.JSX.Element {
-  const t = useTheme()
+  const { t } = useTranslation()
+  const theme = useTheme()
   const [current, setCurrent] = useState(i18n.language)
 
   const onPick = (locale: AppLocale): void => {
@@ -25,7 +27,7 @@ export default function LanguageScreen(): React.JSX.Element {
   }
 
   return (
-    <SettingsShell title="语言">
+    <SettingsShell title={t('settings.language')}>
       <SettingsGroup>
         {LOCALES.map((l, i) => {
           const active = current === l.value
@@ -34,24 +36,24 @@ export default function LanguageScreen(): React.JSX.Element {
               key={l.value}
               onPress={() => onPick(l.value)}
               android_ripple={{
-                color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                color: theme.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
               }}
               style={[
                 styles.row,
                 i < LOCALES.length - 1 && styles.rowDivider,
-                i < LOCALES.length - 1 && { borderBottomColor: t.border.default },
+                i < LOCALES.length - 1 && { borderBottomColor: theme.border.default },
               ]}
             >
               <View style={styles.labelWrap}>
-                <Text style={[styles.label, { color: t.text.primary }]}>{l.label}</Text>
-                <Text style={[styles.sublabel, { color: t.text.muted }]}>{l.native}</Text>
+                <Text style={[styles.label, { color: theme.text.primary }]}>{l.label}</Text>
+                <Text style={[styles.sublabel, { color: theme.text.muted }]}>{l.native}</Text>
               </View>
               {active ? <Check size={18} color={brand.solid} /> : null}
             </Pressable>
           )
         })}
       </SettingsGroup>
-      <Text style={[styles.hint, { color: t.text.muted }]}>
+      <Text style={[styles.hint, { color: theme.text.muted }]}>
         切换后立即生效，并在下次启动时保持。
       </Text>
     </SettingsShell>
