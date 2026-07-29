@@ -5,7 +5,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useChatStore } from '@yuanai/core/stores'
 import type { ToolCall } from '@yuanai/types'
 
-import { border, brand, radius, spacing, text } from '@/theme/tokens'
+import { border, brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 import { ToolCallRow } from './ToolCallRow'
 
@@ -35,6 +36,7 @@ export const ThinkBlock = memo(function ThinkBlock({
   active = false,
   durationMs,
 }: ThinkBlockProps): React.JSX.Element {
+  const t = useTheme()
   const [open, setOpen] = useState(active)
 
   // 进入思考态自动展开；思考结束自动折叠（与 web 行为一致）
@@ -53,7 +55,9 @@ export const ThinkBlock = memo(function ThinkBlock({
     <View style={styles.block}>
       <Pressable
         onPress={() => setOpen((o) => !o)}
-        android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+        android_ripple={{
+          color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+        }}
         style={styles.header}
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -61,18 +65,22 @@ export const ThinkBlock = memo(function ThinkBlock({
       >
         <Sparkles size={13} color={brand.solid} />
         <Text style={styles.headerLabel}>{label}</Text>
-        {durationLabel ? <Text style={styles.duration}>{durationLabel}</Text> : null}
+        {durationLabel ? (
+          <Text style={[styles.duration, { color: t.text.muted }]}>{durationLabel}</Text>
+        ) : null}
         {open ? (
-          <ChevronDown size={13} color={text.muted} />
+          <ChevronDown size={13} color={t.text.muted} />
         ) : (
-          <ChevronRight size={13} color={text.muted} />
+          <ChevronRight size={13} color={t.text.muted} />
         )}
       </Pressable>
 
       {open ? (
-        <View style={styles.body}>
+        <View
+          style={[styles.body, { borderTopColor: t.border.default, backgroundColor: t.bg.surface }]}
+        >
           {content ? (
-            <Text selectable style={styles.thinkText}>
+            <Text selectable style={[styles.thinkText, { color: t.text.secondary }]}>
               {content}
             </Text>
           ) : null}
@@ -84,7 +92,7 @@ export const ThinkBlock = memo(function ThinkBlock({
             </View>
           ) : null}
           {!content && !hasToolCalls && active ? (
-            <Text style={styles.emptyHint}>正在准备…</Text>
+            <Text style={[styles.emptyHint, { color: t.text.muted }]}>正在准备…</Text>
           ) : null}
         </View>
       ) : null}
@@ -138,16 +146,14 @@ const styles = StyleSheet.create({
     minHeight: 34,
   },
   headerLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: brand.hover },
-  duration: { fontSize: 11, color: text.muted },
+  duration: { fontSize: 11 },
   body: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
-    backgroundColor: '#FFFFFF',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  thinkText: { fontSize: 12, lineHeight: 19, color: text.secondary },
+  thinkText: { fontSize: 12, lineHeight: 19 },
   toolList: { gap: spacing.xs },
-  emptyHint: { fontSize: 12, color: text.muted, fontStyle: 'italic' },
+  emptyHint: { fontSize: 12, fontStyle: 'italic' },
 })

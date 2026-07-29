@@ -21,7 +21,8 @@ import {
 } from 'react-native'
 
 import type { AttachmentItem } from '@/hooks/useAttachments'
-import { bg, border, radius, spacing, text } from '@/theme/tokens'
+import { radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface AttachmentTrayProps {
   attachments: AttachmentItem[]
@@ -60,6 +61,7 @@ function isImage(mimeType: string): boolean {
 }
 
 export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): React.JSX.Element {
+  const t = useTheme()
   if (attachments.length === 0) return <></>
 
   return (
@@ -71,7 +73,10 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
       keyboardShouldPersistTaps="handled"
     >
       {attachments.map((item) => (
-        <View key={item.localKey} style={styles.cell}>
+        <View
+          key={item.localKey}
+          style={[styles.cell, { backgroundColor: t.bg.elevated, borderColor: t.border.default }]}
+        >
           {isImage(item.mimeType) ? (
             <Image
               source={{ uri: item.uri }}
@@ -82,7 +87,7 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
           ) : (
             <View style={styles.docThumb}>
               <Text style={styles.docIcon}>{mimeIcon(item.mimeType)}</Text>
-              <Text style={styles.docName} numberOfLines={2}>
+              <Text style={[styles.docName, { color: t.text.secondary }]} numberOfLines={2}>
                 {item.name}
               </Text>
             </View>
@@ -134,9 +139,7 @@ const styles = StyleSheet.create({
     height: CELL,
     borderRadius: radius.md,
     overflow: 'hidden',
-    backgroundColor: bg.elevated,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
   },
   thumb: {
     width: CELL,
@@ -155,7 +158,6 @@ const styles = StyleSheet.create({
   },
   docName: {
     fontSize: 9,
-    color: text.secondary,
     textAlign: 'center',
     lineHeight: 13,
   },

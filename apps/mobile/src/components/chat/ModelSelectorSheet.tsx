@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { AIModel } from '@yuanai/types'
 
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface ModelSelectorSheetProps {
   models: readonly AIModel[]
@@ -43,6 +44,7 @@ function formatCtx(len: number): string {
  */
 export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorSheetProps>(
   function ModelSelectorSheet({ models, currentId, onSelect }, ref) {
+    const t = useTheme()
     const insets = useSafeAreaInsets()
 
     const renderBackdrop = useCallback(
@@ -62,11 +64,11 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
         ref={ref}
         backdropComponent={renderBackdrop}
         enablePanDownToClose
-        backgroundStyle={styles.sheetBg}
-        handleIndicatorStyle={styles.handle}
+        backgroundStyle={[styles.sheetBg, { backgroundColor: t.bg.surface }]}
+        handleIndicatorStyle={[styles.handle, { backgroundColor: t.border.default }]}
       >
         <BottomSheetView style={[styles.body, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Text style={styles.title}>选择模型</Text>
+          <Text style={[styles.title, { color: t.text.primary }]}>选择模型</Text>
           {models.map((m) => {
             const selected = m.id === currentId
             const avatarColor = PROVIDER_COLORS[m.provider.toLowerCase()] ?? brand.solid
@@ -74,7 +76,9 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
               <Pressable
                 key={m.id}
                 onPress={() => onSelect(m)}
-                android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+                android_ripple={{
+                  color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+                }}
                 style={[styles.row, selected && styles.rowSelected]}
                 accessibilityRole="button"
                 accessibilityLabel={`选择模型 ${m.name}`}
@@ -85,12 +89,12 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
                 </View>
                 <View style={styles.info}>
                   <View style={styles.nameRow}>
-                    <Text style={styles.name} numberOfLines={1}>
+                    <Text style={[styles.name, { color: t.text.primary }]} numberOfLines={1}>
                       {m.name}
                     </Text>
                     {m.isDefault ? <Text style={styles.defaultBadge}>默认</Text> : null}
                   </View>
-                  <Text style={styles.desc} numberOfLines={1}>
+                  <Text style={[styles.desc, { color: t.text.secondary }]} numberOfLines={1}>
                     {m.description || m.provider}
                     {' · '}
                     {formatCtx(m.contextLength)} 上下文
@@ -107,13 +111,12 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
 )
 
 const styles = StyleSheet.create({
-  sheetBg: { backgroundColor: bg.surface, borderRadius: radius.lg },
-  handle: { backgroundColor: border.default, width: 40 },
+  sheetBg: { borderRadius: radius.lg },
+  handle: { width: 40 },
   body: { paddingHorizontal: spacing.md, paddingTop: spacing.xs },
   title: {
     fontSize: 15,
     fontWeight: '700',
-    color: text.primary,
     textAlign: 'center',
     paddingVertical: spacing.sm,
   },
@@ -136,7 +139,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   info: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  name: { fontSize: 15, fontWeight: '600', color: text.primary, flexShrink: 1 },
+  name: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   defaultBadge: {
     fontSize: 10,
     fontWeight: '600',
@@ -147,5 +150,5 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     overflow: 'hidden',
   },
-  desc: { fontSize: 12, color: text.secondary },
+  desc: { fontSize: 12 },
 })

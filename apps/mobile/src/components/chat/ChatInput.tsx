@@ -5,8 +5,9 @@ import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 import { usePrefsStore } from '@yuanai/core/stores'
 
 import { AttachmentTray } from '@/components/chat/AttachmentTray'
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
+import { useTheme } from '@/theme/useTheme'
 import { useAttachments } from '@/hooks/useAttachments'
 
 interface ChatInputProps {
@@ -50,6 +51,7 @@ export function ChatInput({
   onSend,
   onStop,
 }: ChatInputProps): React.JSX.Element {
+  const t = useTheme()
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
@@ -88,8 +90,13 @@ export function ChatInput({
   }
 
   return (
-    <View style={[styles.wrap, { paddingBottom: Math.max(bottomInset, spacing.sm) }]}>
-      <View style={styles.card}>
+    <View
+      style={[
+        styles.wrap,
+        { paddingBottom: Math.max(bottomInset, spacing.sm), backgroundColor: t.bg.base },
+      ]}
+    >
+      <View style={[styles.card, { backgroundColor: t.bg.surface, borderColor: t.border.default }]}>
         {/* 附件预览条 */}
         <AttachmentTray attachments={attachments} onRemove={remove} />
 
@@ -98,35 +105,43 @@ export function ChatInput({
           <Pressable
             onPress={handlePaperclip}
             hitSlop={6}
-            style={[styles.toolBtn, attachments.length > 0 && styles.toolBtnActive]}
+            style={[
+              styles.toolBtn,
+              { backgroundColor: t.bg.elevated },
+              attachments.length > 0 && styles.toolBtnActive,
+            ]}
             accessibilityLabel="附件"
           >
-            <Paperclip size={17} color={attachments.length > 0 ? brand.solid : text.secondary} />
+            <Paperclip size={17} color={attachments.length > 0 ? brand.solid : t.text.secondary} />
           </Pressable>
           <Pressable
             onPress={notReady('语音')}
             hitSlop={6}
-            style={styles.toolBtn}
+            style={[styles.toolBtn, { backgroundColor: t.bg.elevated }]}
             accessibilityLabel="语音输入（稍后开放）"
           >
-            <Mic size={17} color={text.secondary} />
+            <Mic size={17} color={t.text.secondary} />
           </Pressable>
           <Pressable
             onPress={notReady('联网搜索')}
             hitSlop={6}
-            style={styles.toolBtn}
+            style={[styles.toolBtn, { backgroundColor: t.bg.elevated }]}
             accessibilityLabel="联网搜索（稍后开放）"
           >
-            <Globe size={17} color={text.secondary} />
+            <Globe size={17} color={t.text.secondary} />
           </Pressable>
           <Pressable
             onPress={() => setShowThinking(!showThinking)}
             hitSlop={6}
-            style={[styles.toolBtn, showThinking && styles.toolBtnActive]}
+            style={[
+              styles.toolBtn,
+              { backgroundColor: t.bg.elevated },
+              showThinking && styles.toolBtnActive,
+            ]}
             accessibilityLabel={showThinking ? '关闭深度思考' : '开启深度思考'}
             accessibilityState={{ selected: showThinking }}
           >
-            <Sparkles size={17} color={showThinking ? brand.solid : text.secondary} />
+            <Sparkles size={17} color={showThinking ? brand.solid : t.text.secondary} />
           </Pressable>
         </View>
 
@@ -137,8 +152,8 @@ export function ChatInput({
             value={value}
             onChangeText={setValue}
             placeholder="问点什么…"
-            placeholderTextColor={text.muted}
-            style={styles.input}
+            placeholderTextColor={t.text.muted}
+            style={[styles.input, { color: t.text.primary }]}
             multiline
             onSubmitEditing={Platform.OS === 'ios' ? handleSend : undefined}
             blurOnSubmit={Platform.OS === 'ios'}
@@ -152,7 +167,7 @@ export function ChatInput({
             style={[
               styles.sendBtn,
               streaming
-                ? styles.sendBtnStop
+                ? { backgroundColor: t.text.primary }
                 : canSend
                   ? styles.sendBtnActive
                   : styles.sendBtnDisabled,
@@ -161,7 +176,7 @@ export function ChatInput({
             accessibilityLabel={streaming ? '停止生成' : '发送'}
           >
             {streaming ? (
-              <Square size={15} color="#FFFFFF" fill="#FFFFFF" />
+              <Square size={15} color={t.text.inverse} fill={t.text.inverse} />
             ) : (
               <Send size={15} color="#FFFFFF" />
             )}
@@ -174,15 +189,12 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: bg.base,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
   card: {
-    backgroundColor: bg.surface,
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.sm,
@@ -204,7 +216,6 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: bg.elevated,
   },
   toolBtnActive: { backgroundColor: brand.light },
   inputRow: {
@@ -217,7 +228,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     lineHeight: 22,
-    color: text.primary,
     minHeight: 32,
     maxHeight: 120,
     paddingHorizontal: 4,
@@ -232,6 +242,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtnActive: { backgroundColor: brand.solid },
-  sendBtnStop: { backgroundColor: text.primary },
-  sendBtnDisabled: { backgroundColor: text.muted, opacity: 0.4 },
+  sendBtnDisabled: { backgroundColor: '#9CA3AF', opacity: 0.4 },
 })

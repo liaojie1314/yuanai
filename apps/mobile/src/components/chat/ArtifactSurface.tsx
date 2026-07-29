@@ -16,7 +16,8 @@ import { useArtifactStore } from '@yuanai/core/stores'
 
 import { TABLET_MIN_WIDTH } from '@yuanai/core'
 
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * Artifact 面板承载屏（Step 7 MVP：仅 view，不运行）。
@@ -38,6 +39,7 @@ import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
  * RN 大代码块性能坑（同 CodeBlock 决策）。
  */
 export function ArtifactSurface(): React.JSX.Element | null {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -63,14 +65,21 @@ export function ArtifactSurface(): React.JSX.Element | null {
       animationType="slide"
       transparent={false}
     >
-      <View style={[styles.container, isTablet && styles.tabletPad]}>
+      <View
+        style={[styles.container, isTablet && styles.tabletPad, { backgroundColor: t.bg.surface }]}
+      >
         {/* 顶栏 */}
-        <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+        <View
+          style={[
+            styles.topBar,
+            { borderBottomColor: t.border.default, paddingTop: insets.top + spacing.sm },
+          ]}
+        >
           <View style={styles.titleWrap}>
-            <Text style={styles.title} numberOfLines={1}>
+            <Text style={[styles.title, { color: t.text.primary }]} numberOfLines={1}>
               {payload.title || 'Artifact'}
             </Text>
-            <Text style={styles.lang}>{payload.lang}</Text>
+            <Text style={[styles.lang, { color: t.text.muted }]}>{payload.lang}</Text>
           </View>
           <Pressable
             onPress={() => {
@@ -81,29 +90,34 @@ export function ArtifactSurface(): React.JSX.Element | null {
             accessibilityLabel="复制"
           >
             {copied ? (
-              <Check size={16} color={text.secondary} />
+              <Check size={16} color={t.text.secondary} />
             ) : (
-              <Copy size={16} color={text.secondary} />
+              <Copy size={16} color={t.text.secondary} />
             )}
           </Pressable>
           <Pressable onPress={close} hitSlop={6} style={styles.actionBtn} accessibilityLabel="关闭">
-            <X size={18} color={text.primary} />
+            <X size={18} color={t.text.primary} />
           </Pressable>
         </View>
 
-        {/* 代码正文（水平滚动兜住 wide code） */}
-        <ScrollView style={styles.body} contentContainerStyle={{ padding: spacing.lg }}>
+        {/* 代码正文 */}
+        <ScrollView
+          style={[
+            styles.body,
+            { backgroundColor: t.colorScheme === 'dark' ? '#1C2130' : '#F7F7F5' },
+          ]}
+          contentContainerStyle={{ padding: spacing.lg }}
+        >
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text selectable style={styles.code}>
+            <Text selectable style={[styles.code, { color: t.text.primary }]}>
               {payload.code}
             </Text>
           </ScrollView>
         </ScrollView>
 
-        {/* 平板占位说明：真运行时 WebView 后续 PR 落 */}
         {isTablet && payload.mode === 'run' ? (
-          <View style={styles.footer}>
-            <Text style={styles.footerHint}>
+          <View style={[styles.footer, { borderTopColor: t.border.default }]}>
+            <Text style={[styles.footerHint, { color: t.text.secondary }]}>
               平板运行时（WebView + srcDoc）待后续 PR，当前只展示代码。
             </Text>
           </View>
@@ -114,7 +128,7 @@ export function ArtifactSurface(): React.JSX.Element | null {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bg.surface },
+  container: { flex: 1 },
   tabletPad: { paddingHorizontal: spacing.xl },
   topBar: {
     flexDirection: 'row',
@@ -122,12 +136,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
     gap: spacing.sm,
   },
   titleWrap: { flex: 1, gap: 2 },
-  title: { fontSize: 15, fontWeight: '600', color: text.primary },
-  lang: { fontSize: 11, color: text.muted, fontFamily: 'monospace', textTransform: 'lowercase' },
+  title: { fontSize: 15, fontWeight: '600' },
+  lang: { fontSize: 11, fontFamily: 'monospace', textTransform: 'lowercase' },
   actionBtn: {
     width: 32,
     height: 32,
@@ -135,19 +148,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  body: { flex: 1, backgroundColor: '#F7F7F5' },
+  body: { flex: 1 },
   code: {
     fontFamily: 'monospace',
     fontSize: 13,
     lineHeight: 20,
-    color: text.primary,
   },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
     backgroundColor: brand.light,
   },
-  footerHint: { fontSize: 12, color: text.secondary },
+  footerHint: { fontSize: 12 },
 })

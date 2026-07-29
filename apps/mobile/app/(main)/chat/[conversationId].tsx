@@ -31,7 +31,8 @@ import { MessageList, type MessageListHandle } from '@/components/chat/MessageLi
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
 import { useToast } from '@/components/ui/Toast'
-import { bg, border, spacing, text } from '@/theme/tokens'
+import { spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 单会话聊天页。
@@ -59,6 +60,7 @@ import { bg, border, spacing, text } from '@/theme/tokens'
  *      的事件（RN 原版在 Android 上跟 `adjustResize` 冲突不推起）。
  */
 export default function ChatConversationScreen(): React.JSX.Element {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -268,14 +270,13 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: t.bg.base }]}
       behavior="padding"
-      // 顶栏高度由外层 View paddingTop:insets.top 承担；避键盘时不重复偏移
       keyboardVerticalOffset={0}
     >
       <View style={[styles.inner, { paddingTop: insets.top }]}>
         {/* 顶栏 */}
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
           {isTablet ? (
             <Pressable
               onPress={() => router.replace('/(main)/chat')}
@@ -283,7 +284,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
               style={styles.topBtn}
               accessibilityLabel="回到空状态"
             >
-              <ChevronLeft size={22} color={text.primary} />
+              <ChevronLeft size={22} color={t.text.primary} />
             </Pressable>
           ) : (
             <Pressable
@@ -292,11 +293,11 @@ export default function ChatConversationScreen(): React.JSX.Element {
               style={styles.topBtn}
               accessibilityLabel="打开侧边栏"
             >
-              <Menu size={20} color={text.primary} />
+              <Menu size={20} color={t.text.primary} />
             </Pressable>
           )}
           <View style={styles.topCenter}>
-            <Text style={styles.topTitle} numberOfLines={1}>
+            <Text style={[styles.topTitle, { color: t.text.primary }]} numberOfLines={1}>
               {conv?.title ?? '对话'}
             </Text>
             {models.length > 0 ? (
@@ -307,10 +308,10 @@ export default function ChatConversationScreen(): React.JSX.Element {
                 accessibilityRole="button"
                 accessibilityLabel={`当前模型 ${currentModelInfo?.name ?? currentModel}，点击切换`}
               >
-                <Text style={styles.modelChipText} numberOfLines={1}>
+                <Text style={[styles.modelChipText, { color: t.text.secondary }]} numberOfLines={1}>
                   {currentModelInfo?.name ?? currentModel}
                 </Text>
-                <ChevronDown size={12} color={text.secondary} />
+                <ChevronDown size={12} color={t.text.secondary} />
               </Pressable>
             ) : null}
           </View>
@@ -325,7 +326,9 @@ export default function ChatConversationScreen(): React.JSX.Element {
             </View>
           ) : messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
-              <Text style={styles.emptyHint}>还没有消息，输入你的第一个问题</Text>
+              <Text style={[styles.emptyHint, { color: t.text.muted }]}>
+                还没有消息，输入你的第一个问题
+              </Text>
             </View>
           ) : (
             <MessageList
@@ -355,10 +358,8 @@ export default function ChatConversationScreen(): React.JSX.Element {
         />
       </View>
 
-      {/* Artifact 面板（Modal，覆盖全屏；不受键盘影响） */}
       <ArtifactSurface />
 
-      {/* 模型选择 BottomSheet：Portal 挂在 root，不受本页布局约束 */}
       <ModelSelectorSheet
         ref={modelSheetRef}
         models={models}
@@ -370,7 +371,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bg.base },
+  container: { flex: 1 },
   inner: { flex: 1 },
   topBar: {
     height: 52,
@@ -379,11 +380,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   topCenter: { flex: 1, alignItems: 'center', gap: 2 },
-  topTitle: { fontSize: 15, fontWeight: '600', color: text.primary, maxWidth: '90%' },
+  topTitle: { fontSize: 15, fontWeight: '600', maxWidth: '90%' },
   modelChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -391,8 +391,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,
   },
-  modelChipText: { fontSize: 11, color: text.secondary },
+  modelChipText: { fontSize: 11 },
   listArea: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  emptyHint: { fontSize: 13, color: text.muted },
+  emptyHint: { fontSize: 13 },
 })

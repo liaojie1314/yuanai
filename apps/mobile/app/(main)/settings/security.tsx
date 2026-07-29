@@ -19,7 +19,8 @@ import { AuthTextInput } from '@/components/auth/AuthTextInput'
 import { SettingsGroup, SettingsRow } from '@/components/settings/SettingsRows'
 import { SettingsShell } from '@/components/settings/SettingsShell'
 import { useDialog } from '@/components/ui/Dialog'
-import { border, spacing, text } from '@/theme/tokens'
+import { border, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 type Panel = null | 'password' | 'email'
 
@@ -28,6 +29,7 @@ type Panel = null | 'password' | 'email'
  * 危险操作统一走 dialog.confirm(destructive)（决策记录：不用系统 Alert）。
  */
 export default function SecurityScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const dialog = useDialog()
   const { data: user } = useCurrentUser()
@@ -187,7 +189,7 @@ export default function SecurityScreen(): React.JSX.Element {
       <SettingsGroup label="登录凭据">
         <SettingsRow
           label="修改密码"
-          icon={<KeyRound size={18} color={text.secondary} />}
+          icon={<KeyRound size={18} color={t.text.secondary} />}
           sublabel={
             user?.passwordChangedAt ? `上次修改 ${formatDate(user.passwordChangedAt)}` : undefined
           }
@@ -195,7 +197,7 @@ export default function SecurityScreen(): React.JSX.Element {
         />
         <SettingsRow
           label="更换邮箱"
-          icon={<Mail size={18} color={text.secondary} />}
+          icon={<Mail size={18} color={t.text.secondary} />}
           value={user?.email ?? ''}
           divider={false}
           onPress={() => setPanel(panel === 'email' ? null : 'email')}
@@ -257,7 +259,7 @@ export default function SecurityScreen(): React.JSX.Element {
                 onPress={() => {
                   if (codeCd === 0 && !sendCode.isPending) void onSendEmailCode()
                 }}
-                style={[styles.codeBtn, codeCd > 0 && { color: text.muted }]}
+                style={[styles.codeBtn, codeCd > 0 && { color: t.text.muted }]}
               >
                 {codeCd > 0 ? `${codeCd}s` : '获取验证码'}
               </Text>
@@ -276,14 +278,14 @@ export default function SecurityScreen(): React.JSX.Element {
       <SettingsGroup label="第三方登录">
         <SettingsRow
           label="GitHub"
-          icon={<Link2 size={18} color={text.secondary} />}
+          icon={<Link2 size={18} color={t.text.secondary} />}
           value={user?.githubId ? '已绑定' : '未绑定'}
           disabled={!user?.githubId}
           onPress={() => onUnlink('github')}
         />
         <SettingsRow
           label="Google"
-          icon={<Link2 size={18} color={text.secondary} />}
+          icon={<Link2 size={18} color={t.text.secondary} />}
           value={user?.googleId ? '已绑定' : '未绑定'}
           disabled={!user?.googleId}
           divider={false}

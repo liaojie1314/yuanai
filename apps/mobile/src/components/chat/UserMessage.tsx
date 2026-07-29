@@ -4,7 +4,8 @@ import { memo, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
 import { useToast } from '@/components/ui/Toast'
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface UserMessageProps {
   content: string
@@ -36,6 +37,7 @@ function UserMessageBase({
   onSubmitEdit,
   onCancelEdit,
 }: UserMessageProps): React.JSX.Element {
+  const t = useTheme()
   const [draft, setDraft] = useState(content)
   const [copied, setCopied] = useState(false)
   const inputRef = useRef<TextInput>(null)
@@ -57,26 +59,30 @@ function UserMessageBase({
     const trimmed = draft.trim()
     return (
       <View style={styles.editRow}>
-        <View style={styles.editCard}>
+        <View
+          style={[styles.editCard, { borderColor: t.border.focus, backgroundColor: t.bg.surface }]}
+        >
           <TextInput
             ref={inputRef}
             value={draft}
             onChangeText={setDraft}
             multiline
             autoFocus
-            style={styles.editInput}
-            placeholderTextColor={text.muted}
+            style={[styles.editInput, { color: t.text.primary }]}
+            placeholderTextColor={t.text.muted}
             accessibilityLabel="编辑消息内容"
           />
           <View style={styles.editActions}>
             <Pressable
               onPress={onCancelEdit}
-              android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-              style={[styles.editBtn, styles.editBtnGhost]}
+              android_ripple={{
+                color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+              }}
+              style={[styles.editBtn, styles.editBtnGhost, { backgroundColor: t.bg.elevated }]}
               accessibilityRole="button"
               accessibilityLabel="取消编辑"
             >
-              <Text style={styles.editBtnGhostText}>取消</Text>
+              <Text style={[styles.editBtnGhostText, { color: t.text.secondary }]}>取消</Text>
             </Pressable>
             <Pressable
               onPress={() => onSubmitEdit?.(trimmed)}
@@ -114,7 +120,7 @@ function UserMessageBase({
             {copied ? (
               <Check size={14} color={brand.solid} />
             ) : (
-              <Copy size={14} color={text.muted} />
+              <Copy size={14} color={t.text.muted} />
             )}
           </Pressable>
           <Pressable
@@ -124,7 +130,7 @@ function UserMessageBase({
             accessibilityRole="button"
             accessibilityLabel="编辑消息"
           >
-            <Pencil size={14} color={text.muted} />
+            <Pencil size={14} color={t.text.muted} />
           </Pressable>
         </View>
       ) : null}
@@ -153,7 +159,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     borderRadius: radius.chat,
-    borderBottomRightRadius: 4, // "尾巴"缺角，视觉指向发言人一侧
+    borderBottomRightRadius: 4,
   },
   text: {
     color: '#FFFFFF',
@@ -166,23 +172,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   iconBtn: { width: 28, height: 24, alignItems: 'center', justifyContent: 'center' },
-  // ── 编辑态 ──
   editRow: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   editCard: {
     borderWidth: 1,
-    borderColor: border.focus,
     borderRadius: radius.md,
-    backgroundColor: bg.surface,
     padding: spacing.sm,
     gap: spacing.sm,
   },
   editInput: {
     fontSize: 15,
     lineHeight: 22,
-    color: text.primary,
     maxHeight: 160,
     padding: 0,
     textAlignVertical: 'top',
@@ -197,7 +199,7 @@ const styles = StyleSheet.create({
     backgroundColor: brand.solid,
   },
   editBtnDisabled: { opacity: 0.45 },
-  editBtnGhost: { backgroundColor: bg.elevated },
+  editBtnGhost: {},
   editBtnText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
-  editBtnGhostText: { fontSize: 14, fontWeight: '600', color: text.secondary },
+  editBtnGhostText: { fontSize: 14, fontWeight: '600' },
 })

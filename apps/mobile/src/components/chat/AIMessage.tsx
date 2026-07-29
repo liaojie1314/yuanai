@@ -1,8 +1,9 @@
 import Markdown, { type ASTNode } from 'react-native-markdown-display'
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
-import { brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 import { CodeBlock } from './CodeBlock'
 import { StreamingThinkBlock, ThinkBlock } from './ThinkBlock'
@@ -70,7 +71,52 @@ function AIMessageBase({
   thinkContent = '',
   thinkDurationMs,
 }: AIMessageProps): React.JSX.Element {
+  const t = useTheme()
   const display = streaming ? `${content}▊` : content
+
+  // Markdown 样式随主题变化；t 是 lightTheme/darkTheme 的稳定引用，切换时重算
+  const mdStyles = useMemo(
+    () => ({
+      body: {
+        color: t.text.primary,
+        fontSize: 15,
+        lineHeight: 22,
+      },
+      paragraph: {
+        marginTop: 0,
+        marginBottom: spacing.sm,
+      },
+      heading1: { fontSize: 22, fontWeight: '700' as const, marginBottom: spacing.sm },
+      heading2: { fontSize: 19, fontWeight: '700' as const, marginBottom: spacing.sm },
+      heading3: { fontSize: 17, fontWeight: '600' as const, marginBottom: spacing.xs },
+      link: { color: brand.solid, textDecorationLine: 'underline' as const },
+      code_inline: {
+        backgroundColor: brand.light,
+        color: brand.hover,
+        fontFamily: 'monospace',
+        fontSize: 13,
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+        borderRadius: radius.sm,
+      },
+      bullet_list: { marginBottom: spacing.sm },
+      ordered_list: { marginBottom: spacing.sm },
+      blockquote: {
+        backgroundColor: brand.light,
+        borderLeftWidth: 3,
+        borderLeftColor: brand.solid,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        marginBottom: spacing.sm,
+      },
+      hr: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: t.text.muted,
+        marginVertical: spacing.md,
+      },
+    }),
+    [t]
+  )
 
   return (
     <View style={[styles.row, !isFirst && styles.rowNoTopPad, !isLast && styles.rowNoBottomPad]}>
@@ -144,44 +190,4 @@ const styles = StyleSheet.create({
   bubbleSeamless: { marginBottom: -spacing.sm },
 })
 
-// Markdown 全局样式（覆盖 react-native-markdown-display 默认值以对齐主题）。
-// 只列出正文常用节点；其他节点走库默认样式，避免维护成本。
-const mdStyles = {
-  body: {
-    color: text.primary,
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  paragraph: {
-    marginTop: 0,
-    marginBottom: spacing.sm,
-  },
-  heading1: { fontSize: 22, fontWeight: '700' as const, marginBottom: spacing.sm },
-  heading2: { fontSize: 19, fontWeight: '700' as const, marginBottom: spacing.sm },
-  heading3: { fontSize: 17, fontWeight: '600' as const, marginBottom: spacing.xs },
-  link: { color: brand.solid, textDecorationLine: 'underline' as const },
-  code_inline: {
-    backgroundColor: brand.light,
-    color: brand.hover,
-    fontFamily: 'monospace',
-    fontSize: 13,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: radius.sm,
-  },
-  bullet_list: { marginBottom: spacing.sm },
-  ordered_list: { marginBottom: spacing.sm },
-  blockquote: {
-    backgroundColor: brand.light,
-    borderLeftWidth: 3,
-    borderLeftColor: brand.solid,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  hr: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: text.muted,
-    marginVertical: spacing.md,
-  },
-}
+// Markdown 全局样式已移入 AIMessageBase 的 useMemo（随主题变化）

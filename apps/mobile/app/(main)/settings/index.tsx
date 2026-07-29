@@ -18,12 +18,14 @@ import { useCurrentUser, useMyStats, useUpdateMe, useUploadAvatar } from '@yuana
 import { SettingsGroup, SettingsRow } from '@/components/settings/SettingsRows'
 import { SettingsShell } from '@/components/settings/SettingsShell'
 import { useDialog } from '@/components/ui/Dialog'
-import { bg, border, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 设置首屏：个人资料卡（头像/用户名/简介直接编辑）+ 5 个子屏入口。
  */
 export default function SettingsIndexScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const dialog = useDialog()
   const { data: user } = useCurrentUser()
@@ -119,7 +121,12 @@ export default function SettingsIndexScreen(): React.JSX.Element {
   return (
     <SettingsShell title="设置">
       {/* 个人资料卡 */}
-      <View style={styles.profileCard}>
+      <View
+        style={[
+          styles.profileCard,
+          { backgroundColor: t.bg.surface, borderColor: t.border.default },
+        ]}
+      >
         <Pressable
           onPress={() => {
             void onPickAvatar()
@@ -135,7 +142,7 @@ export default function SettingsIndexScreen(): React.JSX.Element {
               <Text style={styles.avatarInitial}>{initial}</Text>
             </View>
           )}
-          <View style={styles.avatarBadge}>
+          <View style={[styles.avatarBadge, { borderColor: t.bg.surface }]}>
             <Camera size={12} color="#FFFFFF" />
           </View>
         </Pressable>
@@ -146,10 +153,10 @@ export default function SettingsIndexScreen(): React.JSX.Element {
           }}
           style={styles.nameRow}
         >
-          <Text style={styles.nameText}>{user?.username ?? '—'}</Text>
-          <ChevronRight size={16} color={text.muted} />
+          <Text style={[styles.nameText, { color: t.text.primary }]}>{user?.username ?? '—'}</Text>
+          <ChevronRight size={16} color={t.text.muted} />
         </Pressable>
-        <Text style={styles.emailText}>{user?.email ?? ''}</Text>
+        <Text style={[styles.emailText, { color: t.text.secondary }]}>{user?.email ?? ''}</Text>
 
         <Pressable
           onPress={() => {
@@ -157,7 +164,14 @@ export default function SettingsIndexScreen(): React.JSX.Element {
           }}
           style={styles.bioRow}
         >
-          <Text style={user?.bio ? styles.bioText : styles.bioPlaceholder} numberOfLines={2}>
+          <Text
+            style={
+              user?.bio
+                ? [styles.bioText, { color: t.text.primary }]
+                : [styles.bioPlaceholder, { color: t.text.muted }]
+            }
+            numberOfLines={2}
+          >
             {user?.bio || '点这里写一句简介…'}
           </Text>
         </Pressable>
@@ -165,18 +179,20 @@ export default function SettingsIndexScreen(): React.JSX.Element {
         {stats ? (
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={styles.statNum}>{stats.conversationCount}</Text>
-              <Text style={styles.statLabel}>会话</Text>
+              <Text style={[styles.statNum, { color: t.text.primary }]}>
+                {stats.conversationCount}
+              </Text>
+              <Text style={[styles.statLabel, { color: t.text.muted }]}>会话</Text>
             </View>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, { backgroundColor: t.border.default }]} />
             <View style={styles.statItem}>
-              <Text style={styles.statNum}>{stats.totalTokens}</Text>
-              <Text style={styles.statLabel}>Tokens</Text>
+              <Text style={[styles.statNum, { color: t.text.primary }]}>{stats.totalTokens}</Text>
+              <Text style={[styles.statLabel, { color: t.text.muted }]}>Tokens</Text>
             </View>
-            <View style={styles.statDivider} />
+            <View style={[styles.statDivider, { backgroundColor: t.border.default }]} />
             <View style={styles.statItem}>
-              <Text style={styles.statNum}>{stats.fileCount}</Text>
-              <Text style={styles.statLabel}>文件</Text>
+              <Text style={[styles.statNum, { color: t.text.primary }]}>{stats.fileCount}</Text>
+              <Text style={[styles.statLabel, { color: t.text.muted }]}>文件</Text>
             </View>
           </View>
         ) : null}
@@ -185,35 +201,37 @@ export default function SettingsIndexScreen(): React.JSX.Element {
       <SettingsGroup>
         <SettingsRow
           label="安全"
-          icon={<Shield size={18} color={text.secondary} />}
+          icon={<Shield size={18} color={t.text.secondary} />}
           onPress={() => router.push('/(main)/settings/security')}
         />
         <SettingsRow
           label="外观"
-          icon={<Palette size={18} color={text.secondary} />}
+          icon={<Palette size={18} color={t.text.secondary} />}
           onPress={() => router.push('/(main)/settings/appearance')}
         />
         <SettingsRow
           label="通知"
-          icon={<Bell size={18} color={text.secondary} />}
+          icon={<Bell size={18} color={t.text.secondary} />}
           onPress={() => router.push('/(main)/settings/notifications')}
         />
         <SettingsRow
           label="语言"
-          icon={<Globe size={18} color={text.secondary} />}
+          icon={<Globe size={18} color={t.text.secondary} />}
           onPress={() => router.push('/(main)/settings/language')}
         />
         <SettingsRow
           label="关于"
-          icon={<Info size={18} color={text.secondary} />}
+          icon={<Info size={18} color={t.text.secondary} />}
           divider={false}
           onPress={() => router.push('/(main)/settings/about')}
         />
       </SettingsGroup>
 
       <View style={styles.footerHint}>
-        <UserIcon size={12} color={text.muted} />
-        <Text style={styles.footerHintText}>注册于 {formatDate(user?.createdAt)}</Text>
+        <UserIcon size={12} color={t.text.muted} />
+        <Text style={[styles.footerHintText, { color: t.text.muted }]}>
+          注册于 {formatDate(user?.createdAt)}
+        </Text>
       </View>
     </SettingsShell>
   )
@@ -228,10 +246,8 @@ function formatDate(iso?: string): string {
 
 const styles = StyleSheet.create({
   profileCard: {
-    backgroundColor: bg.surface,
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
     alignItems: 'center',
     paddingVertical: spacing.xl,
     paddingHorizontal: spacing.lg,
@@ -257,7 +273,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: brand.solid,
     borderWidth: 2,
-    borderColor: bg.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -267,11 +282,11 @@ const styles = StyleSheet.create({
     gap: 2,
     marginTop: spacing.md,
   },
-  nameText: { fontSize: 18, fontWeight: '700', color: text.primary },
-  emailText: { fontSize: 13, color: text.secondary, marginTop: 2 },
+  nameText: { fontSize: 18, fontWeight: '700' },
+  emailText: { fontSize: 13, marginTop: 2 },
   bioRow: { marginTop: spacing.md, paddingHorizontal: spacing.lg },
-  bioText: { fontSize: 13, color: text.primary, textAlign: 'center' },
-  bioPlaceholder: { fontSize: 13, color: text.muted, textAlign: 'center' },
+  bioText: { fontSize: 13, textAlign: 'center' },
+  bioPlaceholder: { fontSize: 13, textAlign: 'center' },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -279,9 +294,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   statItem: { flex: 1, alignItems: 'center', gap: 2 },
-  statNum: { fontSize: 16, fontWeight: '700', color: text.primary },
-  statLabel: { fontSize: 12, color: text.muted },
-  statDivider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: border.default },
+  statNum: { fontSize: 16, fontWeight: '700' },
+  statLabel: { fontSize: 12 },
+  statDivider: { width: StyleSheet.hairlineWidth, height: 28 },
   footerHint: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -289,5 +304,5 @@ const styles = StyleSheet.create({
     gap: 4,
     marginTop: spacing.sm,
   },
-  footerHintText: { fontSize: 12, color: text.muted },
+  footerHintText: { fontSize: 12 },
 })

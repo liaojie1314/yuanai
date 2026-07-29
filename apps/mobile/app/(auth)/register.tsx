@@ -12,7 +12,8 @@ import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
 import { useDialog } from '@/components/ui/Dialog'
-import { brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 const schema = z.object({
   email: z.string().email('请输入有效的邮箱地址'),
@@ -39,6 +40,7 @@ const RESEND_INTERVAL = 60
  *   router.replace 到主界面
  */
 export default function RegisterScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const registerMutation = useRegister()
   const sendCodeMutation = useSendVerifyCode()
@@ -126,7 +128,7 @@ export default function RegisterScreen(): React.JSX.Element {
       subtitle="加入元AI，开始你的智能对话"
       footer={
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: text.secondary }}>
+          <Text style={{ fontSize: 13, color: t.text.secondary }}>
             已有账号？{' '}
             <Link href="/(auth)/login" replace>
               <Text style={{ color: brand.solid, fontWeight: '600' }}>去登录</Text>

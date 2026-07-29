@@ -13,7 +13,8 @@ import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
 import { useDialog } from '@/components/ui/Dialog'
-import { brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 const schema = z.object({
   email: z.string().email('请输入有效的邮箱地址'),
@@ -36,6 +37,7 @@ type FormValues = z.infer<typeof schema>
  * → 系统识别 yuanai:// scheme → 回到 App，Linking 事件由 `useLinkingHandler` 处理。
  */
 export default function LoginScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const loginMutation = useLogin()
   const dialog = useDialog()
@@ -89,7 +91,7 @@ export default function LoginScreen(): React.JSX.Element {
       subtitle="登录你的元AI 账号"
       footer={
         <View style={{ alignItems: 'center' }}>
-          <Text style={{ fontSize: 13, color: text.secondary }}>
+          <Text style={{ fontSize: 13, color: t.text.secondary }}>
             还没有账号？{' '}
             <Link href="/(auth)/register" replace>
               <Text style={{ color: brand.solid, fontWeight: '600' }}>立即注册</Text>
@@ -161,11 +163,11 @@ export default function LoginScreen(): React.JSX.Element {
       <AuthButton label="登录" onPress={handleSubmit(onSubmit)} loading={loginMutation.isPending} />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: spacing.xl }}>
-        <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
-        <Text style={{ marginHorizontal: spacing.md, fontSize: 12, color: text.muted }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: t.border.default }} />
+        <Text style={{ marginHorizontal: spacing.md, fontSize: 12, color: t.text.muted }}>
           或使用三方登录
         </Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+        <View style={{ flex: 1, height: 1, backgroundColor: t.border.default }} />
       </View>
 
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
@@ -178,15 +180,15 @@ export default function LoginScreen(): React.JSX.Element {
             height: 46,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: '#E5E7EB',
+            borderColor: t.border.default,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: spacing.sm,
           }}
         >
-          <Github size={18} color={text.primary} />
-          <Text style={{ fontSize: 14, color: text.primary }}>GitHub</Text>
+          <Github size={18} color={t.text.primary} />
+          <Text style={{ fontSize: 14, color: t.text.primary }}>GitHub</Text>
         </Pressable>
         <Pressable
           onPress={() => {
@@ -197,15 +199,15 @@ export default function LoginScreen(): React.JSX.Element {
             height: 46,
             borderRadius: 10,
             borderWidth: 1,
-            borderColor: '#E5E7EB',
+            borderColor: t.border.default,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: spacing.sm,
           }}
         >
-          <Text style={{ fontSize: 16, color: text.primary, fontWeight: '600' }}>G</Text>
-          <Text style={{ fontSize: 14, color: text.primary }}>Google</Text>
+          <Text style={{ fontSize: 16, color: t.text.primary, fontWeight: '600' }}>G</Text>
+          <Text style={{ fontSize: 14, color: t.text.primary }}>Google</Text>
         </Pressable>
       </View>
     </AuthShell>

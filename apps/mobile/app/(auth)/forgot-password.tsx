@@ -12,7 +12,8 @@ import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
 import { useDialog } from '@/components/ui/Dialog'
-import { brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 const schema = z
   .object({
@@ -42,6 +43,7 @@ const RESEND_INTERVAL = 60
  * - 提交 → useResetPassword mutation → 成功后 Alert + router.replace 到登录页
  */
 export default function ForgotPasswordScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const resetMutation = useResetPassword()
   const sendCodeMutation = useSendVerifyCode()
@@ -280,8 +282,8 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
           gap: 4,
         }}
       >
-        <Lock size={11} color={text.muted} />
-        <Text style={{ fontSize: 12, color: text.muted }}>
+        <Lock size={11} color={t.text.muted} />
+        <Text style={{ fontSize: 12, color: t.text.muted }}>
           提交后你的旧密码将立即失效，请使用新密码登录。
         </Text>
       </View>

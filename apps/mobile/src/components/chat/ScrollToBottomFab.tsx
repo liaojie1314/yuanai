@@ -1,7 +1,8 @@
 import { ArrowDown } from 'lucide-react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { border, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface ScrollToBottomFabProps {
   /** 是否显示（列表已贴底时应隐藏） */
@@ -23,18 +24,19 @@ export function ScrollToBottomFab({
   onPress,
   streaming = false,
 }: ScrollToBottomFabProps): React.JSX.Element | null {
+  const t = useTheme()
   if (!visible) return null
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Pressable
         onPress={onPress}
         android_ripple={{ color: 'rgba(0,0,0,0.08)', borderless: true }}
-        style={styles.fab}
+        style={[styles.fab, { borderColor: t.border.default, backgroundColor: t.bg.surface }]}
         accessibilityRole="button"
         accessibilityLabel="回到最新消息"
       >
         <ArrowDown size={16} color={brand.solid} />
-        {streaming ? <Text style={styles.label}>新内容</Text> : null}
+        {streaming ? <Text style={[styles.label, { color: t.text.secondary }]}>新内容</Text> : null}
       </Pressable>
     </View>
   )
@@ -56,8 +58,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
-    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -65,5 +65,5 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  label: { fontSize: 11, fontWeight: '600', color: text.secondary },
+  label: { fontSize: 11, fontWeight: '600' },
 })

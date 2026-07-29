@@ -11,12 +11,13 @@ import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import type { AIModel, Message } from '@yuanai/types'
 import { Role } from '@yuanai/types'
 
-import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { ChatInput } from '@/components/chat/ChatInput'
+import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
-import { bg, border, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 临时对话屏（对齐 web `ChatInterface` 的 temporary 模式）。
@@ -29,6 +30,7 @@ import { bg, border, brand, spacing, text } from '@/theme/tokens'
  * - 模型选择存本地（无会话可 PATCH），换模型只影响后续发送
  */
 export default function TemporaryChatScreen(): React.JSX.Element {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -209,10 +211,14 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   }, [])
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior="padding" keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: t.bg.base }]}
+      behavior="padding"
+      keyboardVerticalOffset={0}
+    >
       <View style={[styles.inner, { paddingTop: insets.top }]}>
         {/* 顶栏：Ghost 标识 + 模型 chip */}
-        <View style={styles.topBar}>
+        <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
           {isTablet ? (
             <Pressable
               onPress={() => router.replace('/(main)/chat')}
@@ -220,7 +226,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
               style={styles.topBtn}
               accessibilityLabel="退出临时对话"
             >
-              <ChevronLeft size={22} color={text.primary} />
+              <ChevronLeft size={22} color={t.text.primary} />
             </Pressable>
           ) : (
             <Pressable
@@ -229,13 +235,13 @@ export default function TemporaryChatScreen(): React.JSX.Element {
               style={styles.topBtn}
               accessibilityLabel="打开侧边栏"
             >
-              <Menu size={20} color={text.primary} />
+              <Menu size={20} color={t.text.primary} />
             </Pressable>
           )}
           <View style={styles.topCenter}>
             <View style={styles.titleRow}>
               <Ghost size={14} color={brand.solid} />
-              <Text style={styles.topTitle} numberOfLines={1}>
+              <Text style={[styles.topTitle, { color: t.text.primary }]} numberOfLines={1}>
                 临时对话
               </Text>
             </View>
@@ -247,10 +253,10 @@ export default function TemporaryChatScreen(): React.JSX.Element {
                 accessibilityRole="button"
                 accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
               >
-                <Text style={styles.modelChipText} numberOfLines={1}>
+                <Text style={[styles.modelChipText, { color: t.text.secondary }]} numberOfLines={1}>
                   {activeModel?.name ?? activeModelId}
                 </Text>
-                <ChevronDown size={12} color={text.secondary} />
+                <ChevronDown size={12} color={t.text.secondary} />
               </Pressable>
             ) : null}
           </View>
@@ -261,9 +267,9 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         <View style={styles.listArea}>
           {messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
-              <Ghost size={40} color={text.muted} />
-              <Text style={styles.emptyTitle}>临时对话</Text>
-              <Text style={styles.emptyHint}>
+              <Ghost size={40} color={t.text.muted} />
+              <Text style={[styles.emptyTitle, { color: t.text.primary }]}>临时对话</Text>
+              <Text style={[styles.emptyHint, { color: t.text.muted }]}>
                 此对话不会保存，也不会出现在历史列表中；{'\n'}离开本页即被遗忘
               </Text>
             </View>
@@ -307,7 +313,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bg.base },
+  container: { flex: 1 },
   inner: { flex: 1 },
   topBar: {
     height: 52,
@@ -316,12 +322,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   topCenter: { flex: 1, alignItems: 'center', gap: 2 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  topTitle: { fontSize: 15, fontWeight: '600', color: text.primary },
+  topTitle: { fontSize: 15, fontWeight: '600' },
   modelChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -329,7 +334,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,
   },
-  modelChipText: { fontSize: 11, color: text.secondary },
+  modelChipText: { fontSize: 11 },
   listArea: { flex: 1 },
   center: {
     flex: 1,
@@ -338,6 +343,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
   },
-  emptyTitle: { fontSize: 17, fontWeight: '600', color: text.primary },
-  emptyHint: { fontSize: 13, color: text.muted, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 17, fontWeight: '600' },
+  emptyHint: { fontSize: 13, textAlign: 'center', lineHeight: 20 },
 })

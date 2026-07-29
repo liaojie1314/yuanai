@@ -5,7 +5,8 @@ import { ActivityIndicator, Text, View } from 'react-native'
 
 import { getMeWithToken, useAuthStore } from '@yuanai/core'
 
-import { brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 三方登录回调屏。
@@ -20,6 +21,7 @@ import { brand, spacing, text } from '@/theme/tokens'
  * 避免 token 缺失时长时间卡在 loading。
  */
 export default function OAuthCallbackScreen(): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const params = useLocalSearchParams<{
     access_token?: string
@@ -78,11 +80,11 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: '#FAFAF8',
+        backgroundColor: t.bg.base,
       }}
     >
       <ActivityIndicator size="large" color={brand.solid} />
-      <Text style={{ marginTop: spacing.md, fontSize: 14, color: text.secondary }}>
+      <Text style={{ marginTop: spacing.md, fontSize: 14, color: t.text.secondary }}>
         正在完成登录…
       </Text>
     </View>

@@ -12,7 +12,8 @@ import { memo, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { useToast } from '@/components/ui/Toast'
-import { border, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 export type FeedbackType = 'like' | 'dislike'
 
@@ -51,6 +52,7 @@ export const AIMessageActions = memo(function AIMessageActions({
   feedback,
   busy,
 }: AIMessageActionsProps): React.JSX.Element {
+  const t = useTheme()
   const [copied, setCopied] = useState(false)
   const toast = useToast()
 
@@ -84,9 +86,9 @@ export const AIMessageActions = memo(function AIMessageActions({
             accessibilityLabel="上一个版本"
             accessibilityState={{ disabled: !canPrev }}
           >
-            <ChevronLeft size={13} color={canPrev ? text.secondary : text.muted} />
+            <ChevronLeft size={13} color={canPrev ? t.text.secondary : t.text.muted} />
           </Pressable>
-          <Text style={styles.verLabel}>
+          <Text style={[styles.verLabel, { color: t.text.secondary }]}>
             {versionIdx + 1} / {versionCount}
           </Text>
           <Pressable
@@ -98,7 +100,7 @@ export const AIMessageActions = memo(function AIMessageActions({
             accessibilityLabel="下一个版本"
             accessibilityState={{ disabled: !canNext }}
           >
-            <ChevronRight size={13} color={canNext ? text.secondary : text.muted} />
+            <ChevronRight size={13} color={canNext ? t.text.secondary : t.text.muted} />
           </Pressable>
         </View>
       ) : null}
@@ -110,7 +112,7 @@ export const AIMessageActions = memo(function AIMessageActions({
         accessibilityRole="button"
         accessibilityLabel="复制回复"
       >
-        {copied ? <Check size={15} color={brand.solid} /> : <Copy size={15} color={text.muted} />}
+        {copied ? <Check size={15} color={brand.solid} /> : <Copy size={15} color={t.text.muted} />}
       </Pressable>
 
       <Pressable
@@ -122,7 +124,7 @@ export const AIMessageActions = memo(function AIMessageActions({
         accessibilityLabel="重新生成"
         accessibilityState={{ disabled: busy }}
       >
-        <RotateCcw size={15} color={busy ? border.default : text.muted} />
+        <RotateCcw size={15} color={busy ? t.border.default : t.text.muted} />
       </Pressable>
 
       <Pressable
@@ -135,8 +137,7 @@ export const AIMessageActions = memo(function AIMessageActions({
       >
         <ThumbsUp
           size={15}
-          color={feedback === 'like' ? brand.solid : text.muted}
-          // 选中态：用同色填充（lucide 图标默认 fill="none"，传色值即变实心）。
+          color={feedback === 'like' ? brand.solid : t.text.muted}
           fill={feedback === 'like' ? brand.solid : 'none'}
         />
       </Pressable>
@@ -150,8 +151,8 @@ export const AIMessageActions = memo(function AIMessageActions({
       >
         <ThumbsDown
           size={15}
-          color={feedback === 'dislike' ? border.danger : text.muted}
-          fill={feedback === 'dislike' ? border.danger : 'none'}
+          color={feedback === 'dislike' ? t.border.danger : t.text.muted}
+          fill={feedback === 'dislike' ? t.border.danger : 'none'}
         />
       </Pressable>
     </View>
@@ -167,7 +168,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   iconBtn: { width: 28, height: 26, alignItems: 'center', justifyContent: 'center' },
-  // 版本条排在最前，视觉上作次一级信息（无边框，仅箭头 + 计数）。
   verNav: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,5 +175,5 @@ const styles = StyleSheet.create({
     marginRight: spacing.xs,
   },
   verBtn: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center' },
-  verLabel: { fontSize: 11, color: text.secondary, minWidth: 26, textAlign: 'center' },
+  verLabel: { fontSize: 11, minWidth: 26, textAlign: 'center' },
 })

@@ -1,7 +1,8 @@
 import { forwardRef, useState } from 'react'
 import { Text, TextInput, type TextInputProps, View } from 'react-native'
 
-import { bg, border, radius, spacing, text } from '@/theme/tokens'
+import { radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 export interface AuthTextInputProps extends TextInputProps {
   /** label 文本；不传则不渲染上方 label */
@@ -30,8 +31,9 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
   { label, error, rightAdornment, style, onFocus, onBlur, ...props },
   ref
 ) {
+  const t = useTheme()
   const [focused, setFocused] = useState(false)
-  const borderColor = error ? border.danger : focused ? border.focus : border.default
+  const borderColor = error ? t.border.danger : focused ? t.border.focus : t.border.default
 
   return (
     <View style={{ marginBottom: spacing.sm }}>
@@ -40,7 +42,7 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
           style={{
             fontSize: 13,
             fontWeight: '500',
-            color: text.primary,
+            color: t.text.primary,
             marginBottom: spacing.xs,
           }}
         >
@@ -55,7 +57,7 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
           borderWidth: 1,
           borderColor,
           borderRadius: radius.md,
-          backgroundColor: bg.surface,
+          backgroundColor: t.bg.surface,
         }}
       >
         <TextInput
@@ -67,11 +69,11 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
               paddingHorizontal: spacing.lg,
               paddingVertical: 0,
               fontSize: 15,
-              color: text.primary,
+              color: t.text.primary,
             },
             style,
           ]}
-          placeholderTextColor={text.muted}
+          placeholderTextColor={t.text.muted}
           onFocus={(e) => {
             setFocused(true)
             onFocus?.(e)
@@ -82,7 +84,6 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
           }}
           {...props}
         />
-        {/* adornment 用 48pt 高居中容器包裹，保证图标/按钮垂直居中 */}
         {rightAdornment ? (
           <View
             style={{
@@ -97,10 +98,9 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
         ) : null}
       </View>
 
-      {/* 固定高度错误槽：有错误显示红字，无错误留白，杜绝布局位移 */}
       <View style={{ height: ERROR_SLOT_HEIGHT, justifyContent: 'center' }}>
         {error ? (
-          <Text style={{ fontSize: 12, color: border.danger }} numberOfLines={1}>
+          <Text style={{ fontSize: 12, color: t.border.danger }} numberOfLines={1}>
             {error}
           </Text>
         ) : null}

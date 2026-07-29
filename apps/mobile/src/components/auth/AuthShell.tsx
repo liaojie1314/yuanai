@@ -3,7 +3,8 @@ import { Text, View } from 'react-native'
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { bg, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 认证页统一外壳：品牌头 + 表单区。
@@ -26,10 +27,11 @@ export function AuthShell({
   children: ReactNode
   footer?: ReactNode
 }): React.JSX.Element {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   return (
     <KeyboardAwareScrollView
-      style={{ flex: 1, backgroundColor: bg.base }}
+      style={{ flex: 1, backgroundColor: t.bg.base }}
       contentContainerStyle={{
         flexGrow: 1,
         paddingTop: insets.top + spacing.xl,
@@ -38,11 +40,7 @@ export function AuthShell({
         justifyContent: 'center',
       }}
       keyboardShouldPersistTaps="handled"
-      // 焦点输入框与键盘顶部之间预留的间距
       bottomOffset={24}
-      // v1.21 起默认 insets 模式只保证「获焦输入框」可见，输入框下方的提交按钮
-      // 仍会被键盘盖住；layout 模式追加键盘高度的 spacer 触发 flex 重排，
-      // 居中内容整体上移，按钮跟着顶起（官方推荐的表单+提交按钮场景写法）
       mode="layout"
     >
       {/* Logo + 品牌 */}
@@ -69,13 +67,15 @@ export function AuthShell({
           style={{
             fontSize: 22,
             fontWeight: '600',
-            color: text.primary,
+            color: t.text.primary,
             marginBottom: spacing.xs,
           }}
         >
           {title}
         </Text>
-        {subtitle ? <Text style={{ fontSize: 14, color: text.secondary }}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={{ fontSize: 14, color: t.text.secondary }}>{subtitle}</Text>
+        ) : null}
       </View>
 
       <View>{children}</View>

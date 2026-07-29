@@ -4,7 +4,8 @@ import type { ReactNode } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { bg, border, spacing, text } from '@/theme/tokens'
+import { spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 设置子屏统一外壳：安全区 + 顶栏（返回箭头 / 标题）+ 可滚动内容区。
@@ -19,6 +20,7 @@ export function SettingsShell({
   title: string
   children: ReactNode
 }): React.JSX.Element {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
 
@@ -28,12 +30,12 @@ export function SettingsShell({
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.topBar}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: t.bg.base }]}>
+      <View style={[styles.topBar, { borderBottomColor: t.border.default }]}>
         <Pressable onPress={goBack} hitSlop={8} style={styles.topBtn} accessibilityLabel="返回">
-          <ChevronLeft size={22} color={text.primary} />
+          <ChevronLeft size={22} color={t.text.primary} />
         </Pressable>
-        <Text style={styles.topTitle}>{title}</Text>
+        <Text style={[styles.topTitle, { color: t.text.primary }]}>{title}</Text>
         <View style={styles.topBtn} />
       </View>
       <ScrollView
@@ -48,7 +50,7 @@ export function SettingsShell({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bg.base },
+  container: { flex: 1 },
   topBar: {
     height: 52,
     flexDirection: 'row',
@@ -56,9 +58,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  topTitle: { flex: 1, fontSize: 16, fontWeight: '600', color: text.primary, textAlign: 'center' },
+  topTitle: { flex: 1, fontSize: 16, fontWeight: '600', textAlign: 'center' },
   scroll: { flex: 1 },
 })

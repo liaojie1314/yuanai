@@ -4,10 +4,12 @@ import { StyleSheet, Text, View } from 'react-native'
 import { SettingsGroup, SettingsRow } from '@/components/settings/SettingsRows'
 import { SettingsShell } from '@/components/settings/SettingsShell'
 import { useDialog } from '@/components/ui/Dialog'
-import { brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /** 关于屏：logo + 版本号 + 协议/隐私入口（v1 文案先内置弹窗展示） */
 export default function AboutScreen(): React.JSX.Element {
+  const t = useTheme()
   const dialog = useDialog()
   const version = Application.nativeApplicationVersion ?? '—'
   const build = Application.nativeBuildVersion ?? '—'
@@ -18,8 +20,8 @@ export default function AboutScreen(): React.JSX.Element {
         <View style={styles.logo}>
           <Text style={styles.logoText}>元</Text>
         </View>
-        <Text style={styles.appName}>元AI</Text>
-        <Text style={styles.version}>
+        <Text style={[styles.appName, { color: t.text.primary }]}>元AI</Text>
+        <Text style={[styles.version, { color: t.text.secondary }]}>
           版本 {version} (build {build})
         </Text>
       </View>
@@ -46,7 +48,7 @@ export default function AboutScreen(): React.JSX.Element {
         />
       </SettingsGroup>
 
-      <Text style={styles.copyright}>© 2026 yuanai</Text>
+      <Text style={[styles.copyright, { color: t.text.muted }]}>© 2026 yuanai</Text>
     </SettingsShell>
   )
 }
@@ -62,11 +64,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoText: { fontSize: 30, fontWeight: '700', color: '#FFFFFF' },
-  appName: { fontSize: 18, fontWeight: '700', color: text.primary, marginTop: spacing.md },
-  version: { fontSize: 13, color: text.secondary, marginTop: 4 },
+  appName: { fontSize: 18, fontWeight: '700', marginTop: spacing.md },
+  version: { fontSize: 13, marginTop: 4 },
   copyright: {
     fontSize: 12,
-    color: text.muted,
     textAlign: 'center',
     marginTop: spacing.xl,
   },

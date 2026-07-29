@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { BackHandler, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 统一弹窗系统，替代原生 `Alert.alert` / `Alert.prompt`（后者 Android 不支持）。
@@ -77,6 +78,7 @@ type ActiveDialog =
   | { kind: 'actionSheet'; opts: ActionSheetOptions; resolve: (v: number) => void }
 
 export function DialogProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const t = useTheme()
   const [active, setActive] = useState<ActiveDialog | null>(null)
   const [inputValue, setInputValue] = useState('')
   // 保存 resolve 用于「点遮罩关闭」时按取消语义兜底
@@ -158,7 +160,7 @@ export function DialogProvider({ children }: { children: ReactNode }): React.JSX
         <KeyboardAvoidingView behavior="padding" style={styles.overlayWrap}>
           <Pressable style={styles.backdrop} onPress={onDismiss} />
           {active.kind === 'actionSheet' ? (
-            <View style={styles.sheetCard}>
+            <View style={[styles.sheetCard, { backgroundColor: t.bg.surface }]}>
               <ActionSheetBody
                 opts={active.opts}
                 onPick={(i) => {
@@ -168,7 +170,7 @@ export function DialogProvider({ children }: { children: ReactNode }): React.JSX
               />
             </View>
           ) : (
-            <View style={styles.card}>
+            <View style={[styles.card, { backgroundColor: t.bg.surface }]}>
               <CenterDialogBody
                 active={active}
                 inputValue={inputValue}
@@ -195,21 +197,27 @@ function CenterDialogBody({
   setInputValue: (v: string) => void
   onClose: () => void
 }): React.JSX.Element {
+  const t = useTheme()
   const { opts } = active
   const message = 'message' in opts ? opts.message : undefined
 
   return (
     <>
-      <Text style={styles.title}>{opts.title}</Text>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={[styles.title, { color: t.text.primary }]}>{opts.title}</Text>
+      {message ? (
+        <Text style={[styles.message, { color: t.text.secondary }]}>{message}</Text>
+      ) : null}
 
       {active.kind === 'prompt' ? (
         <TextInput
           value={inputValue}
           onChangeText={setInputValue}
           placeholder={active.opts.placeholder}
-          placeholderTextColor={text.muted}
-          style={styles.input}
+          placeholderTextColor={t.text.muted}
+          style={[
+            styles.input,
+            { borderColor: t.border.default, color: t.text.primary, backgroundColor: t.bg.base },
+          ]}
           autoFocus
           maxLength={active.opts.maxLength ?? 100}
           selectTextOnFocus
@@ -270,19 +278,36 @@ function ActionSheetBody({
   opts: ActionSheetOptions
   onPick: (index: number) => void
 }): React.JSX.Element {
+  const t = useTheme()
   return (
     <>
-      {opts.title ? <Text style={styles.sheetTitle}>{opts.title}</Text> : null}
-      {opts.message ? <Text style={styles.sheetMessage}>{opts.message}</Text> : null}
+      {opts.title ? (
+        <Text style={[styles.sheetTitle, { color: t.text.primary }]}>{opts.title}</Text>
+      ) : null}
+      {opts.message ? (
+        <Text style={[styles.sheetMessage, { color: t.text.secondary }]}>{opts.message}</Text>
+      ) : null}
       <View style={styles.sheetActions}>
         {opts.actions.map((a, i) => (
           <Pressable
             key={`${a.label}-${i}`}
             onPress={() => onPick(i)}
-            android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-            style={[styles.sheetItem, i > 0 && styles.sheetItemDivider]}
+            android_ripple={{
+              color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+            }}
+            style={[
+              styles.sheetItem,
+              i > 0 && styles.sheetItemDivider,
+              i > 0 && { borderTopColor: t.border.default },
+            ]}
           >
-            <Text style={[styles.sheetItemText, a.destructive && { color: border.danger }]}>
+            <Text
+              style={[
+                styles.sheetItemText,
+                { color: t.text.primary },
+                a.destructive && { color: t.border.danger },
+              ]}
+            >
               {a.label}
             </Text>
           </Pressable>
@@ -291,10 +316,14 @@ function ActionSheetBody({
       {opts.cancelable !== false ? (
         <Pressable
           onPress={() => onPick(-1)}
-          android_ripple={{ color: 'rgba(0,0,0,0.06)' }}
-          style={styles.sheetCancel}
+          android_ripple={{
+            color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+          }}
+          style={[styles.sheetCancel, { borderTopColor: t.border.default }]}
         >
-          <Text style={styles.sheetCancelText}>{opts.cancelText ?? '取消'}</Text>
+          <Text style={[styles.sheetCancelText, { color: t.text.secondary }]}>
+            {opts.cancelText ?? '取消'}
+          </Text>
         </Pressable>
       ) : null}
     </>
@@ -310,11 +339,10 @@ function DialogButton({
   variant: 'primary' | 'danger' | 'ghost'
   onPress: () => void
 }): React.JSX.Element {
+  const t = useTheme()
   const bgColor =
-    variant === 'primary' ? brand.solid : variant === 'danger' ? border.danger : bg.elevated
-  const fgColor = variant === 'ghost' ? text.secondary : '#FFFFFF'
-  // 不用函数形式 style：NativeWind 4 的 cssInterop 会丢弃 Pressable 函数式
-  // style 的返回值（按钮 flex/背景全失效）。按压反馈由 android_ripple 提供。
+    variant === 'primary' ? brand.solid : variant === 'danger' ? t.border.danger : t.bg.elevated
+  const fgColor = variant === 'ghost' ? t.text.secondary : '#FFFFFF'
   return (
     <Pressable
       onPress={onPress}
@@ -345,7 +373,6 @@ const styles = StyleSheet.create({
   card: {
     width: '84%',
     maxWidth: 400,
-    backgroundColor: bg.surface,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.xl,
     paddingTop: spacing.xl,
@@ -356,11 +383,10 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 8,
   },
-  title: { fontSize: 17, fontWeight: '700', color: text.primary, textAlign: 'center' },
+  title: { fontSize: 17, fontWeight: '700', textAlign: 'center' },
   message: {
     fontSize: 14,
     lineHeight: 21,
-    color: text.secondary,
     textAlign: 'center',
     marginTop: spacing.sm,
   },
@@ -368,12 +394,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     height: 44,
     borderWidth: 1,
-    borderColor: border.default,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     fontSize: 15,
-    color: text.primary,
-    backgroundColor: bg.base,
   },
   btnRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },
   btn: {
@@ -384,11 +407,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnText: { fontSize: 15, fontWeight: '600' },
-  // ── ActionSheet ──
   sheetCard: {
     width: '84%',
     maxWidth: 400,
-    backgroundColor: bg.surface,
     borderRadius: radius.lg,
     paddingVertical: spacing.sm,
     overflow: 'hidden',
@@ -401,14 +422,12 @@ const styles = StyleSheet.create({
   sheetTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: text.primary,
     textAlign: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
   },
   sheetMessage: {
     fontSize: 13,
-    color: text.secondary,
     textAlign: 'center',
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.xs,
@@ -418,20 +437,17 @@ const styles = StyleSheet.create({
   sheetItem: { minHeight: 52, justifyContent: 'center' },
   sheetItemDivider: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
   },
-  sheetItemText: { fontSize: 16, color: text.primary, textAlign: 'center', width: '100%' },
+  sheetItemText: { fontSize: 16, textAlign: 'center', width: '100%' },
   sheetCancel: {
     minHeight: 52,
     justifyContent: 'center',
     marginTop: spacing.xs,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
   },
   sheetCancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: text.secondary,
     textAlign: 'center',
     width: '100%',
   },

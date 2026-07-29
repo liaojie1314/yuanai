@@ -4,7 +4,9 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import type { ToolCall, ToolCallStatus } from '@yuanai/types'
 
-import { border, brand, radius, spacing, text } from '@/theme/tokens'
+import { border, brand, radius, spacing } from '@/theme/tokens'
+import type { ThemeTokens } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface StatusMeta {
   label: string
@@ -23,7 +25,7 @@ function statusMeta(status: ToolCallStatus): StatusMeta {
       return { label: '失败', color: border.danger, icon: <X size={11} color={border.danger} /> }
     case 'pending':
     default:
-      return { label: '等待中', color: text.muted, icon: <Clock size={11} color={text.muted} /> }
+      return { label: '等待中', color: '#9CA3AF', icon: <Clock size={11} color="#9CA3AF" /> }
   }
 }
 
@@ -53,6 +55,7 @@ interface ToolCallRowProps {
 export const ToolCallRow = memo(function ToolCallRow({
   toolCall,
 }: ToolCallRowProps): React.JSX.Element {
+  const t = useTheme()
   const [open, setOpen] = useState(false)
   const meta = statusMeta(toolCall.status)
   const argsPreview = toolCall.arguments.replace(/\s+/g, ' ').slice(0, 40)
@@ -60,45 +63,51 @@ export const ToolCallRow = memo(function ToolCallRow({
     toolCall.durationMs !== undefined ? `${(toolCall.durationMs / 1000).toFixed(1)}s` : null
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, { borderColor: t.border.default, backgroundColor: t.bg.surface }]}>
       <Pressable
         onPress={() => setOpen((o) => !o)}
-        android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
+        android_ripple={{
+          color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+        }}
         style={styles.header}
         accessibilityRole="button"
         accessibilityLabel={`工具调用 ${toolCall.name}，${meta.label}`}
         accessibilityState={{ expanded: open }}
       >
-        <Wrench size={12} color={text.secondary} />
-        <Text style={styles.name} numberOfLines={1}>
+        <Wrench size={12} color={t.text.secondary} />
+        <Text style={[styles.name, { color: t.text.primary }]} numberOfLines={1}>
           {toolCall.name}
-          {argsPreview ? <Text style={styles.args}>({argsPreview})</Text> : null}
+          {argsPreview ? (
+            <Text style={[styles.args, { color: t.text.muted }]}>({argsPreview})</Text>
+          ) : null}
         </Text>
-        {durationLabel ? <Text style={styles.duration}>{durationLabel}</Text> : null}
+        {durationLabel ? (
+          <Text style={[styles.duration, { color: t.text.muted }]}>{durationLabel}</Text>
+        ) : null}
         <View style={styles.status}>
           {meta.icon}
           <Text style={[styles.statusText, { color: meta.color }]}>{meta.label}</Text>
         </View>
         {open ? (
-          <ChevronDown size={12} color={text.muted} />
+          <ChevronDown size={12} color={t.text.muted} />
         ) : (
-          <ChevronRight size={12} color={text.muted} />
+          <ChevronRight size={12} color={t.text.muted} />
         )}
       </Pressable>
 
       {open ? (
-        <View style={styles.body}>
+        <View style={[styles.body, { borderTopColor: t.border.default }]}>
           {toolCall.arguments ? (
-            <Section label="调用参数" content={tryFormatJson(toolCall.arguments)} />
+            <Section label="调用参数" content={tryFormatJson(toolCall.arguments)} t={t} />
           ) : null}
           {toolCall.status === 'done' && toolCall.result ? (
-            <Section label="执行结果" content={toolCall.result} />
+            <Section label="执行结果" content={toolCall.result} t={t} />
           ) : null}
           {toolCall.status === 'error' && toolCall.error ? (
-            <Section label="错误" content={toolCall.error} danger />
+            <Section label="错误" content={toolCall.error} danger t={t} />
           ) : null}
           {toolCall.status === 'running' ? (
-            <Text style={styles.runningHint}>正在执行工具，请稍候…</Text>
+            <Text style={[styles.runningHint, { color: t.text.muted }]}>正在执行工具，请稍候…</Text>
           ) : null}
         </View>
       ) : null}
@@ -110,16 +119,40 @@ function Section({
   label,
   content,
   danger = false,
+  t,
 }: {
   label: string
   content: string
   danger?: boolean
+  t: ThemeTokens
 }): React.JSX.Element {
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionLabel, danger && { color: border.danger }]}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.sectionScroll}>
-        <Text selectable style={[styles.sectionCode, danger && { color: border.danger }]}>
+      <Text
+        style={[
+          styles.sectionLabel,
+          { color: t.text.secondary },
+          danger && { color: t.border.danger },
+        ]}
+      >
+        {label}
+      </Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[
+          styles.sectionScroll,
+          { backgroundColor: t.colorScheme === 'dark' ? t.bg.elevated : '#F7F7F5' },
+        ]}
+      >
+        <Text
+          selectable
+          style={[
+            styles.sectionCode,
+            { color: t.text.primary },
+            danger && { color: t.border.danger },
+          ]}
+        >
           {content}
         </Text>
       </ScrollView>
@@ -130,9 +163,7 @@ function Section({
 const styles = StyleSheet.create({
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
     borderRadius: radius.sm,
-    backgroundColor: '#FFFFFF',
     overflow: 'hidden',
   },
   header: {
@@ -142,21 +173,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     minHeight: 34,
   },
-  name: { flex: 1, fontSize: 12, fontWeight: '600', color: text.primary },
-  args: { fontWeight: '400', color: text.muted, fontFamily: 'monospace' },
-  duration: { fontSize: 10, color: text.muted },
+  name: { flex: 1, fontSize: 12, fontWeight: '600' },
+  args: { fontWeight: '400', fontFamily: 'monospace' },
+  duration: { fontSize: 10 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   statusText: { fontSize: 10, fontWeight: '600' },
   body: {
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     gap: spacing.xs,
   },
   section: { gap: 2 },
-  sectionLabel: { fontSize: 10, fontWeight: '600', color: text.secondary },
-  sectionScroll: { backgroundColor: '#F7F7F5', borderRadius: radius.sm, padding: spacing.xs },
-  sectionCode: { fontFamily: 'monospace', fontSize: 11, lineHeight: 16, color: text.primary },
-  runningHint: { fontSize: 11, color: text.muted, fontStyle: 'italic' },
+  sectionLabel: { fontSize: 10, fontWeight: '600' },
+  sectionScroll: { borderRadius: radius.sm, padding: spacing.xs },
+  sectionCode: { fontFamily: 'monospace', fontSize: 11, lineHeight: 16 },
+  runningHint: { fontSize: 11, fontStyle: 'italic' },
 })

@@ -12,7 +12,8 @@ import type { AIModel } from '@yuanai/types'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
-import { bg, brand, spacing, text } from '@/theme/tokens'
+import { brand, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * `/chat` 新会话落地屏：登录后的默认页，直接可聊天。
@@ -29,6 +30,7 @@ import { bg, brand, spacing, text } from '@/theme/tokens'
  * 用 `replace` 而非 `push`：避免返回键回到空的新会话页。
  */
 export default function ChatNewScreen(): React.JSX.Element {
+  const t = useTheme()
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
@@ -113,9 +115,12 @@ export default function ChatNewScreen(): React.JSX.Element {
   )
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior="padding" keyboardVerticalOffset={0}>
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: t.bg.base }]}
+      behavior="padding"
+      keyboardVerticalOffset={0}
+    >
       <View style={[styles.inner, { paddingTop: insets.top }]}>
-        {/* 顶栏：手机端渲染 Drawer 按钮；中央可点击的模型选择 chip（对齐会话页） */}
         {!isTablet ? (
           <View style={styles.topBar}>
             <Pressable
@@ -124,10 +129,10 @@ export default function ChatNewScreen(): React.JSX.Element {
               style={styles.topBtn}
               accessibilityLabel="打开侧边栏"
             >
-              <Menu size={20} color={text.primary} />
+              <Menu size={20} color={t.text.primary} />
             </Pressable>
             <View style={styles.topCenter}>
-              <Text style={styles.topTitle}>元AI</Text>
+              <Text style={[styles.topTitle, { color: t.text.primary }]}>元AI</Text>
               {models.length > 0 ? (
                 <Pressable
                   onPress={openModelSheet}
@@ -136,10 +141,13 @@ export default function ChatNewScreen(): React.JSX.Element {
                   accessibilityRole="button"
                   accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
                 >
-                  <Text style={styles.modelChipText} numberOfLines={1}>
+                  <Text
+                    style={[styles.modelChipText, { color: t.text.secondary }]}
+                    numberOfLines={1}
+                  >
                     {activeModel?.name ?? activeModelId}
                   </Text>
-                  <ChevronDown size={12} color={text.secondary} />
+                  <ChevronDown size={12} color={t.text.secondary} />
                 </Pressable>
               ) : null}
             </View>
@@ -147,20 +155,19 @@ export default function ChatNewScreen(): React.JSX.Element {
           </View>
         ) : null}
 
-        {/* 欢迎空态 */}
         <View style={styles.body}>
           <View style={styles.brandBadge}>
             <Text style={styles.brandBadgeText}>元</Text>
           </View>
-          <Text style={styles.title}>你好，我是元AI</Text>
-          <Text style={styles.subtitle}>有什么可以帮你的？在下面直接输入开始对话吧</Text>
+          <Text style={[styles.title, { color: t.text.primary }]}>你好，我是元AI</Text>
+          <Text style={[styles.subtitle, { color: t.text.secondary }]}>
+            有什么可以帮你的？在下面直接输入开始对话吧
+          </Text>
         </View>
 
-        {/* 输入区 */}
         <ChatInput streaming={submitting} onSend={handleSend} bottomInset={insets.bottom} />
       </View>
 
-      {/* 模型选择 BottomSheet：与会话页共用组件 */}
       <ModelSelectorSheet
         ref={modelSheetRef}
         models={models}
@@ -172,7 +179,7 @@ export default function ChatNewScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: bg.base },
+  container: { flex: 1 },
   inner: { flex: 1 },
   topBar: {
     height: 52,
@@ -183,7 +190,7 @@ const styles = StyleSheet.create({
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   topCenter: { flex: 1, alignItems: 'center', gap: 2 },
-  topTitle: { fontSize: 15, fontWeight: '600', color: text.primary },
+  topTitle: { fontSize: 15, fontWeight: '600' },
   modelChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -191,7 +198,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,
   },
-  modelChipText: { fontSize: 11, color: text.secondary },
+  modelChipText: { fontSize: 11 },
   body: {
     flex: 1,
     alignItems: 'center',
@@ -209,6 +216,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   brandBadgeText: { color: '#FFFFFF', fontSize: 28, fontWeight: '700' },
-  title: { fontSize: 20, fontWeight: '600', color: text.primary },
-  subtitle: { fontSize: 14, color: text.secondary, textAlign: 'center' },
+  title: { fontSize: 20, fontWeight: '600' },
+  subtitle: { fontSize: 14, textAlign: 'center' },
 })

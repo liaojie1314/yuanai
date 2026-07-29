@@ -29,9 +29,10 @@ import {
   type ConvGroup,
 } from '@yuanai/core'
 
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
 import { unregisterPushNotifications } from '@/lib/pushNotifications'
+import { useTheme } from '@/theme/useTheme'
 
 const GROUP_ORDER: readonly ConvGroup[] = ['pinned', 'today', 'yesterday', 'week']
 const GROUP_LABEL: Record<ConvGroup, string> = {
@@ -77,6 +78,7 @@ export function ConversationList({
   onPickConversation,
   onClose,
 }: ConversationListProps): React.JSX.Element {
+  const t = useTheme()
   const router = useRouter()
   const insets = useSafeAreaInsets()
   const dialog = useDialog()
@@ -257,19 +259,27 @@ export function ConversationList({
   const userEmail = user?.email ?? ''
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[
+        styles.container,
+        { backgroundColor: t.bg.surface },
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
       {/* Header：常规态 / 多选态双分支 */}
       {selectionMode ? (
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: t.border.default }]}>
           <Pressable
             onPress={exitSelection}
             hitSlop={8}
             style={styles.iconBtn}
             accessibilityLabel="退出多选"
           >
-            <X size={18} color={text.primary} />
+            <X size={18} color={t.text.primary} />
           </Pressable>
-          <Text style={styles.selectionCount}>{selected.size} 已选中</Text>
+          <Text style={[styles.selectionCount, { color: t.text.primary }]}>
+            {selected.size} 已选中
+          </Text>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <Pressable
               onPress={toggleSelectAll}
@@ -280,7 +290,7 @@ export function ConversationList({
               {allSelected ? (
                 <CheckSquare size={18} color={brand.solid} />
               ) : (
-                <Square size={18} color={text.primary} />
+                <Square size={18} color={t.text.primary} />
               )}
             </Pressable>
             <Pressable
@@ -293,17 +303,17 @@ export function ConversationList({
               ]}
               accessibilityLabel="删除已选中"
             >
-              <Trash2 size={18} color={border.danger} />
+              <Trash2 size={18} color={t.border.danger} />
             </Pressable>
           </View>
         </View>
       ) : (
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: t.border.default }]}>
           <View style={styles.brand}>
             <View style={styles.logoBadge}>
               <Text style={styles.logoText}>元</Text>
             </View>
-            <Text style={styles.brandName}>元AI</Text>
+            <Text style={[styles.brandName, { color: t.text.primary }]}>元AI</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             <Pressable
@@ -315,7 +325,7 @@ export function ConversationList({
               style={styles.iconBtn}
               accessibilityLabel="临时对话"
             >
-              <Ghost size={18} color={text.primary} />
+              <Ghost size={18} color={t.text.primary} />
             </Pressable>
             <Pressable
               onPress={() => {
@@ -325,7 +335,7 @@ export function ConversationList({
               style={styles.iconBtn}
               accessibilityLabel="新建对话"
             >
-              <SquarePen size={18} color={text.primary} />
+              <SquarePen size={18} color={t.text.primary} />
             </Pressable>
             {onClose ? (
               <Pressable
@@ -334,7 +344,7 @@ export function ConversationList({
                 style={styles.iconBtn}
                 accessibilityLabel="关闭侧边栏"
               >
-                <X size={18} color={text.primary} />
+                <X size={18} color={t.text.primary} />
               </Pressable>
             ) : null}
           </View>
@@ -342,14 +352,14 @@ export function ConversationList({
       )}
 
       {/* Search */}
-      <View style={styles.searchWrap}>
-        <Search size={14} color={text.muted} />
+      <View style={[styles.searchWrap, { backgroundColor: t.bg.elevated }]}>
+        <Search size={14} color={t.text.muted} />
         <TextInput
           value={search}
           onChangeText={setSearch}
           placeholder="搜索对话"
-          placeholderTextColor={text.muted}
-          style={styles.searchInput}
+          placeholderTextColor={t.text.muted}
+          style={[styles.searchInput, { color: t.text.primary }]}
           autoCapitalize="none"
           autoCorrect={false}
           editable={!selectionMode}
@@ -364,7 +374,7 @@ export function ConversationList({
       >
         {totalCount === 0 ? (
           <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, color: text.muted }}>
+            <Text style={{ fontSize: 13, color: t.text.muted }}>
               {search ? '没有匹配的对话' : '还没有对话，点右上角开始'}
             </Text>
           </View>
@@ -374,7 +384,7 @@ export function ConversationList({
             if (items.length === 0) return null
             return (
               <View key={g} style={{ marginBottom: spacing.md }}>
-                <Text style={styles.groupLabel}>{GROUP_LABEL[g]}</Text>
+                <Text style={[styles.groupLabel, { color: t.text.muted }]}>{GROUP_LABEL[g]}</Text>
                 {items.map((c) => {
                   const isActive = c.id === activeId
                   const isSelected = selected.has(c.id)
@@ -389,12 +399,11 @@ export function ConversationList({
                         selectionMode && isSelected && styles.convItemSelected,
                       ]}
                     >
-                      {/* 前导：多选态显示 checkbox，否则显示 pin 或占位 */}
                       {selectionMode ? (
                         isSelected ? (
                           <CheckSquare size={14} color={brand.solid} />
                         ) : (
-                          <Square size={14} color={text.muted} />
+                          <Square size={14} color={t.text.muted} />
                         )
                       ) : c.isPinned ? (
                         <Pin size={12} color={brand.solid} fill={brand.solid} />
@@ -402,12 +411,15 @@ export function ConversationList({
                         <View style={{ width: 12 }} />
                       )}
                       <Text
-                        style={[styles.convTitle, isActive && styles.convTitleActive]}
+                        style={[
+                          styles.convTitle,
+                          { color: t.text.primary },
+                          isActive && styles.convTitleActive,
+                        ]}
                         numberOfLines={1}
                       >
                         {c.title}
                       </Text>
-                      {/* 尾部：常规态显示 ⋮；多选态显示 check 指示 */}
                       {selectionMode ? (
                         <View style={styles.convMore}>
                           {isSelected ? <Check size={14} color={brand.solid} /> : null}
@@ -419,7 +431,7 @@ export function ConversationList({
                           style={styles.convMore}
                           accessibilityLabel="更多操作"
                         >
-                          <MoreVertical size={14} color={text.muted} />
+                          <MoreVertical size={14} color={t.text.muted} />
                         </Pressable>
                       )}
                     </Pressable>
@@ -431,18 +443,17 @@ export function ConversationList({
         )}
       </ScrollView>
 
-      {/* User footer：多选态隐藏，避免误触 */}
       {selectionMode ? null : (
-        <View style={styles.footer}>
+        <View style={[styles.footer, { borderTopColor: t.border.default }]}>
           <View style={styles.avatar}>
             <Text style={styles.avatarText}>{userInitial}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.userName} numberOfLines={1}>
+            <Text style={[styles.userName, { color: t.text.primary }]} numberOfLines={1}>
               {userName}
             </Text>
             {userEmail ? (
-              <Text style={styles.userEmail} numberOfLines={1}>
+              <Text style={[styles.userEmail, { color: t.text.secondary }]} numberOfLines={1}>
                 {userEmail}
               </Text>
             ) : null}
@@ -453,7 +464,7 @@ export function ConversationList({
             style={styles.iconBtn}
             accessibilityLabel="设置"
           >
-            <Settings size={16} color={text.secondary} />
+            <Settings size={16} color={t.text.secondary} />
           </Pressable>
           <Pressable
             onPress={openLogout}
@@ -461,7 +472,7 @@ export function ConversationList({
             style={styles.iconBtn}
             accessibilityLabel="退出登录"
           >
-            <LogOut size={16} color={text.secondary} />
+            <LogOut size={16} color={t.text.secondary} />
           </Pressable>
         </View>
       )}
@@ -472,7 +483,6 @@ export function ConversationList({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: bg.surface,
   },
   header: {
     paddingHorizontal: spacing.lg,
@@ -481,7 +491,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   logoBadge: {
@@ -493,8 +502,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  brandName: { fontSize: 15, fontWeight: '600', color: text.primary },
-  selectionCount: { fontSize: 14, fontWeight: '600', color: text.primary },
+  brandName: { fontSize: 15, fontWeight: '600' },
+  selectionCount: { fontSize: 14, fontWeight: '600' },
   iconBtn: {
     width: 32,
     height: 32,
@@ -510,13 +519,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     height: 36,
     borderRadius: radius.md,
-    backgroundColor: bg.elevated,
     gap: spacing.sm,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: text.primary,
     padding: 0,
   },
   groupLabel: {
@@ -524,7 +531,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     fontSize: 11,
     fontWeight: '600',
-    color: text.muted,
     textTransform: 'uppercase',
   },
   convItem: {
@@ -538,7 +544,7 @@ const styles = StyleSheet.create({
   },
   convItemActive: { backgroundColor: brand.light },
   convItemSelected: { backgroundColor: brand.light },
-  convTitle: { flex: 1, fontSize: 14, color: text.primary },
+  convTitle: { flex: 1, fontSize: 14 },
   convTitleActive: { color: brand.solid, fontWeight: '600' },
   convMore: {
     width: 24,
@@ -553,7 +559,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: border.default,
   },
   avatar: {
     width: 36,
@@ -564,6 +569,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  userName: { fontSize: 13, fontWeight: '600', color: text.primary },
-  userEmail: { fontSize: 11, color: text.secondary, marginTop: 1 },
+  userName: { fontSize: 13, fontWeight: '600' },
+  userEmail: { fontSize: 11, marginTop: 1 },
 })

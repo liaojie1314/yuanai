@@ -7,7 +7,7 @@ import { TABLET_MIN_WIDTH, useAuthStore } from '@yuanai/core'
 
 import { ConversationList } from '@/components/main/ConversationList'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
-import { bg, border } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /**
  * 已登录路由分组的自适应布局。
@@ -22,6 +22,7 @@ import { bg, border } from '@/theme/tokens'
  * - 手机 Drawer 的 drawerContent 是 `<ConversationList onClose={props.navigation.closeDrawer} />`
  */
 export default function MainLayout(): React.JSX.Element {
+  const t = useTheme()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
   const accessToken = useAuthStore((s) => s.accessToken)
@@ -41,8 +42,13 @@ export default function MainLayout(): React.JSX.Element {
 
   if (isTablet) {
     return (
-      <View style={styles.tabletRow}>
-        <View style={styles.tabletSidebar}>
+      <View style={[styles.tabletRow, { backgroundColor: t.bg.base }]}>
+        <View
+          style={[
+            styles.tabletSidebar,
+            { borderRightColor: t.border.default, backgroundColor: t.bg.surface },
+          ]}
+        >
           <ConversationList
             activeId={activeId}
             onPickConversation={(id) => {
@@ -59,10 +65,6 @@ export default function MainLayout(): React.JSX.Element {
 
   return (
     <Drawer
-      // 显式钉死初始路由与返回行为：Drawer 默认 backBehavior 回「注册顺序第一个
-      // 路由」，而文件路由把 settings 排在 chat 前 → 硬件返回从会话页弹到设置页，
-      // 再返回一次触发 GO_BACK not handled。history = 按实际访问序逐级返回
-      //（security → settings → chat），耗尽后交还系统正常退出。
       initialRouteName="chat/index"
       backBehavior="history"
       drawerContent={(props: { navigation: { closeDrawer: () => void } }) => (
@@ -76,7 +78,7 @@ export default function MainLayout(): React.JSX.Element {
       screenOptions={{
         headerShown: false,
         drawerType: 'slide',
-        drawerStyle: styles.drawerStyle,
+        drawerStyle: [styles.drawerStyle, { backgroundColor: t.bg.surface }],
         swipeEnabled: true,
       }}
     />
@@ -105,13 +107,11 @@ function DrawerContent({
 }
 
 const styles = StyleSheet.create({
-  tabletRow: { flex: 1, flexDirection: 'row', backgroundColor: bg.base },
+  tabletRow: { flex: 1, flexDirection: 'row' },
   tabletSidebar: {
     width: 280,
     borderRightWidth: StyleSheet.hairlineWidth,
-    borderRightColor: border.default,
-    backgroundColor: bg.surface,
   },
   tabletContent: { flex: 1 },
-  drawerStyle: { width: '82%', backgroundColor: bg.surface },
+  drawerStyle: { width: '82%' },
 })

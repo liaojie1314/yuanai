@@ -5,7 +5,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { useArtifactStore } from '@yuanai/core/stores'
 
-import { border, radius, spacing, text } from '@/theme/tokens'
+import { radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 interface CodeBlockProps {
   code: string
@@ -24,6 +25,7 @@ interface CodeBlockProps {
  * "面板查看"按钮 → `useArtifactStore.openView(...)` → ArtifactSurface Modal 打开。
  */
 export function CodeBlock({ code, language }: CodeBlockProps): React.JSX.Element {
+  const t = useTheme()
   const [copied, setCopied] = useState(false)
   const openView = useArtifactStore((s) => s.openView)
   const displayLang = language || 'text'
@@ -39,9 +41,22 @@ export function CodeBlock({ code, language }: CodeBlockProps): React.JSX.Element
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.lang}>{displayLang}</Text>
+    <View
+      style={[
+        styles.container,
+        {
+          borderColor: t.border.default,
+          backgroundColor: t.colorScheme === 'dark' ? '#1C2130' : '#F7F7F5',
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: t.colorScheme === 'dark' ? t.bg.elevated : '#EFEEEA' },
+        ]}
+      >
+        <Text style={[styles.lang, { color: t.text.secondary }]}>{displayLang}</Text>
         <View style={styles.actions}>
           <Pressable
             onPress={() => {
@@ -52,11 +67,13 @@ export function CodeBlock({ code, language }: CodeBlockProps): React.JSX.Element
             accessibilityLabel="复制代码"
           >
             {copied ? (
-              <Check size={13} color={text.secondary} />
+              <Check size={13} color={t.text.secondary} />
             ) : (
-              <Copy size={13} color={text.secondary} />
+              <Copy size={13} color={t.text.secondary} />
             )}
-            <Text style={styles.actLabel}>{copied ? '已复制' : '复制'}</Text>
+            <Text style={[styles.actLabel, { color: t.text.secondary }]}>
+              {copied ? '已复制' : '复制'}
+            </Text>
           </Pressable>
           <Pressable
             onPress={onOpenPanel}
@@ -64,13 +81,13 @@ export function CodeBlock({ code, language }: CodeBlockProps): React.JSX.Element
             style={styles.actBtn}
             accessibilityLabel="在面板中查看"
           >
-            <ExternalLink size={13} color={text.secondary} />
-            <Text style={styles.actLabel}>面板</Text>
+            <ExternalLink size={13} color={t.text.secondary} />
+            <Text style={[styles.actLabel, { color: t.text.secondary }]}>面板</Text>
           </Pressable>
         </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
-        <Text selectable style={styles.code}>
+        <Text selectable style={[styles.code, { color: t.text.primary }]}>
           {code}
         </Text>
       </ScrollView>
@@ -83,8 +100,6 @@ const styles = StyleSheet.create({
     marginVertical: spacing.sm,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
-    backgroundColor: '#F7F7F5',
     overflow: 'hidden',
   },
   header: {
@@ -93,11 +108,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs + 2,
-    backgroundColor: '#EFEEEA',
   },
   lang: {
     fontSize: 11,
-    color: text.secondary,
     fontFamily: 'monospace',
     textTransform: 'lowercase',
   },
@@ -109,12 +122,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
   },
-  actLabel: { fontSize: 11, color: text.secondary },
+  actLabel: { fontSize: 11 },
   codeScroll: { padding: spacing.md },
   code: {
     fontFamily: 'monospace',
     fontSize: 13,
     lineHeight: 19,
-    color: text.primary,
   },
 })

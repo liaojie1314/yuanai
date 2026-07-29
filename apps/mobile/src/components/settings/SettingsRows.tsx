@@ -2,7 +2,8 @@ import { ChevronRight } from 'lucide-react-native'
 import type { ReactNode } from 'react'
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
-import { bg, border, brand, radius, spacing, text } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 /** 设置分组卡片：白底圆角，内部行之间 hairline 分隔 */
 export function SettingsGroup({
@@ -12,10 +13,15 @@ export function SettingsGroup({
   label?: string
   children: ReactNode
 }): React.JSX.Element {
+  const t = useTheme()
   return (
     <View style={styles.groupWrap}>
-      {label ? <Text style={styles.groupLabel}>{label}</Text> : null}
-      <View style={styles.groupCard}>{children}</View>
+      {label ? <Text style={[styles.groupLabel, { color: t.text.secondary }]}>{label}</Text> : null}
+      <View
+        style={[styles.groupCard, { backgroundColor: t.bg.surface, borderColor: t.border.default }]}
+      >
+        {children}
+      </View>
     </View>
   )
 }
@@ -47,24 +53,42 @@ export function SettingsRow({
   disabled?: boolean
   onPress: () => void
 }): React.JSX.Element {
+  const t = useTheme()
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      android_ripple={{ color: 'rgba(0,0,0,0.05)' }}
-      style={[styles.row, divider && styles.rowDivider, disabled && { opacity: 0.5 }]}
+      android_ripple={{
+        color: t.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      }}
+      style={[
+        styles.row,
+        divider && styles.rowDivider,
+        divider && { borderBottomColor: t.border.default },
+        disabled && { opacity: 0.5 },
+      ]}
     >
       {icon ? <View style={styles.rowIcon}>{icon}</View> : null}
       <View style={styles.rowLabelWrap}>
-        <Text style={[styles.rowLabel, destructive && { color: border.danger }]}>{label}</Text>
-        {sublabel ? <Text style={styles.rowSublabel}>{sublabel}</Text> : null}
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: t.text.primary },
+            destructive && { color: t.border.danger },
+          ]}
+        >
+          {label}
+        </Text>
+        {sublabel ? (
+          <Text style={[styles.rowSublabel, { color: t.text.muted }]}>{sublabel}</Text>
+        ) : null}
       </View>
       {value ? (
-        <Text style={styles.rowValue} numberOfLines={1}>
+        <Text style={[styles.rowValue, { color: t.text.secondary }]} numberOfLines={1}>
           {value}
         </Text>
       ) : null}
-      <ChevronRight size={16} color={text.muted} />
+      <ChevronRight size={16} color={t.text.muted} />
     </Pressable>
   )
 }
@@ -81,17 +105,26 @@ export function SettingsSwitchRow({
   value: boolean
   onValueChange: (v: boolean) => void
 }): React.JSX.Element {
+  const t = useTheme()
   return (
-    <View style={[styles.row, divider && styles.rowDivider]}>
+    <View
+      style={[
+        styles.row,
+        divider && styles.rowDivider,
+        divider && { borderBottomColor: t.border.default },
+      ]}
+    >
       {icon ? <View style={styles.rowIcon}>{icon}</View> : null}
       <View style={styles.rowLabelWrap}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {sublabel ? <Text style={styles.rowSublabel}>{sublabel}</Text> : null}
+        <Text style={[styles.rowLabel, { color: t.text.primary }]}>{label}</Text>
+        {sublabel ? (
+          <Text style={[styles.rowSublabel, { color: t.text.muted }]}>{sublabel}</Text>
+        ) : null}
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: border.default, true: brand.solid }}
+        trackColor={{ false: t.border.default, true: brand.solid }}
         thumbColor="#FFFFFF"
       />
     </View>
@@ -112,9 +145,16 @@ export function SettingsSegmentRow({
   divider?: boolean
   onSelect: (value: string) => void
 }): React.JSX.Element {
+  const t = useTheme()
   return (
-    <View style={[styles.segmentRow, divider && styles.rowDivider]}>
-      <Text style={styles.rowLabel}>{label}</Text>
+    <View
+      style={[
+        styles.segmentRow,
+        divider && styles.rowDivider,
+        divider && { borderBottomColor: t.border.default },
+      ]}
+    >
+      <Text style={[styles.rowLabel, { color: t.text.primary }]}>{label}</Text>
       <View style={styles.segmentWrap}>
         {options.map((opt) => {
           const active = opt.value === selected
@@ -122,9 +162,19 @@ export function SettingsSegmentRow({
             <Pressable
               key={opt.value}
               onPress={() => onSelect(opt.value)}
-              style={[styles.segmentItem, active && styles.segmentItemActive]}
+              style={[
+                styles.segmentItem,
+                { borderColor: t.border.default, backgroundColor: t.bg.base },
+                active && { borderColor: brand.solid, backgroundColor: brand.light },
+              ]}
             >
-              <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
+              <Text
+                style={[
+                  styles.segmentText,
+                  { color: t.text.secondary },
+                  active && styles.segmentTextActive,
+                ]}
+              >
                 {opt.label}
               </Text>
             </Pressable>
@@ -139,16 +189,13 @@ const styles = StyleSheet.create({
   groupWrap: { marginBottom: spacing.lg },
   groupLabel: {
     fontSize: 13,
-    color: text.secondary,
     marginBottom: spacing.xs,
     marginLeft: spacing.xs,
   },
   groupCard: {
-    backgroundColor: bg.surface,
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
   },
   row: {
     minHeight: 52,
@@ -160,13 +207,12 @@ const styles = StyleSheet.create({
   },
   rowDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: border.default,
   },
   rowIcon: { width: 22, alignItems: 'center' },
   rowLabelWrap: { flex: 1, gap: 2 },
-  rowLabel: { fontSize: 15, color: text.primary },
-  rowSublabel: { fontSize: 12, color: text.muted },
-  rowValue: { fontSize: 14, color: text.secondary, maxWidth: 150 },
+  rowLabel: { fontSize: 15 },
+  rowSublabel: { fontSize: 12 },
+  rowValue: { fontSize: 14, maxWidth: 150 },
   segmentRow: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
@@ -178,12 +224,9 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: border.default,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: bg.base,
   },
-  segmentItemActive: { borderColor: brand.solid, backgroundColor: brand.light },
-  segmentText: { fontSize: 13, color: text.secondary },
+  segmentText: { fontSize: 13 },
   segmentTextActive: { color: brand.solid, fontWeight: '600' },
 })
