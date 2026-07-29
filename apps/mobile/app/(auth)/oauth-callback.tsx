@@ -6,6 +6,7 @@ import { ActivityIndicator, Text, View } from 'react-native'
 
 import { getMeWithToken, useAuthStore } from '@yuanai/core'
 
+import { useDialog } from '@/components/ui/Dialog'
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -23,6 +24,7 @@ import { useTheme } from '@/theme/useTheme'
  */
 export default function OAuthCallbackScreen(): React.JSX.Element {
   const { t } = useTranslation()
+  const dialog = useDialog()
   const theme = useTheme()
   const router = useRouter()
   const params = useLocalSearchParams<{
@@ -46,16 +48,20 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
       const desc = params.error_description ?? t('auth.oauthFailed')
       // 用 setTimeout 让页面先挂载，避免直接同步 replace 引发 warning
       setTimeout(() => {
-        console.warn('OAuth error:', desc)
-        router.replace('/(auth)/login')
+        void dialog.alert({ title: t('auth.oauthFailed'), message: String(desc) }).finally(() => {
+          router.replace('/(auth)/login')
+        })
       }, 0)
       return
     }
 
     if (!accessToken || !refreshToken) {
       setTimeout(() => {
-        console.warn('OAuth callback 缺少 token')
-        router.replace('/(auth)/login')
+        void dialog
+          .alert({ title: t('auth.oauthFailed'), message: t('auth.loginFailedHint') })
+          .finally(() => {
+            router.replace('/(auth)/login')
+          })
       }, 0)
       return
     }
@@ -70,11 +76,12 @@ export default function OAuthCallbackScreen(): React.JSX.Element {
         setAuth(user, accessToken, refreshToken, true)
         router.replace('/(main)/chat')
       } catch (err) {
-        console.warn('OAuth token 换取用户失败:', err)
+        const msg = err instanceof Error ? err.message : t('auth.oauthFailed')
+        await dialog.alert({ title: t('auth.oauthFailed'), message: msg })
         router.replace('/(auth)/login')
       }
     })()
-  }, [params, router, setAuth, t])
+  }, [params, router, setAuth, t, dialog])
 
   return (
     <View
