@@ -395,6 +395,7 @@ export function ConversationList({
                       onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
                       style={[
                         styles.convItem,
+                        { paddingVertical: t.density.convPy },
                         isActive && !selectionMode && styles.convItemActive,
                         selectionMode && isSelected && styles.convItemSelected,
                       ]}
@@ -413,7 +414,10 @@ export function ConversationList({
                       <Text
                         style={[
                           styles.convTitle,
-                          { color: t.text.primary },
+                          {
+                            color: t.text.primary,
+                            fontSize: t.typography.title,
+                          },
                           isActive && styles.convTitleActive,
                         ]}
                         numberOfLines={1}
@@ -538,13 +542,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginHorizontal: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
     borderRadius: radius.md,
     gap: spacing.sm,
   },
   convItemActive: { backgroundColor: brand.light },
   convItemSelected: { backgroundColor: brand.light },
-  convTitle: { flex: 1, fontSize: 14 },
+  convTitle: { flex: 1 },
   convTitleActive: { color: brand.solid, fontWeight: '600' },
   convMore: {
     width: 24,

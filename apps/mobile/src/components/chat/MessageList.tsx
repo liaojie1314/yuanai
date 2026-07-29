@@ -10,6 +10,7 @@ import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
 import { useChatStore } from '@yuanai/core/stores'
 
 import { spacing } from '@/theme/tokens'
+import { useTheme } from '@/theme/useTheme'
 
 import { AIMessage } from './AIMessage'
 import { AIMessageActions, type FeedbackType } from './AIMessageActions'
@@ -229,6 +230,9 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   },
   ref
 ) {
+  const t = useTheme()
+  // 驱动 memo 子气泡在颜色/字号/密度变化时失效
+  const prefsKey = `${t.colorScheme}-${t.typography.body}-${t.density.messagePy}`
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const streamingContent = useChatStore((s) => s.streamingContent)
   const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
@@ -451,12 +455,13 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       if (item.role === 'user') {
         const msgId = item.msgId
         // 乐观占位没有真实 ID，不给复制/编辑入口（后端还没落库，操作无处落）
-        if (msgId === null) return <UserMessage content={item.content} />
+        if (msgId === null) return <UserMessage content={item.content} prefsKey={prefsKey} />
         return (
           <UserMessage
             content={item.content}
             editing={editingMsgId === msgId}
             showActions
+            prefsKey={prefsKey}
             onStartEdit={() => onStartEdit(msgId)}
             onSubmitEdit={(next) => onSubmitEdit(msgId, next)}
             onCancelEdit={onCancelEdit}
@@ -492,10 +497,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           seamlessBottom={item.seamlessBottom}
           thinkContent={item.thinkContent}
           thinkDurationMs={item.thinkDurationMs}
+          prefsKey={prefsKey}
         />
       )
     },
     [
+      prefsKey,
       editingMsgId,
       msgFeedback,
       isStreaming,
@@ -529,8 +536,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         // header/footer 用 Pressable 拦一次 tap 关键盘（配合列表本身的
         // keyboardShouldPersistTaps="handled" —— tap 消息内的可交互元素时
         // 保留键盘，tap 空白区域时通过这里主动 dismiss）。
-        ListHeaderComponent={<Pressable style={styles.pad} onPress={Keyboard.dismiss} />}
-        ListFooterComponent={<Pressable style={styles.pad} onPress={Keyboard.dismiss} />}
+        ListHeaderComponent={
+          <Pressable style={{ height: t.density.messageGap }} onPress={Keyboard.dismiss} />
+        }
+        ListFooterComponent={
+          <Pressable style={{ height: t.density.messageGap }} onPress={Keyboard.dismiss} />
+        }
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={handleScrollBeginDrag}
@@ -548,7 +559,6 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  pad: { height: spacing.md },
   // 与 AIMessage 的正文左边缘对齐：行内边距 16 + 头像 28 + gap 8
   actionsRow: { paddingLeft: spacing.lg + 28 + spacing.sm, paddingRight: spacing.lg },
 })

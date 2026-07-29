@@ -154,7 +154,16 @@ export function ChatInput({
             onChangeText={setValue}
             placeholder="问点什么…"
             placeholderTextColor={t.text.muted}
-            style={[styles.input, { color: t.text.primary }]}
+            style={[
+              styles.input,
+              {
+                color: t.text.primary,
+                fontSize: t.typography.body,
+                lineHeight: t.typography.bodyLineHeight,
+                minHeight: Math.max(32, t.density.inputMinH - 16),
+                paddingVertical: Math.max(4, Math.round(t.density.inputPy / 2)),
+              },
+            ]}
             multiline
             onSubmitEditing={Platform.OS === 'ios' ? handleSend : undefined}
             blurOnSubmit={Platform.OS === 'ios'}
@@ -226,12 +235,8 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 22,
-    minHeight: 32,
     maxHeight: 120,
     paddingHorizontal: 4,
-    paddingVertical: 6,
   },
   sendBtn: {
     height: 34,

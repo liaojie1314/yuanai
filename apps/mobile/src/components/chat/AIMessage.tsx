@@ -28,6 +28,11 @@ interface AIMessageProps {
   thinkContent?: string
   /** 历史消息的思考耗时（毫秒） */
   thinkDurationMs?: number | undefined
+  /**
+   * 字号/密度快照。MessageList 透传以便 memo 在偏好变化时失效；
+   * 组件内仍读 useTheme()，本字段只作比较键。
+   */
+  prefsKey?: string
 }
 
 const mdRules = {
@@ -70,31 +75,44 @@ function AIMessageBase({
   streamingMsg = false,
   thinkContent = '',
   thinkDurationMs,
+  prefsKey: _prefsKey,
 }: AIMessageProps): React.JSX.Element {
   const t = useTheme()
   const display = streaming ? `${content}▊` : content
 
-  // Markdown 样式随主题变化；t 是 lightTheme/darkTheme 的稳定引用，切换时重算
+  // Markdown 样式随主题 / 字号变化
   const mdStyles = useMemo(
     () => ({
       body: {
         color: t.text.primary,
-        fontSize: 15,
-        lineHeight: 22,
+        fontSize: t.typography.body,
+        lineHeight: t.typography.bodyLineHeight,
       },
       paragraph: {
         marginTop: 0,
         marginBottom: spacing.sm,
       },
-      heading1: { fontSize: 22, fontWeight: '700' as const, marginBottom: spacing.sm },
-      heading2: { fontSize: 19, fontWeight: '700' as const, marginBottom: spacing.sm },
-      heading3: { fontSize: 17, fontWeight: '600' as const, marginBottom: spacing.xs },
+      heading1: {
+        fontSize: t.typography.h1,
+        fontWeight: '700' as const,
+        marginBottom: spacing.sm,
+      },
+      heading2: {
+        fontSize: t.typography.h2,
+        fontWeight: '700' as const,
+        marginBottom: spacing.sm,
+      },
+      heading3: {
+        fontSize: t.typography.h3,
+        fontWeight: '600' as const,
+        marginBottom: spacing.xs,
+      },
       link: { color: brand.solid, textDecorationLine: 'underline' as const },
       code_inline: {
         backgroundColor: brand.light,
         color: brand.hover,
         fontFamily: 'monospace',
-        fontSize: 13,
+        fontSize: t.typography.code,
         paddingHorizontal: 4,
         paddingVertical: 1,
         borderRadius: radius.sm,
@@ -118,8 +136,13 @@ function AIMessageBase({
     [t]
   )
 
+  const rowPad = {
+    paddingTop: isFirst ? t.density.messagePy : 0,
+    paddingBottom: isLast ? t.density.messagePy : 0,
+  }
+
   return (
-    <View style={[styles.row, !isFirst && styles.rowNoTopPad, !isLast && styles.rowNoBottomPad]}>
+    <View style={[styles.row, rowPad]}>
       {isFirst ? (
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>元</Text>
@@ -157,7 +180,8 @@ export const AIMessage = memo(
     prev.seamlessBottom === next.seamlessBottom &&
     prev.streamingMsg === next.streamingMsg &&
     prev.thinkContent === next.thinkContent &&
-    prev.thinkDurationMs === next.thinkDurationMs
+    prev.thinkDurationMs === next.thinkDurationMs &&
+    prev.prefsKey === next.prefsKey
 )
 
 const styles = StyleSheet.create({
@@ -166,10 +190,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
   },
-  rowNoTopPad: { paddingTop: 0 },
-  rowNoBottomPad: { paddingBottom: 0 },
   avatar: {
     width: 28,
     height: 28,

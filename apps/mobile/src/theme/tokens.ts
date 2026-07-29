@@ -83,6 +83,103 @@ export interface ThemeBrand {
   selectedFg: string
 }
 
+/**
+ * 用户可调字号衍生值。body 三档对齐移动端可读性（比 web 的 12/16/20 略保守）：
+ * small 13 / medium 15 / large 17；行高统一 1.45 倍。
+ */
+export interface TypographyTokens {
+  body: number
+  bodyLineHeight: number
+  /** 会话标题等次级正文 ≈ body - 2 */
+  title: number
+  /** 辅助说明 / 工具栏标签 */
+  caption: number
+  /** 行内 code / 代码块默认字号 */
+  code: number
+  h1: number
+  h2: number
+  h3: number
+}
+
+/**
+ * 用户可调密度；数值对齐 web `globals.css` 的 `--density-*`（compact / standard / loose）。
+ */
+export interface DensityTokens {
+  messageGap: number
+  messagePy: number
+  convPy: number
+  convGap: number
+  inputMinH: number
+  inputPy: number
+  settingsRowPy: number
+  settingsBlkMb: number
+}
+
+export type FontSizePref = 'small' | 'medium' | 'large'
+export type DensityPref = 'compact' | 'standard' | 'loose'
+
+const BODY_SIZE: Record<FontSizePref, number> = {
+  small: 13,
+  medium: 15,
+  large: 17,
+}
+
+export function resolveTypography(fontSize: FontSizePref = 'medium'): TypographyTokens {
+  const body = BODY_SIZE[fontSize] ?? BODY_SIZE.medium
+  const bodyLineHeight = Math.round(body * 1.45)
+  return {
+    body,
+    bodyLineHeight,
+    title: body - 2,
+    caption: Math.max(11, body - 4),
+    code: body - 2,
+    h1: body + 7,
+    h2: body + 4,
+    h3: body + 2,
+  }
+}
+
+const DENSITY_MAP: Record<DensityPref, DensityTokens> = {
+  compact: {
+    messageGap: 6,
+    messagePy: 0,
+    convPy: 2,
+    convGap: 0,
+    inputMinH: 34,
+    inputPy: 6,
+    settingsRowPy: 6,
+    settingsBlkMb: 8,
+  },
+  standard: {
+    messageGap: 20,
+    messagePy: 6,
+    convPy: 8,
+    convGap: 2,
+    inputMinH: 48,
+    inputPy: 14,
+    settingsRowPy: 14,
+    settingsBlkMb: 20,
+  },
+  loose: {
+    messageGap: 40,
+    messagePy: 16,
+    convPy: 16,
+    convGap: 8,
+    inputMinH: 64,
+    inputPy: 22,
+    settingsRowPy: 24,
+    settingsBlkMb: 32,
+  },
+}
+
+export function resolveDensity(density: DensityPref = 'standard'): DensityTokens {
+  return DENSITY_MAP[density] ?? DENSITY_MAP.standard
+}
+
+/** 静态主题默认：medium + standard（useTheme 会按 prefs 覆盖） */
+const defaultTypography = resolveTypography('medium')
+const defaultDensity = resolveDensity('standard')
+
 export interface ThemeTokens {
   colorScheme: 'light' | 'dark'
   bg: { base: string; surface: string; elevated: string }
@@ -91,6 +188,8 @@ export interface ThemeTokens {
   brand: ThemeBrand
   radius: typeof radius
   spacing: typeof spacing
+  typography: TypographyTokens
+  density: DensityTokens
 }
 
 export const lightTheme: ThemeTokens = {
@@ -101,6 +200,8 @@ export const lightTheme: ThemeTokens = {
   brand: { ...brand, selected: '#eff6ff', selectedFg: '#2563eb' },
   radius,
   spacing,
+  typography: defaultTypography,
+  density: defaultDensity,
 }
 
 export const darkTheme: ThemeTokens = {
@@ -112,4 +213,6 @@ export const darkTheme: ThemeTokens = {
   brand: { ...brand, selected: 'rgba(59,130,246,0.18)', selectedFg: '#93C5FD' },
   radius,
   spacing,
+  typography: defaultTypography,
+  density: defaultDensity,
 }

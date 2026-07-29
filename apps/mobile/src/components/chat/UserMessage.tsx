@@ -16,6 +16,8 @@ interface UserMessageProps {
   onStartEdit?: () => void
   onSubmitEdit?: (text: string) => void
   onCancelEdit?: () => void
+  /** 字号/密度快照，供 memo 在偏好变化时失效 */
+  prefsKey?: string
 }
 
 /**
@@ -36,6 +38,7 @@ function UserMessageBase({
   onStartEdit,
   onSubmitEdit,
   onCancelEdit,
+  prefsKey: _prefsKey,
 }: UserMessageProps): React.JSX.Element {
   const t = useTheme()
   const [draft, setDraft] = useState(content)
@@ -55,10 +58,16 @@ function UserMessageBase({
     setTimeout(() => setCopied(false), 1500)
   }
 
+  const typeStyle = {
+    fontSize: t.typography.body,
+    lineHeight: t.typography.bodyLineHeight,
+  }
+  const rowPad = { paddingVertical: t.density.messagePy }
+
   if (editing) {
     const trimmed = draft.trim()
     return (
-      <View style={styles.editRow}>
+      <View style={[styles.editRow, rowPad]}>
         <View
           style={[styles.editCard, { borderColor: t.border.focus, backgroundColor: t.bg.surface }]}
         >
@@ -68,7 +77,7 @@ function UserMessageBase({
             onChangeText={setDraft}
             multiline
             autoFocus
-            style={[styles.editInput, { color: t.text.primary }]}
+            style={[styles.editInput, typeStyle, { color: t.text.primary }]}
             placeholderTextColor={t.text.muted}
             accessibilityLabel="编辑消息内容"
           />
@@ -102,9 +111,9 @@ function UserMessageBase({
   }
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, rowPad]}>
       <View style={styles.bubble}>
-        <Text selectable style={styles.text}>
+        <Text selectable style={[styles.text, typeStyle]}>
           {content}
         </Text>
       </View>
@@ -144,14 +153,14 @@ export const UserMessage = memo(
   (prev, next) =>
     prev.content === next.content &&
     prev.editing === next.editing &&
-    prev.showActions === next.showActions
+    prev.showActions === next.showActions &&
+    prev.prefsKey === next.prefsKey
 )
 
 const styles = StyleSheet.create({
   row: {
     alignItems: 'flex-end',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
   },
   bubble: {
     maxWidth: '78%',
@@ -163,8 +172,6 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#FFFFFF',
-    fontSize: 15,
-    lineHeight: 22,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -174,7 +181,6 @@ const styles = StyleSheet.create({
   iconBtn: { width: 28, height: 24, alignItems: 'center', justifyContent: 'center' },
   editRow: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
   },
   editCard: {
     borderWidth: 1,
@@ -183,8 +189,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   editInput: {
-    fontSize: 15,
-    lineHeight: 22,
     maxHeight: 160,
     padding: 0,
     textAlignVertical: 'top',

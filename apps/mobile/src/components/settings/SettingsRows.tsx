@@ -15,8 +15,14 @@ export function SettingsGroup({
 }): React.JSX.Element {
   const t = useTheme()
   return (
-    <View style={styles.groupWrap}>
-      {label ? <Text style={[styles.groupLabel, { color: t.text.secondary }]}>{label}</Text> : null}
+    <View style={[styles.groupWrap, { marginBottom: t.density.settingsBlkMb }]}>
+      {label ? (
+        <Text
+          style={[styles.groupLabel, { color: t.text.secondary, fontSize: t.typography.caption }]}
+        >
+          {label}
+        </Text>
+      ) : null}
       <View
         style={[styles.groupCard, { backgroundColor: t.bg.surface, borderColor: t.border.default }]}
       >
@@ -63,6 +69,7 @@ export function SettingsRow({
       }}
       style={[
         styles.row,
+        { paddingVertical: t.density.settingsRowPy },
         divider && styles.rowDivider,
         divider && { borderBottomColor: t.border.default },
         disabled && { opacity: 0.5 },
@@ -73,18 +80,25 @@ export function SettingsRow({
         <Text
           style={[
             styles.rowLabel,
-            { color: t.text.primary },
+            { color: t.text.primary, fontSize: t.typography.body },
             destructive && { color: t.border.danger },
           ]}
         >
           {label}
         </Text>
         {sublabel ? (
-          <Text style={[styles.rowSublabel, { color: t.text.muted }]}>{sublabel}</Text>
+          <Text
+            style={[styles.rowSublabel, { color: t.text.muted, fontSize: t.typography.caption }]}
+          >
+            {sublabel}
+          </Text>
         ) : null}
       </View>
       {value ? (
-        <Text style={[styles.rowValue, { color: t.text.secondary }]} numberOfLines={1}>
+        <Text
+          style={[styles.rowValue, { color: t.text.secondary, fontSize: t.typography.title }]}
+          numberOfLines={1}
+        >
           {value}
         </Text>
       ) : null}
@@ -110,15 +124,22 @@ export function SettingsSwitchRow({
     <View
       style={[
         styles.row,
+        { paddingVertical: t.density.settingsRowPy },
         divider && styles.rowDivider,
         divider && { borderBottomColor: t.border.default },
       ]}
     >
       {icon ? <View style={styles.rowIcon}>{icon}</View> : null}
       <View style={styles.rowLabelWrap}>
-        <Text style={[styles.rowLabel, { color: t.text.primary }]}>{label}</Text>
+        <Text style={[styles.rowLabel, { color: t.text.primary, fontSize: t.typography.body }]}>
+          {label}
+        </Text>
         {sublabel ? (
-          <Text style={[styles.rowSublabel, { color: t.text.muted }]}>{sublabel}</Text>
+          <Text
+            style={[styles.rowSublabel, { color: t.text.muted, fontSize: t.typography.caption }]}
+          >
+            {sublabel}
+          </Text>
         ) : null}
       </View>
       <Switch
@@ -150,11 +171,14 @@ export function SettingsSegmentRow({
     <View
       style={[
         styles.segmentRow,
+        { paddingVertical: t.density.settingsRowPy },
         divider && styles.rowDivider,
         divider && { borderBottomColor: t.border.default },
       ]}
     >
-      <Text style={[styles.rowLabel, { color: t.text.primary }]}>{label}</Text>
+      <Text style={[styles.rowLabel, { color: t.text.primary, fontSize: t.typography.body }]}>
+        {label}
+      </Text>
       <View style={styles.segmentWrap}>
         {options.map((opt) => {
           const active = opt.value === selected
@@ -171,7 +195,10 @@ export function SettingsSegmentRow({
               <Text
                 style={[
                   styles.segmentText,
-                  { color: active ? t.brand.selectedFg : t.text.secondary },
+                  {
+                    color: active ? t.brand.selectedFg : t.text.secondary,
+                    fontSize: t.typography.caption,
+                  },
                   active && styles.segmentTextActive,
                 ]}
               >
@@ -186,9 +213,8 @@ export function SettingsSegmentRow({
 }
 
 const styles = StyleSheet.create({
-  groupWrap: { marginBottom: spacing.lg },
+  groupWrap: { marginBottom: 0 },
   groupLabel: {
-    fontSize: 13,
     marginBottom: spacing.xs,
     marginLeft: spacing.xs,
   },
@@ -198,11 +224,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   row: {
-    minHeight: 52,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
     gap: spacing.md,
   },
   rowDivider: {
@@ -210,12 +235,11 @@ const styles = StyleSheet.create({
   },
   rowIcon: { width: 22, alignItems: 'center' },
   rowLabelWrap: { flex: 1, gap: 2 },
-  rowLabel: { fontSize: 15 },
-  rowSublabel: { fontSize: 12 },
-  rowValue: { fontSize: 14, maxWidth: 150 },
+  rowLabel: {},
+  rowSublabel: {},
+  rowValue: { maxWidth: 150 },
   segmentRow: {
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
     gap: spacing.sm,
   },
   segmentWrap: { flexDirection: 'row', gap: spacing.sm },
@@ -227,6 +251,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  segmentText: { fontSize: 13 },
+  segmentText: {},
   segmentTextActive: { fontWeight: '600' },
 })
