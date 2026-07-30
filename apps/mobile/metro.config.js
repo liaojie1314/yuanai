@@ -68,7 +68,27 @@ const singletons = {
 }
 
 const defaultResolveRequest = config.resolver.resolveRequest
+
+// react-native-syntax-highlighter@2.1.0 按 react-syntax-highlighter@6 的旧目录
+// 布局 require 子路径；v16 把实现挪进 dist/cjs 且根目录不再提供这些入口，
+// 这里做一层子路径映射（dist/cjs 里的 named export 与旧版一致）。
+const rshCompat = {
+  // 本项目只用 hljs 高亮；v16 主入口 index.js 会连带 prism/prism-async 一起
+  // 打包，而它们 require('refractor/all')（refractor v5 走 exports 子路径，
+  // Metro 关闭 package exports 后解析不到）。直接映射到 default-highlight
+  // （纯 hljs 组件，default export 与 v6 主入口一致）。/prism 仅在
+  // highlighter="prism" 时真正渲染，本项目不用，同样指向 hljs 保证可解析。
+  'react-syntax-highlighter': 'react-syntax-highlighter/dist/cjs/default-highlight',
+  'react-syntax-highlighter/prism': 'react-syntax-highlighter/dist/cjs/default-highlight',
+  'react-syntax-highlighter/create-element': 'react-syntax-highlighter/dist/cjs/create-element',
+  'react-syntax-highlighter/styles/hljs': 'react-syntax-highlighter/dist/cjs/styles/hljs',
+  'react-syntax-highlighter/styles/prism': 'react-syntax-highlighter/dist/cjs/styles/prism',
+}
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (rshCompat[moduleName]) {
+    return context.resolveRequest(context, rshCompat[moduleName], platform)
+  }
   const target = coreExports[moduleName]
   if (target) {
     return { type: 'sourceFile', filePath: target }
