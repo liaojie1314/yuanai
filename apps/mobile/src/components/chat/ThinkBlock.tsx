@@ -6,7 +6,7 @@ import { useChatStore } from '@yuanai/core/stores'
 import type { ToolCall } from '@yuanai/types'
 import { useTranslation } from 'react-i18next'
 
-import { border, brand, radius, spacing } from '@/theme/tokens'
+import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
 import { ToolCallRow } from './ToolCallRow'
@@ -54,7 +54,12 @@ export const ThinkBlock = memo(function ThinkBlock({
   const hasToolCalls = toolCalls !== undefined && toolCalls.length > 0
 
   return (
-    <View style={styles.block}>
+    <View
+      style={[
+        styles.block,
+        { borderColor: theme.border.default, backgroundColor: theme.brand.selected },
+      ]}
+    >
       <Pressable
         onPress={() => setOpen((o) => !o)}
         android_ripple={{
@@ -66,7 +71,7 @@ export const ThinkBlock = memo(function ThinkBlock({
         accessibilityState={{ expanded: open }}
       >
         <Sparkles size={13} color={brand.solid} />
-        <Text style={styles.headerLabel}>{label}</Text>
+        <Text style={[styles.headerLabel, { color: theme.brand.selectedFg }]}>{label}</Text>
         {durationLabel ? (
           <Text style={[styles.duration, { color: theme.text.muted }]}>{durationLabel}</Text>
         ) : null}
@@ -138,9 +143,7 @@ const styles = StyleSheet.create({
   block: {
     marginBottom: spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: border.default,
     borderRadius: radius.md,
-    backgroundColor: brand.light,
     overflow: 'hidden',
   },
   header: {
@@ -150,7 +153,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     minHeight: 34,
   },
-  headerLabel: { flex: 1, fontSize: 12, fontWeight: '600', color: brand.hover },
+  headerLabel: { flex: 1, fontSize: 12, fontWeight: '600' },
   duration: { fontSize: 11 },
   body: {
     borderTopWidth: StyleSheet.hairlineWidth,

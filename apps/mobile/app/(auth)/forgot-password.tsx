@@ -191,14 +191,14 @@ export default function ForgotPasswordScreen(): React.JSX.Element {
                   paddingHorizontal: 12,
                   borderRadius: 8,
                   borderWidth: 1,
-                  borderColor: brand.solid,
-                  backgroundColor: brand.light,
+                  borderColor: theme.brand.solid,
+                  backgroundColor: theme.brand.selected,
                   alignItems: 'center',
                   justifyContent: 'center',
                   opacity: codeButtonDisabled ? 0.55 : 1,
                 }}
               >
-                <Text style={{ fontSize: 13, fontWeight: '500', color: brand.solid }}>
+                <Text style={{ fontSize: 13, fontWeight: '500', color: theme.brand.selectedFg }}>
                   {codeButtonLabel}
                 </Text>
               </Pressable>

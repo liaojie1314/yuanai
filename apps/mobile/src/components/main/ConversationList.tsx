@@ -397,8 +397,8 @@ export function ConversationList({
                       style={[
                         styles.convItem,
                         { paddingVertical: theme.density.convPy },
-                        isActive && !selectionMode && styles.convItemActive,
-                        selectionMode && isSelected && styles.convItemSelected,
+                        isActive && !selectionMode && { backgroundColor: theme.brand.selected },
+                        selectionMode && isSelected && { backgroundColor: theme.brand.selected },
                       ]}
                     >
                       {selectionMode ? (
@@ -419,7 +419,10 @@ export function ConversationList({
                             color: theme.text.primary,
                             fontSize: theme.typography.title,
                           },
-                          isActive && styles.convTitleActive,
+                          isActive && {
+                            color: theme.brand.selectedFg,
+                            fontWeight: '600' as const,
+                          },
                         ]}
                         numberOfLines={1}
                       >
@@ -546,10 +549,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     gap: spacing.sm,
   },
-  convItemActive: { backgroundColor: brand.light },
-  convItemSelected: { backgroundColor: brand.light },
   convTitle: { flex: 1 },
-  convTitleActive: { color: brand.solid, fontWeight: '600' },
   convMore: {
     width: 24,
     height: 24,
