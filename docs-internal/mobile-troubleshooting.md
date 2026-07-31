@@ -220,3 +220,48 @@
 - **强制新 bundle**：`am force-stop` + 重新 launch，HMR 有时不生效会让你验证到旧代码。
 - **模拟器崩溃后**：从旧快照恢复可能导致 App 丢失，
   用 `apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk` 重装即可，无需重编原生。
+
+## 15. react-syntax-highlighter v16 在 Metro 下的子路径坑
+
+`react-native-syntax-highlighter@2.1.0` 按 v6 旧目录布局 require
+`react-syntax-highlighter/styles/hljs`、`/prism`、`/create-element`；
+v16 把实现全部挪进 `dist/cjs` 且根目录不再提供这些入口，而本项目 Metro
+关闭了 package exports（见 metro.config.js 注释），于是直接红屏
+"Unable to resolve module"。
+
+**解法**（metro.config.js `rshCompat` 映射表）：
+
+- `styles/hljs`、`styles/prism`、`create-element` → `dist/cjs/` 对应路径
+- 裸入口与 `/prism` → `dist/cjs/default-highlight`（纯 hljs 组件）。
+  不能映射到 `dist/cjs/index` 或 `dist/cjs/prism*`：它们 require
+  `refractor/all`，refractor v5 只有 exports 子路径，Metro 关 exports 后
+  解析不到，且会把全量 prism 语法打进 bundle。
+
+另：`react-syntax-highlighter` 必须列为 apps/mobile 直接依赖（pnpm 隔离
+布局下 rnsh 自带的 ^6 peer 不会提升，Metro 只能沿 app node_modules 找到）。
+
+## 16. css-interop 无条件加载 reanimated 4 的 worklets 插件
+
+`react-native-css-interop@0.2.6` 的 `babel.js` 固定 require
+`react-native-worklets/plugin`（reanimated >= 4 专属包），本项目 pin
+reanimated 3.16.x（worklets 插件在 `react-native-reanimated/plugin`，
+babel.config.js 已挂）。清 Metro 缓存后必现
+"Cannot find module 'react-native-worklets/plugin'"。
+
+**解法**：pnpm patch 掉该 require（`patches/react-native-css-interop@0.2.6.patch`，
+root package.json `pnpm.patchedDependencies` 生效）。升级 nativewind /
+reanimated 4 时删 patch 重装即可。
+
+## 17. Artifact 沙箱在 RN WebView 的差异点
+
+- 控制台桥：core `CONSOLE_BOOTSTRAP` 检测 `window.ReactNativeWebView`
+  存在则 `postMessage(JSON 字符串)`，否则回落 iframe `parent.postMessage`。
+  WebView `onMessage` 收到的是字符串，需 `JSON.parse` 后按
+  `ARTIFACT_MSG_SOURCE` 过滤。
+- 暗色适配：`buildRunSrcDoc(lang, code, { dark })` 控制外壳底色/前景；
+  WebView 自身 style 也要给同色 backgroundColor，避免加载瞬间白闪。
+  用户完整 HTML 文档不注入主题（保留其自身样式）。
+- `localStorage`：WebView `domStorageEnabled={false}`（沙箱不需要持久化），
+  用户代码调用 localStorage 会抛错——属预期行为，错误会经桥显示在日志条。
+- 纯计算 JS 无 DOM 输出时页面全空易误判失败：`buildJsDoc` 执行后延时
+  检查 body，无可视内容则注入"代码已执行，无可视输出"提示。

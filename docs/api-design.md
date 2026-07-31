@@ -201,7 +201,7 @@ scope 固定为 `read:user user:email`。
 
 **Error 503:** `OAUTH_NOT_CONFIGURED` — 环境变量 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 未配置
 
-> 已落地：GitHub。规划中：Google（免费）、微信（需企业认证）；Apple 因 $99/年会员成本已从占位列表移除。
+> 已落地：GitHub、Google（同构端点 `GET /auth/google`、`GET /auth/google/callback`、`DELETE /auth/me/google`；`?mobile=1` 时 callback 302 到 `yuanai://oauth/callback`）。规划中：微信（需企业认证）；Apple 因 $99/年会员成本已从占位列表移除。
 
 ---
 
@@ -418,7 +418,7 @@ scope 固定为 `read:user user:email`。
 
 设置页「账号安全 → 第三方登录」的「绑定」按钮直接跳到 `GET /auth/github` 走完整 OAuth 流程；后端 callback 时按邮箱命中当前账号后自动写入 `github_id`（见 `_link_or_create_user`）。不再需要独立的 `/link` 端点。
 
-未来接入 Google / 微信时按同一模式扩展。
+Google 已按同一模式落地；未来接入微信时继续复用。
 
 ---
 

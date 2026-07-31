@@ -17,61 +17,61 @@ Phase 2 落地后 Web 端能力已远超最初 v1 目标，Phase 3 需**完整�
 
 ### 0.1 完整能力清单
 
-| 能力域            | 具体功能                              | Web 端来源                                     | 移动端策略                                                          |
-| ----------------- | ------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
-| **认证**          | 邮箱/密码 登录/注册                   | `apps/web/src/app/(auth)/login,register`       | Expo Router 路由组 `(auth)`                                         |
-|                   | 忘记密码 + 验证码                     | `apps/web/src/app/(auth)/forgot-password`      | 复用 `useSendVerifyCode` / `useResetPassword`                       |
-|                   | Google OAuth                          | `apps/web/src/app/(auth)/oauth/callback`       | 原生 SDK `@react-native-google-signin/google-signin`                |
-|                   | GitHub OAuth                          | 同上                                           | 系统浏览器 + Deep Link 回调（GitHub 无原生 SDK）                    |
-|                   | Token 持久化                          | `localStorage`                                 | `expo-secure-store`（access/refresh token）                         |
-| **会话**          | 列表 / 分组（置顶/今日/昨日/本周）    | `ChatInterface.groupedConvs`                   | `SectionList` 或 `FlashList` 分组渲染                               |
-|                   | 搜索 / 多选 / 批量删除                | 同上                                           | 顶部搜索栏 + 长按进多选态                                           |
-|                   | 重命名 / 置顶 / 删除                  | `openCvMenu` 弹层                              | 长按 → `ActionSheetIOS` / Android BottomSheet                       |
-|                   | 临时对话 (`temporary chat`)           | `useState<temporary>` + `stream.sendTemporary` | 完全复用 `useStream.sendTemporary`                                  |
-| **流式对话**      | SSE token 流                          | `useStream.send` + `fetch ReadableStream`      | 需替换底层：Web fetch stream → `react-native-sse`                   |
-|                   | 思考过程 (`thinking_delta`)           | `ThinkBlock.tsx`                               | 折叠式 `Collapsible` 组件                                           |
-|                   | 工具调用 (`tool_call_*`)              | `ToolCallRow.tsx`                              | 原生等价，卡片式展示                                                |
-|                   | 中断/停止                             | `stream.stop()`                                | `AbortController` 桥接 `react-native-sse.close()`                   |
-| **消息交互**      | 用户消息内编辑                        | `UserMessage` inline edit                      | Modal 或 inline TextInput                                           |
-|                   | 重新生成 + 多版本切换                 | `versionIdxs` state                            | 左右滑动切换版本（PagerView）                                       |
-|                   | 点赞 / 踩 + 反馈弹层                  | `feedbackDialog`                               | BottomSheet + 分类 chip                                             |
-|                   | 长按菜单（复制/删除）                 | `AIMessage` context menu                       | 长按 → `ActionSheet`                                                |
-|                   | 消息大纲 (`MessageOutline`)           | 右侧悬浮                                       | 手机：抽屉页；平板：右侧悬浮                                        |
-|                   | 滚动到底部 FAB                        | `showScrollFab`                                | 复用逻辑，FlashList `onScroll`                                      |
-| **Markdown 渲染** | 段落 / 列表 / 表格 / 引用             | `react-markdown + remark-gfm`                  | `react-native-markdown-display`                                     |
-|                   | 代码块 + 语言标签 + 复制按钮          | `CodeBlock.tsx`                                | `react-native-syntax-highlighter` + `expo-clipboard`                |
-|                   | 思考块折叠                            | `ThinkBlock`                                   | 原生 Collapsible                                                    |
-| **Artifacts**     | HTML/JS 沙箱运行                      | `ArtifactPanel` iframe                         | **平板**：`react-native-webview` 沙箱；**手机**：view-only 高亮显示 |
-|                   | CodeMirror 编辑                       | `@uiw/react-codemirror`                        | **平板**：WebView 内嵌 CodeMirror；**手机**：不提供编辑             |
-|                   | JSON 树 / CSV 表格预览                | 自实现                                         | 平板 WebView 复用；手机复用原生等价                                 |
-|                   | 控制台桥接                            | postMessage 桥                                 | WebView `onMessage` 桥（仅平板）                                    |
-| **附件**          | 图片 / 文档上传                       | `input[type=file]`                             | `expo-image-picker` + `expo-document-picker`                        |
-|                   | 相机拍照                              | `getUserMedia`                                 | `expo-image-picker` `launchCameraAsync`                             |
-|                   | ~~截屏~~                              | `getDisplayMedia`                              | **不做**（用户使用系统截屏）                                        |
-|                   | 秒传（hash）+ 分片上传                | `uploadFileSmart`                              | 完全复用 `packages/core` 现有实现                                   |
-|                   | 上传进度条                            | `AttachFile.progress`                          | 完全复用                                                            |
-| **语音**          | 语音输入                              | Web Speech API                                 | 原生 STT：`@react-native-voice/voice`                               |
-| **模型切换**      | 模型下拉列表                          | `ModelSelector`                                | BottomSheet 列表                                                    |
-|                   | 联网搜索 / 思考模式开关               | 输入区图标按钮                                 | 输入区图标按钮                                                      |
-| **分享**          | 生成 / 撤销分享链接                   | `ShareDialog`                                  | 复用 `useCreateShareLink`                                           |
-|                   | 密码保护 / 过期时间                   | 同上                                           | 复用                                                                |
-|                   | 分享出去                              | 复制链接                                       | **系统分享面板**（`Share.share`）                                   |
-|                   | 打开分享页                            | `/share/[token]`                               | Deep Link `yuanai://share/:token`                                   |
-| **设置**          | 个人资料（头像/用户名/邮箱）          | `SettingsModal profile`                        | 独立 Screen                                                         |
-|                   | 安全（改密/改邮箱/删除账号/清空对话） | `SettingsModal security`                       | 独立 Screen + 系统级二次确认                                        |
-|                   | 三方账号解绑                          | `useUnlinkGoogle/Github`                       | 复用                                                                |
-|                   | 外观（主题/字号/密度）                | `usePrefsStore`                                | 复用 store                                                          |
-|                   | 通知开关                              | `notif_browser/sound/ai`                       | Expo Notifications 权限 + 本地开关                                  |
-|                   | 语言（i18n）                          | `next-intl`                                    | `i18next`                                                           |
-|                   | 关于 / 版本号                         | 静态段                                         | `expo-application` 读取版本                                         |
-| **推送**          | Web Push (VAPID)                      | `lib/push.ts`                                  | **Expo Push**（token 上报 `/notifications/expo`）                   |
-|                   | AI 回复完成通知                       | `triggerAIReplyNotification`                   | 后端在流结束后触发 Expo Push                                        |
-|                   | 通知点击回到会话                      | Service Worker `notificationclick`             | `expo-notifications` `addNotificationResponseReceivedListener`      |
-| **主题**          | 明/暗/跟随系统                        | `data-theme` 属性                              | `NativeWind` `dark:` + `useColorScheme`                             |
-|                   | 用户手动切换                          | `usePrefsStore.theme`                          | 复用 store                                                          |
-| **布局**          | 手机（<768）：抽屉                    | Sidebar `md:hidden`                            | Drawer navigator                                                    |
-|                   | 平板（≥768）：双栏                    | Sidebar always visible                         | 左侧列表 + 右侧内容                                                 |
-|                   | 横竖屏切换                            | CSS 自适应                                     | `orientation: default` + `useWindowDimensions`                      |
+| 能力域            | 具体功能                              | Web 端来源                                     | 移动端策略                                                       |
+| ----------------- | ------------------------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| **认证**          | 邮箱/密码 登录/注册                   | `apps/web/src/app/(auth)/login,register`       | Expo Router 路由组 `(auth)`                                      |
+|                   | 忘记密码 + 验证码                     | `apps/web/src/app/(auth)/forgot-password`      | 复用 `useSendVerifyCode` / `useResetPassword`                    |
+|                   | Google OAuth                          | `apps/web/src/app/(auth)/oauth/callback`       | 原生 SDK `@react-native-google-signin/google-signin`             |
+|                   | GitHub OAuth                          | 同上                                           | 系统浏览器 + Deep Link 回调（GitHub 无原生 SDK）                 |
+|                   | Token 持久化                          | `localStorage`                                 | `expo-secure-store`（access/refresh token）                      |
+| **会话**          | 列表 / 分组（置顶/今日/昨日/本周）    | `ChatInterface.groupedConvs`                   | `SectionList` 或 `FlashList` 分组渲染                            |
+|                   | 搜索 / 多选 / 批量删除                | 同上                                           | 顶部搜索栏 + 长按进多选态                                        |
+|                   | 重命名 / 置顶 / 删除                  | `openCvMenu` 弹层                              | 长按 → `ActionSheetIOS` / Android BottomSheet                    |
+|                   | 临时对话 (`temporary chat`)           | `useState<temporary>` + `stream.sendTemporary` | 完全复用 `useStream.sendTemporary`                               |
+| **流式对话**      | SSE token 流                          | `useStream.send` + `fetch ReadableStream`      | 需替换底层：Web fetch stream → `react-native-sse`                |
+|                   | 思考过程 (`thinking_delta`)           | `ThinkBlock.tsx`                               | 折叠式 `Collapsible` 组件                                        |
+|                   | 工具调用 (`tool_call_*`)              | `ToolCallRow.tsx`                              | 原生等价，卡片式展示                                             |
+|                   | 中断/停止                             | `stream.stop()`                                | `AbortController` 桥接 `react-native-sse.close()`                |
+| **消息交互**      | 用户消息内编辑                        | `UserMessage` inline edit                      | Modal 或 inline TextInput                                        |
+|                   | 重新生成 + 多版本切换                 | `versionIdxs` state                            | 左右滑动切换版本（PagerView）                                    |
+|                   | 点赞 / 踩 + 反馈弹层                  | `feedbackDialog`                               | BottomSheet + 分类 chip                                          |
+|                   | 长按菜单（复制/删除）                 | `AIMessage` context menu                       | 长按 → `ActionSheet`                                             |
+|                   | 消息大纲 (`MessageOutline`)           | 右侧悬浮                                       | 手机：抽屉页；平板：右侧悬浮                                     |
+|                   | 滚动到底部 FAB                        | `showScrollFab`                                | 复用逻辑，FlashList `onScroll`                                   |
+| **Markdown 渲染** | 段落 / 列表 / 表格 / 引用             | `react-markdown + remark-gfm`                  | `react-native-markdown-display`                                  |
+|                   | 代码块 + 语言标签 + 复制按钮          | `CodeBlock.tsx`                                | `react-native-syntax-highlighter` + `expo-clipboard`             |
+|                   | 思考块折叠                            | `ThinkBlock`                                   | 原生 Collapsible                                                 |
+| **Artifacts**     | HTML/JS 沙箱运行                      | `ArtifactPanel` iframe                         | 手机/平板均可：`react-native-webview` 加载 core `buildRunSrcDoc` |
+|                   | CodeMirror 编辑                       | `@uiw/react-codemirror`                        | 移动端不提供编辑（只读高亮 + 运行预览）                          |
+|                   | JSON 树 / CSV 表格预览                | 自实现                                         | 移动端暂不提供（后续增量）                                       |
+|                   | 控制台桥接                            | postMessage 桥                                 | WebView `onMessage` 桥（面板底部日志条）                         |
+| **附件**          | 图片 / 文档上传                       | `input[type=file]`                             | `expo-image-picker` + `expo-document-picker`                     |
+|                   | 相机拍照                              | `getUserMedia`                                 | `expo-image-picker` `launchCameraAsync`                          |
+|                   | ~~截屏~~                              | `getDisplayMedia`                              | **不做**（用户使用系统截屏）                                     |
+|                   | 秒传（hash）+ 分片上传                | `uploadFileSmart`                              | 完全复用 `packages/core` 现有实现                                |
+|                   | 上传进度条                            | `AttachFile.progress`                          | 完全复用                                                         |
+| **语音**          | 语音输入                              | Web Speech API                                 | 原生 STT：`@react-native-voice/voice`                            |
+| **模型切换**      | 模型下拉列表                          | `ModelSelector`                                | BottomSheet 列表                                                 |
+|                   | 联网搜索 / 思考模式开关               | 输入区图标按钮                                 | 输入区图标按钮                                                   |
+| **分享**          | 生成 / 撤销分享链接                   | `ShareDialog`                                  | 复用 `useCreateShareLink`                                        |
+|                   | 密码保护 / 过期时间                   | 同上                                           | 复用                                                             |
+|                   | 分享出去                              | 复制链接                                       | **系统分享面板**（`Share.share`）                                |
+|                   | 打开分享页                            | `/share/[token]`                               | Deep Link `yuanai://share/:token`                                |
+| **设置**          | 个人资料（头像/用户名/邮箱）          | `SettingsModal profile`                        | 独立 Screen                                                      |
+|                   | 安全（改密/改邮箱/删除账号/清空对话） | `SettingsModal security`                       | 独立 Screen + 系统级二次确认                                     |
+|                   | 三方账号解绑                          | `useUnlinkGoogle/Github`                       | 复用                                                             |
+|                   | 外观（主题/字号/密度）                | `usePrefsStore`                                | 复用 store                                                       |
+|                   | 通知开关                              | `notif_browser/sound/ai`                       | Expo Notifications 权限 + 本地开关                               |
+|                   | 语言（i18n）                          | `next-intl`                                    | `i18next`                                                        |
+|                   | 关于 / 版本号                         | 静态段                                         | `expo-application` 读取版本                                      |
+| **推送**          | Web Push (VAPID)                      | `lib/push.ts`                                  | **Expo Push**（token 上报 `/notifications/expo`）                |
+|                   | AI 回复完成通知                       | `triggerAIReplyNotification`                   | 后端在流结束后触发 Expo Push                                     |
+|                   | 通知点击回到会话                      | Service Worker `notificationclick`             | `expo-notifications` `addNotificationResponseReceivedListener`   |
+| **主题**          | 明/暗/跟随系统                        | `data-theme` 属性                              | `NativeWind` `dark:` + `useColorScheme`                          |
+|                   | 用户手动切换                          | `usePrefsStore.theme`                          | 复用 store                                                       |
+| **布局**          | 手机（<768）：抽屉                    | Sidebar `md:hidden`                            | Drawer navigator                                                 |
+|                   | 平板（≥768）：双栏                    | Sidebar always visible                         | 左侧列表 + 右侧内容                                              |
+|                   | 横竖屏切换                            | CSS 自适应                                     | `orientation: default` + `useWindowDimensions`                   |
 
 ### 0.2 显式不做（v1 排除项）
 
@@ -79,7 +79,7 @@ Phase 2 落地后 Web 端能力已远超最初 v1 目标，Phase 3 需**完整�
 - 截屏功能
 - 桌面级"多标签"或多窗口
 - 打开外链的独立浏览器视图（用系统浏览器）
-- **手机端**的 Artifact 运行 / 编辑（只 view）
+- **手机端**的 Artifact 编辑（CodeMirror；运行预览已支持，编辑不做）
 
 ---
 
@@ -108,7 +108,7 @@ Phase 2 落地后 Web 端能力已远超最初 v1 目标，Phase 3 需**完整�
 | 手势                 | `react-native-gesture-handler`                    | 左滑删除、长按                            |
 | 动画                 | `react-native-reanimated` v3                      | 消息进场 / 光标闪烁                       |
 | BottomSheet          | `@gorhom/bottom-sheet`                            | 模型 / 设置 / 反馈                        |
-| WebView（Artifacts） | `react-native-webview`                            | 仅平板                                    |
+| WebView（Artifacts） | `react-native-webview`                            | 手机 + 平板运行预览                       |
 | 语音输入             | `@react-native-voice/voice`                       | 系统 STT                                  |
 | 分享                 | React Native `Share` API                          | 系统分享面板                              |
 | Google 登录          | `@react-native-google-signin/google-signin`       | 原生 SDK                                  |
@@ -964,7 +964,7 @@ export default function ChatScreen() {
       <ModelSelectorSheet />
       <MessageList ref={listRef} pairs={pairs} />
       <ChatInput onSend={handleSend} bottomInset={insets.bottom} />
-      <ArtifactSurface /> {/* 平板抽屉 / 手机全屏 view-only */}
+      <ArtifactSurface /> {/* 全屏 pageSheet：代码高亮 + WebView 预览 */}
     </View>
   )
 }
@@ -998,7 +998,7 @@ export default function ChatScreen() {
     <Pressable onPress={onCopy}>
       <Text>复制</Text>
     </Pressable>
-    {isRunnable(language) && isTablet && (
+    {isRunnable(language) && (
       <Pressable onPress={() => openArtifactRun({ lang: language, code })}>
         <Text>运行</Text>
       </Pressable>
@@ -1021,31 +1021,26 @@ export default function ChatScreen() {
 
 ### 7.6 Artifact 面板
 
-**手机（`< 768`）**：
+**手机 / 平板统一实现**（`ArtifactSurface`）：
 
 ```tsx
-// 只 view + 高亮，无 CodeMirror 无 WebView
+// 代码 tab：HighlightedCode（hljs atom-one，随主题）
+// 预览 tab：可运行语言用 WebView 加载 core buildRunSrcDoc 产物
 <Modal presentationStyle="pageSheet">
-  <ArtifactViewOnly payload={payload} onClose={close} />
+  <WebView
+    originWhitelist={['*']}
+    javaScriptEnabled
+    domStorageEnabled={false}
+    source={{ html: buildRunSrcDoc(lang, code, { dark }) }}
+    onMessage={(e) => appendConsoleLine(JSON.parse(e.nativeEvent.data))}
+  />
 </Modal>
 ```
 
-**平板（`≥ 768`）**：
-
-```tsx
-// 右侧抽屉，装 WebView 复用 Web 版 srcDoc
-<View className="border-border-default w-1/2 border-l">
-  <WebView
-    ref={webRef}
-    originWhitelist={['*']}
-    javaScriptEnabled
-    domStorageEnabled
-    source={{ html: buildRunSrcDoc(payload) }}
-    onMessage={(e) => parseConsoleMessage(JSON.parse(e.nativeEvent.data))}
-    sandbox="allow-scripts" // 拒绝 top navigation / plugins
-  />
-</View>
-```
+沙箱模板与控制台桥来自 `@yuanai/core`（`packages/core/src/utils/artifactRuntimes.ts`），
+Web iframe 与 RN WebView 共用一份；桥在 RN 环境走
+`window.ReactNativeWebView.postMessage`，日志渲染在面板底部。
+不做：CodeMirror 编辑、JSON/CSV 数据预览（后续增量）。
 
 **安全**：WebView 加载的 `srcDoc` 完全内嵌，不允许跨域；`onShouldStartLoadWithRequest` 拦截所有导航（除 `about:blank`）。
 
@@ -1295,7 +1290,7 @@ npx eas update --branch preview --message "fix: 键盘遮挡"
 - [ ] 后台切回：SSE 断开有提示；不自动续
 - [ ] 附件：相册选图（多选）、拍照、文档，超 10MB 分片，网络中断秒传恢复
 - [ ] 语音输入：连续说话文字追加；权限拒绝有引导
-- [ ] Artifact：平板 WebView 运行 HTML/JS，控制台桥有输出；手机 view 高亮但无运行按钮
+- [ ] Artifact：手机/平板 WebView 运行 HTML/CSS/JS，面板底部控制台条有输出；代码 tab 高亮
 - [ ] Markdown / 代码块 / 表格 / 复制
 - [ ] 消息编辑 / 重新生成 / 版本切换 / 点赞踩
 - [ ] 会话列表：搜索、分组、置顶、重命名、删除、多选批量删
@@ -1328,7 +1323,7 @@ npx eas update --branch preview --message "fix: 键盘遮挡"
 6. 思考过程、工具调用可折叠展示
 7. 附件：图片（相机/相册）、文档、秒传、分片 全部正常，附带上传进度
 8. 语音输入：按下说话文字自动追加，权限拒绝有引导
-9. Artifact：平板双栏 + WebView 运行 HTML/CSS/JS；手机只 view + 高亮
+9. Artifact：手机/平板均可 WebView 运行 HTML/CSS/JS + 代码高亮，暗色主题适配
 10. 分享：`Share.share` 弹出系统分享面板；分享链接可回落到 App
 11. 设置：6 个子屏功能完整；改密 / 改邮箱 / 删除账号 / 解绑三方 全部对齐 Web
 12. 通知：Expo Push token 上报后端；后台 AI 回复完成可收到并点击返回会话
