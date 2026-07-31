@@ -22,7 +22,7 @@ import { markdown as cmMarkdown } from '@codemirror/lang-markdown'
 import { useArtifactStore, type ArtifactPayload } from '@yuanai/core/stores'
 import { buildRunSrcDoc, isRunnableLang, isDataPreviewLang, isDark } from './utils'
 import { CodeHighlight } from './CodeHighlight'
-import { ARTIFACT_MSG_SOURCE } from './artifact-runtimes'
+import { ARTIFACT_MSG_SOURCE } from '@yuanai/core'
 
 const EMPTY_PAYLOAD: ArtifactPayload = { title: '', lang: '', code: '', mode: 'view' }
 

@@ -1,15 +1,7 @@
 import type { Conversation, Message } from '@yuanai/types'
 import type { ConvGroup, MockConversation, MockMessage } from '@yuanai/core/stores'
-import {
-  buildHtmlDoc,
-  buildCssDoc,
-  buildJsDoc,
-  buildReactDoc,
-  buildVueDoc,
-  buildSvelteDoc,
-  buildMarkdownDoc,
-  buildMermaidDoc,
-} from './artifact-runtimes'
+
+export { buildRunSrcDoc, isRunnableLang } from '@yuanai/core'
 
 /**
  * 消息对：一条用户消息 + 对应的多个 AI 回复（重新生成产生多版本）。
@@ -158,32 +150,6 @@ export function buildPairs(msgs: MockMessage[]): MsgPair[] {
     }
   }
   return merged
-}
-
-/**
- * 判断代码语言是否支持 iframe 沙箱运行。
- *
- * 覆盖 HTML/CSS/JS 及需运行时渲染的 JSX/TSX、Vue、Svelte、Markdown、Mermaid。
- * JSON/CSV 不在此列——它们走非 iframe 的数据预览分支（见 {@link isDataPreviewLang}）。
- */
-export function isRunnableLang(lang: string): boolean {
-  const l = lang.toLowerCase()
-  return (
-    l === 'html' ||
-    l === 'htm' ||
-    l === 'css' ||
-    l === 'js' ||
-    l === 'javascript' ||
-    l === 'mjs' ||
-    l === 'cjs' ||
-    l === 'jsx' ||
-    l === 'tsx' ||
-    l === 'vue' ||
-    l === 'svelte' ||
-    l === 'markdown' ||
-    l === 'md' ||
-    l === 'mermaid'
-  )
 }
 
 /**
@@ -341,40 +307,4 @@ const PRISM_LANG_ALIASES: Record<string, string> = {
 export function normalizePrismLang(lang: string): string {
   const l = lang.trim().toLowerCase()
   return PRISM_LANG_ALIASES[l] ?? l
-}
-
-/**
- * 根据代码语言构造 iframe `srcdoc` 内容。
- *
- * 按小写语言分发到 `artifact-runtimes.ts` 中对应的文档模板；所有产物均已在
- * `<head>` 注入控制台桥。未识别语言回退为 JS 运行时。
- */
-export function buildRunSrcDoc(lang: string, code: string): string {
-  const l = lang.toLowerCase()
-  switch (l) {
-    case 'html':
-    case 'htm':
-      return buildHtmlDoc(code)
-    case 'css':
-      return buildCssDoc(code)
-    case 'js':
-    case 'javascript':
-    case 'mjs':
-    case 'cjs':
-      return buildJsDoc(code)
-    case 'jsx':
-    case 'tsx':
-      return buildReactDoc(code)
-    case 'vue':
-      return buildVueDoc(code)
-    case 'svelte':
-      return buildSvelteDoc(code)
-    case 'markdown':
-    case 'md':
-      return buildMarkdownDoc(code)
-    case 'mermaid':
-      return buildMermaidDoc(code)
-    default:
-      return buildJsDoc(code)
-  }
 }

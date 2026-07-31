@@ -1,33 +1,7 @@
 import * as Clipboard from 'expo-clipboard'
 import { Check, Copy, ExternalLink } from 'lucide-react-native'
-import { memo, useMemo, useState } from 'react'
+import { memo, useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-// RN 桥接层：把 react-syntax-highlighter 的 vdom 转成原生 <Text> token 树
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const rnshModule = require('react-native-syntax-highlighter') as {
-  default: React.ComponentType<{
-    language?: string
-    style?: Record<string, React.CSSProperties | object>
-    customStyle?: object
-    fontSize?: number
-    fontFamily?: string
-    highlighter?: 'hljs' | 'prism'
-    PreTag?: React.ElementType
-    CodeTag?: React.ElementType
-    children: string
-  }> & { defaultProps?: object | undefined }
-}
-const SyntaxHighlighter = rnshModule.default
-// React 18.3 起函数组件的 defaultProps 触发 LogBox 告警；
-// 清掉它并在下方 JSX 显式传 fontSize/fontFamily/PreTag/CodeTag。
-SyntaxHighlighter.defaultProps = undefined
-// hljs atom-one 主题（与 plan 的 atom-one-light / atom-one-dark 一致）。
-// v16 子路径由 metro.config.js 映射到 dist/cjs（rnsh 按 v6 布局 require）。
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { atomOneDark, atomOneLight } = require('react-syntax-highlighter/styles/hljs') as {
-  atomOneDark: Record<string, object>
-  atomOneLight: Record<string, object>
-}
 
 import { useArtifactStore } from '@yuanai/core/stores'
 
@@ -35,7 +9,7 @@ import { radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 
-import { normalizeHighlightLang } from './codeLang'
+import { HighlightedCode } from './HighlightedCode'
 
 interface CodeBlockProps {
   code: string
@@ -48,7 +22,7 @@ interface CodeBlockInnerProps extends CodeBlockProps {
 }
 
 /** 超过该行数降级纯文本，避免每 token 一个 <Text> 导致长块卡顿 / ANR */
-const HIGHLIGHT_MAX_LINES = 50
+const HIGHLIGHT_MAX_LINES = 300
 
 /**
  * 代码块：语言标签 + 复制 / 面板 + 语法高亮（短块）或纯文本（长块）。
@@ -80,10 +54,6 @@ const CodeBlockInner = memo(function CodeBlockInner({
   const [copied, setCopied] = useState(false)
   const openView = useArtifactStore((s) => s.openView)
   const displayLang = language || 'text'
-  const hlLang = normalizeHighlightLang(language)
-  const lineCount = useMemo(() => code.split('\n').length, [code])
-  const canHighlight = lineCount <= HIGHLIGHT_MAX_LINES && hlLang !== 'text'
-  const themeStyle = colorScheme === 'dark' ? atomOneDark : atomOneLight
 
   const onCopy = async (): Promise<void> => {
     await Clipboard.setStringAsync(code)
@@ -144,38 +114,12 @@ const CodeBlockInner = memo(function CodeBlockInner({
         </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.codeScroll}>
-        {canHighlight ? (
-          <SyntaxHighlighter
-            language={hlLang}
-            style={themeStyle}
-            highlighter="hljs"
-            fontSize={codeFontSize}
-            fontFamily="monospace"
-            PreTag={View}
-            CodeTag={View}
-            customStyle={{
-              backgroundColor: 'transparent',
-              padding: 0,
-              margin: 0,
-            }}
-          >
-            {code}
-          </SyntaxHighlighter>
-        ) : (
-          <Text
-            selectable
-            style={[
-              styles.code,
-              {
-                color: theme.text.primary,
-                fontSize: codeFontSize,
-                lineHeight: Math.round(codeFontSize * 1.45),
-              },
-            ]}
-          >
-            {code}
-          </Text>
-        )}
+        <HighlightedCode
+          code={code}
+          language={language}
+          maxLines={HIGHLIGHT_MAX_LINES}
+          fontSize={codeFontSize}
+        />
       </ScrollView>
     </View>
   )
@@ -210,7 +154,4 @@ const styles = StyleSheet.create({
   },
   actLabel: { fontSize: 11 },
   codeScroll: { padding: spacing.md },
-  code: {
-    fontFamily: 'monospace',
-  },
 })

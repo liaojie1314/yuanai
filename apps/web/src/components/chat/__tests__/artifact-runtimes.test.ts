@@ -6,7 +6,7 @@ import {
   buildReactDoc,
   buildMarkdownDoc,
   buildMermaidDoc,
-} from '../artifact-runtimes'
+} from '@yuanai/core'
 import { isRunnableLang, isDataPreviewLang, buildRunSrcDoc, normalizePrismLang } from '../utils'
 
 /** 控制台桥标记：所有模板 head 必含，用于确认桥被注入 */

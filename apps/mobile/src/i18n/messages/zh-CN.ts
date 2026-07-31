@@ -101,6 +101,8 @@ export const zhCN = {
     copyCode: '复制代码',
     openPanel: '在面板中查看',
     panel: '面板',
+    artifactCode: '代码',
+    artifactPreview: '预览',
     thinking: '正在思考…',
     thinkingDone: '已完成思考',
     toolRunning: '进行中',

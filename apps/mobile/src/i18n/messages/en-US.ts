@@ -100,6 +100,8 @@ export const enUS: MobileMessages = {
     copyCode: 'Copy code',
     openPanel: 'Open in panel',
     panel: 'Panel',
+    artifactCode: 'Code',
+    artifactPreview: 'Preview',
     thinking: 'Thinking…',
     thinkingDone: 'Thought process',
     toolRunning: 'Running',
