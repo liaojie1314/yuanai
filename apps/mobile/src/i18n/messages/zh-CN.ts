@@ -103,6 +103,7 @@ export const zhCN = {
     panel: '面板',
     artifactCode: '代码',
     artifactPreview: '预览',
+    attachmentFile: '附件 {{name}}',
     thinking: '正在思考…',
     thinkingDone: '已完成思考',
     toolRunning: '进行中',

@@ -1,5 +1,5 @@
 import { FlashList, type FlashListProps } from '@shopify/flash-list'
-import type { Message } from '@yuanai/types'
+import type { Message, MessageFile } from '@yuanai/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useState } from 'react'
 import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
@@ -64,6 +64,8 @@ interface UserRow {
   /** 真实消息 ID；`null` = 流式期间的乐观占位（不可编辑/长按） */
   msgId: string | null
   content: string
+  /** 消息携带的附件（图片/文件卡片，渲染在气泡上方） */
+  files?: readonly MessageFile[]
 }
 
 interface AIRow {
@@ -290,6 +292,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           id: pair.userMsg.id,
           msgId: pair.userMsg.id,
           content: pair.userMsg.content,
+          ...(pair.userMsg.files.length > 0 ? { files: pair.userMsg.files } : {}),
         })
       }
 
@@ -455,10 +458,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       if (item.role === 'user') {
         const msgId = item.msgId
         // 乐观占位没有真实 ID，不给复制/编辑入口（后端还没落库，操作无处落）
-        if (msgId === null) return <UserMessage content={item.content} prefsKey={prefsKey} />
+        if (msgId === null)
+          return <UserMessage content={item.content} files={item.files} prefsKey={prefsKey} />
         return (
           <UserMessage
             content={item.content}
+            files={item.files}
             editing={editingMsgId === msgId}
             showActions
             prefsKey={prefsKey}

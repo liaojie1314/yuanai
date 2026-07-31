@@ -19,6 +19,7 @@ from app.models.message import Message, MessageRole
 from app.schemas.chat import (
     ConversationResponse,
     CreateConversationRequest,
+    MessageFileResponse,
     MessageResponse,
     SendMessageRequest,
     TemporaryChatRequest,
@@ -101,8 +102,36 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
         .limit(200)
     )
     messages = result.scalars().all()
+
+    # 批量联查消息附件（Message 模型上无 relationship，这里手动组装 files）
+    files_by_msg: dict[uuid.UUID, list[MessageFileResponse]] = {}
+    if messages:
+        from app.services.storage_service import storage
+
+        mf_rows = await db.execute(
+            select(MessageFile, File)
+            .join(File, File.id == MessageFile.file_id)
+            .where(MessageFile.message_id.in_([m.id for m in messages]))
+            .order_by(MessageFile.sort_order)
+        )
+        for mf, f in mf_rows.all():
+            files_by_msg.setdefault(mf.message_id, []).append(
+                MessageFileResponse(
+                    id=f.id,
+                    filename=f.filename,
+                    mime_type=f.mime_type,
+                    size_bytes=f.size_bytes,
+                    url=storage.get_url(f.s3_key),
+                )
+            )
+
+    items: list[MessageResponse] = []
+    for m in messages:
+        item = MessageResponse.model_validate(m)
+        item.files = files_by_msg.get(m.id, [])
+        items.append(item)
     return {
-        "messages": [MessageResponse.model_validate(m) for m in messages],
+        "messages": items,
         "next_cursor": None,
         "has_more": False,
     }
@@ -230,7 +259,9 @@ async def _generate_temp_sse(
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
     try:
-        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
+        async for event_type, token in stream_chat(
+            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+        ):
             if event_type == "thinking":
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
@@ -305,7 +336,9 @@ async def _generate_sse(
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
     try:
-        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
+        async for event_type, token in stream_chat(
+            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+        ):
             if event_type == "thinking":
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()

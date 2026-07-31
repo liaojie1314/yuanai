@@ -102,6 +102,7 @@ export const enUS: MobileMessages = {
     panel: 'Panel',
     artifactCode: 'Code',
     artifactPreview: 'Preview',
+    attachmentFile: 'Attachment {{name}}',
     thinking: 'Thinking…',
     thinkingDone: 'Thought process',
     toolRunning: 'Running',
