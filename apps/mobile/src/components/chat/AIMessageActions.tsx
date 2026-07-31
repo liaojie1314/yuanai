@@ -24,6 +24,8 @@ export type FeedbackType = 'like' | 'dislike'
 interface AIMessageActionsProps {
   /** 复制按钮要写入剪贴板的原文（Markdown 原样） */
   content: string
+  /** 已格式化的回复时间文案，显示在操作行最左（对齐 web ch-msg-ts） */
+  timestamp?: string | undefined
   /** 该问题下的回答版本总数；> 1 时显示 `‹ 2/3 ›` 切换条 */
   versionCount: number
   /** 当前展示的版本下标（0-based） */
@@ -48,6 +50,7 @@ interface AIMessageActionsProps {
  */
 export const AIMessageActions = memo(function AIMessageActions({
   content,
+  timestamp,
   versionCount,
   versionIdx,
   onVersionChange,
@@ -81,6 +84,9 @@ export const AIMessageActions = memo(function AIMessageActions({
 
   return (
     <View style={styles.row}>
+      {timestamp !== undefined ? (
+        <Text style={[styles.timestamp, { color: theme.text.muted }]}>{timestamp}</Text>
+      ) : null}
       {versionCount > 1 ? (
         <View style={styles.verNav}>
           <Pressable
@@ -178,6 +184,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   iconBtn: { width: 28, height: 26, alignItems: 'center', justifyContent: 'center' },
+  timestamp: { fontSize: 11, marginRight: 2 },
   verNav: {
     flexDirection: 'row',
     alignItems: 'center',

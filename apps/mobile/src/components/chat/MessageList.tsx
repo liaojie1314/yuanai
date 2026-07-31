@@ -5,9 +5,10 @@ import { useState } from 'react'
 import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
 import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native'
 import { useKeyboardState } from 'react-native-keyboard-controller'
+import { useTranslation } from 'react-i18next'
 
-import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
-import { useChatStore } from '@yuanai/core/stores'
+import { buildMessagePairs, clampVersionIdx, formatMsgTime } from '@yuanai/core/utils'
+import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
 
 import { spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
@@ -64,6 +65,8 @@ interface UserRow {
   /** 真实消息 ID；`null` = 流式期间的乐观占位（不可编辑/长按） */
   msgId: string | null
   content: string
+  /** 消息发送时间（ISO）；乐观占位无 —— 时间戳跟操作行一起只在真实消息显示 */
+  createdAt?: string
   /** 消息携带的附件（图片/文件卡片，渲染在气泡上方） */
   files?: readonly MessageFile[]
 }
@@ -107,6 +110,8 @@ interface ActionsRow {
   userContent: string
   /** 完整回复原文（复制用；块只有片段） */
   content: string
+  /** AI 回复时间（ISO），显示在操作行左侧（对齐 web ch-msg-ts） */
+  createdAt: string
   versionCount: number
   versionIdx: number
 }
@@ -233,8 +238,17 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   ref
 ) {
   const t = useTheme()
-  // 驱动 memo 子气泡在颜色/字号/密度变化时失效
-  const prefsKey = `${t.colorScheme}-${t.typography.body}-${t.density.messagePy}`
+  const { t: tr, i18n } = useTranslation()
+  const timeFmt = usePrefsStore((s) => s.timeFmt)
+  const dateFmt = usePrefsStore((s) => s.dateFmt)
+  // 驱动 memo 子气泡在颜色/字号/密度/时间格式变化时失效
+  const prefsKey = `${t.colorScheme}-${t.typography.body}-${t.density.messagePy}-${timeFmt}-${dateFmt}-${i18n.language}`
+  // 消息时间戳（今天只显时间；昨天带前缀；更早带日期），与 web formatMsgTime 同源
+  const fmtTs = useCallback(
+    (iso: string): string =>
+      formatMsgTime(iso, timeFmt, dateFmt, { yesterdayLabel: tr('chat.groups.yesterday') }),
+    [timeFmt, dateFmt, tr]
+  )
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const streamingContent = useChatStore((s) => s.streamingContent)
   const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
@@ -292,6 +306,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           id: pair.userMsg.id,
           msgId: pair.userMsg.id,
           content: pair.userMsg.content,
+          createdAt: pair.userMsg.createdAt,
           ...(pair.userMsg.files.length > 0 ? { files: pair.userMsg.files } : {}),
         })
       }
@@ -338,6 +353,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         pairKey: pair.pairKey,
         userContent,
         content: asst.content,
+        createdAt: asst.createdAt,
         versionCount: pair.assistants.length,
         versionIdx,
       })
@@ -453,6 +469,14 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     followRef.current = nowAtBottom
   }, [])
 
+  // FlashList 的 cell 只有在 data / extraData 变化时才重渲染；renderItem 闭包
+  // 变化不被追踪。凡 renderItem 读到但不在 rows 里的状态都要收进 extraData，
+  // 否则改偏好（时间格式/主题）或进入编辑态后可见行不刷新（真机已复现）。
+  const extraData = useMemo(
+    () => ({ prefsKey, editingMsgId, msgFeedback, isStreaming }),
+    [prefsKey, editingMsgId, msgFeedback, isStreaming]
+  )
+
   const renderItem = useCallback(
     ({ item }: { item: Row }): React.JSX.Element => {
       if (item.role === 'user') {
@@ -466,6 +490,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
             files={item.files}
             editing={editingMsgId === msgId}
             showActions
+            timestamp={item.createdAt !== undefined ? fmtTs(item.createdAt) : undefined}
             prefsKey={prefsKey}
             onStartEdit={() => onStartEdit(msgId)}
             onSubmitEdit={(next) => onSubmitEdit(msgId, next)}
@@ -480,6 +505,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           <View style={styles.actionsRow}>
             <AIMessageActions
               content={item.content}
+              timestamp={fmtTs(item.createdAt)}
               versionCount={item.versionCount}
               versionIdx={item.versionIdx}
               feedback={msgFeedback[msgId]}
@@ -508,6 +534,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     },
     [
       prefsKey,
+      fmtTs,
       editingMsgId,
       msgFeedback,
       isStreaming,
@@ -525,6 +552,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       <TypedFlashList
         ref={listRef}
         data={rows}
+        extraData={extraData}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         // FlashList v1 用 estimatedItemSize；条目已按块拆小，取一块的中位高度。
