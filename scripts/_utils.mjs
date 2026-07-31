@@ -76,14 +76,20 @@ export function capture(cmd, args = [], opts = {}) {
  * 后台启动进程，返回 ChildProcess。
  * @param {string} cmd
  * @param {string[]} args
- * @param {{ cwd?: string }} opts
+ * @param {{ cwd?: string, detach?: boolean }} opts
+ *   detach: 与脚本生命周期解绑（stdio 静默、unref、独立进程组）。用于模拟器这类
+ *           "启动后跨会话复用"的进程 —— 不 detach 的话 child ref 会让 node 事件
+ *           循环在主流程结束后仍不退出（cleanup 永远不执行，脚本变僵尸）。
  */
 export function bg(cmd, args = [], opts = {}) {
-  return spawn(cmd, args, {
-    stdio: 'inherit',
+  const child = spawn(cmd, args, {
+    stdio: opts.detach ? 'ignore' : 'inherit',
     shell: WIN,
     cwd: opts.cwd,
+    detached: Boolean(opts.detach) && !WIN,
   })
+  if (opts.detach) child.unref()
+  return child
 }
 
 /** 跨平台强制终止进程及其子进程 */
@@ -99,6 +105,47 @@ export function killProc(proc) {
       proc.kill('SIGTERM')
     }
   } catch {}
+}
+
+/** 找出监听指定 TCP 端口的 pid 列表（找不到/工具缺失时返回 []） */
+export function pidsOnPort(port) {
+  if (WIN) {
+    const out = capture('netstat', ['-ano', '-p', 'tcp'])
+    return [...new Set(
+      out.split(/\r?\n/)
+        .filter((l) => l.includes(`:${port}`) && /LISTENING/i.test(l))
+        .map((l) => l.trim().split(/\s+/).at(-1))
+        .filter((p) => p && p !== '0')
+    )]
+  }
+  const out = capture('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN']) ||
+              capture('fuser', [`${port}/tcp`])
+  return out.split(/\s+/).filter(Boolean)
+}
+
+/**
+ * 确保端口空闲：发现残留监听进程（上次会话的 Metro / 后端等）时 SIGTERM 清掉。
+ * expo start 在端口被占时会交互式询问"换端口？"，非交互环境直接跳过 dev server，
+ * 脚本会假死 —— 因此必须在启动前清场。
+ */
+export async function freePort(port, label = '') {
+  let pids = pidsOnPort(port)
+  if (pids.length === 0) return
+  warn(`端口 ${port} 被占用（${label || '残留进程'}: pid ${pids.join(', ')}），正在清理...`)
+  for (const pid of pids) {
+    try { process.kill(Number(pid), 'SIGTERM') } catch {}
+  }
+  // 给 SIGTERM 2s 优雅退出窗口，仍占着就 SIGKILL
+  await sleep(2000)
+  pids = pidsOnPort(port)
+  for (const pid of pids) {
+    try { process.kill(Number(pid), 'SIGKILL') } catch {}
+  }
+  if (pids.length > 0) await sleep(500)
+  if (pidsOnPort(port).length > 0) {
+    err(`无法释放端口 ${port}，请手动处理：lsof -i tcp:${port}`)
+  }
+  ok(`端口 ${port} 已释放`)
 }
 
 // ── 等待工具 ──────────────────────────────────────────────────────────

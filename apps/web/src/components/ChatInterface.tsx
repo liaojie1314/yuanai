@@ -585,11 +585,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         history,
         model: activeModel.id,
         enableThinking: showThinking,
-        onEnd: (finalContent) => {
+        onEnd: ({ content: finalContent, think, thinkDurationMs }) => {
           const assistantMsg: MockMessage = {
             id: `temp-assistant-${Date.now()}`,
             role: 'assistant',
             parts: [{ type: 'text', content: finalContent }],
+            ...(think ? { thinkContent: think } : {}),
+            ...(thinkDurationMs > 0 ? { thinkDurationMs } : {}),
             createdAt: Date.now(),
           }
           setTempMessages((prev) => [...prev, assistantMsg])

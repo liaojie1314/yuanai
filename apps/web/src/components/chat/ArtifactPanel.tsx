@@ -22,7 +22,7 @@ import { markdown as cmMarkdown } from '@codemirror/lang-markdown'
 import { useArtifactStore, type ArtifactPayload } from '@yuanai/core/stores'
 import { buildRunSrcDoc, isRunnableLang, isDataPreviewLang, isDark } from './utils'
 import { CodeHighlight } from './CodeHighlight'
-import { ARTIFACT_MSG_SOURCE } from './artifact-runtimes'
+import { ARTIFACT_MSG_SOURCE } from '@yuanai/core'
 
 const EMPTY_PAYLOAD: ArtifactPayload = { title: '', lang: '', code: '', mode: 'view' }
 
@@ -401,7 +401,7 @@ export function ArtifactPanel(): JSX.Element {
               value={editedCode}
               extensions={langExtensions(shown.lang)}
               theme={dark ? 'dark' : 'light'}
-              onChange={(v) => setEditedCode(v)}
+              onChange={(v: string) => setEditedCode(v)}
               height="100%"
             />
           ) : (

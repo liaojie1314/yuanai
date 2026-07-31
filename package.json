@@ -10,6 +10,8 @@
     "dev": "turbo run dev",
     "dev:mock": "pnpm --filter @yuanai/web dev:mock",
     "dev:real": "node scripts/dev.mjs",
+    "dev:mobile": "node scripts/dev-mobile.mjs",
+    "dev:mobile:mock": "node scripts/dev-mobile-mock.mjs",
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint",
@@ -25,21 +27,40 @@
     "prepare": "husky"
   },
   "devDependencies": {
-    "turbo": "latest",
-    "eslint": "^9.0.0",
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
     "@eslint/js": "^9.0.0",
-    "typescript-eslint": "^8.0.0",
+    "eslint": "^9.0.0",
     "eslint-config-prettier": "^9.0.0",
     "eslint-plugin-import": "^2.31.0",
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.4.0",
-    "prettier": "^3.0.0",
-    "prettier-plugin-tailwindcss": "^0.6.0",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
-    "@commitlint/cli": "^19.0.0",
-    "@commitlint/config-conventional": "^19.0.0",
-    "typescript": "^5.7.0"
+    "prettier": "^3.0.0",
+    "prettier-plugin-tailwindcss": "^0.6.0",
+    "turbo": "latest",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "metro": "0.81.5",
+      "metro-cache": "0.81.5",
+      "metro-cache-key": "0.81.5",
+      "metro-config": "0.81.5",
+      "metro-core": "0.81.5",
+      "metro-file-map": "0.81.5",
+      "metro-resolver": "0.81.5",
+      "metro-runtime": "0.81.5",
+      "metro-source-map": "0.81.5",
+      "metro-symbolicate": "0.81.5",
+      "metro-transform-plugins": "0.81.5",
+      "metro-transform-worker": "0.81.5"
+    },
+    "patchedDependencies": {
+      "react-native-css-interop@0.2.6": "patches/react-native-css-interop@0.2.6.patch"
+    }
   },
   "lint-staged": {
     "apps/**/*.{ts,tsx}": [

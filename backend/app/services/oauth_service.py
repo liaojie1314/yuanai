@@ -79,28 +79,39 @@ def _ensure_configured(provider: str) -> None:
         raise OAuthConfigError(detail)
 
 
-async def _write_state(provider: str) -> str:
-    """生成随机 state 写入 Redis（provider 隔离），返回 state 供拼 URL。"""
+async def _write_state(provider: str, *, mobile: bool = False) -> str:
+    """生成随机 state 写入 Redis（provider 隔离），返回 state 供拼 URL。
+
+    Redis value 存 ``web`` / ``mobile``，callback 时据此决定回跳 Web 还是 deep link。
+    """
     state = secrets.token_urlsafe(32)
-    await redis_client.setex(_state_key(provider, state), _STATE_TTL_SECONDS, "1")
+    flag = "mobile" if mobile else "web"
+    await redis_client.setex(_state_key(provider, state), _STATE_TTL_SECONDS, flag)
     return state
 
 
-async def _verify_state(provider: str, state: str) -> bool:
-    """一次性校验并删除 state；不存在 / 过期 → False。"""
+async def _verify_state(provider: str, state: str) -> str | None:
+    """一次性校验并删除 state。
+
+    返回 ``\"web\"`` / ``\"mobile\"``；不存在 / 过期 → None。
+    兼容历史 value ``\"1\"``（视为 web）。
+    """
     key = _state_key(provider, state)
     val = await redis_client.get(key)
     if val is None:
-        return False
+        return None
     await redis_client.delete(key)
-    return True
+    raw = val.decode() if isinstance(val, (bytes, bytearray)) else str(val)
+    if raw == "mobile":
+        return "mobile"
+    return "web"
 
 
 # ── GitHub 授权 URL / token / profile ────────────────
-async def build_github_authorize_url() -> str:
+async def build_github_authorize_url(*, mobile: bool = False) -> str:
     """生成 GitHub 授权 URL；把 state 写入 Redis 用于 CSRF 校验。"""
     _ensure_configured("github")
-    state = await _write_state("github")
+    state = await _write_state("github", mobile=mobile)
     params = {
         "client_id": settings.github_client_id,
         "redirect_uri": settings.github_redirect_uri,
@@ -189,10 +200,10 @@ async def _fetch_github_profile(access_token: str) -> dict[str, str]:
 
 
 # ── Google 授权 URL / token / profile ────────────────
-async def build_google_authorize_url() -> str:
+async def build_google_authorize_url(*, mobile: bool = False) -> str:
     """生成 Google 授权 URL；把 state 写入 Redis 用于 CSRF 校验。"""
     _ensure_configured("google")
-    state = await _write_state("google")
+    state = await _write_state("google", mobile=mobile)
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -341,10 +352,16 @@ async def _pick_available_username(base: str, email: str, db: AsyncSession) -> s
     return f"u_{secrets.token_hex(6)}"
 
 
-async def complete_github_callback(code: str, state: str, db: AsyncSession) -> AuthResponse:
-    """GitHub 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。"""
+async def complete_github_callback(
+    code: str, state: str, db: AsyncSession
+) -> tuple[AuthResponse, bool]:
+    """GitHub 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。
+
+    返回 ``(AuthResponse, is_mobile)``。
+    """
     _ensure_configured("github")
-    if not await _verify_state("github", state):
+    platform = await _verify_state("github", state)
+    if platform is None:
         raise OAuthFlowError("OAUTH_STATE_INVALID", "state 参数无效或已过期，请重新发起登录")
 
     access_token = await _exchange_code_for_token(code)
@@ -354,13 +371,20 @@ async def complete_github_callback(code: str, state: str, db: AsyncSession) -> A
     # 复用 auth_service 的 refresh token 写 Redis 逻辑，避免两处代码分叉
     from app.services.auth_service import build_auth_response
 
-    return await build_auth_response(user)
+    resp = await build_auth_response(user)
+    return resp, platform == "mobile"
 
 
-async def complete_google_callback(code: str, state: str, db: AsyncSession) -> AuthResponse:
-    """Google 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。"""
+async def complete_google_callback(
+    code: str, state: str, db: AsyncSession
+) -> tuple[AuthResponse, bool]:
+    """Google 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。
+
+    返回 ``(AuthResponse, is_mobile)``。
+    """
     _ensure_configured("google")
-    if not await _verify_state("google", state):
+    platform = await _verify_state("google", state)
+    if platform is None:
         raise OAuthFlowError("OAUTH_STATE_INVALID", "state 参数无效或已过期，请重新发起登录")
 
     access_token = await _exchange_google_code_for_token(code)
@@ -369,24 +393,34 @@ async def complete_google_callback(code: str, state: str, db: AsyncSession) -> A
 
     from app.services.auth_service import build_auth_response
 
-    return await build_auth_response(user)
+    resp = await build_auth_response(user)
+    return resp, platform == "mobile"
 
 
-def build_frontend_redirect(resp: AuthResponse) -> str:
-    """把 AuthResponse 拼到前端 callback 页面 URL 上，供 302 使用。"""
+def build_frontend_redirect(resp: AuthResponse, *, mobile: bool = False) -> str:
+    """把 AuthResponse 拼到前端 callback 页面 URL 上，供 302 使用。
+
+    mobile=True 时回 ``yuanai://oauth/callback?...``，供 App deep link 消费。
+    """
     params = {
         "access_token": resp.access_token,
         "refresh_token": resp.refresh_token,
         "token_type": resp.token_type,
         "expires_in": str(settings.access_token_expire_minutes * 60),
     }
-    return f"{settings.web_app_url.rstrip('/')}/oauth/callback?{urlencode(params)}"
+    qs = urlencode(params)
+    if mobile:
+        return f"yuanai://oauth/callback?{qs}"
+    return f"{settings.web_app_url.rstrip('/')}/oauth/callback?{qs}"
 
 
-def build_frontend_error_redirect(code: str, message: str) -> str:
+def build_frontend_error_redirect(code: str, message: str, *, mobile: bool = False) -> str:
     """OAuth 失败时的前端跳转，用于统一在 callback 页面弹出错误提示。"""
     params = {"error": code, "error_description": message}
-    return f"{settings.web_app_url.rstrip('/')}/oauth/callback?{urlencode(params)}"
+    qs = urlencode(params)
+    if mobile:
+        return f"yuanai://oauth/callback?{qs}"
+    return f"{settings.web_app_url.rstrip('/')}/oauth/callback?{qs}"
 
 
 __all__ = [

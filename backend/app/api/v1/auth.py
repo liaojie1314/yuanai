@@ -296,10 +296,13 @@ async def unlink_google(current_user: CurrentUser, db: DB) -> UserResponse:
 
 # ── GitHub OAuth ─────────────────────────────────────────────
 @router.get("/github")
-async def github_authorize() -> RedirectResponse:
-    """302 到 GitHub 授权页；state 写入 Redis 供 callback 校验。"""
+async def github_authorize(mobile: int = 0) -> RedirectResponse:
+    """302 到 GitHub 授权页；state 写入 Redis 供 callback 校验。
+
+    ``mobile=1`` 时 state 标记为 mobile，callback 完成后 302 到 yuanai:// deep link。
+    """
     try:
-        url = await oauth_service.build_github_authorize_url()
+        url = await oauth_service.build_github_authorize_url(mobile=bool(mobile))
     except OAuthConfigError as e:
         raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
     return RedirectResponse(url, status_code=302)
@@ -318,6 +321,9 @@ async def github_callback(
     任何失败都以 `error` / `error_description` 参数回跳前端 callback 页面，
     由前端统一渲染成 toast，不在此处返回 JSON（避免用户看到裸 500 页面）。
     """
+    # 错误发生在校验 state 之前无法知道是否 mobile；默认 web。
+    # complete_* 成功后用返回的 is_mobile；失败时若 state 仍在则无法再读（已消费）。
+    # 因此 mobile 错误回跳依赖：provider 错误页无法带 mobile 标记时回 web 是可接受降级。
     if error:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect(
@@ -333,7 +339,7 @@ async def github_callback(
             status_code=302,
         )
     try:
-        resp = await oauth_service.complete_github_callback(code, state, db)
+        resp, is_mobile = await oauth_service.complete_github_callback(code, state, db)
     except OAuthConfigError as e:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
@@ -344,15 +350,20 @@ async def github_callback(
             oauth_service.build_frontend_error_redirect(e.code, e.message),
             status_code=302,
         )
-    return RedirectResponse(oauth_service.build_frontend_redirect(resp), status_code=302)
+    return RedirectResponse(
+        oauth_service.build_frontend_redirect(resp, mobile=is_mobile), status_code=302
+    )
 
 
 # ── Google OAuth ─────────────────────────────────────────────
 @router.get("/google")
-async def google_authorize() -> RedirectResponse:
-    """302 到 Google 授权页；state 写入 Redis 供 callback 校验。"""
+async def google_authorize(mobile: int = 0) -> RedirectResponse:
+    """302 到 Google 授权页；state 写入 Redis 供 callback 校验。
+
+    ``mobile=1`` 时 state 标记为 mobile，callback 完成后 302 到 yuanai:// deep link。
+    """
     try:
-        url = await oauth_service.build_google_authorize_url()
+        url = await oauth_service.build_google_authorize_url(mobile=bool(mobile))
     except OAuthConfigError as e:
         raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
     return RedirectResponse(url, status_code=302)
@@ -386,7 +397,7 @@ async def google_callback(
             status_code=302,
         )
     try:
-        resp = await oauth_service.complete_google_callback(code, state, db)
+        resp, is_mobile = await oauth_service.complete_google_callback(code, state, db)
     except OAuthConfigError as e:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
@@ -397,4 +408,6 @@ async def google_callback(
             oauth_service.build_frontend_error_redirect(e.code, e.message),
             status_code=302,
         )
-    return RedirectResponse(oauth_service.build_frontend_redirect(resp), status_code=302)
+    return RedirectResponse(
+        oauth_service.build_frontend_redirect(resp, mobile=is_mobile), status_code=302
+    )

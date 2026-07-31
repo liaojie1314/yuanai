@@ -68,13 +68,13 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 ## 三方登录（可选）
 
-已落地 **GitHub OAuth**。首次启用需：
+已落地 **GitHub OAuth** 与 **Google OAuth**（Web 回跳 + 移动端 `yuanai://` deep link）。首次启用需：
 
-1. 在 [GitHub OAuth Apps](https://github.com/settings/developers) 创建 App，Callback URL 填 `http://localhost:8000/api/v1/auth/github/callback`
-2. 把 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 写入 `backend/.env`
-3. `cd backend && uv run alembic upgrade head`（新增 `users.github_id` 列）
+1. 在 [GitHub OAuth Apps](https://github.com/settings/developers) / [Google Cloud Console](https://console.cloud.google.com/apis/credentials) 创建应用，Callback URL 分别填 `http://localhost:8000/api/v1/auth/github/callback` 与 `http://localhost:8000/api/v1/auth/google/callback`
+2. 把 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`、`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 写入 `backend/.env`
+3. `cd backend && uv run alembic upgrade head`
 
-完整步骤见 [OAuth 配置指南](docs-internal/oauth-setup.md)。Google / 微信规划中；Apple 因 $99/年会员费不列入路线。
+完整步骤见 [OAuth 配置指南](docs-internal/oauth-setup.md)。微信规划中；Apple 因 $99/年会员费不列入路线。
 
 ## 常用命令
 

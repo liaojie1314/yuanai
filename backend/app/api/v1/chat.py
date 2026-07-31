@@ -1,4 +1,6 @@
+import asyncio
 import json
+import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
@@ -10,6 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
+from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
 from app.models.message import Message, MessageRole
@@ -23,6 +26,8 @@ from app.schemas.chat import (
 )
 from app.services.ai_service import stream_chat
 from app.services.push_service import send_to_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -247,6 +252,33 @@ async def _generate_temp_sse(
     yield "data: [DONE]\n\n"
 
 
+async def _persist_partial(
+    assistant_msg_id: uuid.UUID,
+    content: str,
+    thinking: str,
+    thinking_duration_ms: int | None,
+) -> None:
+    """客户端中途断开时，把已生成的部分内容写入 assistant 占位消息。
+
+    用独立 session：调用点所在任务正在被取消，请求作用域的 session 随时会被
+    关闭，不能再用。仅在占位仍为空时写入，避免与正常收尾路径竞态双写。
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(select(Message).where(Message.id == assistant_msg_id))
+            msg = result.scalar_one_or_none()
+            if msg is None or msg.content:
+                return
+            msg.content = content
+            if thinking:
+                msg.thinking_content = thinking
+            if thinking_duration_ms is not None:
+                msg.thinking_duration_ms = thinking_duration_ms
+            await db.commit()
+    except Exception as e:  # noqa: BLE001 - 收尾兜底，任何异常只记日志
+        logger.warning("部分内容落库失败 (msg=%s): %s", assistant_msg_id, e)
+
+
 async def _generate_sse(
     messages: list[dict[str, str]],
     model: str,
@@ -302,8 +334,8 @@ async def _generate_sse(
             msg.thinking_duration_ms = thinking_duration_ms
         await db.commit()
 
-        # AI 回复落库后，向该用户所有 Web Push 订阅推送「回复完成」通知。
-        # 标签页在前台时前端会跳过弹窗；未配置 VAPID 时 send_to_user 直接 no-op。
+        # AI 回复落库后，向该用户推送「回复完成」通知（Web Push + Expo Push）。
+        # 标签页/App 在前台时前端会跳过弹窗；未配置 VAPID 时 Web 通道 no-op。
         # 推送失败不影响已完成的回复，故整体包一层 try 兜底。
         if user_id is not None:
             try:
@@ -314,6 +346,8 @@ async def _generate_sse(
                         "title": "元AI",
                         "body": "AI 回复已完成",
                         "url": f"/chat/{conv_id}" if conv_id is not None else "/chat",
+                        # 移动端通知点击用 convId 直接路由到会话
+                        "convId": str(conv_id) if conv_id is not None else None,
                         "tag": "yuanai-ai-reply",
                     },
                 )
@@ -324,6 +358,17 @@ async def _generate_sse(
             f"event: message_end\n"
             f"data: {json.dumps({'tokens_used': 0, 'finish_reason': 'stop'})}\n\n"
         )
+    except asyncio.CancelledError:
+        # 客户端中途断开（用户点了停止 / 杀进程）：StreamingResponse 取消本生成器。
+        # 把已生成的部分内容落库（shield 防止落库操作本身也被取消），再继续抛出
+        # 让取消语义正常传播。
+        if full_content or full_thinking:
+            await asyncio.shield(
+                _persist_partial(
+                    assistant_msg_id, full_content, full_thinking, thinking_duration_ms
+                )
+            )
+        raise
     except Exception as e:
         yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 

@@ -188,6 +188,50 @@ class TestCallback:
         assert q["error"][0] == "OAUTH_PROVIDER_ERROR"
         assert "用户拒绝授权" in q["error_description"][0]
 
+    async def test_mobile_authorize_redirects_to_deep_link(
+        self,
+        client: AsyncClient,
+        db: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        _mock_state: dict[str, str],
+    ) -> None:
+        """mobile=1 时 state 标记 mobile，callback 最终 302 到 yuanai://oauth/callback。"""
+        await client.get("/api/v1/auth/github", params={"mobile": 1}, follow_redirects=False)
+        assert len(_mock_state) == 1
+        assert next(iter(_mock_state.values())) == "mobile"
+        state = next(iter(_mock_state.keys())).removeprefix("oauth:github:state:")
+
+        async def fake_exchange(code: str) -> str:  # noqa: ARG001
+            return "gh-access-token"
+
+        async def fake_profile(token: str) -> dict[str, str]:  # noqa: ARG001
+            return {
+                "provider_id": "90001",
+                "email": "mobile-user@example.com",
+                "login": "mobileuser",
+                "avatar_url": "",
+            }
+
+        monkeypatch.setattr(oauth_service, "_exchange_code_for_token", fake_exchange)
+        monkeypatch.setattr(oauth_service, "_fetch_github_profile", fake_profile)
+
+        resp = await client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "abc", "state": state},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        loc = resp.headers["location"]
+        assert loc.startswith("yuanai://oauth/callback?")
+        q = parse_qs(urlparse(loc).query)
+        assert "access_token" in q and q["access_token"][0]
+        assert "refresh_token" in q and q["refresh_token"][0]
+        # 用户入库（副作用校验）
+        user = (
+            await db.execute(select(User).where(User.github_id == "90001"))
+        ).scalar_one_or_none()
+        assert user is not None
+
 class TestUnlink:
     async def test_unlink_github_success(
         self,

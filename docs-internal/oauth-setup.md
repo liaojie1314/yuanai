@@ -154,3 +154,25 @@ Google userinfo 未验证邮箱（`email_verified=false`）会被拒绝（`OAUTH
 
 微信开放平台需企业主体认证 + `unionid` 跨应用身份，二期落地。
 Apple 需签名密钥 (JWT client_secret) + 私有邮箱转发，参考 <https://developer.apple.com/documentation/sign_in_with_apple>。
+
+---
+
+## 八、移动端 browser OAuth（GitHub / Google）
+
+移动端登录页使用 `expo-web-browser` 打开：
+
+```
+GET /api/v1/auth/{github|google}?mobile=1
+```
+
+后端将 OAuth `state` 标记为 `mobile`；provider 回调后端 API 后，**最后一跳** 302 到：
+
+```
+yuanai://oauth/callback?access_token=...&refresh_token=...
+```
+
+（错误时同样走 `yuanai://oauth/callback?error=...`）
+
+- **不需要** 改 Google/GitHub 控制台里的 redirect_uri（仍指向后端 `/api/v1/auth/*/callback`）
+- **不需要** 原生 `@react-native-google-signin` 才能完成 v1 登录
+- Web 路径（不带 `mobile` 或 `mobile=0`）行为不变，仍回 `{WEB_APP_URL}/oauth/callback`

@@ -1,4 +1,5 @@
 from app.models.conversation import Conversation
+from app.models.expo_push_token import ExpoPushToken
 from app.models.file import File, MessageFile
 from app.models.message import Message
 from app.models.push_subscription import PushSubscription
@@ -15,4 +16,5 @@ __all__ = [
     "ConversationShare",
     "FileUploadSession",
     "PushSubscription",
+    "ExpoPushToken",
 ]

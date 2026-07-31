@@ -94,4 +94,66 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(onError).toHaveBeenCalled()
     expect(useChatStore.getState().streamingConvId).toBeNull()
   })
+
+  it('stop() 把已收到的部分内容写入消息缓存（不丢已输出文本）', async () => {
+    // 无限流：只发 message_start + 两个 delta，之后挂起等待被 stop 中断
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, () => {
+        const enc = new TextEncoder()
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(
+              enc.encode(
+                `event: message_start\ndata: ${JSON.stringify({
+                  user_message_id: 'u1',
+                  assistant_message_id: 'a1',
+                })}\n\n`
+              )
+            )
+            controller.enqueue(
+              enc.encode(`event: content_delta\ndata: ${JSON.stringify({ token: '1\n2\n' })}\n\n`)
+            )
+            controller.enqueue(
+              enc.encode(`event: content_delta\ndata: ${JSON.stringify({ token: '3\n4\n' })}\n\n`)
+            )
+            // 不 close：模拟仍在生成
+          },
+        })
+        return new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } })
+      })
+    )
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: any }): any => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useStream(), { wrapper })
+
+    // 不 await send：MSW 的 mock 流不响应 abort，Promise 在测试环境不会归位；
+    // stop() 的缓存写入与 finalizeStream 都是同步的，断言无需等 send 落定
+    await act(async () => {
+      void result.current.send({ convId: 'c1', content: '数数', model: 'gpt-4o' })
+      // 等两个 delta 进 store
+      await vi.waitFor(() => {
+        expect(useChatStore.getState().streamingContent).toBe('1\n2\n3\n4\n')
+      })
+    })
+
+    act(() => {
+      result.current.stop()
+    })
+
+    // 部分内容写入缓存：user + assistant 两条
+    const cached = qc.getQueryData<Array<{ id: string; role: string; content: string }>>([
+      'messages',
+      'c1',
+    ])
+    expect(cached).toBeDefined()
+    expect(cached?.find((m) => m.id === 'a1')?.content).toBe('1\n2\n3\n4\n')
+    expect(cached?.find((m) => m.id === 'u1')?.content).toBe('数数')
+    // 流式态已清空
+    expect(useChatStore.getState().streamingConvId).toBeNull()
+  })
 })

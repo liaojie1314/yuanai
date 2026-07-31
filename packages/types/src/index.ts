@@ -43,6 +43,14 @@ export interface PushSubscriptionPayload {
   }
 }
 
+/** 移动端 Expo Push token 上报体（POST /notifications/expo） */
+export interface ExpoPushTokenPayload {
+  /** Expo Push Service 分配的 token，形如 `ExponentPushToken[xxxx]` */
+  token: string
+  /** RN Platform.OS：'ios' | 'android' */
+  platform: string
+}
+
 /** 服务端文件引用 */
 export interface FileRef {
   id: string

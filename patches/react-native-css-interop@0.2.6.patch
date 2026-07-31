@@ -1,0 +1,18 @@
+diff --git a/babel.js b/babel.js
+index d84e52b5ccf59123bb7aee019a853724b20ef99f..1e3ae5fa5c00f3ba7a1e5dd4a68bf616fcb68abf 100644
+--- a/babel.js
++++ b/babel.js
+@@ -9,8 +9,11 @@ module.exports = function () {
+           importSource: "react-native-css-interop",
+         },
+       ],
+-      // Use this plugin in reanimated 4 and later
+-      "react-native-worklets/plugin",
++      // Patched: upstream unconditionally loads "react-native-worklets/plugin",
++      // which only exists for reanimated >= 4. This repo pins reanimated 3.16.x
++      // (worklets plugin lives at react-native-reanimated/plugin, already added
++      // in apps/mobile/babel.config.js), so drop the require to avoid
++      // "Cannot find module 'react-native-worklets/plugin'" at bundle time.
+     ],
+   };
+ };

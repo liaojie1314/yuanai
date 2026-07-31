@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { persist, createJSONStorage } from 'zustand/middleware'
+import type { StateStorage } from 'zustand/middleware'
+import { getPlatformAdapter } from '../platform/index.js'
 
 /** 24 小时制 / 12 小时制 */
 export type TimeFmt = '24h' | '12h'
@@ -50,9 +52,21 @@ interface PrefsState {
 /**
  * 用户偏好设置 store（Zustand + persist）
  *
- * 持久化到 localStorage（key: `yuanai-prefs`），跨组件共享时间/日期格式、主题、字号、
- * 密度及思考过程等设置。登录状态下会与后端 `/auth/me/preferences` 双向同步。
+ * 持久化通过 {@link getPlatformAdapter} 暴露的 `storage` 桥接：
+ * - Web：localStorage
+ * - Mobile：AsyncStorage
+ *
+ * 跨组件共享时间/日期格式、主题、字号、密度及思考过程等设置。
+ * 登录状态下会与后端 `/auth/me/preferences` 双向同步。
  */
+// 与 auth.store 同款转发层：createJSONStorage 工厂在模块加载时立即求值，
+// 若直接捕获 adapter 的 storage，会钉死在 setPlatformAdapter 之前的 Web 实现。
+const lazyPrefsStorage: StateStorage = {
+  getItem: (name) => getPlatformAdapter().storage.getItem(name),
+  setItem: (name, value) => getPlatformAdapter().storage.setItem(name, value),
+  removeItem: (name) => getPlatformAdapter().storage.removeItem(name),
+}
+
 export const usePrefsStore = create<PrefsState>()(
   persist(
     (set) => ({
@@ -70,6 +84,9 @@ export const usePrefsStore = create<PrefsState>()(
       setDensity: (density) => set({ density }),
       replaceAll: (partial) => set(partial),
     }),
-    { name: 'yuanai-prefs' }
+    {
+      name: 'yuanai-prefs',
+      storage: createJSONStorage(() => lazyPrefsStorage),
+    }
   )
 )
