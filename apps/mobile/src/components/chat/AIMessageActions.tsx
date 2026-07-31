@@ -13,6 +13,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { useTranslation } from 'react-i18next'
 
+import { stripMarkdown } from '@yuanai/core'
+
 import { useToast } from '@/components/ui/Toast'
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
@@ -60,7 +62,8 @@ export const AIMessageActions = memo(function AIMessageActions({
   const toast = useToast()
 
   const handleCopy = (): void => {
-    void Clipboard.setStringAsync(content)
+    // 与 web 一致：复制去除 Markdown 语法后的纯文本
+    void Clipboard.setStringAsync(stripMarkdown(content))
     setCopied(true)
     toast.show(t('chat.copiedToast'))
     setTimeout(() => setCopied(false), 1500)
