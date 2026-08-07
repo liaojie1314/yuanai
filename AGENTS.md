@@ -610,4 +610,29 @@ data: [DONE]
 
 ---
 
+## 十五、用户工作流与 Phase 4 决策记忆
+
+### 持久工作流约束
+
+- 涉及技术选型、功能范围、平台策略或新依赖时，先列出选项、推荐项和取舍，由用户拍板后再实现。
+- 修复 bug 或处理遗留问题时，先在可用的真机、模拟器或本地运行环境复现并保留日志/截图证据，再阅读代码定位。
+- 每完成一个独立功能必须运行对应测试并创建本地 commit，然后继续后续功能；未经用户明确允许，不得 push、合并到 `dev` 或合并到 `master`。
+- `.codex/` 仅用于本地计划与执行记录，禁止纳入 commit。
+- 项目启动、构建和桌面安装包生成必须调用对应 `package.json` script，禁止绕过 script 直接调用底层 CLI。
+- `docker-compose*.yml` / `docker-compose*.yaml` 中所有镜像必须使用明确版本，禁止 `latest`、仅 major 版本等浮动标签。
+
+### Phase 4 已确认决策（2026-08-07）
+
+- 开发分支按用户明确要求使用 `feature/phase-4-desktop`；这是对 Phase 文档 `feat/phase-4-desktop` 的有意覆盖。
+- UI 采用桌面薄壳方案：复用 `packages/core` hooks/stores/API 与 `packages/ui` tokens，桌面组件在 `apps/desktop` 独立实现；本 Phase 不先重构 Web 的大型组件。
+- OAuth 自定义协议只传递短时、一次性 authorization code；桌面端通过后端交换 access/refresh token，禁止把长期 token 放入 URI、argv 或系统日志。
+- 桌面通知使用 Electron 原生通知；服务端完成事件使用鉴权 SSE fallback，不依赖 `file://` 下不可用的 Service Worker/Web Push。
+- 设置窗口在 Web 现有六分区基础上增加独立的“桌面设置”分区，承载关闭到托盘、全局快捷键、开机自启和更新设置。
+- 本轮以现有 Web 功能对齐为主；Web 尚未交付的后端语音转写和桌面语音输入暂缓，不计入本轮验收。
+- 桌面图标以 `apps/mobile/assets/icon.png` 为源生成 `.ico`、`.icns`、Linux PNG 与平台托盘资源。
+- Compose 镜像同时固定完整版本标签与多架构 digest，确保版本清晰且内容不可漂移。
+- 执行计划时每完成一个独立功能，必须先通过对应测试并创建本地 commit，然后直接继续下一功能；仅在遇到需要用户决策或无法自行解决的阻塞时暂停。
+
+---
+
 _本文件由 AI 代理生成并维护。如项目规范有变更，请同步更新本文件。_
