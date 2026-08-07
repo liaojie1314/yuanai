@@ -388,3 +388,57 @@ export function buildRunSrcDoc(lang: string, code: string, opts?: RunDocOptions)
       return buildJsDoc(code, opts)
   }
 }
+
+/**
+ * 判断代码语言是否走「数据预览」分支（非沙箱运行，直接在面板内渲染）。
+ *
+ * JSON 渲染为可折叠树，CSV 渲染为表格。
+ */
+export function isDataPreviewLang(lang: string): boolean {
+  const l = lang.toLowerCase()
+  return l === 'json' || l === 'csv'
+}
+
+/**
+ * 解析 CSV 文本为二维数组（RFC 4180 子集：支持引号包裹、转义引号、\r\n）。
+ * 过滤纯空行；与 web ArtifactPanel 原实现行为一致，供两端数据预览共用。
+ */
+export function parseCsv(text: string): string[][] {
+  const rows: string[][] = []
+  let field = ''
+  let row: string[] = []
+  let inQuotes = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"'
+          i++
+        } else {
+          inQuotes = false
+        }
+      } else {
+        field += ch
+      }
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === ',') {
+      row.push(field)
+      field = ''
+    } else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++
+      row.push(field)
+      rows.push(row)
+      row = []
+      field = ''
+    } else {
+      field += ch
+    }
+  }
+  if (field !== '' || row.length > 0) {
+    row.push(field)
+    rows.push(row)
+  }
+  return rows.filter((r) => r.length > 1 || (r[0] ?? '') !== '')
+}

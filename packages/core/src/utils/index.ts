@@ -21,5 +21,7 @@ export {
   buildRunSrcDoc,
   buildSvelteDoc,
   buildVueDoc,
+  isDataPreviewLang,
   isRunnableLang,
+  parseCsv,
 } from './artifactRuntimes.js'
