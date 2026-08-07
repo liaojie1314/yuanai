@@ -29,12 +29,19 @@ const { WebView } = require('react-native-webview') as {
 
 import { useArtifactStore } from '@yuanai/core/stores'
 
-import { ARTIFACT_MSG_SOURCE, buildRunSrcDoc, isRunnableLang, TABLET_MIN_WIDTH } from '@yuanai/core'
+import {
+  ARTIFACT_MSG_SOURCE,
+  buildRunSrcDoc,
+  isDataPreviewLang,
+  isRunnableLang,
+  TABLET_MIN_WIDTH,
+} from '@yuanai/core'
 
 import { radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 
+import { ArtifactDataPreview } from './ArtifactDataPreview'
 import { HighlightedCode } from './HighlightedCode'
 
 /** 面板内代码高亮上限（与 CodeBlock 同阈值，超过降级纯文本防 ANR） */
@@ -69,16 +76,17 @@ export function ArtifactSurface(): React.JSX.Element | null {
   const [logs, setLogs] = useState<ConsoleLine[]>([])
 
   const runnable = payload ? isRunnableLang(payload.lang) : false
+  const isData = payload ? isDataPreviewLang(payload.lang) : false
   const dark = theme.colorScheme === 'dark'
   const srcDoc = useMemo(
     () => (payload && runnable ? buildRunSrcDoc(payload.lang, payload.code, { dark }) : ''),
     [payload, runnable, dark]
   )
-  const showPreview = runnable && tab === 'preview'
+  const showPreview = (runnable || isData) && tab === 'preview'
 
   // openRun 载荷（mode=run）默认落在预览 tab；view 默认代码 tab
   useEffect(() => {
-    if (open) setTab(payload?.mode === 'run' && runnable ? 'preview' : 'code')
+    if (open) setTab(payload?.mode === 'run' && (runnable || isData) ? 'preview' : 'code')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, payload?.mode])
 
@@ -139,7 +147,7 @@ export function ArtifactSurface(): React.JSX.Element | null {
             </Text>
             <Text style={[styles.lang, { color: theme.text.muted }]}>{payload.lang}</Text>
           </View>
-          {runnable ? (
+          {runnable || isData ? (
             <View style={[styles.tabs, { borderColor: theme.border.default }]}>
               <Pressable
                 onPress={() => setTab('code')}
@@ -209,7 +217,9 @@ export function ArtifactSurface(): React.JSX.Element | null {
           </Pressable>
         </View>
 
-        {showPreview ? (
+        {showPreview && isData ? (
+          <ArtifactDataPreview lang={payload.lang} code={payload.code} />
+        ) : showPreview ? (
           <View style={styles.previewWrap}>
             <WebView
               key={srcDoc}

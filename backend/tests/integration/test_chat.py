@@ -296,6 +296,51 @@ class TestStream:
         # 严格 user/assistant 交替，共 6 条
         assert roles == ["user", "assistant"] * 3, roles
 
+    async def test_stream_updates_conversation_last_message_at(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """回归：发消息后会话 lastMessageAt 必须更新，否则前端
+        「今天/昨天/本周」分组永远停在会话创建时间（web/mobile 同源 bug）。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+        # 新建会话还没有消息，lastMessageAt 允许为 null
+        assert conv_res.json()["lastMessageAt"] is None
+
+        async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            yield ("content", "回复")
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_id,
+                    "model": "gpt-4o",
+                    "message": {"content": "更新分组测试", "file_ids": []},
+                },
+                headers=auth_headers,
+            ) as response:
+                async for _ in response.aiter_lines():
+                    pass
+
+        import asyncio
+        await asyncio.sleep(0.1)
+
+        list_res = await client.get("/api/v1/chat/conversations", headers=auth_headers)
+        conv = next(c for c in list_res.json()["conversations"] if c["id"] == conv_id)
+        assert conv["lastMessageAt"] is not None
+        # 与最新消息的 createdAt 一致（分组/排序都以它为准）
+        msg_res = await client.get(
+            f"/api/v1/chat/conversations/{conv_id}/messages",
+            headers=auth_headers,
+        )
+        latest_msg_at = max(m["createdAt"] for m in msg_res.json()["messages"])
+        assert conv["lastMessageAt"] == latest_msg_at
+
     async def test_stream_invalid_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:

@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
@@ -19,6 +19,7 @@ from app.models.message import Message, MessageRole
 from app.schemas.chat import (
     ConversationResponse,
     CreateConversationRequest,
+    MessageFileResponse,
     MessageResponse,
     SendMessageRequest,
     TemporaryChatRequest,
@@ -48,7 +49,11 @@ async def list_conversations(current_user: CurrentUser, db: DB) -> dict[str, obj
     result = await db.execute(
         select(Conversation)
         .where(Conversation.user_id == current_user.id)
-        .order_by(Conversation.is_pinned.desc(), Conversation.updated_at.desc())
+        # 活跃时间倒序：有消息的按 last_message_at，新建空会话回退 created_at
+        .order_by(
+            Conversation.is_pinned.desc(),
+            func.coalesce(Conversation.last_message_at, Conversation.created_at).desc(),
+        )
         .limit(50)
     )
     conversations = result.scalars().all()
@@ -101,8 +106,36 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
         .limit(200)
     )
     messages = result.scalars().all()
+
+    # 批量联查消息附件（Message 模型上无 relationship，这里手动组装 files）
+    files_by_msg: dict[uuid.UUID, list[MessageFileResponse]] = {}
+    if messages:
+        from app.services.storage_service import storage
+
+        mf_rows = await db.execute(
+            select(MessageFile, File)
+            .join(File, File.id == MessageFile.file_id)
+            .where(MessageFile.message_id.in_([m.id for m in messages]))
+            .order_by(MessageFile.sort_order)
+        )
+        for mf, f in mf_rows.all():
+            files_by_msg.setdefault(mf.message_id, []).append(
+                MessageFileResponse(
+                    id=f.id,
+                    filename=f.filename,
+                    mime_type=f.mime_type,
+                    size_bytes=f.size_bytes,
+                    url=storage.get_url(f.s3_key),
+                )
+            )
+
+    items: list[MessageResponse] = []
+    for m in messages:
+        item = MessageResponse.model_validate(m)
+        item.files = files_by_msg.get(m.id, [])
+        items.append(item)
     return {
-        "messages": [MessageResponse.model_validate(m) for m in messages],
+        "messages": items,
         "next_cursor": None,
         "has_more": False,
     }
@@ -137,6 +170,9 @@ async def stream_chat_endpoint(
         created_at=now + timedelta(microseconds=1),
     )
     db.add(assistant_msg)
+    # 同步推进会话活跃时间：前端分组/排序以 last_message_at 为准；
+    # 取 assistant 占位的 created_at，与 list_messages 里的最新一条一致。
+    conv.last_message_at = assistant_msg.created_at
     await db.commit()
     await db.refresh(user_msg)
     await db.refresh(assistant_msg)
@@ -230,7 +266,9 @@ async def _generate_temp_sse(
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
     try:
-        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
+        async for event_type, token in stream_chat(
+            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+        ):
             if event_type == "thinking":
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
@@ -305,7 +343,9 @@ async def _generate_sse(
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
     try:
-        async for event_type, token in stream_chat(model, messages, enable_thinking=enable_thinking):  # type: ignore[arg-type]
+        async for event_type, token in stream_chat(
+            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+        ):
             if event_type == "thinking":
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
@@ -370,6 +410,16 @@ async def _generate_sse(
             )
         raise
     except Exception as e:
+        logger.exception("stream_chat failed for assistant_msg=%s", assistant_msg_id)
+        # 与 CancelledError 分支一致：把已收到的部分内容落库，避免 DB 里留一条空 assistant
+        # 记录。上游 SDK 冷启动/连接抖动等偶发异常也能保住部分回复给用户看。
+        if full_content or full_thinking:
+            try:
+                await _persist_partial(
+                    assistant_msg_id, full_content, full_thinking, thinking_duration_ms
+                )
+            except Exception:  # noqa: BLE001 - 落库失败不应遮蔽原始错误
+                logger.exception("persist partial on error failed for assistant_msg=%s", assistant_msg_id)
         yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 
     yield "data: [DONE]\n\n"

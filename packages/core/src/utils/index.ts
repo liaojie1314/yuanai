@@ -7,6 +7,7 @@ export {
 } from './conversations.js'
 export { buildMessagePairs, clampVersionIdx, type MessagePair } from './messagePairs.js'
 export { stripMarkdown } from './markdown.js'
+export { formatMsgTime, type FormatMsgTimeOptions } from './time.js'
 export {
   ARTIFACT_MSG_SOURCE,
   CONSOLE_BOOTSTRAP,
@@ -20,5 +21,7 @@ export {
   buildRunSrcDoc,
   buildSvelteDoc,
   buildVueDoc,
+  isDataPreviewLang,
   isRunnableLang,
+  parseCsv,
 } from './artifactRuntimes.js'

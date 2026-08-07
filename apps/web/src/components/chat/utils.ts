@@ -74,39 +74,9 @@ export function getMsgText(msg: MockMessage): string {
 
 /**
  * 依据用户偏好格式化消息时间戳。
+ * 实现已下沉到 `packages/core`（`utils/time.ts`），与移动端共用同一份。
  */
-export function formatMsgTime(
-  ts: number,
-  timeFmt: '24h' | '12h',
-  dateFmt: 'ymd' | 'mdy' | 'dmy'
-): string {
-  const d = new Date(ts)
-  const now = new Date()
-  const todayStr = now.toDateString()
-  const yd = new Date(now)
-  yd.setDate(now.getDate() - 1)
-
-  const h = d.getHours()
-  const m = String(d.getMinutes()).padStart(2, '0')
-  const timeStr =
-    timeFmt === '24h'
-      ? `${String(h).padStart(2, '0')}:${m}`
-      : `${h % 12 || 12}:${m} ${h < 12 ? 'AM' : 'PM'}`
-
-  if (d.toDateString() === todayStr) return timeStr
-  if (d.toDateString() === yd.toDateString()) return `昨天 ${timeStr}`
-
-  const y = d.getFullYear()
-  const mo = d.getMonth() + 1
-  const day = d.getDate()
-  const dateStr =
-    dateFmt === 'ymd'
-      ? `${y}/${mo}/${day}`
-      : dateFmt === 'mdy'
-        ? `${mo}/${day}/${y}`
-        : `${day}/${mo}/${y}`
-  return `${dateStr} ${timeStr}`
-}
+export { formatMsgTime } from '@yuanai/core/utils'
 
 /**
  * 移除常见 Markdown 语法，返回可直接展示的纯文本（用于"复制纯文本"）。

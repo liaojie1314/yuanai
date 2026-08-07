@@ -21,43 +21,14 @@ import {
 } from 'react-native'
 
 import type { AttachmentItem } from '@/hooks/useAttachments'
+
+import { isImageMime, mimeIcon } from './attachmentMeta'
 import { radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
 interface AttachmentTrayProps {
   attachments: AttachmentItem[]
   onRemove: (localKey: string) => void
-}
-
-/** 根据 mimeType 返回代表字符（文档图标占位） */
-function mimeIcon(mimeType: string): string {
-  if (mimeType.startsWith('image/')) return '🖼'
-  if (mimeType.startsWith('video/')) return '🎬'
-  if (mimeType.startsWith('audio/')) return '🎵'
-  if (mimeType === 'application/pdf') return '📄'
-  if (
-    mimeType.includes('spreadsheet') ||
-    mimeType.includes('excel') ||
-    mimeType.endsWith('.xlsx') ||
-    mimeType.endsWith('.xls')
-  )
-    return '📊'
-  if (
-    mimeType.includes('presentation') ||
-    mimeType.includes('powerpoint') ||
-    mimeType.endsWith('.pptx')
-  )
-    return '📋'
-  if (mimeType.includes('word') || mimeType.endsWith('.docx') || mimeType.endsWith('.doc'))
-    return '📝'
-  if (mimeType.includes('zip') || mimeType.includes('compressed') || mimeType.includes('archive'))
-    return '🗜'
-  if (mimeType.includes('text/')) return '📃'
-  return '📎'
-}
-
-function isImage(mimeType: string): boolean {
-  return mimeType.startsWith('image/')
 }
 
 export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): React.JSX.Element {
@@ -77,7 +48,7 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
           key={item.localKey}
           style={[styles.cell, { backgroundColor: t.bg.elevated, borderColor: t.border.default }]}
         >
-          {isImage(item.mimeType) ? (
+          {isImageMime(item.mimeType) ? (
             <Image
               source={{ uri: item.uri }}
               style={styles.thumb}

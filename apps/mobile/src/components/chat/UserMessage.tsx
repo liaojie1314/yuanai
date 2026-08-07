@@ -3,14 +3,22 @@ import { Check, Copy, Pencil } from 'lucide-react-native'
 import { memo, useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 
+import type { MessageFile } from '@yuanai/types'
+
 import { useTranslation } from 'react-i18next'
 
 import { useToast } from '@/components/ui/Toast'
 import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
+import { MessageAttachments } from './MessageAttachments'
+
 interface UserMessageProps {
   content: string
+  /** 消息携带的附件（图片/文件卡片，渲染在气泡上方） */
+  files?: readonly MessageFile[] | undefined
+  /** 已格式化的发送时间文案，显示在操作行左侧（对齐 web ch-msg-ts） */
+  timestamp?: string | undefined
   /** 处于内联编辑态：气泡换成可编辑 TextInput + 取消/提交 */
   editing?: boolean
   /** 气泡下方显示操作图标行（复制/编辑）；乐观占位传 false */
@@ -35,6 +43,8 @@ interface UserMessageProps {
  */
 function UserMessageBase({
   content,
+  files,
+  timestamp,
   editing = false,
   showActions = false,
   onStartEdit,
@@ -120,6 +130,7 @@ function UserMessageBase({
 
   return (
     <View style={[styles.row, rowPad]}>
+      {files && files.length > 0 ? <MessageAttachments files={files} /> : null}
       <View style={styles.bubble}>
         <Text selectable style={[styles.text, typeStyle]}>
           {content}
@@ -127,6 +138,9 @@ function UserMessageBase({
       </View>
       {showActions ? (
         <View style={styles.actionsRow}>
+          {timestamp !== undefined ? (
+            <Text style={[styles.timestamp, { color: theme.text.muted }]}>{timestamp}</Text>
+          ) : null}
           <Pressable
             onPress={handleCopy}
             hitSlop={8}
@@ -160,6 +174,8 @@ export const UserMessage = memo(
   UserMessageBase,
   (prev, next) =>
     prev.content === next.content &&
+    prev.files === next.files &&
+    prev.timestamp === next.timestamp &&
     prev.editing === next.editing &&
     prev.showActions === next.showActions &&
     prev.prefsKey === next.prefsKey
@@ -183,9 +199,11 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.xs,
     marginTop: spacing.xs,
   },
+  timestamp: { fontSize: 11, marginRight: 2 },
   iconBtn: { width: 28, height: 24, alignItems: 'center', justifyContent: 'center' },
   editRow: {
     paddingHorizontal: spacing.lg,
