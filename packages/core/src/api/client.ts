@@ -1,14 +1,32 @@
 import axios, { type InternalAxiosRequestConfig } from 'axios'
 
+interface GlobalWithProcess {
+  process?: {
+    env?: Record<string, string | undefined>
+  }
+}
+
 function getEnv(key: string): string | undefined {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const proc = (globalThis as any).process as
-    { env?: Record<string, string | undefined> } | undefined
+  const proc = (globalThis as typeof globalThis & GlobalWithProcess).process
   return proc?.env?.[key]
 }
 
-export const API_BASE_URL =
+function normalizeApiBaseUrl(value: string): string {
+  const url = new URL(value)
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('API base URL must use http or https')
+  }
+  if (url.username || url.password || url.search || url.hash) {
+    throw new Error('API base URL must not contain credentials, query, or fragment')
+  }
+  return url.toString().replace(/\/$/, '')
+}
+
+const DEFAULT_API_BASE_URL =
   getEnv('NEXT_PUBLIC_API_URL') ?? getEnv('EXPO_PUBLIC_API_URL') ?? 'http://localhost:8000/api/v1'
+
+/** 当前运行时生效的 API base URL。 */
+export let API_BASE_URL = normalizeApiBaseUrl(DEFAULT_API_BASE_URL)
 
 /** 401 时不应触发刷新流程的接口：登录/注册失败是正常凭据错误，刷新接口自身失败需直接判定为鉴权失败 */
 const AUTH_EXEMPT_PATHS = [
@@ -41,6 +59,21 @@ export const apiClient = axios.create({
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
+
+/** 返回当前运行时生效的 API base URL。 */
+export function getApiBaseUrl(): string {
+  return API_BASE_URL
+}
+
+/**
+ * 校验并更新运行时 API base URL 与 Axios 默认地址。
+ * @param value 待设置的 API base URL，仅允许不含敏感 URL 组成部分的 HTTP(S) 地址
+ */
+export function setApiBaseUrl(value: string): void {
+  const normalized = normalizeApiBaseUrl(value)
+  API_BASE_URL = normalized
+  apiClient.defaults.baseURL = normalized
+}
 
 apiClient.interceptors.request.use((config) => {
   const token = tokenGetter?.()

@@ -5,6 +5,8 @@ export {
   setOnAuthFailure,
   setOnTokenRefreshed,
   API_BASE_URL,
+  getApiBaseUrl,
+  setApiBaseUrl,
 } from './client.js'
 export * from './auth.js'
 export * from './chat.js'

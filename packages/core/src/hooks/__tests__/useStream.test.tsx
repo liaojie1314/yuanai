@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, act } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../../tests/mocks/server.js'
-import { API_BASE_URL } from '../../api/client.js'
+import { API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '../../api/client.js'
 import { useChatStore } from '../../stores/chat.store.js'
 import { useStream } from '../useStream.js'
 
@@ -33,11 +33,14 @@ function withProvider() {
   return wrapper
 }
 
+const INITIAL_API_BASE_URL = getApiBaseUrl()
+
 beforeEach(() => {
   useChatStore.getState().finalizeStream()
 })
 
 afterEach(() => {
+  setApiBaseUrl(INITIAL_API_BASE_URL)
   vi.clearAllMocks()
 })
 
@@ -93,6 +96,26 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     })
     expect(onError).toHaveBeenCalled()
     expect(useChatStore.getState().streamingConvId).toBeNull()
+  })
+
+  it('在 Hook 初始化后使用最新的运行时 API 地址发起流式请求', async () => {
+    const runtimeBaseUrl = 'https://desktop.example/api/v1'
+    let receivedRequest = false
+    server.use(
+      http.post(`${runtimeBaseUrl}/chat/stream`, () => {
+        receivedRequest = true
+        return makeStreamResponse([])
+      })
+    )
+    const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
+
+    setApiBaseUrl(runtimeBaseUrl)
+
+    await act(async () => {
+      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o' })
+    })
+
+    expect(receivedRequest).toBe(true)
   })
 
   it('stop() 把已收到的部分内容写入消息缓存（不丢已输出文本）', async () => {

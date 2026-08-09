@@ -4,6 +4,8 @@ import { server } from '../../../tests/mocks/server.js'
 import {
   apiClient,
   API_BASE_URL,
+  getApiBaseUrl,
+  setApiBaseUrl,
   setTokenGetter,
   setRefreshTokenGetter,
   setOnAuthFailure,
@@ -13,6 +15,7 @@ import {
 // 模拟 auth store 里 tokenGetter 与 onTokenRefreshed 通过同一份状态联动的关系：
 // 刷新成功后 currentToken 更新，重试请求的请求拦截器会读到新 token。
 let currentToken = 'expired-token'
+const INITIAL_API_BASE_URL = getApiBaseUrl()
 
 beforeEach(() => {
   currentToken = 'expired-token'
@@ -25,11 +28,34 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  setApiBaseUrl(INITIAL_API_BASE_URL)
   vi.clearAllMocks()
   setTokenGetter(() => null)
   setRefreshTokenGetter(() => null)
   setOnAuthFailure(() => {})
   setOnTokenRefreshed(() => {})
+})
+
+describe('运行时 API 地址', () => {
+  it('规范化后同步更新 live export 与 axios 默认地址', () => {
+    setApiBaseUrl('https://desktop.example/api/v1/')
+
+    expect(getApiBaseUrl()).toBe('https://desktop.example/api/v1')
+    expect(API_BASE_URL).toBe('https://desktop.example/api/v1')
+    expect(apiClient.defaults.baseURL).toBe('https://desktop.example/api/v1')
+  })
+
+  it.each([
+    'file:///tmp/api',
+    'https://user:pass@example.com/api/v1',
+    'https://example.com/api/v1?token=x',
+    'https://example.com/api/v1#fragment',
+  ])('拒绝不安全地址 %s 且保留上一个有效地址', (value) => {
+    setApiBaseUrl('https://previous.example/api/v1')
+
+    expect(() => setApiBaseUrl(value)).toThrow()
+    expect(getApiBaseUrl()).toBe('https://previous.example/api/v1')
+  })
 })
 
 describe('apiClient — 401 自动刷新并重试', () => {

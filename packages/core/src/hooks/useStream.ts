@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
 import type { Message } from '@yuanai/types'
 import { Role } from '@yuanai/types'
-import { API_BASE_URL, refreshAccessTokenForStream } from '../api/client.js'
+import { getApiBaseUrl, refreshAccessTokenForStream } from '../api/client.js'
 import { getPlatformAdapter } from '../platform/index.js'
 import type { SseMessage, StreamHandle } from '../platform/index.js'
 import { useAuthStore } from '../stores/auth.store.js'
@@ -220,7 +220,7 @@ export function useStream() {
         new Promise<'ok' | 'auth'>((resolve) => {
           const handle = getPlatformAdapter().stream(
             {
-              url: `${API_BASE_URL}/chat/stream`,
+              url: `${getApiBaseUrl()}/chat/stream`,
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -340,7 +340,7 @@ export function useStream() {
       await new Promise<void>((resolve) => {
         const handle = getPlatformAdapter().stream(
           {
-            url: `${API_BASE_URL}/chat/stream/temporary`,
+            url: `${getApiBaseUrl()}/chat/stream/temporary`,
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
