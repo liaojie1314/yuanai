@@ -2,14 +2,17 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import { startDesktopRenderer } from '../shared/start-renderer'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   throw new Error('Renderer root element is missing')
 }
 
-createRoot(rootElement).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+startDesktopRenderer(() => {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+})
