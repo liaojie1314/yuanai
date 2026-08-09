@@ -8,6 +8,7 @@ import { authStorage } from './storage/auth-storage'
 import { preferencesStorage } from './storage/prefs-storage'
 import { secureRenderer } from './security'
 import { createWindowOptions } from './windows/config'
+import { WindowManager } from './windows/manager'
 import { registerAppScheme } from './protocol/app-scheme'
 
 protocol.registerSchemesAsPrivileged([
@@ -19,28 +20,22 @@ protocol.registerSchemesAsPrivileged([
 
 const trustedWebContents = createTrustedWebContentsRegistry()
 
-function createMainWindow(
-  rendererUrl: string | undefined,
-  runtimeConfig: ReturnType<typeof readRuntimeConfig>
-): void {
-  const win = new BrowserWindow(
-    createWindowOptions('main', join(__dirname, '../preload/index.js'), process.platform)
-  )
-  trustedWebContents.add(win.webContents)
-  secureRenderer(win.webContents, trustedWebContents, runtimeConfig)
-  win.once('ready-to-show', () => win.show())
-
-  if (rendererUrl) {
-    void win.loadURL(new URL('main/index.html', `${rendererUrl}/`).toString())
-  } else {
-    void win.loadURL('yuanai-app://renderer/main/index.html')
-  }
-}
-
 app.whenReady().then(() => {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const runtimeConfig = readRuntimeConfig()
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
+  const windowManager = new WindowManager({
+    createWindow: (entry) => {
+      const window = new BrowserWindow(
+        createWindowOptions(entry, join(__dirname, '../preload/index.js'), process.platform)
+      )
+      trustedWebContents.add(window.webContents)
+      secureRenderer(window.webContents, trustedWebContents, runtimeConfig)
+      window.once('ready-to-show', () => window.show())
+      return window
+    },
+    rendererUrl,
+  })
   setupIpc({
     ipcMain,
     guard: createIpcInvocationGuard({
@@ -52,9 +47,9 @@ app.whenReady().then(() => {
     preferencesStorage,
     runtimeConfig,
   })
-  createMainWindow(rendererUrl, runtimeConfig)
+  windowManager.open('main')
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl, runtimeConfig)
+    if (BrowserWindow.getAllWindows().length === 0) windowManager.focusMain()
   })
   app.once('before-quit', unregisterAppScheme)
 })
