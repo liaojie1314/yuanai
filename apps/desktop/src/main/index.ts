@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import { join } from 'node:path'
 
 import { readRuntimeConfig } from './config/runtime-config'
@@ -8,6 +8,14 @@ import { authStorage } from './storage/auth-storage'
 import { preferencesStorage } from './storage/prefs-storage'
 import { secureRenderer } from './security'
 import { createWindowOptions } from './windows/config'
+import { registerAppScheme } from './protocol/app-scheme'
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'yuanai-app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+])
 
 const trustedWebContents = createTrustedWebContentsRegistry()
 
@@ -25,13 +33,14 @@ function createMainWindow(
   if (rendererUrl) {
     void win.loadURL(new URL('main/index.html', `${rendererUrl}/`).toString())
   } else {
-    void win.loadFile(join(__dirname, '../renderer/main/index.html'))
+    void win.loadURL('yuanai-app://renderer/main/index.html')
   }
 }
 
 app.whenReady().then(() => {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const runtimeConfig = readRuntimeConfig()
+  const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
   setupIpc({
     ipcMain,
     guard: createIpcInvocationGuard({
@@ -47,6 +56,7 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl, runtimeConfig)
   })
+  app.once('before-quit', unregisterAppScheme)
 })
 
 app.on('window-all-closed', () => {
