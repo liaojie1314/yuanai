@@ -6,23 +6,21 @@ import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './ip
 import { setupIpc } from './ipc'
 import { authStorage } from './storage/auth-storage'
 import { preferencesStorage } from './storage/prefs-storage'
+import { secureRenderer } from './security'
+import { createWindowOptions } from './windows/config'
 
 const trustedWebContents = createTrustedWebContentsRegistry()
 
-function createMainWindow(rendererUrl: string | undefined): void {
-  const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
-    minWidth: 960,
-    minHeight: 640,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: true,
-    },
-  })
+function createMainWindow(
+  rendererUrl: string | undefined,
+  runtimeConfig: ReturnType<typeof readRuntimeConfig>
+): void {
+  const win = new BrowserWindow(
+    createWindowOptions('main', join(__dirname, '../preload/index.js'), process.platform)
+  )
   trustedWebContents.add(win.webContents)
+  secureRenderer(win.webContents, trustedWebContents, runtimeConfig)
+  win.once('ready-to-show', () => win.show())
 
   if (rendererUrl) {
     void win.loadURL(new URL('main/index.html', `${rendererUrl}/`).toString())
@@ -45,9 +43,9 @@ app.whenReady().then(() => {
     preferencesStorage,
     runtimeConfig,
   })
-  createMainWindow(rendererUrl)
+  createMainWindow(rendererUrl, runtimeConfig)
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl)
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow(rendererUrl, runtimeConfig)
   })
 })
 
