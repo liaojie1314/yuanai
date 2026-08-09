@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
 import { startDesktopRenderer } from '../shared/start-renderer'
+import { RendererRoot } from '../shared/RendererRoot'
 
 const rootElement = document.getElementById('root')
 if (!rootElement) {
@@ -12,7 +13,9 @@ if (!rootElement) {
 startDesktopRenderer(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <RendererRoot>
+        <App />
+      </RendererRoot>
     </StrictMode>
   )
 })
