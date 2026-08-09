@@ -15,3 +15,7 @@ publicHoistPattern:
   - '!@types/react'
   - '!@types/react-dom'
   - '!zod'
+
+# Electron 下载平台二进制；仅显式许可这一安装脚本，其他依赖仍保持禁用。
+onlyBuiltDependencies:
+  - electron

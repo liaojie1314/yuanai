@@ -53,3 +53,9 @@ backend/uploads/
 # Expo prebuild 生成的 native 项目（每次 prebuild --clean 重新生成，不提交）
 apps/mobile/android/
 apps/mobile/ios/
+
+# Electron desktop build and test artifacts
+apps/desktop/out/
+apps/desktop/release/
+apps/desktop/test-results/
+apps/desktop/playwright-report/

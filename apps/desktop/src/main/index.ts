@@ -1,28 +1,32 @@
 import { app, BrowserWindow } from 'electron'
-import path from 'path'
+import { join } from 'node:path'
 
-function createWindow(): void {
+function createMainWindow(): void {
   const win = new BrowserWindow({
     width: 1280,
-    height: 800,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
     },
   })
 
-  // electron-vite 在开发模式下注入 ELECTRON_RENDERER_URL
-  if (process.env['ELECTRON_RENDERER_URL'] !== undefined) {
-    void win.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  const rendererUrl = process.env['ELECTRON_RENDERER_URL']
+  if (rendererUrl) {
+    void win.loadURL(new URL('main/index.html', `${rendererUrl}/`).toString())
   } else {
-    void win.loadFile(path.join(__dirname, '../renderer/index.html'))
+    void win.loadFile(join(__dirname, '../renderer/main/index.html'))
   }
 }
 
 app.whenReady().then(() => {
-  createWindow()
+  createMainWindow()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
   })
 })
 
