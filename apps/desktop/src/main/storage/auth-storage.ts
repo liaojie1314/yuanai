@@ -2,8 +2,6 @@ import { app, safeStorage } from 'electron'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import type { StateStorage } from 'zustand/middleware'
-
 const AUTH_STORAGE_KEY = 'yuanai-auth'
 const MAX_AUTH_STORAGE_BYTES = 1024 * 1024
 const AUTH_STORAGE_PATH = join(app.getPath('userData'), 'session.enc')
@@ -40,8 +38,18 @@ async function quarantineCorruptAuthFile(): Promise<void> {
   }
 }
 
+/** 基于 Electron safeStorage 的加密认证状态存储接口。 */
+export interface DesktopAuthStorage {
+  /** 读取加密后的认证状态。 */
+  getItem(key: string): Promise<string | null>
+  /** 加密并持久化认证状态。 */
+  setItem(key: string, value: string): Promise<void>
+  /** 删除加密认证状态。 */
+  removeItem(key: string): Promise<void>
+}
+
 /** 基于 Electron safeStorage 的加密认证状态存储。 */
-export const authStorage: StateStorage = {
+export const authStorage: DesktopAuthStorage = {
   async getItem(key: string): Promise<string | null> {
     assertAuthStorageKey(key)
     assertEncryptionAvailable()

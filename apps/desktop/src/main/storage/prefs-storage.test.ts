@@ -47,4 +47,29 @@ describe('preferencesStorage', () => {
     )
     expect(mockFs.rename).toHaveBeenCalledOnce()
   })
+
+  it('merges a patch with the saved preferences instead of resetting earlier updates', async () => {
+    mockFs.readFile.mockResolvedValue(
+      Buffer.from(
+        JSON.stringify({
+          closeToTray: false,
+          globalShortcut: 'CommandOrControl+Shift+Y',
+          autoLaunch: true,
+          updateChannel: 'beta',
+          checkUpdatesAutomatically: false,
+          nativeNotifications: false,
+          notificationSound: false,
+          aiReplyNotifications: false,
+        })
+      )
+    )
+
+    await preferencesStorage.update({ closeToTray: true })
+
+    expect(mockFs.writeFile).toHaveBeenCalledWith(
+      expect.stringContaining('.tmp'),
+      expect.stringContaining('"updateChannel": "beta"'),
+      { encoding: 'utf8', mode: 0o600 }
+    )
+  })
 })

@@ -3,29 +3,10 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { DEFAULT_DESKTOP_PREFERENCES, type DesktopPreferences } from '../../shared/ipc-contract'
+import { isDesktopPreferences, isDesktopPreferencesPatch } from '../../shared/guards'
 
 const PREFERENCES_PATH = join(app.getPath('userData'), 'desktop-prefs.json')
 const MAX_PREFERENCES_BYTES = 1024 * 1024
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function isDesktopPreferences(value: unknown): value is DesktopPreferences {
-  if (!isRecord(value)) return false
-  const keys = Object.keys(DEFAULT_DESKTOP_PREFERENCES)
-  if (Object.keys(value).some((key) => !keys.includes(key))) return false
-  return (
-    typeof value['closeToTray'] === 'boolean' &&
-    (typeof value['globalShortcut'] === 'string' || value['globalShortcut'] === null) &&
-    typeof value['autoLaunch'] === 'boolean' &&
-    (value['updateChannel'] === 'stable' || value['updateChannel'] === 'beta') &&
-    typeof value['checkUpdatesAutomatically'] === 'boolean' &&
-    typeof value['nativeNotifications'] === 'boolean' &&
-    typeof value['notificationSound'] === 'boolean' &&
-    typeof value['aiReplyNotifications'] === 'boolean'
-  )
-}
 
 function isMissingFile(error: unknown): boolean {
   return (
@@ -61,10 +42,11 @@ export const preferencesStorage = {
   },
 
   async update(value: unknown): Promise<DesktopPreferences> {
-    if (!isRecord(value) || !isDesktopPreferences({ ...DEFAULT_DESKTOP_PREFERENCES, ...value })) {
+    if (!isDesktopPreferencesPatch(value)) {
       throw new Error('PREFERENCES_INVALID')
     }
-    const next = { ...DEFAULT_DESKTOP_PREFERENCES, ...value }
+    const current = await this.get()
+    const next = { ...current, ...value }
     await writePreferences(next)
     return next
   },
