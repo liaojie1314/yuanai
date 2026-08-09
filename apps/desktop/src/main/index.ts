@@ -10,6 +10,8 @@ import { secureRenderer } from './security'
 import { createWindowOptions } from './windows/config'
 import { WindowManager } from './windows/manager'
 import { registerAppScheme } from './protocol/app-scheme'
+import { IPC } from '../shared/ipc-contract'
+import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -19,12 +21,43 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 const trustedWebContents = createTrustedWebContentsRegistry()
+const pendingDeepLinks: ParsedDeepLink[] = []
+let windowManager: WindowManager | undefined
+
+function handleDeepLink(value: string): void {
+  const deepLink = parseDeepLink(value)
+  if (!deepLink) return
+  if (windowManager) {
+    windowManager.sendWhenReady('main', IPC.events.deepLink, deepLink)
+  } else {
+    pendingDeepLinks.push(deepLink)
+  }
+}
+
+function flushDeepLinks(): void {
+  if (!windowManager) return
+  for (const deepLink of pendingDeepLinks.splice(0)) {
+    windowManager.sendWhenReady('main', IPC.events.deepLink, deepLink)
+  }
+}
+
+if (!app.requestSingleInstanceLock()) app.quit()
+
+app.on('second-instance', (_event, commandLine) => {
+  const deepLink = commandLine.find((argument) => argument.startsWith('yuanai://'))
+  if (deepLink) handleDeepLink(deepLink)
+})
+
+app.on('open-url', (event, url) => {
+  event.preventDefault()
+  handleDeepLink(url)
+})
 
 app.whenReady().then(() => {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const runtimeConfig = readRuntimeConfig()
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
-  const windowManager = new WindowManager({
+  windowManager = new WindowManager({
     createWindow: (entry) => {
       const window = new BrowserWindow(
         createWindowOptions(entry, join(__dirname, '../preload/index.js'), process.platform)
@@ -47,9 +80,13 @@ app.whenReady().then(() => {
     preferencesStorage,
     runtimeConfig,
   })
-  windowManager.open('main')
+  void authStorage
+    .getItem('yuanai-auth')
+    .then((session) => windowManager?.open(session ? 'main' : 'login'))
+    .catch(() => windowManager?.open('login'))
+  flushDeepLinks()
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) windowManager.focusMain()
+    if (BrowserWindow.getAllWindows().length === 0) windowManager?.focusMain()
   })
   app.once('before-quit', unregisterAppScheme)
 })
