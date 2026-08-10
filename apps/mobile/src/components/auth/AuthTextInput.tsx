@@ -36,7 +36,7 @@ export const AuthTextInput = forwardRef<TextInput, AuthTextInputProps>(function 
   const borderColor = error ? t.border.danger : focused ? t.border.focus : t.border.default
 
   return (
-    <View style={{ marginBottom: spacing.sm }}>
+    <View style={{ marginBottom: spacing.xs }}>
       {label ? (
         <Text
           style={{
