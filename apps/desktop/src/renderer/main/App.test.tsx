@@ -20,6 +20,28 @@ const chat = vi.hoisted(() => ({
     files: []
     createdAt: string
   }>,
+  models: [
+    {
+      id: 'gpt-4o',
+      name: 'GPT-4o',
+      provider: 'openai',
+      description: '',
+      supportsVision: true,
+      supportsFiles: true,
+      contextLength: 128000,
+      isDefault: true,
+    },
+    {
+      id: 'gpt-4.1-mini',
+      name: 'GPT-4.1 mini',
+      provider: 'openai',
+      description: '快速响应模型',
+      supportsVision: true,
+      supportsFiles: true,
+      contextLength: 128000,
+      isDefault: false,
+    },
+  ],
   send: vi.fn(),
   stop: vi.fn(),
   streamState: {
@@ -28,6 +50,7 @@ const chat = vi.hoisted(() => ({
     streamingConvId: null as string | null,
     streamingThink: '',
   },
+  uploadFileSmart: vi.fn(),
   updateConversation: vi.fn(),
 }))
 
@@ -36,22 +59,10 @@ vi.mock('@yuanai/core/hooks', () => ({
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
   useMessages: () => ({ data: chat.messages, isLoading: false }),
-  useModels: () => ({
-    data: [
-      {
-        id: 'gpt-4o',
-        name: 'GPT-4o',
-        provider: 'openai',
-        description: '',
-        supportsVision: true,
-        supportsFiles: true,
-        contextLength: 128000,
-        isDefault: true,
-      },
-    ],
-  }),
+  useModels: () => ({ data: chat.models }),
   useStream: () => ({ send: chat.send, stop: chat.stop }),
   useUpdateConversation: () => ({ isPending: false, mutateAsync: chat.updateConversation }),
+  uploadFileSmart: chat.uploadFileSmart,
 }))
 
 vi.mock('@yuanai/core/stores', () => ({
@@ -105,6 +116,7 @@ beforeEach(() => {
   chat.streamState.streamingContent = ''
   chat.streamState.streamingThink = ''
   chat.streamState.optimisticUserMsg = null
+  chat.uploadFileSmart.mockResolvedValue({ id: 'file-1' })
 })
 
 afterEach(() => {
@@ -163,5 +175,50 @@ describe('desktop chat', () => {
 
     expect(window.yuanai.window.openSettings).toHaveBeenCalledOnce()
     expect(window.yuanai.window.openAbout).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the Web-aligned empty state usable after collapsing the sidebar', async () => {
+    const user = userEvent.setup()
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    const sidebarToggle = screen.getByRole('button', { name: '折叠侧边栏' })
+    expect(sidebarToggle.parentElement).toHaveClass('desktop-chat__header-side')
+
+    await user.click(sidebarToggle)
+    expect(screen.getByRole('button', { name: '展开侧边栏' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '创意写作' }))
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue(
+      '帮我写一个关于时间旅行的科幻短篇'
+    )
+  })
+
+  it('uses the custom model menu and sends uploaded attachment IDs with the stream', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '选择模型：GPT-4o' }))
+    await user.click(screen.getByRole('option', { name: '选择 GPT-4.1 mini' }))
+    expect(screen.getByRole('button', { name: '选择模型：GPT-4.1 mini' })).toBeInTheDocument()
+
+    const file = new File(['desktop attachment'], 'notes.txt', { type: 'text/plain' })
+    await user.upload(screen.getByTestId('attachment-input'), file)
+    expect(screen.getByText('notes.txt')).toBeInTheDocument()
+
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '请分析附件')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await waitFor(() => {
+      expect(chat.uploadFileSmart).toHaveBeenCalledWith(file, expect.any(Object))
+      expect(chat.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '请分析附件',
+          fileIds: ['file-1'],
+          model: 'gpt-4.1-mini',
+        })
+      )
+    })
   })
 })

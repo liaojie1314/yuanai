@@ -1,19 +1,39 @@
 import {
+  Brain,
   Bot,
+  Calculator,
+  Check,
   ChevronDown,
   CircleAlert,
+  Code2,
   FileText,
+  Globe2,
+  Image,
+  Languages,
   LoaderCircle,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
-  Plus,
+  Paperclip,
   SendHorizontal,
+  Share2,
+  Sparkles,
   Settings,
   Square,
   Trash2,
+  X,
   Info,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type ReactElement,
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -25,6 +45,7 @@ import {
   useModels,
   useStream,
   useUpdateConversation,
+  uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useChatStore } from '@yuanai/core/stores'
 import { Role, type AIModel, type Conversation, type Message } from '@yuanai/types'
@@ -44,7 +65,53 @@ const DEFAULT_MODELS: AIModel[] = [FALLBACK_MODEL]
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 
-const SUGGESTIONS = ['帮我梳理今天的工作重点', '解释这段代码的设计思路', '把下面内容改写得更清晰']
+const SUGGESTIONS = [
+  {
+    description: '帮我写一个关于时间旅行的科幻短篇',
+    icon: Sparkles,
+    title: '创意写作',
+  },
+  {
+    description: '帮我排查这段代码为什么报 TypeError',
+    icon: Code2,
+    title: '代码调试',
+  },
+  {
+    description: '搜索今天最新的 AI 行业动态',
+    icon: Globe2,
+    title: '联网搜索',
+  },
+  {
+    description: '用简单的方式解释量子纠缠是什么',
+    icon: Calculator,
+    title: '学习辅导',
+  },
+] as const
+
+const CAPABILITIES = [
+  { icon: Globe2, label: '联网搜索' },
+  { icon: Code2, label: '代码生成' },
+  { icon: Image, label: '图片理解' },
+  { icon: FileText, label: '文件分析' },
+  { icon: Calculator, label: '数学推导' },
+  { icon: Languages, label: '多语种翻译' },
+] as const
+
+interface ComposerAttachment {
+  id: string
+  file: File
+  fileId?: string
+  progress: number
+  status: 'ready' | 'uploading' | 'done' | 'error'
+}
+
+function getModelInitial(model: AIModel): string {
+  return model.provider.slice(0, 1).toLocaleUpperCase()
+}
+
+function formatContextLength(contextLength: number): string {
+  return contextLength >= 1000 ? `${Math.round(contextLength / 1000)}K` : String(contextLength)
+}
 
 function formatConversationTime(value: string | null): string {
   if (!value) return ''
@@ -228,13 +295,20 @@ export function App(): ReactElement {
   const modelsQuery = useModels()
   const stream = useStream()
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(true)
+  const [isThinkingEnabled, setIsThinkingEnabled] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState(FALLBACK_MODEL.id)
   const [draft, setDraft] = useState('')
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false)
   const [search, setSearch] = useState('')
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [actionError, setActionError] = useState('')
   const messageEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
   const availableModels = modelsQuery.data?.length ? modelsQuery.data : DEFAULT_MODELS
@@ -282,6 +356,10 @@ export function App(): ReactElement {
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setIsModelMenuOpen(false)
+        return
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'n') {
         event.preventDefault()
         void handleCreateConversation()
@@ -328,6 +406,78 @@ export function App(): ReactElement {
     setActiveConversationId(conversationId)
   }
 
+  function handleSelectModel(modelId: string): void {
+    setSelectedModelId(modelId)
+    setIsModelMenuOpen(false)
+  }
+
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
+    const files = Array.from(event.target.files ?? [])
+    if (files.length === 0) return
+    setAttachments((items) => [
+      ...items,
+      ...files.map((file) => ({
+        id: `${file.name}-${file.lastModified}-${file.size}-${Math.random().toString(36).slice(2)}`,
+        file,
+        progress: 0,
+        status: 'ready' as const,
+      })),
+    ])
+    event.target.value = ''
+  }
+
+  function removeAttachment(id: string): void {
+    if (isUploadingAttachments) return
+    setAttachments((items) => items.filter((item) => item.id !== id))
+  }
+
+  async function resolveAttachmentIds(): Promise<string[]> {
+    return Promise.all(
+      attachments.map(async (attachment) => {
+        if (attachment.fileId) return attachment.fileId
+        setAttachments((items) =>
+          items.map((item) =>
+            item.id === attachment.id
+              ? { ...item, progress: 0, status: 'uploading' as const }
+              : item
+          )
+        )
+        try {
+          const fileRef = await uploadFileSmart(attachment.file, {
+            onProgress: (snapshot) => {
+              setAttachments((items) =>
+                items.map((item) =>
+                  item.id === attachment.id
+                    ? {
+                        ...item,
+                        progress: snapshot.percent,
+                        status: snapshot.status === 'done' ? 'done' : 'uploading',
+                      }
+                    : item
+                )
+              )
+            },
+          })
+          setAttachments((items) =>
+            items.map((item) =>
+              item.id === attachment.id
+                ? { ...item, fileId: fileRef.id, progress: 100, status: 'done' as const }
+                : item
+            )
+          )
+          return fileRef.id
+        } catch (error: unknown) {
+          setAttachments((items) =>
+            items.map((item) =>
+              item.id === attachment.id ? { ...item, status: 'error' as const } : item
+            )
+          )
+          throw error
+        }
+      })
+    )
+  }
+
   function handleStartRename(conversation: Conversation): void {
     setRenamingConversationId(conversation.id)
     setRenameValue(getConversationTitle(conversation))
@@ -364,7 +514,7 @@ export function App(): ReactElement {
   async function handleSendMessage(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault()
     const content = draft.trim()
-    if (!content || isStreaming) return
+    if (!content || isStreaming || isUploadingAttachments) return
     setActionError('')
     let conversationId = activeConversationId
     try {
@@ -376,38 +526,57 @@ export function App(): ReactElement {
         conversationId = conversation.id
         setActiveConversationId(conversationId)
       }
-      setDraft('')
+      setIsUploadingAttachments(true)
+      const fileIds = await resolveAttachmentIds()
       await stream.send({
         convId: conversationId,
         content,
+        enableThinking: isThinkingEnabled,
+        fileIds,
         model: selectedModel.id,
         onError: (error) => setActionError(getErrorMessage(error, '消息发送失败，请重试')),
       })
+      setAttachments([])
+      setDraft('')
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '消息发送失败，请重试'))
+    } finally {
+      setIsUploadingAttachments(false)
     }
   }
 
   return (
-    <main className="desktop-chat" aria-label="元AI 聊天">
+    <main
+      className={
+        isSidebarCollapsed ? 'desktop-chat desktop-chat--sidebar-collapsed' : 'desktop-chat'
+      }
+      aria-label="元AI 聊天"
+    >
       <aside className="desktop-chat__sidebar" aria-label="会话列表">
-        <div className="desktop-chat__brand">
-          <span aria-hidden="true">元</span>
-          <strong>元AI</strong>
+        <div className="desktop-chat__sidebar-header">
+          <div className="desktop-chat__brand">
+            <span aria-hidden="true">元</span>
+            <strong>元AI</strong>
+          </div>
+          <div className="desktop-chat__quick-actions" aria-label="新建操作">
+            <button type="button" aria-label="开启临时对话" title="开启临时对话" disabled>
+              <MessageSquareText size={16} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label="新建会话"
+              title="新建会话"
+              disabled={createConversation.isPending || isStreaming}
+              onClick={() => void handleCreateConversation()}
+            >
+              {createConversation.isPending ? (
+                <LoaderCircle className="desktop-chat__spin" size={16} />
+              ) : (
+                <Pencil size={16} aria-hidden="true" />
+              )}
+            </button>
+          </div>
         </div>
-        <button
-          className="desktop-chat__new-conversation"
-          type="button"
-          disabled={createConversation.isPending || isStreaming}
-          onClick={() => void handleCreateConversation()}
-        >
-          {createConversation.isPending ? (
-            <LoaderCircle className="desktop-chat__spin" size={17} />
-          ) : (
-            <Plus size={17} />
-          )}
-          新建会话
-        </button>
         <label className="desktop-chat__search">
           <span className="desktop-chat__sr-only">搜索会话</span>
           <input
@@ -465,25 +634,89 @@ export function App(): ReactElement {
 
       <section className="desktop-chat__workspace">
         <header className="desktop-chat__header">
-          <div>
-            <p className="desktop-chat__eyebrow">当前会话</p>
-            <h1>{activeConversation ? getConversationTitle(activeConversation) : '开始新对话'}</h1>
-          </div>
-          <label className="desktop-chat__model-select">
-            <span className="desktop-chat__sr-only">选择模型</span>
-            <select
-              value={selectedModel.id}
-              onChange={(event) => setSelectedModelId(event.target.value)}
+          <div className="desktop-chat__header-side">
+            <h1 className="desktop-chat__sr-only">
+              {activeConversation ? getConversationTitle(activeConversation) : '开始新对话'}
+            </h1>
+            <button
+              className="desktop-chat__header-action"
+              type="button"
+              aria-label={isSidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
+              title={isSidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
+              onClick={() => setIsSidebarCollapsed((value) => !value)}
             >
-              {availableModels.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </select>
+              {isSidebarCollapsed ? (
+                <PanelLeftOpen size={17} aria-hidden="true" />
+              ) : (
+                <PanelLeftClose size={17} aria-hidden="true" />
+              )}
+            </button>
+          </div>
+          <button
+            className="desktop-chat__model-trigger"
+            type="button"
+            aria-label={`选择模型：${selectedModel.name}`}
+            aria-expanded={isModelMenuOpen}
+            aria-haspopup="listbox"
+            onClick={() => setIsModelMenuOpen((value) => !value)}
+          >
+            <span className="desktop-chat__model-mark" aria-hidden="true">
+              {getModelInitial(selectedModel)}
+            </span>
+            <span>{selectedModel.name}</span>
             <ChevronDown size={15} aria-hidden="true" />
-          </label>
+          </button>
+          <div className="desktop-chat__header-side desktop-chat__header-side--end">
+            <button
+              className="desktop-chat__header-action"
+              type="button"
+              aria-label="分享对话"
+              title="分享对话"
+              disabled={!activeConversation}
+            >
+              <Share2 size={17} aria-hidden="true" />
+            </button>
+          </div>
         </header>
+
+        {isModelMenuOpen ? (
+          <>
+            <button
+              className="desktop-chat__model-dismiss"
+              type="button"
+              aria-label="关闭模型选择"
+              onClick={() => setIsModelMenuOpen(false)}
+            />
+            <div className="desktop-chat__model-menu" role="listbox" aria-label="选择模型">
+              {availableModels.map((model) => {
+                const selected = model.id === selectedModel.id
+                return (
+                  <button
+                    key={model.id}
+                    className={selected ? 'is-selected' : undefined}
+                    type="button"
+                    role="option"
+                    aria-label={`选择 ${model.name}`}
+                    aria-selected={selected}
+                    onClick={() => handleSelectModel(model.id)}
+                  >
+                    <span className="desktop-chat__model-menu-mark" aria-hidden="true">
+                      {getModelInitial(model)}
+                    </span>
+                    <span className="desktop-chat__model-menu-copy">
+                      <strong>{model.name}</strong>
+                      <small>{model.description || model.provider}</small>
+                    </span>
+                    <span className="desktop-chat__model-menu-context">
+                      {formatContextLength(model.contextLength)}
+                    </span>
+                    {selected ? <Check size={16} aria-hidden="true" /> : null}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : null}
 
         {actionError ? (
           <p className="desktop-chat__alert" role="alert">
@@ -522,13 +755,33 @@ export function App(): ReactElement {
           ) : (
             <section className="desktop-chat__empty-state" aria-label="开始新对话">
               <div className="desktop-chat__empty-icon" aria-hidden="true">
-                <Bot size={28} />
+                元
               </div>
-              <h2>有什么想一起完成？</h2>
+              <div className="desktop-chat__empty-copy">
+                <h2>你好，我是元AI</h2>
+                <p>集成多款顶尖 AI 模型，帮你完成任何任务</p>
+              </div>
+              <div className="desktop-chat__capabilities" aria-label="可用能力">
+                {CAPABILITIES.map(({ icon: Icon, label }) => (
+                  <span key={label}>
+                    <Icon size={14} aria-hidden="true" />
+                    {label}
+                  </span>
+                ))}
+              </div>
               <div className="desktop-chat__suggestions">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button key={suggestion} type="button" onClick={() => setDraft(suggestion)}>
-                    {suggestion}
+                {SUGGESTIONS.map(({ description, icon: Icon, title }) => (
+                  <button
+                    key={title}
+                    type="button"
+                    aria-label={title}
+                    onClick={() => setDraft(description)}
+                  >
+                    <Icon size={17} aria-hidden="true" />
+                    <span>
+                      <strong>{title}</strong>
+                      <small>{description}</small>
+                    </span>
                   </button>
                 ))}
               </div>
@@ -540,12 +793,33 @@ export function App(): ReactElement {
           className="desktop-chat__composer"
           onSubmit={(event) => void handleSendMessage(event)}
         >
+          {attachments.length > 0 ? (
+            <ul className="desktop-chat__attachment-list" aria-label="待发送附件">
+              {attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <FileText size={14} aria-hidden="true" />
+                  <span>{attachment.file.name}</span>
+                  {attachment.status === 'uploading' ? <small>{attachment.progress}%</small> : null}
+                  {attachment.status === 'error' ? <small>上传失败</small> : null}
+                  <button
+                    type="button"
+                    aria-label={`移除附件 ${attachment.file.name}`}
+                    title="移除附件"
+                    disabled={isUploadingAttachments}
+                    onClick={() => removeAttachment(attachment.id)}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <textarea
             aria-label="输入消息"
             rows={1}
             value={draft}
             placeholder="发送消息"
-            disabled={isStreaming}
+            disabled={isStreaming || isUploadingAttachments}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -554,27 +828,89 @@ export function App(): ReactElement {
               }
             }}
           />
-          {isStreaming ? (
-            <button
-              className="desktop-chat__stop"
-              type="button"
-              aria-label="停止生成"
-              title="停止生成"
-              onClick={stream.stop}
-            >
-              <Square size={16} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              className="desktop-chat__send"
-              type="submit"
-              aria-label="发送消息"
-              title="发送消息"
-              disabled={!draft.trim()}
-            >
-              <SendHorizontal size={18} />
-            </button>
-          )}
+          <div className="desktop-chat__composer-toolbar">
+            <div className="desktop-chat__composer-tools">
+              <input
+                ref={fileInputRef}
+                className="desktop-chat__sr-only"
+                data-testid="attachment-input"
+                type="file"
+                multiple
+                onChange={handleAttachmentChange}
+              />
+              <button
+                className={attachments.length > 0 ? 'is-active' : undefined}
+                type="button"
+                aria-label="添加附件"
+                title="添加附件"
+                disabled={isStreaming || isUploadingAttachments}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Paperclip size={18} aria-hidden="true" />
+              </button>
+              <button
+                className={isWebSearchEnabled ? 'is-active' : undefined}
+                type="button"
+                aria-label="联网搜索"
+                title="联网搜索"
+                aria-pressed={isWebSearchEnabled}
+                disabled={isStreaming || isUploadingAttachments}
+                onClick={() => setIsWebSearchEnabled((value) => !value)}
+              >
+                <Globe2 size={18} aria-hidden="true" />
+              </button>
+              <button
+                className={isThinkingEnabled ? 'is-active' : undefined}
+                type="button"
+                aria-label={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
+                title={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
+                aria-pressed={isThinkingEnabled}
+                disabled={isStreaming || isUploadingAttachments}
+                onClick={() => setIsThinkingEnabled((value) => !value)}
+              >
+                <Brain size={18} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="desktop-chat__composer-actions">
+              <button
+                className="desktop-chat__composer-model"
+                type="button"
+                aria-label={`切换输入模型：${selectedModel.name}`}
+                aria-expanded={isModelMenuOpen}
+                aria-haspopup="listbox"
+                onClick={() => setIsModelMenuOpen((value) => !value)}
+              >
+                <span aria-hidden="true">{getModelInitial(selectedModel)}</span>
+                {selectedModel.name}
+                <ChevronDown size={13} aria-hidden="true" />
+              </button>
+              {isStreaming ? (
+                <button
+                  className="desktop-chat__stop"
+                  type="button"
+                  aria-label="停止生成"
+                  title="停止生成"
+                  onClick={stream.stop}
+                >
+                  <Square size={16} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  className="desktop-chat__send"
+                  type="submit"
+                  aria-label="发送消息"
+                  title="发送消息"
+                  disabled={!draft.trim() || isUploadingAttachments}
+                >
+                  {isUploadingAttachments ? (
+                    <LoaderCircle className="desktop-chat__spin" size={17} />
+                  ) : (
+                    <SendHorizontal size={18} />
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
         </form>
       </section>
     </main>
