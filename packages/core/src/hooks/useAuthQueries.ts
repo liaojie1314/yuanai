@@ -5,6 +5,7 @@ import {
   changePassword,
   clearAllConversations,
   deleteMe,
+  exchangeDesktopOAuthCode,
   getMe,
   getMyPreferences,
   getMyStats,
@@ -92,6 +93,19 @@ export function useResetPassword() {
       verifyCode: string
       newPassword: string
     }) => resetPassword(email, verifyCode, newPassword),
+  })
+}
+
+/** 使用桌面 OAuth 一次性授权码写入认证状态。 */
+export function useDesktopOAuthExchange() {
+  const { setAuth } = useAuthStore()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: exchangeDesktopOAuthCode,
+    onSuccess: (data) => {
+      setAuth(data.user, data.access_token, data.refresh_token)
+      void qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 

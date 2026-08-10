@@ -323,6 +323,61 @@ button {
   font-size: 13px;
 }
 
+.desktop-auth__divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.desktop-auth__divider::before,
+.desktop-auth__divider::after {
+  width: 100%;
+  height: 1px;
+  content: '';
+  background: #e2e8f0;
+}
+
+.desktop-auth__social-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.desktop-auth__social-button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  color: #334155;
+  background: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.desktop-auth__social-button img {
+  width: 18px;
+  height: 18px;
+}
+
+.desktop-auth__social-button:hover:not(:disabled),
+.desktop-auth__social-button:focus-visible:not(:disabled) {
+  border-color: #93c5fd;
+  background: #f8fafc;
+}
+
+.desktop-auth__social-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .desktop-auth__success {
   display: grid;
   justify-items: center;

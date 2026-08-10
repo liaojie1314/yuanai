@@ -15,6 +15,10 @@ const authWindows = vi.hoisted(() => ({
   openForgot: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }))
 
+const oauth = vi.hoisted(() => ({
+  start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+}))
+
 vi.mock('@yuanai/core/hooks', () => ({
   useLogin: () => ({ isPending: false, mutateAsync: mutations.login }),
   useRegister: () => ({ isPending: false, mutateAsync: mutations.register }),
@@ -31,7 +35,7 @@ function setAuthRoute(route: 'login' | 'register' | 'forgot'): void {
 beforeEach(() => {
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
-    value: { window: authWindows },
+    value: { window: authWindows, oauth },
   })
 })
 
@@ -79,6 +83,17 @@ describe('desktop authentication', () => {
 
     expect(authWindows.openForgot).toHaveBeenCalledOnce()
     expect(screen.getByRole('heading', { name: '登录元AI' })).toBeInTheDocument()
+  })
+
+  it('starts provider OAuth through the restricted preload API', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'GitHub' }))
+
+    await waitFor(() => {
+      expect(oauth.start).toHaveBeenCalledWith('github')
+    })
   })
 
   it('uses the mobile-inspired centered form shell without a brand sidebar', () => {

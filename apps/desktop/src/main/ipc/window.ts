@@ -17,6 +17,10 @@ export interface NamedWindowController {
   openSettings(): void
   /** 打开并聚焦关于窗口。 */
   openAbout(): void
+  /** 打开并聚焦 OAuth 加载窗口。 */
+  openOAuth(): void
+  /** 关闭 OAuth 加载窗口。 */
+  closeOAuth(): void
 }
 
 /** 注册用于打开命名窗口的最小 IPC 能力。 */

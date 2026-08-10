@@ -6,6 +6,7 @@ import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { registerAuthIpcHandlers } from './auth'
 import type { AuthIpcStorage, IpcMainRegistrar } from './auth'
 import type { IpcInvocationGuard, TrustedWebContentsRegistry } from './guards'
+import { registerOAuthIpcHandlers } from './oauth'
 import { registerPreferencesIpcHandlers } from './prefs'
 import type { PreferencesIpcStorage } from './prefs'
 import { registerSystemIpcHandlers } from './system'
@@ -49,6 +50,13 @@ function copyRuntimeConfig(config: AppRuntimeConfig): AppRuntimeConfig {
 /** 安装认证、偏好和运行时配置的固定 IPC 通道。 */
 export function setupIpc(options: SetupIpcOptions): void {
   registerAuthIpcHandlers(options)
+  registerOAuthIpcHandlers({
+    ipcMain: options.ipcMain,
+    guard: options.guard,
+    runtimeConfig: options.runtimeConfig,
+    shell: options.shell,
+    windows: options.windows,
+  })
   registerPreferencesIpcHandlers(options)
   registerSystemIpcHandlers(options)
   registerWindowIpcHandlers(options.ipcMain, options.guard, options.windows)

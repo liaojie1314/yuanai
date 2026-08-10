@@ -39,12 +39,15 @@ function setupTestIpc(): {
   }
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
+  shell: { openExternal: ReturnType<typeof vi.fn> }
   windows: {
     openLogin: ReturnType<typeof vi.fn>
     openRegister: ReturnType<typeof vi.fn>
     openForgot: ReturnType<typeof vi.fn>
     openSettings: ReturnType<typeof vi.fn>
     openAbout: ReturnType<typeof vi.fn>
+    openOAuth: ReturnType<typeof vi.fn>
+    closeOAuth: ReturnType<typeof vi.fn>
   }
 } {
   const handlers = new Map<string, InvokeHandler>()
@@ -76,6 +79,8 @@ function setupTestIpc(): {
     openForgot: vi.fn(),
     openSettings: vi.fn(),
     openAbout: vi.fn(),
+    openOAuth: vi.fn(),
+    closeOAuth: vi.fn(),
   }
   const runtimeConfig: AppRuntimeConfig = Object.freeze({
     apiBaseUrl: 'https://api.example.com/api/v1',
@@ -87,6 +92,8 @@ function setupTestIpc(): {
     setAutoLaunch: vi.fn(),
     setGlobalShortcut: vi.fn(),
   } as unknown as DesktopSystemService
+
+  const shell = { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }
 
   setupIpc({
     ipcMain: {
@@ -100,7 +107,7 @@ function setupTestIpc(): {
     onSessionChanged,
     preferencesStorage,
     runtimeConfig,
-    shell: { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) },
+    shell,
     systemService,
     windows,
   })
@@ -112,6 +119,7 @@ function setupTestIpc(): {
     preferencesStorage,
     onSessionChanged,
     systemService,
+    shell,
     windows,
   }
 }
@@ -131,6 +139,7 @@ describe('secure IPC handlers', () => {
         IPC.auth.get,
         IPC.auth.remove,
         IPC.auth.set,
+        IPC.oauth.start,
         IPC.prefs.get,
         IPC.prefs.update,
         IPC.runtime.getConfig,
@@ -265,5 +274,32 @@ describe('secure IPC handlers', () => {
     expect(windows.openForgot).toHaveBeenCalledOnce()
     expect(windows.openSettings).toHaveBeenCalledOnce()
     expect(windows.openAbout).toHaveBeenCalledOnce()
+  })
+
+  it('opens a loading window and starts desktop OAuth only for supported providers', async () => {
+    const { handlers, sender, shell, windows } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.oauth.start)
+
+    await expect(handler(createEvent(sender), 'github')).resolves.toBeUndefined()
+
+    expect(windows.openOAuth).toHaveBeenCalledOnce()
+    expect(shell.openExternal).toHaveBeenCalledWith(
+      'https://api.example.com/api/v1/auth/github?desktop=1'
+    )
+
+    await expect(handler(createEvent(sender), 'unknown')).rejects.toThrow('IPC_PAYLOAD_INVALID')
+    expect(windows.openOAuth).toHaveBeenCalledOnce()
+  })
+
+  it('closes the loading window when the system browser cannot open', async () => {
+    const { handlers, sender, shell, windows } = setupTestIpc()
+    shell.openExternal.mockRejectedValueOnce(new Error('BROWSER_UNAVAILABLE'))
+
+    await expect(
+      getHandler(handlers, IPC.oauth.start)(createEvent(sender), 'google')
+    ).rejects.toThrow('BROWSER_UNAVAILABLE')
+
+    expect(windows.openOAuth).toHaveBeenCalledOnce()
+    expect(windows.closeOAuth).toHaveBeenCalledOnce()
   })
 })

@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type {
   DesktopAppInfo,
+  DesktopOAuthProvider,
+  DesktopOAuthResult,
   DesktopPreferences,
   ExternalLinkId,
   ShortcutStatus,
@@ -38,10 +40,25 @@ export interface YuanaiApi {
   shell: {
     openExternal: (link: ExternalLinkId) => Promise<void>
   }
+  oauth: {
+    start: (provider: DesktopOAuthProvider) => Promise<void>
+  }
   events: {
     onAuthChanged: (listener: (hasSession: boolean) => void) => () => void
+    onOAuthResult: (listener: (result: DesktopOAuthResult) => void) => () => void
   }
 }
+
+const oauthResultListeners = new Set<(result: DesktopOAuthResult) => void>()
+let pendingOAuthResult: DesktopOAuthResult | null = null
+
+ipcRenderer.on(IPC.events.oauthResult, (_event: unknown, result: DesktopOAuthResult) => {
+  if (oauthResultListeners.size === 0) {
+    pendingOAuthResult = result
+    return
+  }
+  oauthResultListeners.forEach((listener) => listener(result))
+})
 
 /** 通过 contextBridge 暴露给 renderer 的受限 API 实现。 */
 export const api: YuanaiApi = {
@@ -73,11 +90,23 @@ export const api: YuanaiApi = {
   shell: {
     openExternal: (link) => ipcRenderer.invoke(IPC.shell.openExternal, link),
   },
+  oauth: {
+    start: (provider) => ipcRenderer.invoke(IPC.oauth.start, provider),
+  },
   events: {
     onAuthChanged: (listener) => {
       const wrappedListener = (_event: unknown, hasSession: boolean): void => listener(hasSession)
       ipcRenderer.on(IPC.events.authChanged, wrappedListener)
       return () => ipcRenderer.removeListener(IPC.events.authChanged, wrappedListener)
+    },
+    onOAuthResult: (listener) => {
+      oauthResultListeners.add(listener)
+      if (pendingOAuthResult) {
+        const result = pendingOAuthResult
+        pendingOAuthResult = null
+        queueMicrotask(() => listener(result))
+      }
+      return () => oauthResultListeners.delete(listener)
     },
   },
 }

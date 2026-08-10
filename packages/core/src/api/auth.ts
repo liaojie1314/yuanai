@@ -43,6 +43,16 @@ export async function resetPassword(
   await apiClient.post('/auth/reset-password', { email, verifyCode, newPassword })
 }
 
+/**
+ * 使用桌面 OAuth 自定义协议带回的一次性授权码交换登录会话。
+ * @param code 后端签发的短时、一次性 authorization code
+ * @returns 包含用户与 access/refresh token 的认证响应
+ */
+export async function exchangeDesktopOAuthCode(code: string): Promise<AuthResponse> {
+  const res = await apiClient.post<AuthResponse>('/auth/desktop/exchange', { code })
+  return res.data
+}
+
 /** 退出登录 */
 export async function logout(): Promise<void> {
   await apiClient.post('/auth/logout')

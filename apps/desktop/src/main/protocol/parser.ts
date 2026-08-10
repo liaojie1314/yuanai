@@ -1,12 +1,11 @@
+import type { DesktopOAuthResult } from '../../shared/ipc-contract'
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const AUTHORIZATION_CODE_PATTERN = /^[A-Za-z0-9_-]{43,128}$/
 const FORBIDDEN_OAUTH_KEYS = new Set(['access_token', 'refresh_token', 'code_verifier'])
 
 /** 已校验的桌面自定义协议跳转。 */
-export type ParsedDeepLink =
-  | { type: 'chat'; conversationId: string }
-  | { type: 'oauth'; code: string }
-  | { type: 'oauth-error'; error: string; description: string | null }
+export type ParsedDeepLink = { type: 'chat'; conversationId: string } | DesktopOAuthResult
 
 function hasUniqueQueryKeys(url: URL): boolean {
   const keys = new Set<string>()

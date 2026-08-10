@@ -1,7 +1,18 @@
-import { CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, Mail, UserRound } from 'lucide-react'
+import {
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Github,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  UserRound,
+} from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
 
 import { useLogin, useRegister, useResetPassword, useSendVerifyCode } from '@yuanai/core/hooks'
+
+import googleIcon from './google.svg'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VERIFICATION_CODE_PATTERN = /^\d{6}$/
@@ -243,6 +254,19 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
   const [emailError, setEmailError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [requestError, setRequestError] = useState('')
+  const [oauthProvider, setOauthProvider] = useState<'github' | 'google' | null>(null)
+
+  async function handleOAuth(provider: 'github' | 'google'): Promise<void> {
+    setRequestError('')
+    setOauthProvider(provider)
+    try {
+      await window.yuanai.oauth.start(provider)
+    } catch (error: unknown) {
+      setRequestError(getApiErrorMessage(error, '无法打开第三方登录，请稍后重试'))
+    } finally {
+      setOauthProvider(null)
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -307,6 +331,29 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
         <button className="desktop-auth__submit" type="submit" disabled={loginMutation.isPending}>
           {loginMutation.isPending ? '登录中...' : '登录'}
         </button>
+        <div className="desktop-auth__divider" role="separator">
+          <span>或使用以下方式登录</span>
+        </div>
+        <div className="desktop-auth__social-row">
+          <button
+            className="desktop-auth__social-button"
+            type="button"
+            disabled={oauthProvider !== null}
+            onClick={() => void handleOAuth('github')}
+          >
+            <Github aria-hidden="true" size={18} />
+            {oauthProvider === 'github' ? '正在打开 GitHub...' : 'GitHub'}
+          </button>
+          <button
+            className="desktop-auth__social-button"
+            type="button"
+            disabled={oauthProvider !== null}
+            onClick={() => void handleOAuth('google')}
+          >
+            <img src={googleIcon} alt="" />
+            {oauthProvider === 'google' ? '正在打开 Google...' : 'Google'}
+          </button>
+        </div>
         <p className="desktop-auth__switch">
           还没有账号？
           <button

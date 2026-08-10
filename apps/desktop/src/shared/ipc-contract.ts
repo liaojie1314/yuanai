@@ -43,11 +43,20 @@ export interface ShortcutStatus {
 /** 允许由主进程打开的固定帮助链接。 */
 export type ExternalLinkId = 'documentation' | 'repository' | 'feedback' | 'privacy'
 
+/** 支持从桌面端发起授权的第三方 OAuth provider。 */
+export type DesktopOAuthProvider = 'github' | 'google'
+
+/** 主进程解析后可安全转发给 OAuth 窗口的结果。 */
+export type DesktopOAuthResult =
+  | { type: 'oauth'; code: string }
+  | { type: 'oauth-error'; error: string; description: string | null }
+
 /** IPC 通道名的唯一来源。 */
 export const IPC = {
   auth: { get: 'auth:get', set: 'auth:set', remove: 'auth:remove' },
   prefs: { get: 'prefs:get', update: 'prefs:update' },
   runtime: { getConfig: 'runtime:get-config' },
+  oauth: { start: 'oauth:start' },
   window: {
     openLogin: 'window:open-login',
     openRegister: 'window:open-register',

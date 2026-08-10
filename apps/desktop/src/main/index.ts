@@ -30,16 +30,25 @@ function handleDeepLink(value: string): void {
   const deepLink = parseDeepLink(value)
   if (!deepLink) return
   if (windowManager) {
-    windowManager.sendWhenReady('main', IPC.events.deepLink, deepLink)
+    dispatchDeepLink(deepLink)
   } else {
     pendingDeepLinks.push(deepLink)
   }
 }
 
+function dispatchDeepLink(deepLink: ParsedDeepLink): void {
+  if (!windowManager) return
+  if (deepLink.type === 'oauth' || deepLink.type === 'oauth-error') {
+    windowManager.sendWhenReady('oauth', IPC.events.oauthResult, deepLink)
+    return
+  }
+  windowManager.sendWhenReady('main', IPC.events.deepLink, deepLink)
+}
+
 function flushDeepLinks(): void {
   if (!windowManager) return
   for (const deepLink of pendingDeepLinks.splice(0)) {
-    windowManager.sendWhenReady('main', IPC.events.deepLink, deepLink)
+    dispatchDeepLink(deepLink)
   }
 }
 
@@ -94,6 +103,7 @@ app.whenReady().then(() => {
         windowManager.close('login')
         windowManager.close('register')
         windowManager.close('forgot')
+        windowManager.close('oauth')
         return
       }
       windowManager.open('login')
@@ -109,6 +119,8 @@ app.whenReady().then(() => {
       openForgot: () => windowManager?.open('forgot'),
       openSettings: () => windowManager?.open('settings'),
       openAbout: () => windowManager?.open('about'),
+      openOAuth: () => windowManager?.open('oauth'),
+      closeOAuth: () => windowManager?.close('oauth'),
     },
   })
   void desktopSystem.restore().catch((error: unknown) => {

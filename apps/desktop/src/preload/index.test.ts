@@ -47,6 +47,7 @@ describe('preload API', () => {
     await api.system.setGlobalShortcut('CommandOrControl+Alt+Y')
     await api.system.setAutoLaunch(true)
     await api.shell.openExternal('repository')
+    await api.oauth.start('github')
 
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(1, IPC.auth.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(2, IPC.auth.set, 'session')
@@ -66,6 +67,7 @@ describe('preload API', () => {
     )
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.system.setAutoLaunch, true)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {
