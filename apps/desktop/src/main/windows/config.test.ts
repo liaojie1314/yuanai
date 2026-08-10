@@ -32,4 +32,40 @@ describe('createWindowOptions', () => {
       titleBarStyle: 'hiddenInset',
     })
   })
+
+  it('uses a compact fixed size without a maximize action for login', () => {
+    expect(createWindowOptions('login', '/preload/index.js', 'linux')).toMatchObject({
+      width: 520,
+      height: 600,
+      minWidth: 520,
+      minHeight: 600,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+    })
+  })
+
+  it('uses a taller fixed size for the complete registration form', () => {
+    expect(createWindowOptions('register', '/preload/index.js', 'linux')).toMatchObject({
+      width: 520,
+      height: 810,
+      minWidth: 520,
+      minHeight: 810,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+    })
+  })
+
+  it('uses an intermediate fixed height for password recovery', () => {
+    expect(createWindowOptions('forgot', '/preload/index.js', 'linux')).toMatchObject({
+      width: 520,
+      height: 680,
+      minWidth: 520,
+      minHeight: 680,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+    })
+  })
 })

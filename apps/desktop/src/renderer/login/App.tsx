@@ -1,13 +1,4 @@
-import {
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  KeyRound,
-  LockKeyhole,
-  Mail,
-  Sparkles,
-  UserRound,
-} from 'lucide-react'
+import { CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, Mail, UserRound } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
 
 import { useLogin, useRegister, useResetPassword, useSendVerifyCode } from '@yuanai/core/hooks'
@@ -70,20 +61,15 @@ function getPasswordError(password: string): string {
 function AuthFrame({ title, subtitle, children }: AuthFrameProps): ReactElement {
   return (
     <main className="desktop-auth" aria-label={title}>
-      <aside className="desktop-auth__brand" aria-label="元AI">
-        <div className="desktop-auth__brand-mark" aria-hidden="true">
-          <Sparkles size={24} strokeWidth={2.25} />
-        </div>
-        <div>
-          <p className="desktop-auth__brand-name">元AI</p>
-          <p className="desktop-auth__brand-caption">专注于你的每一次思考</p>
-        </div>
-        <p className="desktop-auth__brand-footer">在桌面端继续你的对话</p>
-      </aside>
       <section className="desktop-auth__content">
         <div className="desktop-auth__form">
-          <h1>{title}</h1>
-          <p className="desktop-auth__subtitle">{subtitle}</p>
+          <header className="desktop-auth__heading">
+            <div className="desktop-auth__logo" aria-hidden="true">
+              元
+            </div>
+            <h1>{title}</h1>
+            <p className="desktop-auth__subtitle">{subtitle}</p>
+          </header>
           {children}
         </div>
       </section>
@@ -91,10 +77,9 @@ function AuthFrame({ title, subtitle, children }: AuthFrameProps): ReactElement 
   )
 }
 
-function FieldError({ id, message }: { id: string; message: string }): ReactElement | null {
-  if (!message) return null
+function FieldError({ id, message }: { id: string; message: string }): ReactElement {
   return (
-    <p id={id} className="desktop-auth__field-error">
+    <p id={id} className="desktop-auth__field-error" aria-live="polite">
       {message}
     </p>
   )
@@ -207,16 +192,22 @@ function VerificationCodeField({
   value,
   error,
   onChange,
+  requestCodeLabel,
+  requestCodeDisabled,
+  onRequestCode,
 }: {
   value: string
   error: string
   onChange(value: string): void
+  requestCodeLabel: string
+  requestCodeDisabled: boolean
+  onRequestCode(): void
 }): ReactElement {
   const errorId = 'verify-code-error'
   return (
     <div className="desktop-auth__field">
       <label htmlFor="verify-code">邮箱验证码</label>
-      <div className="desktop-auth__input-wrap">
+      <div className="desktop-auth__input-wrap desktop-auth__input-wrap--verification-code">
         <KeyRound aria-hidden="true" size={17} />
         <input
           id="verify-code"
@@ -230,6 +221,14 @@ function VerificationCodeField({
           maxLength={6}
           onChange={(event) => onChange(event.target.value.replace(/\D/g, ''))}
         />
+        <button
+          className="desktop-auth__code-button"
+          type="button"
+          disabled={requestCodeDisabled}
+          onClick={onRequestCode}
+        >
+          {requestCodeLabel}
+        </button>
       </div>
       <FieldError id={errorId} message={error} />
     </div>
@@ -430,19 +429,20 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
           error={emailError}
           onChange={setEmail}
         />
-        <VerificationCodeField value={verifyCode} error={codeError} onChange={setVerifyCode} />
-        <button
-          className="desktop-auth__code-button"
-          type="button"
-          disabled={cooldown > 0 || sendCodeMutation.isPending}
-          onClick={() => void sendVerificationCode()}
-        >
-          {sendCodeMutation.isPending
-            ? '发送中...'
-            : cooldown > 0
-              ? `${cooldown} 秒后重新发送`
-              : '发送验证码'}
-        </button>
+        <VerificationCodeField
+          value={verifyCode}
+          error={codeError}
+          requestCodeLabel={
+            sendCodeMutation.isPending
+              ? '发送中...'
+              : cooldown > 0
+                ? `${cooldown} 秒后重发`
+                : '发送验证码'
+          }
+          requestCodeDisabled={cooldown > 0 || sendCodeMutation.isPending}
+          onChange={setVerifyCode}
+          onRequestCode={() => void sendVerificationCode()}
+        />
         <PasswordField
           id="register-password"
           label="密码"
@@ -587,19 +587,20 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
           error={emailError}
           onChange={setEmail}
         />
-        <VerificationCodeField value={verifyCode} error={codeError} onChange={setVerifyCode} />
-        <button
-          className="desktop-auth__code-button"
-          type="button"
-          disabled={cooldown > 0 || sendCodeMutation.isPending}
-          onClick={() => void sendVerificationCode()}
-        >
-          {sendCodeMutation.isPending
-            ? '发送中...'
-            : cooldown > 0
-              ? `${cooldown} 秒后重新发送`
-              : '发送验证码'}
-        </button>
+        <VerificationCodeField
+          value={verifyCode}
+          error={codeError}
+          requestCodeLabel={
+            sendCodeMutation.isPending
+              ? '发送中...'
+              : cooldown > 0
+                ? `${cooldown} 秒后重发`
+                : '发送验证码'
+          }
+          requestCodeDisabled={cooldown > 0 || sendCodeMutation.isPending}
+          onChange={setVerifyCode}
+          onRequestCode={() => void sendVerificationCode()}
+        />
         <PasswordField
           id="forgot-password"
           label="新密码"
@@ -647,8 +648,15 @@ export function App(): ReactElement {
   }, [])
 
   function navigate(modeToNavigate: AuthMode): void {
-    window.history.replaceState(null, '', `#/${modeToNavigate}`)
-    setMode(modeToNavigate)
+    const openWindow =
+      modeToNavigate === 'register'
+        ? window.yuanai.window.openRegister
+        : modeToNavigate === 'forgot'
+          ? window.yuanai.window.openForgot
+          : window.yuanai.window.openLogin
+    void openWindow().catch((error: unknown) => {
+      console.error('Failed to open authentication window', error)
+    })
   }
 
   if (mode === 'register') return <RegisterForm onNavigate={navigate} />

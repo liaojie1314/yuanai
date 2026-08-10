@@ -49,6 +49,9 @@ export const IPC = {
   prefs: { get: 'prefs:get', update: 'prefs:update' },
   runtime: { getConfig: 'runtime:get-config' },
   window: {
+    openLogin: 'window:open-login',
+    openRegister: 'window:open-register',
+    openForgot: 'window:open-forgot',
     openSettings: 'window:open-settings',
     openAbout: 'window:open-about',
   },

@@ -66,6 +66,9 @@ beforeEach(() => {
     configurable: true,
     value: {
       window: {
+        openLogin: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        openRegister: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        openForgot: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openSettings: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openAbout: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
       },

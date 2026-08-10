@@ -61,9 +61,9 @@ app.whenReady().then(() => {
   const runtimeConfig = readRuntimeConfig()
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
   windowManager = new WindowManager({
-    createWindow: (entry) => {
+    createWindow: (key) => {
       const window = new BrowserWindow(
-        createWindowOptions(entry, join(__dirname, '../preload/index.js'), process.platform)
+        createWindowOptions(key, join(__dirname, '../preload/index.js'), process.platform)
       )
       trustedWebContents.add(window.webContents)
       secureRenderer(window.webContents, trustedWebContents, runtimeConfig, Boolean(rendererUrl))
@@ -104,6 +104,9 @@ app.whenReady().then(() => {
     shell,
     systemService: desktopSystem,
     windows: {
+      openLogin: () => windowManager?.open('login'),
+      openRegister: () => windowManager?.open('register'),
+      openForgot: () => windowManager?.open('forgot'),
       openSettings: () => windowManager?.open('settings'),
       openAbout: () => windowManager?.open('about'),
     },

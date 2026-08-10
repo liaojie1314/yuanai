@@ -24,6 +24,9 @@ export interface YuanaiApi {
     getConfig: () => Promise<AppRuntimeConfig>
   }
   window: {
+    openLogin: () => Promise<void>
+    openRegister: () => Promise<void>
+    openForgot: () => Promise<void>
     openSettings: () => Promise<void>
     openAbout: () => Promise<void>
   }
@@ -55,6 +58,9 @@ export const api: YuanaiApi = {
     getConfig: () => ipcRenderer.invoke(IPC.runtime.getConfig),
   },
   window: {
+    openLogin: () => ipcRenderer.invoke(IPC.window.openLogin),
+    openRegister: () => ipcRenderer.invoke(IPC.window.openRegister),
+    openForgot: () => ipcRenderer.invoke(IPC.window.openForgot),
     openSettings: () => ipcRenderer.invoke(IPC.window.openSettings),
     openAbout: () => ipcRenderer.invoke(IPC.window.openAbout),
   },

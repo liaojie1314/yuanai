@@ -1,4 +1,5 @@
 import type { RendererEntry } from '../../shared/window-entry'
+import type { WindowSpecKey } from './config'
 
 /** 可由窗口管理器控制的最小 BrowserWindow 能力集合。 */
 export interface ManagedWindow {
@@ -30,8 +31,8 @@ export type ManagedWindowKey =
 
 /** WindowManager 创建窗口与定位 renderer 所需的依赖。 */
 export interface WindowManagerOptions {
-  /** 基于 renderer entry 创建已经加固的窗口。 */
-  createWindow(entry: RendererEntry): ManagedWindow
+  /** 基于窗口规格创建已经加固的窗口。 */
+  createWindow(key: WindowSpecKey): ManagedWindow
   /** Electron Vite 开发服务器地址；打包环境为 undefined。 */
   rendererUrl: string | undefined
 }
@@ -81,14 +82,14 @@ export class WindowManager {
       return existing
     }
     const route = WINDOW_ROUTES[key]
-    const window = this.create(route)
+    const window = this.create(key, route)
     this.namedWindows.set(key, window)
     return window
   }
 
   /** 创建彼此隔离的 Artifact 窗口实例。 */
   public openArtifact(): ManagedWindow {
-    return this.create({ entry: 'artifact' })
+    return this.create('artifact', { entry: 'artifact' })
   }
 
   /** 聚焦主窗口，并在尚未创建时建立它。 */
@@ -115,8 +116,8 @@ export class WindowManager {
     this.pendingMessages.set(window.id, pending)
   }
 
-  private create(route: WindowRoute): ManagedWindow {
-    const window = this.options.createWindow(route.entry)
+  private create(key: WindowSpecKey, route: WindowRoute): ManagedWindow {
+    const window = this.options.createWindow(key)
     window.webContents.once('did-finish-load', () => this.flushPendingMessages(window))
     window.webContents.once('destroyed', () => this.clearWindow(window))
     void window.loadURL(rendererEntryUrl(route.entry, route.hash, this.options.rendererUrl))

@@ -47,6 +47,31 @@ describe('WindowManager', () => {
     expect(manager.openArtifact()).not.toBe(manager.openArtifact())
   })
 
+  it('loads login and registration in isolated windows with their own routes', () => {
+    const loginWindow = createFakeWindow(1)
+    const registerWindow = createFakeWindow(2)
+    const windows = [loginWindow, registerWindow]
+    const createWindow = vi.fn(() => {
+      const window = windows.shift()
+      if (!window) throw new Error('Unexpected named window request')
+      return window
+    })
+    const manager = new WindowManager({
+      createWindow,
+      rendererUrl: undefined,
+    })
+
+    expect(manager.open('login')).not.toBe(manager.open('register'))
+    expect(createWindow).toHaveBeenNthCalledWith(1, 'login')
+    expect(createWindow).toHaveBeenNthCalledWith(2, 'register')
+    expect(loginWindow.loadURL).toHaveBeenCalledWith(
+      'yuanai-app://renderer/login/index.html#/login'
+    )
+    expect(registerWindow.loadURL).toHaveBeenCalledWith(
+      'yuanai-app://renderer/login/index.html#/register'
+    )
+  })
+
   it('queues messages until the target renderer has finished loading', () => {
     const mainWindow = createFakeWindow(1)
     let readyListener: (() => void) | undefined

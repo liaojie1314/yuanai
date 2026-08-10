@@ -40,6 +40,9 @@ function setupTestIpc(): {
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
   windows: {
+    openLogin: ReturnType<typeof vi.fn>
+    openRegister: ReturnType<typeof vi.fn>
+    openForgot: ReturnType<typeof vi.fn>
     openSettings: ReturnType<typeof vi.fn>
     openAbout: ReturnType<typeof vi.fn>
   }
@@ -67,7 +70,13 @@ function setupTestIpc(): {
     }),
   }
   const onSessionChanged = vi.fn<(hasSession: boolean) => void>()
-  const windows = { openSettings: vi.fn(), openAbout: vi.fn() }
+  const windows = {
+    openLogin: vi.fn(),
+    openRegister: vi.fn(),
+    openForgot: vi.fn(),
+    openSettings: vi.fn(),
+    openAbout: vi.fn(),
+  }
   const runtimeConfig: AppRuntimeConfig = Object.freeze({
     apiBaseUrl: 'https://api.example.com/api/v1',
     webBaseUrl: 'https://yuanai.example.com',
@@ -130,6 +139,9 @@ describe('secure IPC handlers', () => {
         IPC.system.setAutoLaunch,
         IPC.system.setGlobalShortcut,
         IPC.window.openAbout,
+        IPC.window.openForgot,
+        IPC.window.openLogin,
+        IPC.window.openRegister,
         IPC.window.openSettings,
       ].sort()
     )
@@ -230,15 +242,27 @@ describe('secure IPC handlers', () => {
     const { handlers, sender, windows } = setupTestIpc()
 
     await expect(
+      getHandler(handlers, IPC.window.openLogin)(createEvent(sender))
+    ).resolves.toBeUndefined()
+    await expect(
+      getHandler(handlers, IPC.window.openRegister)(createEvent(sender))
+    ).resolves.toBeUndefined()
+    await expect(
+      getHandler(handlers, IPC.window.openForgot)(createEvent(sender))
+    ).resolves.toBeUndefined()
+    await expect(
       getHandler(handlers, IPC.window.openSettings)(createEvent(sender))
     ).resolves.toBeUndefined()
     await expect(
       getHandler(handlers, IPC.window.openAbout)(createEvent(sender))
     ).resolves.toBeUndefined()
     await expect(
-      getHandler(handlers, IPC.window.openSettings)(createEvent(sender), 'unexpected')
+      getHandler(handlers, IPC.window.openRegister)(createEvent(sender), 'unexpected')
     ).rejects.toThrow('IPC_PAYLOAD_INVALID')
 
+    expect(windows.openLogin).toHaveBeenCalledOnce()
+    expect(windows.openRegister).toHaveBeenCalledOnce()
+    expect(windows.openForgot).toHaveBeenCalledOnce()
     expect(windows.openSettings).toHaveBeenCalledOnce()
     expect(windows.openAbout).toHaveBeenCalledOnce()
   })

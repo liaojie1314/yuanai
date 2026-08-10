@@ -17,8 +17,9 @@
 
 body {
   min-width: 0;
-  min-height: 100vh;
+  height: 100vh;
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -31,48 +32,29 @@ button {
 }
 
 .desktop-auth {
-  display: grid;
-  grid-template-columns: minmax(270px, 0.86fr) minmax(440px, 1.14fr);
-  min-height: 100vh;
-}
-
-.desktop-auth__brand {
-  position: relative;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  height: 100vh;
+  min-width: 0;
   justify-content: center;
-  gap: 15px;
-  overflow: hidden;
-  padding: 52px;
-  color: #f8fafc;
-  background: #0f766e;
+  overflow-y: auto;
+  padding: 32px 24px;
+  background: #fafaf8;
 }
 
-.desktop-auth__brand::after {
-  position: absolute;
-  right: -88px;
-  bottom: -88px;
-  width: 244px;
-  height: 244px;
-  border: 38px solid rgba(204, 251, 241, 0.14);
-  border-radius: 50%;
-  content: '';
+.desktop-auth::-webkit-scrollbar {
+  width: 8px;
 }
 
-.desktop-auth__brand-mark {
-  display: grid;
-  width: 52px;
-  height: 52px;
-  place-items: center;
-  border: 1px solid rgba(240, 253, 250, 0.52);
+.desktop-auth::-webkit-scrollbar-thumb {
+  border: 2px solid #fafaf8;
   border-radius: 8px;
-  background: rgba(15, 118, 110, 0.28);
+  background: #cbd5e1;
 }
 
-.desktop-auth__brand-name,
-.desktop-auth__brand-caption,
-.desktop-auth__brand-footer,
+.desktop-auth::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
 .desktop-auth__subtitle,
 .desktop-auth__switch,
 .desktop-auth__field-error,
@@ -80,60 +62,62 @@ button {
   margin: 0;
 }
 
-.desktop-auth__brand-name {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.desktop-auth__brand-caption {
-  margin-top: 7px;
-  color: rgba(240, 253, 250, 0.82);
-  font-size: 14px;
-}
-
-.desktop-auth__brand-footer {
-  margin-top: 36px;
-  color: rgba(240, 253, 250, 0.7);
-  font-size: 13px;
-}
-
 .desktop-auth__content {
   display: grid;
   min-width: 0;
+  width: 100%;
+  min-height: 100%;
   place-items: center;
-  padding: 40px;
-  background: #f8fafc;
 }
 
 .desktop-auth__form {
   width: min(100%, 408px);
 }
 
+.desktop-auth__heading {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+}
+
+.desktop-auth__logo {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #3b82f6;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .desktop-auth__form h1 {
   margin: 0;
-  color: #172033;
-  font-size: 25px;
-  font-weight: 700;
+  color: #1a1a2e;
+  font-size: 22px;
+  font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0;
 }
 
 .desktop-auth__subtitle {
-  margin-top: 7px;
-  color: #64748b;
+  margin-top: 2px;
+  color: #6b7280;
   font-size: 14px;
 }
 
 .desktop-auth__form-fields {
   display: grid;
-  gap: 15px;
-  margin-top: 31px;
+  gap: 6px;
+  margin-top: 20px;
 }
 
 .desktop-auth__field {
   display: grid;
-  gap: 7px;
+  gap: 4px;
 }
 
 .desktop-auth__field > label {
@@ -159,12 +143,12 @@ button {
 .desktop-auth__input-wrap input {
   width: 100%;
   min-width: 0;
-  height: 44px;
+  height: 48px;
   padding: 0 43px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
   outline: none;
-  color: #172033;
+  color: #1a1a2e;
   background: #ffffff;
   font-size: 14px;
   transition:
@@ -172,13 +156,17 @@ button {
     box-shadow 150ms ease;
 }
 
+.desktop-auth__input-wrap--verification-code input {
+  padding-right: 126px;
+}
+
 .desktop-auth__input-wrap input::placeholder {
   color: #94a3b8;
 }
 
 .desktop-auth__input-wrap input:focus {
-  border-color: #0f766e;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
 .desktop-auth__input-wrap input[aria-invalid='true'] {
@@ -201,14 +189,19 @@ button {
 
 .desktop-auth__icon-button:hover,
 .desktop-auth__icon-button:focus-visible {
-  color: #0f766e;
-  background: #f0fdfa;
+  color: #3b82f6;
+  background: #eff6ff;
 }
 
 .desktop-auth__field-error {
+  min-height: 17px;
   color: #dc2626;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.desktop-auth__field-error:empty {
+  visibility: hidden;
 }
 
 .desktop-auth__alert {
@@ -242,7 +235,7 @@ button {
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: #0f766e;
+  accent-color: #3b82f6;
 }
 
 .desktop-auth__checkbox--terms {
@@ -257,7 +250,7 @@ button {
 .desktop-auth__link {
   padding: 0;
   border: 0;
-  color: #0f766e;
+  color: #3b82f6;
   background: transparent;
   font-size: 13px;
   font-weight: 600;
@@ -265,7 +258,7 @@ button {
 
 .desktop-auth__link:hover,
 .desktop-auth__link:focus-visible {
-  color: #115e59;
+  color: #2563eb;
   text-decoration: underline;
 }
 
@@ -275,7 +268,7 @@ button {
   min-height: 44px;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
   transition:
@@ -287,31 +280,33 @@ button {
 
 .desktop-auth__submit {
   width: 100%;
-  border: 1px solid #0f766e;
+  border: 1px solid #3b82f6;
   color: #ffffff;
-  background: #0f766e;
+  background: #3b82f6;
 }
 
 .desktop-auth__submit:hover:not(:disabled),
 .desktop-auth__submit:focus-visible:not(:disabled) {
-  border-color: #115e59;
-  background: #115e59;
+  border-color: #2563eb;
+  background: #2563eb;
 }
 
 .desktop-auth__code-button {
-  justify-self: start;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 1px solid #99f6e4;
-  color: #0f766e;
-  background: #f0fdfa;
+  position: absolute;
+  right: 6px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid #bfdbfe;
+  color: #2563eb;
+  background: #eff6ff;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .desktop-auth__code-button:hover:not(:disabled),
 .desktop-auth__code-button:focus-visible:not(:disabled) {
-  border-color: #0f766e;
-  background: #ccfbf1;
+  border-color: #3b82f6;
+  background: #dbeafe;
 }
 
 .desktop-auth__submit:disabled,
@@ -333,28 +328,16 @@ button {
   justify-items: center;
   gap: 27px;
   margin-top: 42px;
-  color: #0f766e;
+  color: #3b82f6;
 }
 
 .desktop-auth__success .desktop-auth__submit {
   min-width: 180px;
 }
 
-@media (max-width: 760px) {
+@media (max-height: 660px) {
   .desktop-auth {
-    display: block;
-  }
-
-  .desktop-auth__brand {
-    min-height: 164px;
-    padding: 28px 32px;
-  }
-
-  .desktop-auth__brand-footer {
-    display: none;
-  }
-
-  .desktop-auth__content {
-    padding: 34px 26px;
+    justify-content: flex-start;
+    padding-block: 24px;
   }
 }
