@@ -97,6 +97,19 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class DesktopOAuthExchangeRequest(BaseModel):
+    """桌面端 OAuth 一次性授权码交换请求。"""
+
+    code: str
+
+    @field_validator("code")
+    @classmethod
+    def validate_code(cls, v: str) -> str:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", v):
+            raise ValueError("OAuth 授权码无效")
+        return v
+
+
 class UserResponse(BaseModel):
     """序列化为 camelCase，与前端 User 类型对齐"""
 

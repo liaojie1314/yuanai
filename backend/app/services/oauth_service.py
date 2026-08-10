@@ -45,11 +45,17 @@ GOOGLE_API_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 
 # state 生存期：5 分钟足以覆盖用户授权耗时，避免 Redis 长期堆积
 _STATE_TTL_SECONDS = 5 * 60
+_DESKTOP_CODE_TTL_SECONDS = 60
 
 
 def _state_key(provider: str, state: str) -> str:
     """按 provider 隔离 state key，避免跨 provider 串用。"""
     return f"oauth:{provider}:state:{state}"
+
+
+def _desktop_code_key(code: str) -> str:
+    """构造桌面 OAuth 一次性授权码的 Redis key。"""
+    return f"oauth:desktop:code:{code}"
 
 
 class OAuthConfigError(Exception):
@@ -79,13 +85,13 @@ def _ensure_configured(provider: str) -> None:
         raise OAuthConfigError(detail)
 
 
-async def _write_state(provider: str, *, mobile: bool = False) -> str:
+async def _write_state(provider: str, *, mobile: bool = False, desktop: bool = False) -> str:
     """生成随机 state 写入 Redis（provider 隔离），返回 state 供拼 URL。
 
-    Redis value 存 ``web`` / ``mobile``，callback 时据此决定回跳 Web 还是 deep link。
+    Redis value 存 ``web`` / ``mobile`` / ``desktop``，callback 时据此决定回跳目标。
     """
     state = secrets.token_urlsafe(32)
-    flag = "mobile" if mobile else "web"
+    flag = "desktop" if desktop else "mobile" if mobile else "web"
     await redis_client.setex(_state_key(provider, state), _STATE_TTL_SECONDS, flag)
     return state
 
@@ -93,7 +99,7 @@ async def _write_state(provider: str, *, mobile: bool = False) -> str:
 async def _verify_state(provider: str, state: str) -> str | None:
     """一次性校验并删除 state。
 
-    返回 ``\"web\"`` / ``\"mobile\"``；不存在 / 过期 → None。
+    返回 ``\"web\"`` / ``\"mobile\"`` / ``\"desktop\"``；不存在 / 过期 → None。
     兼容历史 value ``\"1\"``（视为 web）。
     """
     key = _state_key(provider, state)
@@ -104,14 +110,16 @@ async def _verify_state(provider: str, state: str) -> str | None:
     raw = val.decode() if isinstance(val, (bytes, bytearray)) else str(val)
     if raw == "mobile":
         return "mobile"
+    if raw == "desktop":
+        return "desktop"
     return "web"
 
 
 # ── GitHub 授权 URL / token / profile ────────────────
-async def build_github_authorize_url(*, mobile: bool = False) -> str:
+async def build_github_authorize_url(*, mobile: bool = False, desktop: bool = False) -> str:
     """生成 GitHub 授权 URL；把 state 写入 Redis 用于 CSRF 校验。"""
     _ensure_configured("github")
-    state = await _write_state("github", mobile=mobile)
+    state = await _write_state("github", mobile=mobile, desktop=desktop)
     params = {
         "client_id": settings.github_client_id,
         "redirect_uri": settings.github_redirect_uri,
@@ -200,10 +208,10 @@ async def _fetch_github_profile(access_token: str) -> dict[str, str]:
 
 
 # ── Google 授权 URL / token / profile ────────────────
-async def build_google_authorize_url(*, mobile: bool = False) -> str:
+async def build_google_authorize_url(*, mobile: bool = False, desktop: bool = False) -> str:
     """生成 Google 授权 URL；把 state 写入 Redis 用于 CSRF 校验。"""
     _ensure_configured("google")
-    state = await _write_state("google", mobile=mobile)
+    state = await _write_state("google", mobile=mobile, desktop=desktop)
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
@@ -354,10 +362,10 @@ async def _pick_available_username(base: str, email: str, db: AsyncSession) -> s
 
 async def complete_github_callback(
     code: str, state: str, db: AsyncSession
-) -> tuple[AuthResponse, bool]:
+) -> tuple[AuthResponse, str]:
     """GitHub 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。
 
-    返回 ``(AuthResponse, is_mobile)``。
+    返回 ``(AuthResponse, platform)``，platform 为 web/mobile/desktop。
     """
     _ensure_configured("github")
     platform = await _verify_state("github", state)
@@ -372,15 +380,15 @@ async def complete_github_callback(
     from app.services.auth_service import build_auth_response
 
     resp = await build_auth_response(user)
-    return resp, platform == "mobile"
+    return resp, platform
 
 
 async def complete_google_callback(
     code: str, state: str, db: AsyncSession
-) -> tuple[AuthResponse, bool]:
+) -> tuple[AuthResponse, str]:
     """Google 完整回调：校验 state → 换 token → 拉资料 → 关联/建号 → 签 JWT。
 
-    返回 ``(AuthResponse, is_mobile)``。
+    返回 ``(AuthResponse, platform)``，platform 为 web/mobile/desktop。
     """
     _ensure_configured("google")
     platform = await _verify_state("google", state)
@@ -394,7 +402,37 @@ async def complete_google_callback(
     from app.services.auth_service import build_auth_response
 
     resp = await build_auth_response(user)
-    return resp, platform == "mobile"
+    return resp, platform
+
+
+async def create_desktop_auth_code(resp: AuthResponse) -> str:
+    """保存短时、一次性的桌面授权码并返回 code。"""
+    code = secrets.token_urlsafe(32)
+    payload = resp.model_dump_json(by_alias=True)
+    await redis_client.setex(_desktop_code_key(code), _DESKTOP_CODE_TTL_SECONDS, payload)
+    return code
+
+
+async def exchange_desktop_auth_code(code: str) -> AuthResponse | None:
+    """原子消费桌面授权码，重复兑换或过期时返回 None。"""
+    payload = await redis_client.getdel(_desktop_code_key(code))
+    if payload is None:
+        return None
+    raw = payload.decode() if isinstance(payload, (bytes, bytearray)) else str(payload)
+    return AuthResponse.model_validate_json(raw)
+
+
+async def build_desktop_redirect(resp: AuthResponse) -> str:
+    """生成不包含长期 token 的桌面自定义协议回跳地址。"""
+    code = await create_desktop_auth_code(resp)
+    return f"yuanai://oauth/callback?{urlencode({'code': code})}"
+
+
+async def build_platform_redirect(resp: AuthResponse, platform: str) -> str:
+    """按 OAuth 发起平台构造安全回跳地址。"""
+    if platform == "desktop":
+        return await build_desktop_redirect(resp)
+    return build_frontend_redirect(resp, mobile=platform == "mobile")
 
 
 def build_frontend_redirect(resp: AuthResponse, *, mobile: bool = False) -> str:
@@ -428,6 +466,10 @@ __all__ = [
     "OAuthFlowError",
     "build_frontend_error_redirect",
     "build_frontend_redirect",
+    "build_desktop_redirect",
+    "build_platform_redirect",
+    "create_desktop_auth_code",
+    "exchange_desktop_auth_code",
     "build_github_authorize_url",
     "build_google_authorize_url",
     "complete_github_callback",

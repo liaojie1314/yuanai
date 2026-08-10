@@ -11,6 +11,7 @@ from app.schemas.auth import (
     AuthResponse,
     ChangeEmailRequest,
     ChangePasswordRequest,
+    DesktopOAuthExchangeRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -296,13 +297,15 @@ async def unlink_google(current_user: CurrentUser, db: DB) -> UserResponse:
 
 # ── GitHub OAuth ─────────────────────────────────────────────
 @router.get("/github")
-async def github_authorize(mobile: int = 0) -> RedirectResponse:
+async def github_authorize(mobile: int = 0, desktop: int = 0) -> RedirectResponse:
     """302 到 GitHub 授权页；state 写入 Redis 供 callback 校验。
 
-    ``mobile=1`` 时 state 标记为 mobile，callback 完成后 302 到 yuanai:// deep link。
+    ``mobile=1`` 时 state 标记为 mobile；``desktop=1`` 时只回传一次性授权码。
     """
     try:
-        url = await oauth_service.build_github_authorize_url(mobile=bool(mobile))
+        url = await oauth_service.build_github_authorize_url(
+            mobile=bool(mobile) and not bool(desktop), desktop=bool(desktop)
+        )
     except OAuthConfigError as e:
         raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
     return RedirectResponse(url, status_code=302)
@@ -339,7 +342,7 @@ async def github_callback(
             status_code=302,
         )
     try:
-        resp, is_mobile = await oauth_service.complete_github_callback(code, state, db)
+        resp, platform = await oauth_service.complete_github_callback(code, state, db)
     except OAuthConfigError as e:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
@@ -351,19 +354,21 @@ async def github_callback(
             status_code=302,
         )
     return RedirectResponse(
-        oauth_service.build_frontend_redirect(resp, mobile=is_mobile), status_code=302
+        await oauth_service.build_platform_redirect(resp, platform), status_code=302
     )
 
 
 # ── Google OAuth ─────────────────────────────────────────────
 @router.get("/google")
-async def google_authorize(mobile: int = 0) -> RedirectResponse:
+async def google_authorize(mobile: int = 0, desktop: int = 0) -> RedirectResponse:
     """302 到 Google 授权页；state 写入 Redis 供 callback 校验。
 
-    ``mobile=1`` 时 state 标记为 mobile，callback 完成后 302 到 yuanai:// deep link。
+    ``mobile=1`` 时 state 标记为 mobile；``desktop=1`` 时只回传一次性授权码。
     """
     try:
-        url = await oauth_service.build_google_authorize_url(mobile=bool(mobile))
+        url = await oauth_service.build_google_authorize_url(
+            mobile=bool(mobile) and not bool(desktop), desktop=bool(desktop)
+        )
     except OAuthConfigError as e:
         raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
     return RedirectResponse(url, status_code=302)
@@ -397,7 +402,7 @@ async def google_callback(
             status_code=302,
         )
     try:
-        resp, is_mobile = await oauth_service.complete_google_callback(code, state, db)
+        resp, platform = await oauth_service.complete_google_callback(code, state, db)
     except OAuthConfigError as e:
         return RedirectResponse(
             oauth_service.build_frontend_error_redirect("OAUTH_NOT_CONFIGURED", str(e)),
@@ -409,5 +414,17 @@ async def google_callback(
             status_code=302,
         )
     return RedirectResponse(
-        oauth_service.build_frontend_redirect(resp, mobile=is_mobile), status_code=302
+        await oauth_service.build_platform_redirect(resp, platform), status_code=302
     )
+
+
+@router.post("/desktop/exchange", response_model=AuthResponse)
+async def exchange_desktop_oauth_code(req: DesktopOAuthExchangeRequest) -> AuthResponse:
+    """消费桌面 OAuth 一次性授权码并返回登录会话。"""
+    resp = await oauth_service.exchange_desktop_auth_code(req.code)
+    if resp is None:
+        raise HTTPException(
+            400,
+            {"code": "OAUTH_CODE_INVALID", "message": "OAuth 授权码无效或已使用，请重新登录"},
+        )
+    return resp

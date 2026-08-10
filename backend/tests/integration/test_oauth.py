@@ -4,6 +4,7 @@
 避免真的调 GitHub API，让测试聚焦在业务流程：state 校验、账号创建/关联、
 错误回跳。
 """
+
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -42,6 +43,9 @@ def _mock_state(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
 
         async def delete(self, key: str) -> int:
             return 1 if store.pop(key, None) is not None else 0
+
+        async def getdel(self, key: str) -> str | None:
+            return store.pop(key, None)
 
     monkeypatch.setattr(oauth_service, "redis_client", _FakeRedis())
     return store
@@ -176,7 +180,9 @@ class TestCallback:
         assert q["error"][0] == "OAUTH_STATE_INVALID"
 
     async def test_provider_error_forwarded(
-        self, client: AsyncClient, _mock_state: dict[str, str]  # noqa: ARG002
+        self,
+        client: AsyncClient,
+        _mock_state: dict[str, str],  # noqa: ARG002
     ) -> None:
         resp = await client.get(
             "/api/v1/auth/github/callback",
@@ -231,6 +237,7 @@ class TestCallback:
             await db.execute(select(User).where(User.github_id == "90001"))
         ).scalar_one_or_none()
         assert user is not None
+
 
 class TestUnlink:
     async def test_unlink_github_success(
@@ -312,3 +319,65 @@ class TestStateLifecycle:
         )
         q = parse_qs(urlparse(r2.headers["location"]).query)
         assert q["error"][0] == "OAUTH_STATE_INVALID"
+
+
+class TestDesktopOAuth:
+    async def test_desktop_callback_exchanges_single_use_code(
+        self,
+        client: AsyncClient,
+        db: AsyncSession,
+        monkeypatch: pytest.MonkeyPatch,
+        _mock_state: dict[str, str],
+    ) -> None:
+        authorize = await client.get(
+            "/api/v1/auth/github", params={"desktop": 1}, follow_redirects=False
+        )
+        assert authorize.status_code == 302
+        assert next(iter(_mock_state.values())) == "desktop"
+        state = next(iter(_mock_state.keys())).removeprefix("oauth:github:state:")
+
+        async def fake_exchange(code: str) -> str:  # noqa: ARG001
+            return "desktop-gh-token"
+
+        async def fake_profile(token: str) -> dict[str, str]:  # noqa: ARG001
+            return {
+                "provider_id": "desktop-10086",
+                "email": "desktop@example.com",
+                "login": "desktopuser",
+                "avatar_url": "",
+            }
+
+        monkeypatch.setattr(oauth_service, "_exchange_code_for_token", fake_exchange)
+        monkeypatch.setattr(oauth_service, "_fetch_github_profile", fake_profile)
+
+        callback = await client.get(
+            "/api/v1/auth/github/callback",
+            params={"code": "provider-code", "state": state},
+            follow_redirects=False,
+        )
+        assert callback.status_code == 302
+        location = callback.headers["location"]
+        parsed = urlparse(location)
+        assert location.startswith("yuanai://oauth/callback?")
+        query = parse_qs(parsed.query)
+        assert set(query) == {"code"}
+        authorization_code = query["code"][0]
+        assert len(authorization_code) >= 43
+
+        exchange = await client.post(
+            "/api/v1/auth/desktop/exchange", json={"code": authorization_code}
+        )
+        assert exchange.status_code == 200
+        assert exchange.json()["user"]["email"] == "desktop@example.com"
+        assert "access_token" in exchange.json()
+        assert "refresh_token" in exchange.json()
+
+        replay = await client.post(
+            "/api/v1/auth/desktop/exchange", json={"code": authorization_code}
+        )
+        assert replay.status_code == 400
+        assert replay.json()["detail"]["code"] == "OAUTH_CODE_INVALID"
+
+    async def test_rejects_malformed_desktop_code(self, client: AsyncClient) -> None:
+        response = await client.post("/api/v1/auth/desktop/exchange", json={"code": "too-short"})
+        assert response.status_code == 422
