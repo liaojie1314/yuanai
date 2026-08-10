@@ -21,7 +21,7 @@ export interface DesktopBootstrapOptions {
   /** 在平台初始化后延迟导入 Core stores。 */
   importStores(): Promise<void>
   /** 执行 React 挂载。 */
-  mount(): void
+  mount(): void | Promise<void>
 }
 
 /** 在导入 Core stores 与挂载 React 前完成桌面端运行时初始化。 */
@@ -32,6 +32,6 @@ export async function bootstrapDesktop(
   options.setAdapter(options.adapter)
   options.setApiUrl(runtimeConfig.apiBaseUrl)
   await options.importStores()
-  options.mount()
+  await options.mount()
   return runtimeConfig
 }

@@ -11,7 +11,9 @@ import {
   Image,
   Languages,
   LoaderCircle,
+  LogIn,
   MessageSquareText,
+  Mic,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -23,7 +25,6 @@ import {
   Square,
   Trash2,
   X,
-  Info,
 } from 'lucide-react'
 import {
   useEffect,
@@ -47,7 +48,7 @@ import {
   useUpdateConversation,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
-import { useChatStore } from '@yuanai/core/stores'
+import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import { Role, type AIModel, type Conversation, type Message } from '@yuanai/types'
 
 const FALLBACK_MODEL: AIModel = {
@@ -113,15 +114,63 @@ function formatContextLength(contextLength: number): string {
   return contextLength >= 1000 ? `${Math.round(contextLength / 1000)}K` : String(contextLength)
 }
 
-function formatConversationTime(value: string | null): string {
-  if (!value) return ''
-  const time = new Date(value)
-  if (Number.isNaN(time.getTime())) return ''
-  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(time)
-}
-
 function getConversationTitle(conversation: Conversation): string {
   return conversation.title.trim() || '新对话'
+}
+
+interface ConversationGroup {
+  id: string
+  label: string
+  conversations: Conversation[]
+}
+
+function getConversationGroupId(conversation: Conversation, referenceDate: Date): string {
+  if (conversation.isPinned) return 'pinned'
+
+  const timestamp = new Date(conversation.lastMessageAt ?? conversation.createdAt)
+  if (Number.isNaN(timestamp.getTime())) return 'earlier'
+
+  const referenceDay = new Date(
+    referenceDate.getFullYear(),
+    referenceDate.getMonth(),
+    referenceDate.getDate()
+  )
+  const conversationDay = new Date(
+    timestamp.getFullYear(),
+    timestamp.getMonth(),
+    timestamp.getDate()
+  )
+  const elapsedDays = Math.floor((referenceDay.getTime() - conversationDay.getTime()) / 86_400_000)
+
+  if (elapsedDays <= 0) return 'today'
+  if (elapsedDays === 1) return 'yesterday'
+  if (elapsedDays <= 7) return 'week'
+  return 'earlier'
+}
+
+function groupConversations(conversations: Conversation[]): ConversationGroup[] {
+  const labels: Record<string, string> = {
+    pinned: '置顶',
+    today: '今天',
+    yesterday: '昨天',
+    week: '最近 7 天',
+    earlier: '更早',
+  }
+  const groupOrder = ['pinned', 'today', 'yesterday', 'week', 'earlier']
+  const groups = new Map<string, Conversation[]>()
+  const referenceDate = new Date()
+
+  for (const conversation of conversations) {
+    const id = getConversationGroupId(conversation, referenceDate)
+    const group = groups.get(id) ?? []
+    group.push(conversation)
+    groups.set(id, group)
+  }
+
+  return groupOrder.flatMap((id) => {
+    const group = groups.get(id)
+    return group ? [{ id, label: labels[id] ?? id, conversations: group }] : []
+  })
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -257,11 +306,10 @@ function ConversationItem({
           aria-current={active ? 'page' : undefined}
           onClick={() => onSelect(conversation.id)}
         >
-          <MessageSquareText size={16} aria-hidden="true" />
+          <span className="desktop-chat__conversation-avatar" aria-hidden="true">
+            {getConversationTitle(conversation).slice(0, 1).toLocaleUpperCase()}
+          </span>
           <span>{getConversationTitle(conversation)}</span>
-          <time dateTime={conversation.lastMessageAt ?? undefined}>
-            {formatConversationTime(conversation.lastMessageAt)}
-          </time>
         </button>
       )}
       <div className="desktop-chat__conversation-actions">
@@ -294,6 +342,8 @@ export function App(): ReactElement {
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
   const stream = useStream()
+  const user = useAuthStore((state) => state.user)
+  const setTheme = usePrefsStore((state) => state.setTheme)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
@@ -307,8 +357,14 @@ export function App(): ReactElement {
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [actionError, setActionError] = useState('')
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
+  const [isDarkTheme, setIsDarkTheme] = useState(
+    () => document.documentElement.getAttribute('data-theme') === 'dark'
+  )
   const messageEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const composerInputRef = useRef<HTMLTextAreaElement>(null)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
 
   const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
   const availableModels = modelsQuery.data?.length ? modelsQuery.data : DEFAULT_MODELS
@@ -333,6 +389,13 @@ export function App(): ReactElement {
       getConversationTitle(conversation).toLocaleLowerCase().includes(normalizedSearch)
     )
   }, [conversations, search])
+  const groupedConversations = useMemo(
+    () => groupConversations(visibleConversations),
+    [visibleConversations]
+  )
+  const userInitial = user?.username.slice(0, 1).toLocaleUpperCase() || '?'
+  const userName = user?.username ?? '登录'
+  const userEmail = user?.email ?? ''
 
   useEffect(() => {
     if (
@@ -353,6 +416,23 @@ export function App(): ReactElement {
     if (!messageEndRef.current?.scrollIntoView) return
     messageEndRef.current.scrollIntoView({ block: 'end' })
   }, [activeConversationId, messages, optimisticUserMessage, streamingContent, streamingThinking])
+
+  useEffect(() => {
+    const input = composerInputRef.current
+    if (!input) return
+    input.style.height = 'auto'
+    input.style.height = `${Math.min(Math.max(input.scrollHeight, 36), 200)}px`
+  }, [draft])
+
+  useEffect(() => {
+    if (!isAccountMenuOpen) return
+    const handlePointerDown = (event: MouseEvent): void => {
+      if (event.target instanceof Node && accountMenuRef.current?.contains(event.target)) return
+      setIsAccountMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    return () => document.removeEventListener('mousedown', handlePointerDown)
+  }, [isAccountMenuOpen])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent): void => {
@@ -392,12 +472,23 @@ export function App(): ReactElement {
     }
   }
 
-  async function handleOpenAbout(): Promise<void> {
-    try {
-      await window.yuanai.window.openAbout()
-    } catch (error: unknown) {
-      setActionError(getErrorMessage(error, '无法打开关于窗口，请稍后重试'))
+  async function handleOpenAccount(): Promise<void> {
+    if (user) {
+      await handleOpenSettings()
+      return
     }
+    try {
+      await window.yuanai.window.openLogin()
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开登录窗口，请稍后重试'))
+    }
+  }
+
+  function handleToggleTheme(): void {
+    const nextTheme = isDarkTheme ? 'light' : 'dark'
+    document.documentElement.setAttribute('data-theme', nextTheme)
+    setTheme(nextTheme)
+    setIsDarkTheme(nextTheme === 'dark')
   }
 
   function handleSelectConversation(conversationId: string): void {
@@ -591,44 +682,101 @@ export function App(): ReactElement {
             <div className="desktop-chat__sidebar-state">
               <LoaderCircle className="desktop-chat__spin" size={18} />
             </div>
-          ) : visibleConversations.length > 0 ? (
-            <ul>
-              {visibleConversations.map((conversation) => (
-                <ConversationItem
-                  key={conversation.id}
-                  conversation={conversation}
-                  active={conversation.id === activeConversationId}
-                  renaming={conversation.id === renamingConversationId}
-                  renameValue={renameValue}
-                  onSelect={handleSelectConversation}
-                  onRenameValueChange={setRenameValue}
-                  onRenameStart={handleStartRename}
-                  onRenameSave={(item) => void handleSaveRename(item)}
-                  onRemove={(item) => void handleRemoveConversation(item)}
-                />
+          ) : groupedConversations.length > 0 ? (
+            <>
+              {groupedConversations.map((group) => (
+                <section key={group.id} className="desktop-chat__conversation-group">
+                  <h2>{group.label}</h2>
+                  <ul>
+                    {group.conversations.map((conversation) => (
+                      <ConversationItem
+                        key={conversation.id}
+                        conversation={conversation}
+                        active={conversation.id === activeConversationId}
+                        renaming={conversation.id === renamingConversationId}
+                        renameValue={renameValue}
+                        onSelect={handleSelectConversation}
+                        onRenameValueChange={setRenameValue}
+                        onRenameStart={handleStartRename}
+                        onRenameSave={(item) => void handleSaveRename(item)}
+                        onRemove={(item) => void handleRemoveConversation(item)}
+                      />
+                    ))}
+                  </ul>
+                </section>
               ))}
-            </ul>
+            </>
           ) : (
             <p className="desktop-chat__sidebar-state">{search ? '未找到会话' : '还没有会话'}</p>
           )}
         </nav>
-        <div className="desktop-chat__system-actions" aria-label="应用操作">
+        <div ref={accountMenuRef} className="desktop-chat__account" aria-label="当前账户">
           <button
+            className="desktop-chat__account-trigger"
             type="button"
-            aria-label="打开设置"
-            title="打开设置"
-            onClick={() => void handleOpenSettings()}
+            aria-label={user ? '打开个人设置' : '打开登录窗口'}
+            onClick={() => void handleOpenAccount()}
           >
-            <Settings size={17} aria-hidden="true" />
+            <span className="desktop-chat__account-avatar" aria-hidden="true">
+              {userInitial}
+            </span>
+            <span className="desktop-chat__account-info">
+              <strong>{userName}</strong>
+              <small>{userEmail}</small>
+            </span>
           </button>
           <button
+            className="desktop-chat__account-settings"
             type="button"
-            aria-label="关于元AI"
-            title="关于元AI"
-            onClick={() => void handleOpenAbout()}
+            aria-label={user ? '打开设置' : '打开快捷设置'}
+            title={user ? '打开设置' : '打开快捷设置'}
+            aria-expanded={user ? undefined : isAccountMenuOpen}
+            aria-haspopup={user ? undefined : 'menu'}
+            onClick={() => {
+              if (user) {
+                void handleOpenSettings()
+                return
+              }
+              setIsAccountMenuOpen((value) => !value)
+            }}
           >
-            <Info size={17} aria-hidden="true" />
+            <Settings size={15} aria-hidden="true" />
           </button>
+          {!user && isAccountMenuOpen ? (
+            <div className="desktop-chat__account-menu" role="menu" aria-label="快捷设置">
+              <button
+                className="desktop-chat__account-menu-theme"
+                type="button"
+                role="menuitem"
+                aria-label="切换深色模式"
+                aria-pressed={isDarkTheme}
+                onClick={handleToggleTheme}
+              >
+                <span>深色模式</span>
+                <span
+                  className={
+                    isDarkTheme
+                      ? 'desktop-chat__account-theme-toggle is-active'
+                      : 'desktop-chat__account-theme-toggle'
+                  }
+                  aria-hidden="true"
+                />
+              </button>
+              <div className="desktop-chat__account-menu-separator" />
+              <button
+                className="desktop-chat__account-menu-login"
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setIsAccountMenuOpen(false)
+                  void handleOpenAccount()
+                }}
+              >
+                <LogIn size={16} aria-hidden="true" />
+                去登录
+              </button>
+            </div>
+          ) : null}
         </div>
       </aside>
 
@@ -815,6 +963,7 @@ export function App(): ReactElement {
             </ul>
           ) : null}
           <textarea
+            ref={composerInputRef}
             aria-label="输入消息"
             rows={1}
             value={draft}
@@ -847,6 +996,9 @@ export function App(): ReactElement {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip size={18} aria-hidden="true" />
+              </button>
+              <button type="button" aria-label="语音输入" title="语音输入暂未开放" disabled>
+                <Mic size={18} aria-hidden="true" />
               </button>
               <button
                 className={isWebSearchEnabled ? 'is-active' : undefined}

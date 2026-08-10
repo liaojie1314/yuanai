@@ -1,7 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { App } from './App'
 import './chat.css'
 import { startDesktopRenderer } from '../shared/start-renderer'
 import { RendererRoot } from '../shared/RendererRoot'
@@ -11,7 +10,8 @@ if (!rootElement) {
   throw new Error('Renderer root element is missing')
 }
 
-startDesktopRenderer(() => {
+startDesktopRenderer(async () => {
+  const { App } = await import('./App')
   createRoot(rootElement).render(
     <StrictMode>
       <RendererRoot>

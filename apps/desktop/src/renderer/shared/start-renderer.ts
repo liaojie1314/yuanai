@@ -5,7 +5,7 @@ import { bootstrapDesktop } from './bootstrap'
 import { createDesktopAdapter } from './desktop-adapter'
 
 /** 以统一且无存储竞态的顺序启动任一 Electron renderer。 */
-export function startDesktopRenderer(mount: () => void): void {
+export function startDesktopRenderer(mount: () => void | Promise<void>): void {
   void bootstrapDesktop({
     api: window.yuanai,
     adapter: createDesktopAdapter(window.yuanai),
