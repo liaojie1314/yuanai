@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, protocol, shell } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Menu, protocol, shell } from 'electron'
 import { join } from 'node:path'
 
 import { readRuntimeConfig } from './config/runtime-config'
@@ -56,6 +56,7 @@ app.on('open-url', (event, url) => {
 })
 
 app.whenReady().then(() => {
+  if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const runtimeConfig = readRuntimeConfig()
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
