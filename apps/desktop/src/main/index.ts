@@ -77,6 +77,18 @@ app.whenReady().then(() => {
     }),
     trustedWebContents,
     authStorage,
+    onSessionChanged: (hasSession) => {
+      if (!windowManager) return
+      if (hasSession) {
+        windowManager.open('main')
+        windowManager.close('login')
+        windowManager.close('register')
+        windowManager.close('forgot')
+        return
+      }
+      windowManager.open('login')
+      windowManager.close('main')
+    },
     preferencesStorage,
     runtimeConfig,
   })

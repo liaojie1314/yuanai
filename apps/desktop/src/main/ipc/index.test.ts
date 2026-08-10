@@ -36,6 +36,7 @@ function setupTestIpc(): {
     get: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
   }
+  onSessionChanged: ReturnType<typeof vi.fn>
 } {
   const handlers = new Map<string, InvokeHandler>()
   const sender = createWebContents(1)
@@ -59,6 +60,7 @@ function setupTestIpc(): {
       closeToTray: false,
     }),
   }
+  const onSessionChanged = vi.fn<(hasSession: boolean) => void>()
   const runtimeConfig: AppRuntimeConfig = Object.freeze({
     apiBaseUrl: 'https://api.example.com/api/v1',
     webBaseUrl: 'https://yuanai.example.com',
@@ -74,11 +76,12 @@ function setupTestIpc(): {
     guard,
     trustedWebContents,
     authStorage,
+    onSessionChanged,
     preferencesStorage,
     runtimeConfig,
   })
 
-  return { handlers, sender, authStorage, preferencesStorage }
+  return { handlers, sender, authStorage, preferencesStorage, onSessionChanged }
 }
 
 function getHandler(handlers: Map<string, InvokeHandler>, channel: string): InvokeHandler {
@@ -104,7 +107,7 @@ describe('secure IPC handlers', () => {
   })
 
   it('persists authenticated state and broadcasts only its presence', async () => {
-    const { handlers, sender, authStorage } = setupTestIpc()
+    const { handlers, sender, authStorage, onSessionChanged } = setupTestIpc()
     const event = createEvent(sender)
 
     await expect(getHandler(handlers, IPC.auth.get)(event)).resolves.toBe('encrypted-session')
@@ -122,6 +125,8 @@ describe('secure IPC handlers', () => {
       IPC.events.authChanged,
       expect.stringContaining('secret')
     )
+    expect(onSessionChanged).toHaveBeenNthCalledWith(1, true)
+    expect(onSessionChanged).toHaveBeenNthCalledWith(2, false)
   })
 
   it('rejects malformed and oversized auth requests before reaching encrypted storage', async () => {
@@ -135,6 +140,18 @@ describe('secure IPC handlers', () => {
       'IPC_PAYLOAD_TOO_LARGE'
     )
     expect(authStorage.setItem).not.toHaveBeenCalled()
+  })
+
+  it('does not switch windows when encrypted session persistence fails', async () => {
+    const { handlers, sender, authStorage, onSessionChanged } = setupTestIpc()
+    authStorage.setItem.mockRejectedValueOnce(new Error('SAFE_STORAGE_UNAVAILABLE'))
+
+    await expect(
+      getHandler(handlers, IPC.auth.set)(createEvent(sender), '{"accessToken":"secret"}')
+    ).rejects.toThrow('SAFE_STORAGE_UNAVAILABLE')
+
+    expect(onSessionChanged).not.toHaveBeenCalled()
+    expect(sender.send).not.toHaveBeenCalledWith(IPC.events.authChanged, true)
   })
 
   it('updates only valid preference patches and broadcasts a sanitized copy', async () => {

@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import { App } from './App'
+import './auth.css'
 import { startDesktopRenderer } from '../shared/start-renderer'
 import { RendererRoot } from '../shared/RendererRoot'
 

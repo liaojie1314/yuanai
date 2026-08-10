@@ -20,6 +20,8 @@ export interface ManagedWindow {
   focus(): void
   /** 恢复最小化窗口。 */
   restore(): void
+  /** 请求关闭窗口。 */
+  close(): void
 }
 
 /** 可复用的命名窗口键。 */
@@ -92,6 +94,13 @@ export class WindowManager {
   /** 聚焦主窗口，并在尚未创建时建立它。 */
   public focusMain(): void {
     this.open('main')
+  }
+
+  /** 关闭已创建的命名窗口；不存在或已销毁时保持幂等。 */
+  public close(key: ManagedWindowKey): void {
+    const window = this.namedWindows.get(key)
+    if (!window || window.isDestroyed()) return
+    window.close()
   }
 
   /** 在目标 renderer 加载完成后发送内部事件。 */

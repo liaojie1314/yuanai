@@ -35,6 +35,8 @@ export interface AuthIpcOptions {
   authStorage: AuthIpcStorage
   /** 接收净化状态事件的受信任窗口。 */
   trustedWebContents: TrustedWebContentsRegistry
+  /** 加密会话成功写入或移除后执行的主进程编排。 */
+  onSessionChanged(hasSession: boolean): void
 }
 
 function broadcastAuthChanged(registry: TrustedWebContentsRegistry, hasSession: boolean): void {
@@ -53,11 +55,13 @@ export function registerAuthIpcHandlers(options: AuthIpcOptions): void {
     const value = readBoundedIpcString(args)
     await options.authStorage.setItem(AUTH_STORAGE_KEY, value)
     broadcastAuthChanged(options.trustedWebContents, true)
+    options.onSessionChanged(true)
   })
   options.ipcMain.handle(IPC.auth.remove, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     options.guard.assertTrusted(event)
     assertNoIpcPayload(args)
     await options.authStorage.removeItem(AUTH_STORAGE_KEY)
     broadcastAuthChanged(options.trustedWebContents, false)
+    options.onSessionChanged(false)
   })
 }

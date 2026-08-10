@@ -14,6 +14,7 @@ interface FakeWindow {
   show: ReturnType<typeof vi.fn>
   focus: ReturnType<typeof vi.fn>
   restore: ReturnType<typeof vi.fn>
+  close: ReturnType<typeof vi.fn>
 }
 
 function createFakeWindow(id: number): FakeWindow {
@@ -30,6 +31,7 @@ function createFakeWindow(id: number): FakeWindow {
     show: vi.fn(),
     focus: vi.fn(),
     restore: vi.fn(),
+    close: vi.fn(),
   }
 }
 
@@ -62,5 +64,20 @@ describe('WindowManager', () => {
 
     readyListener?.()
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('event:deep-link', { type: 'chat' })
+  })
+
+  it('closes only an existing named window', () => {
+    const loginWindow = createFakeWindow(1)
+    const manager = new WindowManager({
+      createWindow: () => loginWindow,
+      rendererUrl: undefined,
+    })
+
+    manager.close('login')
+    expect(loginWindow.close).not.toHaveBeenCalled()
+
+    manager.open('login')
+    manager.close('login')
+    expect(loginWindow.close).toHaveBeenCalledOnce()
   })
 })

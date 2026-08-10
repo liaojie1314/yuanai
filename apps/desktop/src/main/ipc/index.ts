@@ -19,6 +19,8 @@ export interface SetupIpcOptions {
   trustedWebContents: TrustedWebContentsRegistry
   /** 加密认证状态存储。 */
   authStorage: AuthIpcStorage
+  /** 加密会话成功写入或移除后执行的主进程编排。 */
+  onSessionChanged(hasSession: boolean): void
   /** 已校验的桌面偏好存储。 */
   preferencesStorage: PreferencesIpcStorage
   /** 主进程唯一读取并校验后的运行时配置。 */
