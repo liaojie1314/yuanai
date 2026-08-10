@@ -126,6 +126,32 @@ button {
   overflow-y: auto;
 }
 
+.desktop-chat__system-actions {
+  display: flex;
+  gap: 5px;
+  padding: 6px 4px 0;
+  border-top: 1px solid #dce3eb;
+}
+
+.desktop-chat__system-actions button {
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: #64748b;
+  background: transparent;
+}
+
+.desktop-chat__system-actions button:hover,
+.desktop-chat__system-actions button:focus-visible {
+  border-color: #b7e4dc;
+  color: #0f766e;
+  background: #f0fdfa;
+}
+
 .desktop-chat__conversation-nav ul {
   display: grid;
   gap: 3px;

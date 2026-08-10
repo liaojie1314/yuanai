@@ -1,0 +1,19 @@
+@import '../settings/settings.css';
+
+.desktop-about {
+  min-height: 100vh;
+  padding: 28px;
+  background: #f6f8fb;
+}
+.desktop-about .settings-section {
+  width: min(100%, 560px);
+  margin: 0 auto;
+}
+.desktop-about .settings-section__heading {
+  display: none;
+}
+@media (max-width: 520px) {
+  .desktop-about {
+    padding: 18px;
+  }
+}

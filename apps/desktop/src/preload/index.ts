@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-import type { DesktopPreferences } from '../shared/ipc-contract'
+import type {
+  DesktopAppInfo,
+  DesktopPreferences,
+  ExternalLinkId,
+  ShortcutStatus,
+} from '../shared/ipc-contract'
 import { IPC } from '../shared/ipc-contract'
 import type { AppRuntimeConfig } from '../shared/runtime-config'
 
@@ -17,6 +22,18 @@ export interface YuanaiApi {
   }
   runtime: {
     getConfig: () => Promise<AppRuntimeConfig>
+  }
+  window: {
+    openSettings: () => Promise<void>
+    openAbout: () => Promise<void>
+  }
+  system: {
+    getInfo: () => Promise<DesktopAppInfo>
+    setGlobalShortcut: (accelerator: string | null) => Promise<ShortcutStatus>
+    setAutoLaunch: (enabled: boolean) => Promise<DesktopPreferences>
+  }
+  shell: {
+    openExternal: (link: ExternalLinkId) => Promise<void>
   }
   events: {
     onAuthChanged: (listener: (hasSession: boolean) => void) => () => void
@@ -36,6 +53,19 @@ export const api: YuanaiApi = {
   },
   runtime: {
     getConfig: () => ipcRenderer.invoke(IPC.runtime.getConfig),
+  },
+  window: {
+    openSettings: () => ipcRenderer.invoke(IPC.window.openSettings),
+    openAbout: () => ipcRenderer.invoke(IPC.window.openAbout),
+  },
+  system: {
+    getInfo: () => ipcRenderer.invoke(IPC.system.getInfo),
+    setGlobalShortcut: (accelerator) =>
+      ipcRenderer.invoke(IPC.system.setGlobalShortcut, accelerator),
+    setAutoLaunch: (enabled) => ipcRenderer.invoke(IPC.system.setAutoLaunch, enabled),
+  },
+  shell: {
+    openExternal: (link) => ipcRenderer.invoke(IPC.shell.openExternal, link),
   },
   events: {
     onAuthChanged: (listener) => {

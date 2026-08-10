@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, protocol, shell } from 'electron'
 import { join } from 'node:path'
 
 import { readRuntimeConfig } from './config/runtime-config'
@@ -12,6 +12,7 @@ import { WindowManager } from './windows/manager'
 import { registerAppScheme } from './protocol/app-scheme'
 import { IPC } from '../shared/ipc-contract'
 import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
+import { DesktopSystemService } from './system/desktop-system'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -23,6 +24,7 @@ protocol.registerSchemesAsPrivileged([
 const trustedWebContents = createTrustedWebContentsRegistry()
 const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined
+let desktopSystem: DesktopSystemService | undefined
 
 function handleDeepLink(value: string): void {
   const deepLink = parseDeepLink(value)
@@ -63,11 +65,18 @@ app.whenReady().then(() => {
         createWindowOptions(entry, join(__dirname, '../preload/index.js'), process.platform)
       )
       trustedWebContents.add(window.webContents)
-      secureRenderer(window.webContents, trustedWebContents, runtimeConfig)
+      secureRenderer(window.webContents, trustedWebContents, runtimeConfig, Boolean(rendererUrl))
       window.once('ready-to-show', () => window.show())
       return window
     },
     rendererUrl,
+  })
+  desktopSystem = new DesktopSystemService({
+    app,
+    focusMain: () => windowManager?.focusMain(),
+    globalShortcut,
+    platform: process.platform,
+    preferencesStorage,
   })
   setupIpc({
     ipcMain,
@@ -91,6 +100,15 @@ app.whenReady().then(() => {
     },
     preferencesStorage,
     runtimeConfig,
+    shell,
+    systemService: desktopSystem,
+    windows: {
+      openSettings: () => windowManager?.open('settings'),
+      openAbout: () => windowManager?.open('about'),
+    },
+  })
+  void desktopSystem.restore().catch((error: unknown) => {
+    console.error('Desktop system preference restore failed', error)
   })
   void authStorage
     .getItem('yuanai-auth')
@@ -100,7 +118,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) windowManager?.focusMain()
   })
-  app.once('before-quit', unregisterAppScheme)
+  app.once('before-quit', () => {
+    desktopSystem?.dispose()
+    unregisterAppScheme()
+  })
 })
 
 app.on('window-all-closed', () => {

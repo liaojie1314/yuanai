@@ -62,6 +62,15 @@ vi.mock('@yuanai/core/stores', () => ({
 import { App } from './App'
 
 beforeEach(() => {
+  Object.defineProperty(window, 'yuanai', {
+    configurable: true,
+    value: {
+      window: {
+        openSettings: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        openAbout: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      },
+    },
+  })
   chat.conversations = [
     {
       id: 'conversation-1',
@@ -140,5 +149,16 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '停止生成' }))
 
     expect(chat.stop).toHaveBeenCalledOnce()
+  })
+
+  it('opens the settings and about windows from the sidebar actions', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '打开设置' }))
+    await user.click(screen.getByRole('button', { name: '关于元AI' }))
+
+    expect(window.yuanai.window.openSettings).toHaveBeenCalledOnce()
+    expect(window.yuanai.window.openAbout).toHaveBeenCalledOnce()
   })
 })

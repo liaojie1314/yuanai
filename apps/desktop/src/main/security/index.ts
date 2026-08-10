@@ -10,9 +10,13 @@ import { installPermissionHandler } from './permissions'
 export function secureRenderer(
   webContents: WebContents,
   trustedWebContents: TrustedWebContentsRegistry,
-  runtimeConfig: AppRuntimeConfig
+  runtimeConfig: AppRuntimeConfig,
+  allowDevelopmentInlineScripts = false
 ): void {
-  const contentSecurityPolicy = buildContentSecurityPolicy(runtimeConfig)
+  const contentSecurityPolicy = buildContentSecurityPolicy(
+    runtimeConfig,
+    allowDevelopmentInlineScripts
+  )
   webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {

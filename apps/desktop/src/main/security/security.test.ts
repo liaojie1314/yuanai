@@ -19,6 +19,11 @@ describe('renderer security policy', () => {
     expect(csp).toContain('http://127.0.0.1:9000')
     expect(csp).not.toContain('file:')
     expect(csp).not.toContain('*')
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'")
+  })
+
+  it('permits only the Vite development preamble to use inline script', () => {
+    expect(buildContentSecurityPolicy(config, true)).toContain("script-src 'self' 'unsafe-inline'")
   })
 
   it('allows video capture only from a trusted renderer and always denies audio', () => {

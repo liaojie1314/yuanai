@@ -8,8 +8,10 @@ import {
   Pencil,
   Plus,
   SendHorizontal,
+  Settings,
   Square,
   Trash2,
+  Info,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactElement } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -304,6 +306,22 @@ export function App(): ReactElement {
     }
   }
 
+  async function handleOpenSettings(): Promise<void> {
+    try {
+      await window.yuanai.window.openSettings()
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开设置，请稍后重试'))
+    }
+  }
+
+  async function handleOpenAbout(): Promise<void> {
+    try {
+      await window.yuanai.window.openAbout()
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开关于窗口，请稍后重试'))
+    }
+  }
+
   function handleSelectConversation(conversationId: string): void {
     if (isStreaming) return
     setActionError('')
@@ -425,6 +443,24 @@ export function App(): ReactElement {
             <p className="desktop-chat__sidebar-state">{search ? '未找到会话' : '还没有会话'}</p>
           )}
         </nav>
+        <div className="desktop-chat__system-actions" aria-label="应用操作">
+          <button
+            type="button"
+            aria-label="打开设置"
+            title="打开设置"
+            onClick={() => void handleOpenSettings()}
+          >
+            <Settings size={17} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            aria-label="关于元AI"
+            title="关于元AI"
+            onClick={() => void handleOpenAbout()}
+          >
+            <Info size={17} aria-hidden="true" />
+          </button>
+        </div>
       </aside>
 
       <section className="desktop-chat__workspace">

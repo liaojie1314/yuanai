@@ -6,6 +6,7 @@ import { DEFAULT_DESKTOP_PREFERENCES, IPC } from '../../shared/ipc-contract'
 import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './guards'
 import { setupIpc } from './index'
+import type { DesktopSystemService } from '../system/desktop-system'
 
 type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -37,6 +38,11 @@ function setupTestIpc(): {
     update: ReturnType<typeof vi.fn>
   }
   onSessionChanged: ReturnType<typeof vi.fn>
+  systemService: DesktopSystemService
+  windows: {
+    openSettings: ReturnType<typeof vi.fn>
+    openAbout: ReturnType<typeof vi.fn>
+  }
 } {
   const handlers = new Map<string, InvokeHandler>()
   const sender = createWebContents(1)
@@ -61,11 +67,17 @@ function setupTestIpc(): {
     }),
   }
   const onSessionChanged = vi.fn<(hasSession: boolean) => void>()
+  const windows = { openSettings: vi.fn(), openAbout: vi.fn() }
   const runtimeConfig: AppRuntimeConfig = Object.freeze({
     apiBaseUrl: 'https://api.example.com/api/v1',
     webBaseUrl: 'https://yuanai.example.com',
     assetOrigins: Object.freeze(['https://cdn.example.com']),
   })
+  const systemService = {
+    getInfo: vi.fn(),
+    setAutoLaunch: vi.fn(),
+    setGlobalShortcut: vi.fn(),
+  } as unknown as DesktopSystemService
 
   setupIpc({
     ipcMain: {
@@ -79,9 +91,20 @@ function setupTestIpc(): {
     onSessionChanged,
     preferencesStorage,
     runtimeConfig,
+    shell: { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) },
+    systemService,
+    windows,
   })
 
-  return { handlers, sender, authStorage, preferencesStorage, onSessionChanged }
+  return {
+    handlers,
+    sender,
+    authStorage,
+    preferencesStorage,
+    onSessionChanged,
+    systemService,
+    windows,
+  }
 }
 
 function getHandler(handlers: Map<string, InvokeHandler>, channel: string): InvokeHandler {
@@ -91,7 +114,7 @@ function getHandler(handlers: Map<string, InvokeHandler>, channel: string): Invo
 }
 
 describe('secure IPC handlers', () => {
-  it('registers fixed auth, preference, and runtime channels', () => {
+  it('registers fixed auth, preference, runtime, system, and window channels', () => {
     const { handlers } = setupTestIpc()
 
     expect(Array.from(handlers.keys()).sort()).toEqual(
@@ -102,6 +125,12 @@ describe('secure IPC handlers', () => {
         IPC.prefs.get,
         IPC.prefs.update,
         IPC.runtime.getConfig,
+        IPC.shell.openExternal,
+        IPC.system.getInfo,
+        IPC.system.setAutoLaunch,
+        IPC.system.setGlobalShortcut,
+        IPC.window.openAbout,
+        IPC.window.openSettings,
       ].sort()
     )
   })
@@ -195,5 +224,22 @@ describe('secure IPC handlers', () => {
     await expect(
       getHandler(handlers, IPC.runtime.getConfig)(createEvent(sender), 'unexpected')
     ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+  })
+
+  it('opens named windows only for trusted senders with no payload', async () => {
+    const { handlers, sender, windows } = setupTestIpc()
+
+    await expect(
+      getHandler(handlers, IPC.window.openSettings)(createEvent(sender))
+    ).resolves.toBeUndefined()
+    await expect(
+      getHandler(handlers, IPC.window.openAbout)(createEvent(sender))
+    ).resolves.toBeUndefined()
+    await expect(
+      getHandler(handlers, IPC.window.openSettings)(createEvent(sender), 'unexpected')
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+
+    expect(windows.openSettings).toHaveBeenCalledOnce()
+    expect(windows.openAbout).toHaveBeenCalledOnce()
   })
 })

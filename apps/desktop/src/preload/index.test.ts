@@ -38,12 +38,28 @@ describe('preload API', () => {
     await api.auth.remove()
     await api.prefs.get()
     await api.prefs.update({ closeToTray: false })
+    await api.window.openSettings()
+    await api.window.openAbout()
+    await api.system.getInfo()
+    await api.system.setGlobalShortcut('CommandOrControl+Alt+Y')
+    await api.system.setAutoLaunch(true)
+    await api.shell.openExternal('repository')
 
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(1, IPC.auth.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(2, IPC.auth.set, 'session')
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(3, IPC.auth.remove)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(4, IPC.prefs.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(5, IPC.prefs.update, { closeToTray: false })
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.window.openSettings)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.window.openAbout)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
+      9,
+      IPC.system.setGlobalShortcut,
+      'CommandOrControl+Alt+Y'
+    )
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.shell.openExternal, 'repository')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {
