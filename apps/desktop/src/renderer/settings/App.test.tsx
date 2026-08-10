@@ -1,4 +1,5 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const hooks = vi.hoisted(() => ({
@@ -117,5 +118,20 @@ describe('desktop settings', () => {
     for (const label of labels) {
       expect(screen.getByRole('tab', { name: label })).toHaveAccessibleName(label)
     }
+  })
+
+  it('updates profile fields through the web-aligned inline editor', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '编辑昵称' }))
+    const username = screen.getByRole('textbox', { name: '昵称' })
+    await user.clear(username)
+    await user.type(username, 'desktop-user')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    await waitFor(() => {
+      expect(hooks.updateMe).toHaveBeenCalledWith({ bio: '', username: 'desktop-user' })
+    })
   })
 })

@@ -1,4 +1,4 @@
-import { Camera, Save, UserRound } from 'lucide-react'
+import { Camera, Check, MessageSquare, Paperclip, Pencil, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type ReactElement } from 'react'
 
 import type { User, UserStats } from '@yuanai/types'
@@ -28,6 +28,7 @@ export function ProfileSection({
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [username, setUsername] = useState(user?.username ?? '')
   const [bio, setBio] = useState(user?.bio ?? '')
+  const [editingField, setEditingField] = useState<'username' | 'bio' | null>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -35,14 +36,15 @@ export function ProfileSection({
     setBio(user?.bio ?? '')
   }, [user?.bio, user?.username])
 
-  async function submitProfile(): Promise<void> {
+  async function saveProfile(field: 'username' | 'bio'): Promise<void> {
     const normalizedUsername = username.trim()
-    if (normalizedUsername.length < 2 || normalizedUsername.length > 20) {
+    if (field === 'username' && (normalizedUsername.length < 2 || normalizedUsername.length > 20)) {
       setError('昵称需要 2 至 20 个字符')
       return
     }
     setError('')
     await onSave({ bio: bio.trim(), username: normalizedUsername })
+    setEditingField(null)
   }
 
   async function handleAvatarChange(event: ChangeEvent<HTMLInputElement>): Promise<void> {
@@ -65,91 +67,159 @@ export function ProfileSection({
     <div className="settings-section">
       <div className="settings-section__heading">
         <h2>个人资料</h2>
-        <p>管理你的公开身份和个人简介。</p>
       </div>
-      <section className="settings-block" aria-labelledby="profile-avatar-title">
-        <h3 id="profile-avatar-title">头像</h3>
-        <div className="profile-avatar-row">
-          <div className="profile-avatar" aria-hidden="true">
-            {user?.avatarUrl ? <img src={user.avatarUrl} alt="" /> : <UserRound size={28} />}
-          </div>
-          <div>
+      <div className="settings-section__body">
+        <section className="settings-block" aria-labelledby="profile-avatar-title">
+          <h3 id="profile-avatar-title">头像</h3>
+          <div className="profile-avatar-row">
             <button
               type="button"
-              className="settings-button settings-button--secondary"
+              className="profile-avatar"
+              aria-label="更换头像"
+              disabled={isSaving}
               onClick={() => avatarInputRef.current?.click()}
             >
-              <Camera size={16} aria-hidden="true" /> 更换头像
+              {user?.avatarUrl ? (
+                <img src={user.avatarUrl} alt="" />
+              ) : (
+                <span>{user?.username?.slice(0, 1).toUpperCase() ?? '元'}</span>
+              )}
+              <span className="profile-avatar__overlay">
+                <Camera size={16} aria-hidden="true" />
+              </span>
             </button>
-            <p>支持 JPG、PNG、WebP 或 GIF，最大 5 MB。</p>
-          </div>
-          <input
-            ref={avatarInputRef}
-            className="settings-visually-hidden"
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            onChange={(event) => void handleAvatarChange(event)}
-          />
-        </div>
-      </section>
-      <section className="settings-block" aria-labelledby="profile-details-title">
-        <h3 id="profile-details-title">基本信息</h3>
-        <div className="settings-field-grid">
-          <label>
-            <span>邮箱</span>
-            <input value={user?.email ?? ''} disabled aria-label="邮箱" />
-          </label>
-          <label>
-            <span>昵称</span>
+            <div className="profile-avatar-row__meta">
+              <strong>{user?.username || '未设置昵称'}</strong>
+              <p>{user?.email ?? '正在加载'}</p>
+              <span>Free</span>
+            </div>
             <input
-              value={username}
-              maxLength={20}
-              aria-label="昵称"
-              onChange={(event) => setUsername(event.target.value)}
+              ref={avatarInputRef}
+              className="settings-visually-hidden"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(event) => void handleAvatarChange(event)}
             />
-          </label>
-        </div>
-        <label className="settings-field">
-          <span>个人简介</span>
-          <textarea
-            value={bio}
-            maxLength={200}
-            aria-label="个人简介"
-            rows={4}
-            onChange={(event) => setBio(event.target.value)}
-          />
-        </label>
-        {error ? (
-          <p className="settings-alert" role="alert">
-            {error}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className="settings-button settings-button--primary"
-          disabled={!user || isSaving}
-          onClick={() => void submitProfile()}
-        >
-          <Save size={16} aria-hidden="true" /> 保存资料
-        </button>
-      </section>
-      <section className="settings-block" aria-labelledby="profile-stats-title">
-        <h3 id="profile-stats-title">使用统计</h3>
-        <dl className="settings-stats">
-          <div>
-            <dt>会话</dt>
-            <dd>{stats?.conversationCount ?? '--'}</dd>
           </div>
-          <div>
-            <dt>已用令牌</dt>
-            <dd>{stats?.totalTokens.toLocaleString() ?? '--'}</dd>
+        </section>
+        <section className="settings-block" aria-labelledby="profile-details-title">
+          <h3 id="profile-details-title">个人资料</h3>
+          <div className="settings-row profile-edit-row">
+            <span className="profile-edit-row__label">昵称</span>
+            {editingField === 'username' ? (
+              <div className="profile-edit-row__editor">
+                <input
+                  value={username}
+                  maxLength={20}
+                  aria-label="昵称"
+                  autoFocus
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="settings-button settings-button--secondary"
+                  onClick={() => {
+                    setUsername(user?.username ?? '')
+                    setEditingField(null)
+                  }}
+                >
+                  <X size={15} aria-hidden="true" /> 取消
+                </button>
+                <button
+                  type="button"
+                  className="settings-button settings-button--primary"
+                  disabled={!user || isSaving}
+                  onClick={() => void saveProfile('username')}
+                >
+                  <Check size={15} aria-hidden="true" /> 保存
+                </button>
+              </div>
+            ) : (
+              <div className="profile-edit-row__value">
+                <span>{user?.username || '未设置昵称'}</span>
+                <button
+                  type="button"
+                  aria-label="编辑昵称"
+                  onClick={() => setEditingField('username')}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
-          <div>
-            <dt>文件</dt>
-            <dd>{stats?.fileCount ?? '--'}</dd>
+          <div className="settings-row profile-edit-row">
+            <span className="profile-edit-row__label">个人简介</span>
+            {editingField === 'bio' ? (
+              <div className="profile-edit-row__editor">
+                <input
+                  value={bio}
+                  maxLength={200}
+                  aria-label="个人简介"
+                  autoFocus
+                  placeholder="介绍一下你自己"
+                  onChange={(event) => setBio(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="settings-button settings-button--secondary"
+                  onClick={() => {
+                    setBio(user?.bio ?? '')
+                    setEditingField(null)
+                  }}
+                >
+                  <X size={15} aria-hidden="true" /> 取消
+                </button>
+                <button
+                  type="button"
+                  className="settings-button settings-button--primary"
+                  disabled={!user || isSaving}
+                  onClick={() => void saveProfile('bio')}
+                >
+                  <Check size={15} aria-hidden="true" /> 保存
+                </button>
+              </div>
+            ) : (
+              <div className="profile-edit-row__value">
+                <span className={user?.bio ? undefined : 'is-muted'}>
+                  {user?.bio || '介绍一下你自己'}
+                </span>
+                <button
+                  type="button"
+                  aria-label="编辑个人简介"
+                  onClick={() => setEditingField('bio')}
+                >
+                  <Pencil size={14} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
-        </dl>
-      </section>
+          {error ? (
+            <p className="settings-alert" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </section>
+        <section className="settings-block" aria-labelledby="profile-stats-title">
+          <h3 id="profile-stats-title">使用统计</h3>
+          <dl className="settings-stats">
+            <div>
+              <MessageSquare size={18} aria-hidden="true" />
+              <dd>{stats?.conversationCount ?? '--'}</dd>
+              <dt>次对话</dt>
+            </div>
+            <div>
+              <Zap size={18} aria-hidden="true" />
+              <dd>{stats?.totalTokens.toLocaleString() ?? '--'}</dd>
+              <dt>Token</dt>
+            </div>
+            <div>
+              <Paperclip size={18} aria-hidden="true" />
+              <dd>{stats?.fileCount ?? '--'}</dd>
+              <dt>文件</dt>
+            </div>
+          </dl>
+        </section>
+      </div>
     </div>
   )
 }

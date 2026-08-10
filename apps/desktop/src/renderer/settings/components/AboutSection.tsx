@@ -25,35 +25,37 @@ export function AboutSection({ appInfo, onOpenExternal }: AboutSectionProps): Re
         <h2>关于与帮助</h2>
         <p>元AI 桌面端的版本与支持信息。</p>
       </div>
-      <section className="settings-block settings-about">
-        <div className="settings-about__mark">元</div>
-        <div>
-          <h3>元AI</h3>
-          <p>
-            v{appInfo?.version ?? '--'} · {appInfo?.platform ?? 'desktop'}
-          </p>
-        </div>
-      </section>
-      <section className="settings-block">
-        <h3>帮助与支持</h3>
-        {links.map(([id, label, Icon]) => (
-          <div key={id} className="settings-row">
-            <div>
-              <strong>
-                <Icon size={16} aria-hidden="true" /> {label}
-              </strong>
-            </div>
-            <button
-              type="button"
-              className="settings-text-button"
-              onClick={() => void onOpenExternal(id)}
-            >
-              {label}
-              <ExternalLink size={15} aria-hidden="true" />
-            </button>
+      <div className="settings-section__body">
+        <section className="settings-block settings-about">
+          <div className="settings-about__mark">元</div>
+          <div>
+            <h3>元AI</h3>
+            <p>
+              v{appInfo?.version ?? '--'} · {appInfo?.platform ?? 'desktop'}
+            </p>
           </div>
-        ))}
-      </section>
+        </section>
+        <section className="settings-block">
+          <h3>帮助与支持</h3>
+          {links.map(([id, label, Icon]) => (
+            <div key={id} className="settings-row">
+              <div>
+                <strong>
+                  <Icon size={16} aria-hidden="true" /> {label}
+                </strong>
+              </div>
+              <button
+                type="button"
+                className="settings-text-button"
+                onClick={() => void onOpenExternal(id)}
+              >
+                {label}
+                <ExternalLink size={15} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </section>
+      </div>
     </div>
   )
 }

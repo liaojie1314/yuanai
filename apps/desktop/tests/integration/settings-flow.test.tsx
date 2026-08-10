@@ -108,13 +108,13 @@ describe('desktop settings integration', () => {
     const user = userEvent.setup()
     renderSettings()
 
-    const username = await screen.findByLabelText('昵称')
-    await waitFor(() => {
-      expect(username).toHaveValue('desktop-user')
-    })
+    await screen.findAllByText('desktop-user')
+    await user.click(screen.getByRole('button', { name: '编辑昵称' }))
+    const username = screen.getByRole('textbox', { name: '昵称' })
+    expect(username).toHaveValue('desktop-user')
     await user.clear(username)
     await user.type(username, 'desktop_admin')
-    await user.click(screen.getByRole('button', { name: '保存资料' }))
+    await user.click(screen.getByRole('button', { name: '保存' }))
 
     await waitFor(() => {
       expect(updatedProfile).toEqual({ bio: '桌面端用户', username: 'desktop_admin' })

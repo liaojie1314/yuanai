@@ -20,6 +20,8 @@ export interface SettingsNavigationItem {
   id: SettingsSectionId
   /** 面向用户的分区名称。 */
   label: string
+  /** 设置导航所属分组。 */
+  group: 'account' | 'application' | 'support'
   /** 导航图标。 */
   icon: LucideIcon
 }
@@ -68,11 +70,52 @@ export function SettingsShell({
 
   return (
     <main className="desktop-settings" aria-label="元AI 设置">
-      <header className="desktop-settings__header">
-        <div>
-          <p>元AI</p>
+      <nav className="desktop-settings__nav" aria-label="设置分区">
+        <div className="desktop-settings__nav-header">
           <h1>设置</h1>
         </div>
+        <div
+          className="desktop-settings__nav-body"
+          role="tablist"
+          aria-orientation="vertical"
+          onKeyDown={handleKeyDown}
+        >
+          {SETTINGS_GROUPS.map(({ id, label }) => (
+            <div key={id} className="desktop-settings__nav-group">
+              <p>{label}</p>
+              {items
+                .filter((item) => item.group === id)
+                .map((item) => {
+                  const Icon = item.icon
+                  const selected = item.id === activeSection
+                  return (
+                    <button
+                      key={item.id}
+                      ref={(element) => {
+                        if (element) buttonRefs.current.set(item.id, element)
+                        else buttonRefs.current.delete(item.id)
+                      }}
+                      id={`settings-tab-${item.id}`}
+                      type="button"
+                      role="tab"
+                      aria-controls={`settings-panel-${item.id}`}
+                      aria-selected={selected}
+                      tabIndex={selected ? 0 : -1}
+                      className={selected ? 'is-active' : undefined}
+                      onClick={() => selectSection(item.id)}
+                    >
+                      <Icon aria-hidden="true" size={16} />
+                      <span>{item.label}</span>
+                    </button>
+                  )
+                })}
+            </div>
+          ))}
+        </div>
+        <p className="desktop-settings__nav-footer">元AI v1.0.0</p>
+      </nav>
+      <header className="desktop-settings__mobile-header">
+        <h1>设置</h1>
         <label className="desktop-settings__mobile-select">
           <span>设置分区</span>
           <select
@@ -87,54 +130,30 @@ export function SettingsShell({
           </select>
         </label>
       </header>
-      <div className="desktop-settings__layout">
-        <nav className="desktop-settings__nav" aria-label="设置分区">
-          <div role="tablist" aria-orientation="vertical" onKeyDown={handleKeyDown}>
-            {items.map((item) => {
-              const Icon = item.icon
-              const selected = item.id === activeSection
-              return (
-                <button
-                  key={item.id}
-                  ref={(element) => {
-                    if (element) buttonRefs.current.set(item.id, element)
-                    else buttonRefs.current.delete(item.id)
-                  }}
-                  id={`settings-tab-${item.id}`}
-                  type="button"
-                  role="tab"
-                  aria-controls={`settings-panel-${item.id}`}
-                  aria-selected={selected}
-                  tabIndex={selected ? 0 : -1}
-                  className={selected ? 'is-active' : undefined}
-                  onClick={() => selectSection(item.id)}
-                >
-                  <Icon aria-hidden="true" size={17} />
-                  <span>{item.label}</span>
-                </button>
-              )
-            })}
-          </div>
-        </nav>
-        <section
-          id={`settings-panel-${activeSection}`}
-          className="desktop-settings__content"
-          role="tabpanel"
-          aria-labelledby={`settings-tab-${activeSection}`}
-        >
-          {children}
-        </section>
-      </div>
+      <section
+        id={`settings-panel-${activeSection}`}
+        className="desktop-settings__content"
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeSection}`}
+      >
+        {children}
+      </section>
     </main>
   )
 }
 
 const SETTINGS_ITEMS: readonly SettingsNavigationItem[] = [
-  { id: 'profile', label: '个人资料', icon: UserRound },
-  { id: 'security', label: '账号安全', icon: ShieldCheck },
-  { id: 'appearance', label: '外观与主题', icon: Palette },
-  { id: 'notifications', label: '通知设置', icon: Bell },
-  { id: 'language', label: '语言与地区', icon: Globe2 },
-  { id: 'desktop', label: '桌面设置', icon: MonitorCog },
-  { id: 'about', label: '关于与帮助', icon: CircleHelp },
+  { id: 'profile', label: '个人资料', group: 'account', icon: UserRound },
+  { id: 'security', label: '账号安全', group: 'account', icon: ShieldCheck },
+  { id: 'appearance', label: '外观与主题', group: 'application', icon: Palette },
+  { id: 'notifications', label: '通知设置', group: 'application', icon: Bell },
+  { id: 'language', label: '语言与地区', group: 'application', icon: Globe2 },
+  { id: 'desktop', label: '桌面设置', group: 'application', icon: MonitorCog },
+  { id: 'about', label: '关于与帮助', group: 'support', icon: CircleHelp },
 ]
+
+const SETTINGS_GROUPS = [
+  { id: 'account', label: '账户' },
+  { id: 'application', label: '应用' },
+  { id: 'support', label: '支持' },
+] as const

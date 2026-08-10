@@ -32,27 +32,29 @@ export function NotificationSection({
         <h2>通知设置</h2>
         <p>选择桌面端如何提醒你。</p>
       </div>
-      <section className="settings-block">
-        <h3>原生通知</h3>
-        {rows.map(([key, label, description, Icon]) => (
-          <div className="settings-row" key={key}>
-            <div>
-              <strong>
-                <Icon size={16} aria-hidden="true" /> {label}
-              </strong>
-              <p>{description}</p>
+      <div className="settings-section__body">
+        <section className="settings-block">
+          <h3>原生通知</h3>
+          {rows.map(([key, label, description, Icon]) => (
+            <div className="settings-row" key={key}>
+              <div>
+                <strong>
+                  <Icon size={16} aria-hidden="true" /> {label}
+                </strong>
+                <p>{description}</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-label={label}
+                aria-checked={preferences[key]}
+                className={preferences[key] ? 'settings-switch is-on' : 'settings-switch'}
+                onClick={() => void onPreferencesChanged({ [key]: !preferences[key] })}
+              />
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-label={label}
-              aria-checked={preferences[key]}
-              className={preferences[key] ? 'settings-switch is-on' : 'settings-switch'}
-              onClick={() => void onPreferencesChanged({ [key]: !preferences[key] })}
-            />
-          </div>
-        ))}
-      </section>
+          ))}
+        </section>
+      </div>
     </div>
   )
 }
