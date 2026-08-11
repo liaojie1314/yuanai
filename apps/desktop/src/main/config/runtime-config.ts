@@ -2,6 +2,10 @@ import type { AppRuntimeConfig } from '../../shared/runtime-config'
 
 const DEFAULT_API_BASE_URL = 'http://localhost:8000/api/v1'
 const DEFAULT_WEB_BASE_URL = 'http://localhost:3000'
+const LOCAL_OBJECT_STORAGE_ORIGINS = Object.freeze([
+  'http://localhost:9000',
+  'http://127.0.0.1:9000',
+])
 
 /** 运行时环境变量的最小只读视图。 */
 export type RuntimeEnvironment = Readonly<Record<string, string | undefined>>
@@ -38,22 +42,34 @@ function parseAssetOrigins(value: string | undefined): readonly string[] {
   return Object.freeze(Array.from(new Set(origins)))
 }
 
+function defaultAssetOrigins(apiBaseUrl: string): readonly string[] {
+  return isLoopbackHost(new URL(apiBaseUrl).hostname) ? LOCAL_OBJECT_STORAGE_ORIGINS : []
+}
+
 /**
  * 读取并校验主进程运行时配置，绝不将原始环境变量返回给 renderer。
  * @param environment 待解析的环境变量，默认读取当前 Node 进程环境
  * @returns 已冻结且可安全传递给 preload 的配置
  */
 export function readRuntimeConfig(environment: RuntimeEnvironment = process.env): AppRuntimeConfig {
+  const apiBaseUrl = normalizeBaseUrl(
+    environment['YUANAI_API_URL'] ?? DEFAULT_API_BASE_URL,
+    'YUANAI_API_URL'
+  )
   const config: AppRuntimeConfig = {
-    apiBaseUrl: normalizeBaseUrl(
-      environment['YUANAI_API_URL'] ?? DEFAULT_API_BASE_URL,
-      'YUANAI_API_URL'
-    ),
+    apiBaseUrl,
     webBaseUrl: normalizeBaseUrl(
       environment['YUANAI_WEB_URL'] ?? DEFAULT_WEB_BASE_URL,
       'YUANAI_WEB_URL'
     ),
-    assetOrigins: parseAssetOrigins(environment['YUANAI_ASSET_ORIGINS']),
+    assetOrigins: Object.freeze(
+      Array.from(
+        new Set([
+          ...defaultAssetOrigins(apiBaseUrl),
+          ...parseAssetOrigins(environment['YUANAI_ASSET_ORIGINS']),
+        ])
+      )
+    ),
   }
   return Object.freeze(config)
 }

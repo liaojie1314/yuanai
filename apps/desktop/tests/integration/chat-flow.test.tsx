@@ -7,11 +7,19 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 
 import { setApiBaseUrl } from '@yuanai/core/api'
 import { useChatStore, useAuthStore } from '@yuanai/core/stores'
-import { Role, type Conversation, type Message } from '@yuanai/types'
+import { Role, type Conversation, type Message, type User } from '@yuanai/types'
 
 import { App } from '../../src/renderer/main/App'
 
 const API_BASE_URL = 'http://desktop-chat.test/api/v1'
+
+const AUTHENTICATED_USER: User = {
+  id: 'desktop-test-user',
+  email: 'desktop@example.com',
+  username: '桌面测试用户',
+  avatarUrl: null,
+  createdAt: '2026-08-10T08:00:00.000Z',
+}
 
 let conversations: Conversation[] = []
 let messagesByConversation: Record<string, Message[]> = {}
@@ -223,7 +231,11 @@ beforeEach(async () => {
   shareLink = null
   receivedShareOptions = null
   setApiBaseUrl(API_BASE_URL)
-  useAuthStore.setState({ accessToken: 'desktop-test-token', refreshToken: null, user: null })
+  useAuthStore.setState({
+    accessToken: 'desktop-test-token',
+    refreshToken: null,
+    user: AUTHENTICATED_USER,
+  })
   useChatStore.getState().finalizeStream()
   await useAuthStore.persist.clearStorage()
   Object.defineProperty(window, 'yuanai', {
@@ -296,7 +308,8 @@ describe('desktop chat integration', () => {
     expect(await screen.findByText('快速模型会话消息')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '选择模型：GPT-4.1 mini' })).toBeInTheDocument()
 
-    await user.click(getConversationActionButton('重命名会话', 1))
+    await user.click(getConversationActionButton('更多会话操作', 1))
+    await user.click(await screen.findByRole('menuitem', { name: '重命名' }))
     const titleInput = screen.getByRole('textbox', { name: '会话标题' })
     await user.clear(titleInput)
     await user.type(titleInput, '已重命名会话')
@@ -304,7 +317,8 @@ describe('desktop chat integration', () => {
     await waitFor(() => expect(renamedConversationId).toBe('conversation-2'))
     expect(await screen.findByRole('button', { name: '已重命名会话' })).toBeInTheDocument()
 
-    await user.click(getConversationActionButton('删除会话', 1))
+    await user.click(getConversationActionButton('更多会话操作', 1))
+    await user.click(await screen.findByRole('menuitem', { name: '删除' }))
     expect(screen.getByRole('alertdialog', { name: '删除会话？' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '删除' }))
     await waitFor(() => expect(removedConversationId).toBe('conversation-2'))

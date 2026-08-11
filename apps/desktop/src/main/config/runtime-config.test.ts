@@ -9,7 +9,7 @@ describe('readRuntimeConfig', () => {
     expect(config).toEqual({
       apiBaseUrl: 'http://localhost:8000/api/v1',
       webBaseUrl: 'http://localhost:3000',
-      assetOrigins: [],
+      assetOrigins: ['http://localhost:9000', 'http://127.0.0.1:9000'],
     })
     expect(Object.isFrozen(config)).toBe(true)
     expect(Object.isFrozen(config.assetOrigins)).toBe(true)
@@ -27,6 +27,15 @@ describe('readRuntimeConfig', () => {
       webBaseUrl: 'https://yuanai.example.com',
       assetOrigins: ['https://cdn.example.com', 'http://127.0.0.1:9000'],
     })
+  })
+
+  it('does not add local object storage origins for a non-loopback API', () => {
+    expect(
+      readRuntimeConfig({
+        YUANAI_API_URL: 'https://api.example.com/api/v1',
+        YUANAI_WEB_URL: 'https://yuanai.example.com',
+      }).assetOrigins
+    ).toEqual([])
   })
 
   it.each([

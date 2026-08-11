@@ -1,10 +1,13 @@
-import type { IpcMainInvokeEvent } from 'electron'
+import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron'
 
 import { IPC } from '../../shared/ipc-contract'
 import { assertNoIpcPayload } from '../../shared/guards'
 import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { registerAuthIpcHandlers } from './auth'
 import type { AuthIpcStorage, IpcMainRegistrar } from './auth'
+import { registerDialogIpcHandlers } from './dialog'
+import type { NativeFileDialog } from './dialog'
+import type { NativeDesktopCapturer } from './dialog'
 import type { IpcInvocationGuard, TrustedWebContentsRegistry } from './guards'
 import { registerOAuthIpcHandlers } from './oauth'
 import { registerPreferencesIpcHandlers } from './prefs'
@@ -13,6 +16,7 @@ import { registerSystemIpcHandlers } from './system'
 import type { ExternalShell } from './system'
 import { registerWindowIpcHandlers } from './window'
 import type { NamedWindowController } from './window'
+import type { SelectedFileRegistry } from '../protocol/selected-file'
 import type { DesktopSystemService } from '../system/desktop-system'
 
 /** 安装第一批安全 IPC 处理器所需的主进程依赖。 */
@@ -31,6 +35,14 @@ export interface SetupIpcOptions {
   preferencesStorage: PreferencesIpcStorage
   /** 主进程唯一读取并校验后的运行时配置。 */
   runtimeConfig: AppRuntimeConfig
+  /** 原生系统文件选择器。 */
+  dialog: NativeFileDialog
+  /** 原生屏幕与窗口缩略图枚举能力。 */
+  desktopCapturer: NativeDesktopCapturer
+  /** 将可信 renderer 映射为它所属的主窗口。 */
+  getWindow(webContents: WebContents): BrowserWindow | null
+  /** 用户选择文件的一次性受控引用表。 */
+  selectedFiles: SelectedFileRegistry
   /** 有限的系统设置服务。 */
   systemService: DesktopSystemService
   /** 系统默认浏览器调用能力。 */
@@ -50,6 +62,14 @@ function copyRuntimeConfig(config: AppRuntimeConfig): AppRuntimeConfig {
 /** 安装认证、偏好和运行时配置的固定 IPC 通道。 */
 export function setupIpc(options: SetupIpcOptions): void {
   registerAuthIpcHandlers(options)
+  registerDialogIpcHandlers({
+    dialog: options.dialog,
+    desktopCapturer: options.desktopCapturer,
+    getWindow: options.getWindow,
+    guard: options.guard,
+    ipcMain: options.ipcMain,
+    selectedFiles: options.selectedFiles,
+  })
   registerOAuthIpcHandlers({
     ipcMain: options.ipcMain,
     guard: options.guard,

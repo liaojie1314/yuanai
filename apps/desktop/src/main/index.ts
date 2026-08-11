@@ -1,4 +1,14 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Menu, protocol, shell } from 'electron'
+import {
+  app,
+  BrowserWindow,
+  desktopCapturer,
+  dialog,
+  globalShortcut,
+  ipcMain,
+  Menu,
+  protocol,
+  shell,
+} from 'electron'
 import { join } from 'node:path'
 
 import { readRuntimeConfig } from './config/runtime-config'
@@ -10,6 +20,7 @@ import { secureRenderer } from './security'
 import { createWindowOptions } from './windows/config'
 import { WindowManager } from './windows/manager'
 import { registerAppScheme } from './protocol/app-scheme'
+import { createSelectedFileRegistry, registerSelectedFileScheme } from './protocol/selected-file'
 import { IPC } from '../shared/ipc-contract'
 import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
 import { DesktopSystemService } from './system/desktop-system'
@@ -17,6 +28,10 @@ import { DesktopSystemService } from './system/desktop-system'
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'yuanai-app',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+  {
+    scheme: 'yuanai-file',
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
   },
 ])
@@ -69,6 +84,8 @@ app.whenReady().then(() => {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const runtimeConfig = readRuntimeConfig()
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
+  const selectedFiles = createSelectedFileRegistry()
+  const unregisterSelectedFileScheme = registerSelectedFileScheme(protocol, selectedFiles)
   windowManager = new WindowManager({
     createWindow: (key) => {
       const window = new BrowserWindow(
@@ -96,6 +113,9 @@ app.whenReady().then(() => {
     }),
     trustedWebContents,
     authStorage,
+    desktopCapturer,
+    dialog,
+    getWindow: (webContents) => BrowserWindow.fromWebContents(webContents),
     onSessionChanged: (hasSession) => {
       if (!windowManager) return
       if (hasSession) {
@@ -111,6 +131,7 @@ app.whenReady().then(() => {
     },
     preferencesStorage,
     runtimeConfig,
+    selectedFiles,
     shell,
     systemService: desktopSystem,
     windows: {
@@ -137,6 +158,7 @@ app.whenReady().then(() => {
   app.once('before-quit', () => {
     desktopSystem?.dispose()
     unregisterAppScheme()
+    unregisterSelectedFileScheme()
   })
 })
 

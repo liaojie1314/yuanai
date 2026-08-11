@@ -30,6 +30,24 @@ export interface DesktopAppInfo {
   platform: NodeJS.Platform
 }
 
+/** 由系统文件选择器授予、可一次性读取的本地文件描述。 */
+export interface DesktopSelectedFile {
+  /** 不包含本机绝对路径的显示文件名。 */
+  name: string
+  /** 仅对本次选择有效的受控本地文件 URL。 */
+  url: string
+}
+
+/** 用户可选择插入对话的已缩略化屏幕或窗口快照。 */
+export interface DesktopScreenSource {
+  /** Electron 提供的仅用于本次选择的屏幕或窗口标识。 */
+  id: string
+  /** 系统显示的屏幕或窗口名称。 */
+  name: string
+  /** PNG data URL 缩略图，不包含本机文件路径。 */
+  thumbnailDataUrl: string
+}
+
 /** 全局快捷键注册结果。 */
 export interface ShortcutStatus {
   /** 当前仍然生效的快捷键；未注册时为 null。 */
@@ -56,6 +74,10 @@ export const IPC = {
   auth: { get: 'auth:get', set: 'auth:set', remove: 'auth:remove' },
   prefs: { get: 'prefs:get', update: 'prefs:update' },
   runtime: { getConfig: 'runtime:get-config' },
+  dialog: {
+    openFiles: 'dialog:open-files',
+    listScreenSources: 'dialog:list-screen-sources',
+  },
   oauth: { start: 'oauth:start' },
   window: {
     openLogin: 'window:open-login',

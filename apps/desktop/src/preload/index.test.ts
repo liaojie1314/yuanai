@@ -38,6 +38,8 @@ describe('preload API', () => {
     await api.auth.remove()
     await api.prefs.get()
     await api.prefs.update({ closeToTray: false })
+    await api.dialog.openFiles()
+    await api.dialog.listScreenSources()
     await api.window.openLogin()
     await api.window.openRegister()
     await api.window.openForgot()
@@ -54,20 +56,22 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(3, IPC.auth.remove)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(4, IPC.prefs.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(5, IPC.prefs.update, { closeToTray: false })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.window.openLogin)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.window.openRegister)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.window.openForgot)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.window.openSettings)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openAbout)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.dialog.openFiles)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.dialog.listScreenSources)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.window.openLogin)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.window.openRegister)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openForgot)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.window.openSettings)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openAbout)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.system.getInfo)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
-      12,
+      14,
       IPC.system.setGlobalShortcut,
       'CommandOrControl+Alt+Y'
     )
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

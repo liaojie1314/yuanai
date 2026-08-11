@@ -5,6 +5,8 @@ import type {
   DesktopOAuthProvider,
   DesktopOAuthResult,
   DesktopPreferences,
+  DesktopSelectedFile,
+  DesktopScreenSource,
   ExternalLinkId,
   ShortcutStatus,
 } from '../shared/ipc-contract'
@@ -24,6 +26,10 @@ export interface YuanaiApi {
   }
   runtime: {
     getConfig: () => Promise<AppRuntimeConfig>
+  }
+  dialog: {
+    openFiles: () => Promise<DesktopSelectedFile[]>
+    listScreenSources: () => Promise<DesktopScreenSource[]>
   }
   window: {
     openLogin: () => Promise<void>
@@ -73,6 +79,10 @@ export const api: YuanaiApi = {
   },
   runtime: {
     getConfig: () => ipcRenderer.invoke(IPC.runtime.getConfig),
+  },
+  dialog: {
+    openFiles: () => ipcRenderer.invoke(IPC.dialog.openFiles),
+    listScreenSources: () => ipcRenderer.invoke(IPC.dialog.listScreenSources),
   },
   window: {
     openLogin: () => ipcRenderer.invoke(IPC.window.openLogin),

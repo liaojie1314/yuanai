@@ -37,6 +37,9 @@ function setupTestIpc(): {
     get: ReturnType<typeof vi.fn>
     update: ReturnType<typeof vi.fn>
   }
+  dialog: { showOpenDialog: ReturnType<typeof vi.fn> }
+  desktopCapturer: { getSources: ReturnType<typeof vi.fn> }
+  selectedFiles: { register: ReturnType<typeof vi.fn>; take: ReturnType<typeof vi.fn> }
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
   shell: { openExternal: ReturnType<typeof vi.fn> }
@@ -73,6 +76,42 @@ function setupTestIpc(): {
     }),
   }
   const onSessionChanged = vi.fn<(hasSession: boolean) => void>()
+  const dialog = {
+    showOpenDialog: vi
+      .fn<() => Promise<{ canceled: boolean; filePaths: string[] }>>()
+      .mockResolvedValue({ canceled: false, filePaths: ['/tmp/desktop-notes.txt'] }),
+  }
+  const selectedFiles = {
+    register: vi
+      .fn<(paths: readonly string[]) => Array<{ name: string; url: string }>>()
+      .mockReturnValue([
+        {
+          name: 'desktop-notes.txt',
+          url: 'yuanai-file://selected/550e8400-e29b-41d4-a716-446655440000',
+        },
+      ]),
+    take: vi.fn(),
+  }
+  const desktopCapturer = {
+    getSources: vi.fn().mockResolvedValue([
+      {
+        id: 'screen:0:0',
+        name: '主显示器',
+        thumbnail: {
+          isEmpty: () => false,
+          toDataURL: () => 'data:image/png;base64,c2NyZWVu',
+        },
+      },
+      {
+        id: 'window:1:0',
+        name: '无缩略图窗口',
+        thumbnail: {
+          isEmpty: () => true,
+          toDataURL: () => 'data:image/png;base64,c2tpcA==',
+        },
+      },
+    ]),
+  }
   const windows = {
     openLogin: vi.fn(),
     openRegister: vi.fn(),
@@ -104,9 +143,13 @@ function setupTestIpc(): {
     guard,
     trustedWebContents,
     authStorage,
+    desktopCapturer,
+    dialog,
+    getWindow: vi.fn().mockReturnValue(null),
     onSessionChanged,
     preferencesStorage,
     runtimeConfig,
+    selectedFiles,
     shell,
     systemService,
     windows,
@@ -117,6 +160,9 @@ function setupTestIpc(): {
     sender,
     authStorage,
     preferencesStorage,
+    dialog,
+    desktopCapturer,
+    selectedFiles,
     onSessionChanged,
     systemService,
     shell,
@@ -141,7 +187,7 @@ const CLEARED_SESSION = JSON.stringify({
 })
 
 describe('secure IPC handlers', () => {
-  it('registers fixed auth, preference, runtime, system, and window channels', () => {
+  it('registers fixed auth, dialog, preference, runtime, system, and window channels', () => {
     const { handlers } = setupTestIpc()
 
     expect(Array.from(handlers.keys()).sort()).toEqual(
@@ -149,6 +195,8 @@ describe('secure IPC handlers', () => {
         IPC.auth.get,
         IPC.auth.remove,
         IPC.auth.set,
+        IPC.dialog.listScreenSources,
+        IPC.dialog.openFiles,
         IPC.oauth.start,
         IPC.prefs.get,
         IPC.prefs.update,
@@ -164,6 +212,42 @@ describe('secure IPC handlers', () => {
         IPC.window.openSettings,
       ].sort()
     )
+  })
+
+  it('opens native files only for trusted callers and returns path-free selected-file URLs', async () => {
+    const { dialog, handlers, selectedFiles, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.dialog.openFiles)
+
+    await expect(handler(createEvent(sender))).resolves.toEqual([
+      {
+        name: 'desktop-notes.txt',
+        url: 'yuanai-file://selected/550e8400-e29b-41d4-a716-446655440000',
+      },
+    ])
+
+    expect(dialog.showOpenDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ properties: ['openFile', 'multiSelections'] })
+    )
+    expect(selectedFiles.register).toHaveBeenCalledWith(['/tmp/desktop-notes.txt'])
+    await expect(handler(createEvent(sender), 'unexpected')).rejects.toThrow('IPC_PAYLOAD_INVALID')
+  })
+
+  it('returns only non-empty screen thumbnails for trusted callers', async () => {
+    const { desktopCapturer, handlers, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.dialog.listScreenSources)
+
+    await expect(handler(createEvent(sender))).resolves.toEqual([
+      {
+        id: 'screen:0:0',
+        name: '主显示器',
+        thumbnailDataUrl: 'data:image/png;base64,c2NyZWVu',
+      },
+    ])
+
+    expect(desktopCapturer.getSources).toHaveBeenCalledWith(
+      expect.objectContaining({ types: ['screen', 'window'] })
+    )
+    await expect(handler(createEvent(sender), 'unexpected')).rejects.toThrow('IPC_PAYLOAD_INVALID')
   })
 
   it('persists authenticated state and removes cleared state without broadcasting tokens', async () => {

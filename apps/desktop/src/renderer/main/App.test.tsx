@@ -19,7 +19,13 @@ const chat = vi.hoisted(() => ({
     id: string
     role: string
     content: string
-    files: []
+    files: Array<{
+      id: string
+      filename: string
+      mimeType: string
+      sizeBytes: number
+      url: string
+    }>
     createdAt: string
   }>,
   models: [
@@ -79,6 +85,11 @@ const prefs = vi.hoisted(() => ({
   setTheme: vi.fn(),
 }))
 
+const desktop = vi.hoisted(() => ({
+  openFiles: vi.fn(),
+  listScreenSources: vi.fn(),
+}))
+
 vi.mock('@yuanai/core/hooks', () => ({
   useConversations: () => ({ data: chat.conversations, isLoading: false }),
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
@@ -107,6 +118,10 @@ beforeEach(() => {
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
+      dialog: {
+        openFiles: desktop.openFiles,
+        listScreenSources: desktop.listScreenSources,
+      },
       window: {
         openLogin: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openRegister: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -197,11 +212,14 @@ beforeEach(() => {
   chat.streamState.optimisticUserMsg = null
   chat.sendTemporary.mockResolvedValue(undefined)
   chat.uploadFileSmart.mockResolvedValue({ id: 'file-1' })
+  desktop.openFiles.mockResolvedValue([])
+  desktop.listScreenSources.mockResolvedValue([])
 })
 
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.unstubAllGlobals()
   document.documentElement.removeAttribute('data-theme')
 })
 
@@ -295,6 +313,34 @@ describe('desktop chat', () => {
     expect(message.closest('article')).toHaveClass('desktop-chat__message--user')
     expect(message.parentElement).toHaveClass('desktop-chat__message-bubble')
     expect(message.closest('article')).not.toHaveTextContent('元')
+  })
+
+  it('renders image attachments in message history as thumbnails', () => {
+    chat.messages = [
+      {
+        id: 'message-user-image-1',
+        role: 'user',
+        content: '请分析这张图片。',
+        files: [
+          {
+            id: 'image-file-1',
+            filename: 'yuanai-login-before.png',
+            mimeType: 'image/png',
+            sizeBytes: 61_574,
+            url: 'http://127.0.0.1:9000/yuanai-files/yuanai-login-before.png',
+          },
+        ],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    const image = screen.getByRole('img', { name: 'yuanai-login-before.png' })
+    expect(image).toHaveAttribute(
+      'src',
+      'http://127.0.0.1:9000/yuanai-files/yuanai-login-before.png'
+    )
+    expect(image.parentElement).toHaveClass('desktop-chat__file--image')
   })
 
   it('uses the selected conversation model for the next message', async () => {
@@ -562,5 +608,101 @@ describe('desktop chat', () => {
         })
       )
     })
+  })
+
+  it('opens the attachment popup and queues files returned by the native selector', async () => {
+    const user = userEvent.setup()
+    const blob = new Blob(['desktop system attachment'], { type: 'text/markdown' })
+    const fetchMock = vi.fn<() => Promise<Response>>().mockResolvedValue({
+      blob: () => Promise.resolve(blob),
+      ok: true,
+    } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    desktop.openFiles.mockResolvedValue([
+      {
+        name: 'system-notes.md',
+        url: 'yuanai-file://selected/550e8400-e29b-41d4-a716-446655440000',
+      },
+    ])
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '添加附件' }))
+    expect(screen.getByRole('menu', { name: '添加附件' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: '上传文件' }))
+
+    await waitFor(() => expect(screen.getByText('system-notes.md')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith(
+      'yuanai-file://selected/550e8400-e29b-41d4-a716-446655440000'
+    )
+  })
+
+  it('aligns the attachment menu with all Web capture entry points', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '添加附件' }))
+
+    expect(screen.getByRole('menuitem', { name: '上传文件' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '截屏' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '摄像头拍照' })).toBeInTheDocument()
+  })
+
+  it('adds a selected screen capture to the attachment tray without exposing a native path', async () => {
+    const user = userEvent.setup()
+    const blob = new Blob(['screen'], { type: 'image/png' })
+    const fetchMock = vi.fn<() => Promise<Response>>().mockResolvedValue({
+      blob: () => Promise.resolve(blob),
+      ok: true,
+    } as Response)
+    vi.stubGlobal('fetch', fetchMock)
+    desktop.listScreenSources.mockResolvedValue([
+      {
+        id: 'screen:0:0',
+        name: '主显示器',
+        thumbnailDataUrl: 'data:image/png;base64,c2NyZWVu',
+      },
+    ])
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '添加附件' }))
+    await user.click(screen.getByRole('menuitem', { name: '截屏' }))
+
+    expect(await screen.findByRole('dialog', { name: '选择截屏来源' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '选择截屏来源：主显示器' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '选择截屏来源' })).toBeNull())
+    expect(
+      screen.getByRole('button', {
+        name: /^移除附件 screenshot-.*\.png$/,
+      })
+    ).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('data:image/png;base64,c2NyZWVu')
+  })
+
+  it('prevents sending attachments through a model that does not support files', async () => {
+    const user = userEvent.setup()
+    chat.models = [
+      {
+        id: 'deepseek-v4-flash',
+        name: 'DeepSeek V4 Flash',
+        provider: 'deepseek',
+        description: '快速响应，高性价比',
+        supportsVision: false,
+        supportsFiles: false,
+        contextLength: 64000,
+        isDefault: true,
+      },
+    ]
+    render(<App />)
+
+    const file = new File(['image'], 'capture.png', { type: 'image/png' })
+    await user.upload(screen.getByTestId('attachment-input'), file)
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '分析这张图片')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '当前模型不支持附件，请切换至支持文件的模型后发送'
+    )
+    expect(chat.send).not.toHaveBeenCalled()
   })
 })

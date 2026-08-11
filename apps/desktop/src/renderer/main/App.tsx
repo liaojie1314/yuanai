@@ -2,6 +2,7 @@ import {
   Brain,
   Bot,
   Calculator,
+  Camera,
   Check,
   CheckSquare,
   ChevronDown,
@@ -10,6 +11,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FileUp,
   FileText,
   Ghost,
   Globe2,
@@ -21,6 +23,7 @@ import {
   Lock,
   Mic,
   MoreVertical,
+  Monitor,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
@@ -63,15 +66,18 @@ import {
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import { Role, type AIModel, type Conversation, type Message } from '@yuanai/types'
+import { Role } from '@yuanai/types'
+import type { AIModel, Conversation, Message, MessageFile } from '@yuanai/types'
+
+import type { DesktopScreenSource, DesktopSelectedFile } from '../../shared/ipc-contract'
 
 const FALLBACK_MODEL: AIModel = {
   id: 'deepseek-v4-flash',
   name: 'DeepSeek V4 Flash',
   provider: 'deepseek',
   description: '快速响应，高性价比',
-  supportsVision: true,
-  supportsFiles: true,
+  supportsVision: false,
+  supportsFiles: false,
   contextLength: 64000,
   isDefault: true,
 }
@@ -83,8 +89,8 @@ const DEFAULT_MODELS: AIModel[] = [
     name: 'DeepSeek V4 Pro',
     provider: 'deepseek',
     description: '中文理解强，旗舰推理',
-    supportsVision: true,
-    supportsFiles: true,
+    supportsVision: false,
+    supportsFiles: false,
     contextLength: 128000,
     isDefault: false,
   },
@@ -138,8 +144,72 @@ interface ComposerAttachment {
   id: string
   file: File
   fileId?: string
+  previewUrl?: string
   progress: number
   status: 'ready' | 'uploading' | 'done' | 'error'
+}
+
+function createAttachmentPreviewUrl(file: File): string | null {
+  if (!file.type.startsWith('image/') || typeof URL.createObjectURL !== 'function') return null
+  return URL.createObjectURL(file)
+}
+
+function createComposerAttachments(files: readonly File[]): ComposerAttachment[] {
+  return files.map((file) => {
+    const previewUrl = createAttachmentPreviewUrl(file)
+    return {
+      id: `${file.name}-${file.lastModified}-${file.size}-${Math.random().toString(36).slice(2)}`,
+      file,
+      ...(previewUrl ? { previewUrl } : {}),
+      progress: 0,
+      status: 'ready',
+    }
+  })
+}
+
+function revokeAttachmentPreview(attachment: ComposerAttachment): void {
+  if (attachment.previewUrl) URL.revokeObjectURL(attachment.previewUrl)
+}
+
+function revokeAttachmentPreviews(attachments: readonly ComposerAttachment[]): void {
+  attachments.forEach(revokeAttachmentPreview)
+}
+
+async function readSystemSelectedFiles(selectedFiles: DesktopSelectedFile[]): Promise<File[]> {
+  return Promise.all(
+    selectedFiles.map(async (selectedFile) => {
+      const response = await fetch(selectedFile.url)
+      if (!response.ok) throw new Error('系统选择的文件已不可用，请重新选择')
+      const blob = await response.blob()
+      return new File([blob], selectedFile.name, { type: blob.type || 'application/octet-stream' })
+    })
+  )
+}
+
+async function createImageFileFromDataUrl(dataUrl: string, filename: string): Promise<File> {
+  const response = await fetch(dataUrl)
+  if (!response.ok) throw new Error('无法读取截屏，请重新选择')
+  const blob = await response.blob()
+  return new File([blob], filename, { type: blob.type || 'image/png' })
+}
+
+async function createImageFileFromVideo(video: HTMLVideoElement): Promise<File> {
+  const width = video.videoWidth || 1280
+  const height = video.videoHeight || 720
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('无法创建拍照画布')
+  context.drawImage(video, 0, 0, width, height)
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('拍照失败，请重试')
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  return new File([blob], `camera-${timestamp}.png`, { type: 'image/png' })
+}
+
+function stopMediaStream(stream: MediaStream | null): void {
+  stream?.getTracks().forEach((track) => track.stop())
 }
 
 function getModelInitial(model: AIModel): string {
@@ -234,6 +304,26 @@ function MarkdownContent({ content }: { content: string }): ReactElement {
   return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
 }
 
+function MessageAttachment({ file }: { file: MessageFile }): ReactElement {
+  const [imageFailed, setImageFailed] = useState(false)
+  const isImage = file.mimeType.startsWith('image/') && !imageFailed
+
+  if (isImage) {
+    return (
+      <li className="desktop-chat__file desktop-chat__file--image" title={file.filename}>
+        <img src={file.url} alt={file.filename} onError={() => setImageFailed(true)} />
+      </li>
+    )
+  }
+
+  return (
+    <li className="desktop-chat__file" title={file.filename}>
+      <FileText size={14} aria-hidden="true" />
+      <span>{file.filename}</span>
+    </li>
+  )
+}
+
 function MessageBubble({ message }: { message: Message }): ReactElement {
   const isUser = message.role === Role.User
   return (
@@ -266,10 +356,7 @@ function MessageBubble({ message }: { message: Message }): ReactElement {
         {message.files.length > 0 ? (
           <ul className="desktop-chat__files" aria-label="消息附件">
             {message.files.map((file) => (
-              <li key={file.id}>
-                <FileText size={14} aria-hidden="true" />
-                <span>{file.filename}</span>
-              </li>
+              <MessageAttachment key={file.id} file={file} />
             ))}
           </ul>
         ) : null}
@@ -825,7 +912,14 @@ export function App(): ReactElement {
   const [selectedModelId, setSelectedModelId] = useState(FALLBACK_MODEL.id)
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false)
   const [isUploadingAttachments, setIsUploadingAttachments] = useState(false)
+  const [screenSources, setScreenSources] = useState<DesktopScreenSource[]>([])
+  const [isScreenCaptureOpen, setIsScreenCaptureOpen] = useState(false)
+  const [isScreenSourcesLoading, setIsScreenSourcesLoading] = useState(false)
+  const [isCameraOpen, setIsCameraOpen] = useState(false)
+  const [cameraError, setCameraError] = useState('')
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
   const [search, setSearch] = useState('')
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -848,6 +942,9 @@ export function App(): ReactElement {
   )
   const messageEndRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const attachmentsRef = useRef<ComposerAttachment[]>([])
+  const cameraVideoRef = useRef<HTMLVideoElement>(null)
+  const cameraStreamRef = useRef<MediaStream | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
 
@@ -901,8 +998,43 @@ export function App(): ReactElement {
     setIsSelectionMode(false)
     setSelectedConversationIds(new Set())
     setConversationMenu(null)
+    setIsAttachmentMenuOpen(false)
+    setScreenSources([])
+    setIsScreenCaptureOpen(false)
+    stopMediaStream(cameraStreamRef.current)
+    cameraStreamRef.current = null
+    setCameraStream(null)
+    setIsCameraOpen(false)
+    setCameraError('')
+    setAttachments((items) => {
+      revokeAttachmentPreviews(items)
+      return []
+    })
     setSearch('')
   }, [isLoggedIn])
+
+  useEffect(() => {
+    attachmentsRef.current = attachments
+  }, [attachments])
+
+  useEffect(() => () => revokeAttachmentPreviews(attachmentsRef.current), [])
+
+  useEffect(() => {
+    const video = cameraVideoRef.current
+    if (!cameraStream || !video) return
+    video.srcObject = cameraStream
+    void video.play().catch(() => setCameraError('摄像头预览无法启动，请检查系统权限'))
+    return () => {
+      if (video.srcObject === cameraStream) video.srcObject = null
+    }
+  }, [cameraStream])
+
+  useEffect(
+    () => () => {
+      stopMediaStream(cameraStreamRef.current)
+    },
+    []
+  )
 
   useEffect(() => {
     if (!conversationMenu) return
@@ -970,6 +1102,7 @@ export function App(): ReactElement {
     const handleShortcut = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         setIsModelMenuOpen(false)
+        setIsAttachmentMenuOpen(false)
         return
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'n') {
@@ -1006,7 +1139,10 @@ export function App(): ReactElement {
     if (isStreaming) return
     setIsTemporaryConversation((value) => !value)
     setTemporaryMessages([])
-    setAttachments([])
+    setAttachments((items) => {
+      revokeAttachmentPreviews(items)
+      return []
+    })
     setDraft('')
     setActionError('')
     setShareDialog(null)
@@ -1069,25 +1205,108 @@ export function App(): ReactElement {
     setIsModelMenuOpen(false)
   }
 
+  function addAttachments(files: readonly File[]): void {
+    if (!files.length || isTemporaryConversation) return
+    setAttachments((items) => [...items, ...createComposerAttachments(files)])
+  }
+
   function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
-    if (isTemporaryConversation) return
-    const files = Array.from(event.target.files ?? [])
-    if (files.length === 0) return
-    setAttachments((items) => [
-      ...items,
-      ...files.map((file) => ({
-        id: `${file.name}-${file.lastModified}-${file.size}-${Math.random().toString(36).slice(2)}`,
-        file,
-        progress: 0,
-        status: 'ready' as const,
-      })),
-    ])
+    addAttachments(Array.from(event.target.files ?? []))
     event.target.value = ''
+  }
+
+  async function handleOpenSystemFiles(): Promise<void> {
+    if (isTemporaryConversation || isUploadingAttachments) return
+    setIsAttachmentMenuOpen(false)
+    setActionError('')
+    try {
+      const selectedFiles = await window.yuanai.dialog.openFiles()
+      if (!selectedFiles.length) return
+      addAttachments(await readSystemSelectedFiles(selectedFiles))
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法读取系统选择的文件，请重新选择'))
+    }
+  }
+
+  async function handleOpenScreenCapture(): Promise<void> {
+    if (isTemporaryConversation || isUploadingAttachments) return
+    setIsAttachmentMenuOpen(false)
+    setActionError('')
+    setIsScreenSourcesLoading(true)
+    try {
+      const sources = await window.yuanai.dialog.listScreenSources()
+      if (!sources.length) {
+        setActionError('未找到可截取的屏幕或窗口')
+        return
+      }
+      setScreenSources(sources)
+      setIsScreenCaptureOpen(true)
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法读取屏幕，请稍后重试'))
+    } finally {
+      setIsScreenSourcesLoading(false)
+    }
+  }
+
+  async function handleSelectScreenSource(source: DesktopScreenSource): Promise<void> {
+    setActionError('')
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      addAttachments([
+        await createImageFileFromDataUrl(source.thumbnailDataUrl, `screenshot-${timestamp}.png`),
+      ])
+      setIsScreenCaptureOpen(false)
+      setScreenSources([])
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '截屏读取失败，请重新选择'))
+    }
+  }
+
+  function closeCamera(): void {
+    stopMediaStream(cameraStreamRef.current)
+    cameraStreamRef.current = null
+    setCameraStream(null)
+    setCameraError('')
+    setIsCameraOpen(false)
+  }
+
+  async function handleOpenCamera(): Promise<void> {
+    if (isTemporaryConversation || isUploadingAttachments) return
+    setIsAttachmentMenuOpen(false)
+    setActionError('')
+    setCameraError('')
+    setIsCameraOpen(true)
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('当前系统不支持摄像头访问')
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+      cameraStreamRef.current = stream
+      setCameraStream(stream)
+    } catch (error: unknown) {
+      setCameraError(getErrorMessage(error, '无法打开摄像头，请检查系统权限'))
+    }
+  }
+
+  async function handleCaptureCameraPhoto(): Promise<void> {
+    const video = cameraVideoRef.current
+    if (!video || !cameraStream) return
+    setActionError('')
+    try {
+      addAttachments([await createImageFileFromVideo(video)])
+      closeCamera()
+    } catch (error: unknown) {
+      setCameraError(getErrorMessage(error, '拍照失败，请重试'))
+    }
   }
 
   function removeAttachment(id: string): void {
     if (isUploadingAttachments) return
-    setAttachments((items) => items.filter((item) => item.id !== id))
+    setAttachments((items) => {
+      const attachment = items.find((item) => item.id === id)
+      if (attachment) revokeAttachmentPreview(attachment)
+      return items.filter((item) => item.id !== id)
+    })
   }
 
   async function resolveAttachmentIds(): Promise<string[]> {
@@ -1260,6 +1479,10 @@ export function App(): ReactElement {
     const content = draft.trim()
     if (!isLoggedIn || !content || isStreaming || isUploadingAttachments) return
     setActionError('')
+    if (attachments.length > 0 && !selectedModel.supportsFiles) {
+      setActionError('当前模型不支持附件，请切换至支持文件的模型后发送')
+      return
+    }
     if (isTemporaryConversation) {
       const history = temporaryMessages.map((message) => ({
         role: message.role === Role.User ? ('user' as const) : ('assistant' as const),
@@ -1324,6 +1547,7 @@ export function App(): ReactElement {
         model: selectedModel.id,
         onError: (error) => setActionError(getErrorMessage(error, '消息发送失败，请重试')),
       })
+      revokeAttachmentPreviews(attachments)
       setAttachments([])
       setDraft('')
     } catch (error: unknown) {
@@ -1708,23 +1932,49 @@ export function App(): ReactElement {
         >
           {attachments.length > 0 ? (
             <ul className="desktop-chat__attachment-list" aria-label="待发送附件">
-              {attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <FileText size={14} aria-hidden="true" />
-                  <span>{attachment.file.name}</span>
-                  {attachment.status === 'uploading' ? <small>{attachment.progress}%</small> : null}
-                  {attachment.status === 'error' ? <small>上传失败</small> : null}
-                  <button
-                    type="button"
-                    aria-label={`移除附件 ${attachment.file.name}`}
-                    title="移除附件"
-                    disabled={isUploadingAttachments}
-                    onClick={() => removeAttachment(attachment.id)}
+              {attachments.map((attachment) => {
+                const isImage = Boolean(attachment.previewUrl)
+                return (
+                  <li
+                    key={attachment.id}
+                    className={
+                      isImage
+                        ? 'desktop-chat__attachment desktop-chat__attachment--image'
+                        : 'desktop-chat__attachment'
+                    }
+                    title={attachment.status === 'error' ? '上传失败' : attachment.file.name}
                   >
-                    <X size={14} aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
+                    {isImage ? (
+                      <img src={attachment.previewUrl} alt={attachment.file.name} />
+                    ) : (
+                      <>
+                        <FileText size={15} aria-hidden="true" />
+                        <span>{attachment.file.name}</span>
+                      </>
+                    )}
+                    {attachment.status === 'uploading' ? (
+                      <>
+                        {isImage ? (
+                          <span className="desktop-chat__attachment-progress" aria-hidden="true">
+                            <span style={{ width: `${attachment.progress}%` }} />
+                          </span>
+                        ) : null}
+                        <small>{attachment.progress}%</small>
+                      </>
+                    ) : null}
+                    {attachment.status === 'error' ? <small>上传失败</small> : null}
+                    <button
+                      type="button"
+                      aria-label={`移除附件 ${attachment.file.name}`}
+                      title="移除附件"
+                      disabled={isUploadingAttachments}
+                      onClick={() => removeAttachment(attachment.id)}
+                    >
+                      <X size={isImage ? 11 : 14} aria-hidden="true" />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           ) : null}
           <textarea
@@ -1754,17 +2004,68 @@ export function App(): ReactElement {
                 onChange={handleAttachmentChange}
               />
               <button
-                className={attachments.length > 0 ? 'is-active' : undefined}
+                className={attachments.length > 0 || isAttachmentMenuOpen ? 'is-active' : undefined}
                 type="button"
                 aria-label="添加附件"
+                aria-expanded={isAttachmentMenuOpen}
+                aria-haspopup="menu"
                 title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
                 disabled={
                   !isLoggedIn || isTemporaryConversation || isStreaming || isUploadingAttachments
                 }
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => setIsAttachmentMenuOpen((value) => !value)}
               >
                 <Paperclip size={18} aria-hidden="true" />
               </button>
+              {isAttachmentMenuOpen ? (
+                <>
+                  <button
+                    className="desktop-chat__attachment-menu-dismiss"
+                    type="button"
+                    aria-label="关闭附件菜单"
+                    onClick={() => setIsAttachmentMenuOpen(false)}
+                  />
+                  <div className="desktop-chat__attachment-menu" role="menu" aria-label="添加附件">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="上传文件"
+                      onClick={() => void handleOpenSystemFiles()}
+                    >
+                      <FileUp size={17} aria-hidden="true" />
+                      <span>
+                        <strong>上传文件</strong>
+                        <small>从系统选择本地图片或文档</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="截屏"
+                      disabled={isScreenSourcesLoading}
+                      onClick={() => void handleOpenScreenCapture()}
+                    >
+                      <Monitor size={17} aria-hidden="true" />
+                      <span>
+                        <strong>截屏</strong>
+                        <small>选择窗口或屏幕，捕获一帧</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      aria-label="摄像头拍照"
+                      onClick={() => void handleOpenCamera()}
+                    >
+                      <Camera size={17} aria-hidden="true" />
+                      <span>
+                        <strong>摄像头拍照</strong>
+                        <small>预览后拍照，直接添加</small>
+                      </span>
+                    </button>
+                  </div>
+                </>
+              ) : null}
               <button type="button" aria-label="语音输入" title="语音输入暂未开放" disabled>
                 <Mic size={18} aria-hidden="true" />
               </button>
@@ -1858,6 +2159,106 @@ export function App(): ReactElement {
           webBaseUrl={shareDialog.webBaseUrl}
           onClose={() => setShareDialog(null)}
         />
+      ) : null}
+      {isScreenCaptureOpen ? (
+        <div className="desktop-chat__media-backdrop" role="presentation">
+          <button
+            className="desktop-chat__media-dismiss"
+            type="button"
+            aria-label="关闭截屏选择"
+            onClick={() => {
+              setIsScreenCaptureOpen(false)
+              setScreenSources([])
+            }}
+          />
+          <section
+            className="desktop-chat__media-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desktop-screen-capture-title"
+          >
+            <header>
+              <div>
+                <h2 id="desktop-screen-capture-title">选择截屏来源</h2>
+                <p>仅会将你确认的画面添加到当前消息。</p>
+              </div>
+              <button
+                type="button"
+                aria-label="关闭截屏选择"
+                title="关闭"
+                onClick={() => {
+                  setIsScreenCaptureOpen(false)
+                  setScreenSources([])
+                }}
+              >
+                <X size={17} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="desktop-chat__screen-source-list">
+              {screenSources.map((source) => (
+                <button
+                  key={source.id}
+                  type="button"
+                  aria-label={`选择截屏来源：${source.name}`}
+                  onClick={() => void handleSelectScreenSource(source)}
+                >
+                  <img src={source.thumbnailDataUrl} alt={`${source.name} 截屏预览`} />
+                  <span>{source.name}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
+      {isCameraOpen ? (
+        <div className="desktop-chat__media-backdrop" role="presentation">
+          <button
+            className="desktop-chat__media-dismiss"
+            type="button"
+            aria-label="关闭摄像头"
+            onClick={closeCamera}
+          />
+          <section
+            className="desktop-chat__media-dialog desktop-chat__camera-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desktop-camera-title"
+          >
+            <header>
+              <div>
+                <h2 id="desktop-camera-title">摄像头拍照</h2>
+                <p>照片仅在你发送消息后才会上传。</p>
+              </div>
+              <button type="button" aria-label="关闭摄像头" title="关闭" onClick={closeCamera}>
+                <X size={17} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="desktop-chat__camera-preview">
+              {cameraStream ? <video ref={cameraVideoRef} autoPlay muted playsInline /> : null}
+              {!cameraStream && !cameraError ? (
+                <LoaderCircle
+                  className="desktop-chat__spin"
+                  size={24}
+                  aria-label="正在打开摄像头"
+                />
+              ) : null}
+              {cameraError ? <p role="alert">{cameraError}</p> : null}
+            </div>
+            <footer>
+              <button type="button" onClick={closeCamera}>
+                取消
+              </button>
+              <button
+                className="desktop-chat__camera-capture"
+                type="button"
+                disabled={!cameraStream || Boolean(cameraError)}
+                onClick={() => void handleCaptureCameraPhoto()}
+              >
+                拍照
+              </button>
+            </footer>
+          </section>
+        </div>
       ) : null}
       {conversationMenu && contextMenuConversation ? (
         <div

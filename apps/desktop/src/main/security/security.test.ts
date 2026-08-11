@@ -16,8 +16,10 @@ describe('renderer security policy', () => {
 
     expect(csp).toContain("default-src 'self'")
     expect(csp).toContain("connect-src 'self' https://api.example.com")
+    expect(csp).toContain("img-src 'self' data: blob: https: https://api.example.com")
+    expect(csp).toContain('yuanai-file:')
     expect(csp).toContain('http://127.0.0.1:9000')
-    expect(csp).not.toContain('file:')
+    expect(csp).not.toMatch(/(?:^|\s)file:/)
     expect(csp).not.toContain('*')
     expect(csp).not.toContain("script-src 'self' 'unsafe-inline'")
   })

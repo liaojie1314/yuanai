@@ -12,7 +12,14 @@ export function buildContentSecurityPolicy(
 ): string {
   const apiOrigin = new URL(config.apiBaseUrl).origin
   const loopbackAssetOrigins = config.assetOrigins.filter(isLoopbackOrigin)
-  const imageSources = ["'self'", 'data:', 'blob:', 'https:', ...loopbackAssetOrigins].join(' ')
+  const imageSources = [
+    "'self'",
+    'data:',
+    'blob:',
+    'https:',
+    apiOrigin,
+    ...loopbackAssetOrigins,
+  ].join(' ')
 
   return [
     "default-src 'self'",
@@ -20,7 +27,7 @@ export function buildContentSecurityPolicy(
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imageSources}`,
     "font-src 'self' data:",
-    `connect-src 'self' ${apiOrigin}`,
+    `connect-src 'self' ${apiOrigin} yuanai-file:`,
     "media-src 'self' blob:",
     "frame-src 'self' blob:",
     "object-src 'none'",
