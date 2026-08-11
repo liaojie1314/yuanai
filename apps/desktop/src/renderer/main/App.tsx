@@ -61,13 +61,13 @@ import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import { Role, type AIModel, type Conversation, type Message } from '@yuanai/types'
 
 const FALLBACK_MODEL: AIModel = {
-  id: 'gpt-4o',
-  name: 'GPT-4o',
-  provider: 'openai',
-  description: '通用多模态模型',
+  id: 'deepseek-v4-flash',
+  name: 'DeepSeek V4 Flash',
+  provider: 'deepseek',
+  description: '快速响应，高性价比',
   supportsVision: true,
   supportsFiles: true,
-  contextLength: 128000,
+  contextLength: 64000,
   isDefault: true,
 }
 

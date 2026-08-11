@@ -149,6 +149,28 @@ beforeEach(() => {
       createdAt: '2026-08-10T08:00:00.000Z',
     },
   ]
+  chat.models = [
+    {
+      id: 'gpt-4o',
+      name: 'GPT-4o',
+      provider: 'openai',
+      description: '',
+      supportsVision: true,
+      supportsFiles: true,
+      contextLength: 128000,
+      isDefault: true,
+    },
+    {
+      id: 'gpt-4.1-mini',
+      name: 'GPT-4.1 mini',
+      provider: 'openai',
+      description: '快速响应模型',
+      supportsVision: true,
+      supportsFiles: true,
+      contextLength: 128000,
+      isDefault: false,
+    },
+  ]
   chat.createConversation.mockResolvedValue({
     id: 'conversation-2',
     title: '新对话',
@@ -181,6 +203,13 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
+  it('uses the Web default model until the authenticated model list is available', () => {
+    chat.models = []
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash' })).toBeInTheDocument()
+  })
+
   it('shows the welcome state instead of a false streaming response when no conversation is active', () => {
     chat.conversations = []
     chat.messages = []
