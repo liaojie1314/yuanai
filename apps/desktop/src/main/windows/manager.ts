@@ -1,4 +1,6 @@
 import type { RendererEntry } from '../../shared/window-entry'
+import { IPC } from '../../shared/ipc-contract'
+import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import type { WindowSpecKey } from './config'
 
 /** 可由窗口管理器控制的最小 BrowserWindow 能力集合。 */
@@ -88,8 +90,10 @@ export class WindowManager {
   }
 
   /** 创建彼此隔离的 Artifact 窗口实例。 */
-  public openArtifact(): ManagedWindow {
-    return this.create('artifact', { entry: 'artifact' })
+  public openArtifact(payload: DesktopArtifactPayload): ManagedWindow {
+    const window = this.create('artifact', { entry: 'artifact' })
+    this.sendToWindowWhenReady(window, IPC.events.artifactInit, payload)
+    return window
   }
 
   /** 聚焦主窗口，并在尚未创建时建立它。 */
@@ -107,6 +111,10 @@ export class WindowManager {
   /** 在目标 renderer 加载完成后发送内部事件。 */
   public sendWhenReady(key: ManagedWindowKey, channel: string, payload: unknown): void {
     const window = this.open(key)
+    this.sendToWindowWhenReady(window, channel, payload)
+  }
+
+  private sendToWindowWhenReady(window: ManagedWindow, channel: string, payload: unknown): void {
     if (this.readyWindowIds.has(window.id)) {
       window.webContents.send(channel, payload)
       return

@@ -45,6 +45,7 @@ describe('preload API', () => {
     await api.window.openForgot()
     await api.window.openSettings()
     await api.window.openAbout()
+    await api.window.openArtifact({ title: '代码', lang: 'html', code: '<p>元AI</p>', mode: 'run' })
     await api.system.getInfo()
     await api.system.setGlobalShortcut('CommandOrControl+Alt+Y')
     await api.system.setAutoLaunch(true)
@@ -63,15 +64,21 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openForgot)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.window.openSettings)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openAbout)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openArtifact, {
+      title: '代码',
+      lang: 'html',
+      code: '<p>元AI</p>',
+      mode: 'run',
+    })
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.system.getInfo)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
-      14,
+      15,
       IPC.system.setGlobalShortcut,
       'CommandOrControl+Alt+Y'
     )
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

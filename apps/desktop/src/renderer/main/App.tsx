@@ -1,6 +1,5 @@
 import {
   Brain,
-  Bot,
   Calculator,
   Camera,
   Check,
@@ -47,9 +46,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-
 import {
   useConversations,
   useCreateConversation,
@@ -67,9 +63,14 @@ import {
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import { Role } from '@yuanai/types'
-import type { AIModel, Conversation, Message, MessageFile } from '@yuanai/types'
+import type { AIModel, Conversation, Message } from '@yuanai/types'
 
-import type { DesktopScreenSource, DesktopSelectedFile } from '../../shared/ipc-contract'
+import type {
+  DesktopArtifactPayload,
+  DesktopScreenSource,
+  DesktopSelectedFile,
+} from '../../shared/ipc-contract'
+import { ChatMessage, StreamingMessage } from './MessageContent'
 
 const FALLBACK_MODEL: AIModel = {
   id: 'deepseek-v4-flash',
@@ -241,6 +242,14 @@ function getConversationTitle(conversation: Conversation): string {
   return conversation.title.trim() || '新对话'
 }
 
+function findPreviousUserContent(messages: Message[], messageIndex: number): string | null {
+  for (let index = messageIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === Role.User && message.content.trim()) return message.content
+  }
+  return null
+}
+
 interface ConversationGroup {
   id: string
   label: string
@@ -298,106 +307,6 @@ function groupConversations(conversations: Conversation[]): ConversationGroup[] 
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
-}
-
-function MarkdownContent({ content }: { content: string }): ReactElement {
-  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-}
-
-function MessageAttachment({ file }: { file: MessageFile }): ReactElement {
-  const [imageFailed, setImageFailed] = useState(false)
-  const isImage = file.mimeType.startsWith('image/') && !imageFailed
-
-  if (isImage) {
-    return (
-      <li className="desktop-chat__file desktop-chat__file--image" title={file.filename}>
-        <img src={file.url} alt={file.filename} onError={() => setImageFailed(true)} />
-      </li>
-    )
-  }
-
-  return (
-    <li className="desktop-chat__file" title={file.filename}>
-      <FileText size={14} aria-hidden="true" />
-      <span>{file.filename}</span>
-    </li>
-  )
-}
-
-function MessageBubble({ message }: { message: Message }): ReactElement {
-  const isUser = message.role === Role.User
-  return (
-    <article
-      className={
-        isUser ? 'desktop-chat__message desktop-chat__message--user' : 'desktop-chat__message'
-      }
-    >
-      {!isUser ? (
-        <div className="desktop-chat__message-avatar" aria-hidden="true">
-          元
-        </div>
-      ) : null}
-      <div className="desktop-chat__message-body">
-        {message.thinkingContent ? (
-          <details className="desktop-chat__thinking">
-            <summary>思考过程</summary>
-            <p>{message.thinkingContent}</p>
-          </details>
-        ) : null}
-        <div
-          className={
-            isUser
-              ? 'desktop-chat__markdown desktop-chat__message-bubble'
-              : 'desktop-chat__markdown'
-          }
-        >
-          <MarkdownContent content={message.content} />
-        </div>
-        {message.files.length > 0 ? (
-          <ul className="desktop-chat__files" aria-label="消息附件">
-            {message.files.map((file) => (
-              <MessageAttachment key={file.id} file={file} />
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </article>
-  )
-}
-
-function StreamingMessage({
-  content,
-  thinking,
-}: {
-  content: string
-  thinking: string
-}): ReactElement {
-  return (
-    <article className="desktop-chat__message" aria-live="polite">
-      <div className="desktop-chat__message-avatar" aria-hidden="true">
-        <Bot size={17} />
-      </div>
-      <div className="desktop-chat__message-body">
-        {thinking ? (
-          <details className="desktop-chat__thinking" open>
-            <summary>正在思考</summary>
-            <p>{thinking}</p>
-          </details>
-        ) : null}
-        {content ? (
-          <div className="desktop-chat__markdown">
-            <MarkdownContent content={content} />
-          </div>
-        ) : (
-          <div className="desktop-chat__typing" aria-label="正在生成">
-            <span />
-            <span />
-            <span />
-          </div>
-        )}
-      </div>
-    </article>
-  )
 }
 
 interface ConversationItemProps {
@@ -970,6 +879,8 @@ export function App(): ReactElement {
   const streamingConversationId = useChatStore((state) => state.streamingConvId)
   const streamingContent = useChatStore((state) => state.streamingContent)
   const streamingThinking = useChatStore((state) => state.streamingThink)
+  const streamingThinkingDurationMs = useChatStore((state) => state.streamingThinkDurationMs)
+  const streamingToolCalls = useChatStore((state) => state.streamingToolCalls)
   const optimisticUserMessage = useChatStore((state) => state.optimisticUserMsg)
   const isStreaming =
     streamingConversationId !== null &&
@@ -1081,7 +992,15 @@ export function App(): ReactElement {
   useEffect(() => {
     if (!messageEndRef.current?.scrollIntoView) return
     messageEndRef.current.scrollIntoView({ block: 'end' })
-  }, [activeConversationId, messages, optimisticUserMessage, streamingContent, streamingThinking])
+  }, [
+    activeConversationId,
+    messages,
+    optimisticUserMessage,
+    streamingContent,
+    streamingThinking,
+    streamingThinkingDurationMs,
+    streamingToolCalls,
+  ])
 
   useEffect(() => {
     const input = composerInputRef.current
@@ -1179,6 +1098,46 @@ export function App(): ReactElement {
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法打开登录窗口，请稍后重试'))
     }
+  }
+
+  async function handleOpenArtifact(payload: DesktopArtifactPayload): Promise<void> {
+    setActionError('')
+    try {
+      await window.yuanai.window.openArtifact(payload)
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开代码面板，请稍后重试'))
+    }
+  }
+
+  /** 重新发送用户编辑后的消息；临时会话不提供此操作以避免重复历史。 */
+  function handleResubmitMessage(content: string): void {
+    if (!isLoggedIn || isStreaming || isTemporaryConversation || !activeConversationId) return
+    setActionError('')
+    void stream
+      .send({
+        convId: activeConversationId,
+        content,
+        enableThinking: isThinkingEnabled,
+        model: selectedModel.id,
+        onError: (error) => setActionError(getErrorMessage(error, '消息发送失败，请重试')),
+      })
+      .catch((error: unknown) => setActionError(getErrorMessage(error, '消息发送失败，请重试')))
+  }
+
+  /** 使用对应用户问题重新生成 AI 回复，不重复显示乐观用户消息。 */
+  function handleRegenerateMessage(content: string): void {
+    if (!isLoggedIn || isStreaming || isTemporaryConversation || !activeConversationId) return
+    setActionError('')
+    void stream
+      .send({
+        convId: activeConversationId,
+        content,
+        enableThinking: isThinkingEnabled,
+        model: selectedModel.id,
+        onError: (error) => setActionError(getErrorMessage(error, '重新生成失败，请重试')),
+        skipOptimistic: true,
+      })
+      .catch((error: unknown) => setActionError(getErrorMessage(error, '重新生成失败，请重试')))
   }
 
   async function handleOpenShareDialog(): Promise<void> {
@@ -1881,9 +1840,27 @@ export function App(): ReactElement {
             </div>
           ) : messages.length || isStreaming ? (
             <div className="desktop-chat__message-list">
-              {messages.map((message) => (
-                <MessageBubble key={message.id} message={message} />
-              ))}
+              {messages.map((message, messageIndex) => {
+                const previousUserContent = findPreviousUserContent(messages, messageIndex)
+                return (
+                  <ChatMessage
+                    key={message.id}
+                    user={user}
+                    message={message}
+                    isStreaming={isStreaming}
+                    canRegenerate={
+                      !isTemporaryConversation &&
+                      message.role === Role.Assistant &&
+                      previousUserContent !== null
+                    }
+                    onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                    onRegenerate={() => {
+                      if (previousUserContent) handleRegenerateMessage(previousUserContent)
+                    }}
+                    onResubmit={handleResubmitMessage}
+                  />
+                )
+              })}
               {isStreaming && optimisticUserMessage && !isTemporaryConversation ? (
                 <article className="desktop-chat__message desktop-chat__message--user">
                   <div className="desktop-chat__message-body">
@@ -1894,7 +1871,13 @@ export function App(): ReactElement {
                 </article>
               ) : null}
               {isStreaming ? (
-                <StreamingMessage content={streamingContent} thinking={streamingThinking} />
+                <StreamingMessage
+                  content={streamingContent}
+                  thinking={streamingThinking}
+                  thinkingDurationMs={streamingThinkingDurationMs}
+                  toolCalls={streamingToolCalls}
+                  onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                />
               ) : null}
               <div ref={messageEndRef} />
             </div>

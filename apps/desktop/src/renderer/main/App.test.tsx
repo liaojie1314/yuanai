@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ToolCall } from '@yuanai/types'
+
 const chat = vi.hoisted(() => ({
   conversations: [] as Array<{
     id: string
@@ -66,6 +68,8 @@ const chat = vi.hoisted(() => ({
     streamingContent: '',
     streamingConvId: null as string | null,
     streamingThink: '',
+    streamingThinkDurationMs: 0,
+    streamingToolCalls: [] as ToolCall[],
   },
   uploadFileSmart: vi.fn(),
   updateConversation: vi.fn(),
@@ -88,6 +92,7 @@ const prefs = vi.hoisted(() => ({
 const desktop = vi.hoisted(() => ({
   openFiles: vi.fn(),
   listScreenSources: vi.fn(),
+  openArtifact: vi.fn(),
 }))
 
 vi.mock('@yuanai/core/hooks', () => ({
@@ -128,6 +133,7 @@ beforeEach(() => {
         openForgot: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openSettings: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openAbout: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        openArtifact: desktop.openArtifact,
       },
       runtime: {
         getConfig: vi
@@ -209,7 +215,10 @@ beforeEach(() => {
   chat.streamState.streamingConvId = null
   chat.streamState.streamingContent = ''
   chat.streamState.streamingThink = ''
+  chat.streamState.streamingThinkDurationMs = 0
+  chat.streamState.streamingToolCalls = []
   chat.streamState.optimisticUserMsg = null
+  chat.send.mockResolvedValue(undefined)
   chat.sendTemporary.mockResolvedValue(undefined)
   chat.uploadFileSmart.mockResolvedValue({ id: 'file-1' })
   desktop.openFiles.mockResolvedValue([])
@@ -254,6 +263,66 @@ describe('desktop chat', () => {
     expect(screen.getByRole('navigation', { name: '最近会话' })).toHaveTextContent('暂无会话')
     expect(screen.queryByRole('button', { name: '测试会话' })).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '你好，我是元AI' })).toBeInTheDocument()
+  })
+
+  it('opens code artifacts and regenerates from the preceding user message', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '请展示一个标题',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant',
+        role: 'assistant',
+        content: '```html\n<h1>元AI</h1>\n```',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '展示面板' }))
+    expect(desktop.openArtifact).toHaveBeenCalledWith({
+      code: '<h1>元AI</h1>',
+      lang: 'html',
+      mode: 'view',
+      title: 'html',
+    })
+
+    await user.click(screen.getByRole('button', { name: '重新生成回答' }))
+    await waitFor(() => {
+      expect(chat.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '请展示一个标题',
+          convId: 'conversation-1',
+          model: 'gpt-4o',
+          skipOptimistic: true,
+        })
+      )
+    })
+  })
+
+  it('shows active thinking and tool calls for the streaming assistant message', () => {
+    chat.streamState.streamingConvId = 'conversation-1'
+    chat.streamState.streamingThink = '先检索相关资料'
+    chat.streamState.streamingThinkDurationMs = 800
+    chat.streamState.streamingToolCalls = [
+      {
+        id: 'tool-1',
+        name: 'search_web',
+        arguments: '{"query":"元AI"}',
+        status: 'running',
+      },
+    ]
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: '正在思考' })).toBeInTheDocument()
+    expect(screen.getByText('search_web')).toBeInTheDocument()
+    expect(screen.getByText('{"query":"元AI"}')).toBeInTheDocument()
   })
 
   it('fills the Web-aligned quick prompt from the empty chat state', async () => {

@@ -49,6 +49,7 @@ function setupTestIpc(): {
     openForgot: ReturnType<typeof vi.fn>
     openSettings: ReturnType<typeof vi.fn>
     openAbout: ReturnType<typeof vi.fn>
+    openArtifact: ReturnType<typeof vi.fn>
     openOAuth: ReturnType<typeof vi.fn>
     closeOAuth: ReturnType<typeof vi.fn>
   }
@@ -118,6 +119,7 @@ function setupTestIpc(): {
     openForgot: vi.fn(),
     openSettings: vi.fn(),
     openAbout: vi.fn(),
+    openArtifact: vi.fn(),
     openOAuth: vi.fn(),
     closeOAuth: vi.fn(),
   }
@@ -206,12 +208,34 @@ describe('secure IPC handlers', () => {
         IPC.system.setAutoLaunch,
         IPC.system.setGlobalShortcut,
         IPC.window.openAbout,
+        IPC.window.openArtifact,
         IPC.window.openForgot,
         IPC.window.openLogin,
         IPC.window.openRegister,
         IPC.window.openSettings,
       ].sort()
     )
+  })
+
+  it('opens an Artifact only with a bounded trusted payload', async () => {
+    const { handlers, sender, windows } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.window.openArtifact)
+    const payload = {
+      title: '示例代码',
+      lang: 'html',
+      code: '<h1>元AI</h1>',
+      mode: 'run' as const,
+    }
+
+    await expect(handler(createEvent(sender), payload)).resolves.toBeUndefined()
+    expect(windows.openArtifact).toHaveBeenCalledWith(payload)
+
+    await expect(handler(createEvent(sender), { ...payload, title: '' })).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    await expect(
+      handler(createEvent(sender), { ...payload, code: 'x'.repeat(2 * 1024 * 1024 + 1) })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
   })
 
   it('opens native files only for trusted callers and returns path-free selected-file URLs', async () => {

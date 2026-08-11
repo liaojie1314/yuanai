@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type {
   DesktopAppInfo,
+  DesktopArtifactPayload,
   DesktopOAuthProvider,
   DesktopOAuthResult,
   DesktopPreferences,
@@ -37,6 +38,7 @@ export interface YuanaiApi {
     openForgot: () => Promise<void>
     openSettings: () => Promise<void>
     openAbout: () => Promise<void>
+    openArtifact: (payload: DesktopArtifactPayload) => Promise<void>
   }
   system: {
     getInfo: () => Promise<DesktopAppInfo>
@@ -52,11 +54,14 @@ export interface YuanaiApi {
   events: {
     onAuthChanged: (listener: (hasSession: boolean) => void) => () => void
     onOAuthResult: (listener: (result: DesktopOAuthResult) => void) => () => void
+    onArtifactInit: (listener: (payload: DesktopArtifactPayload) => void) => () => void
   }
 }
 
 const oauthResultListeners = new Set<(result: DesktopOAuthResult) => void>()
 let pendingOAuthResult: DesktopOAuthResult | null = null
+const artifactListeners = new Set<(payload: DesktopArtifactPayload) => void>()
+let pendingArtifact: DesktopArtifactPayload | null = null
 
 ipcRenderer.on(IPC.events.oauthResult, (_event: unknown, result: DesktopOAuthResult) => {
   if (oauthResultListeners.size === 0) {
@@ -64,6 +69,14 @@ ipcRenderer.on(IPC.events.oauthResult, (_event: unknown, result: DesktopOAuthRes
     return
   }
   oauthResultListeners.forEach((listener) => listener(result))
+})
+
+ipcRenderer.on(IPC.events.artifactInit, (_event: unknown, payload: DesktopArtifactPayload) => {
+  if (artifactListeners.size === 0) {
+    pendingArtifact = payload
+    return
+  }
+  artifactListeners.forEach((listener) => listener(payload))
 })
 
 /** 通过 contextBridge 暴露给 renderer 的受限 API 实现。 */
@@ -90,6 +103,7 @@ export const api: YuanaiApi = {
     openForgot: () => ipcRenderer.invoke(IPC.window.openForgot),
     openSettings: () => ipcRenderer.invoke(IPC.window.openSettings),
     openAbout: () => ipcRenderer.invoke(IPC.window.openAbout),
+    openArtifact: (payload) => ipcRenderer.invoke(IPC.window.openArtifact, payload),
   },
   system: {
     getInfo: () => ipcRenderer.invoke(IPC.system.getInfo),
@@ -117,6 +131,15 @@ export const api: YuanaiApi = {
         queueMicrotask(() => listener(result))
       }
       return () => oauthResultListeners.delete(listener)
+    },
+    onArtifactInit: (listener) => {
+      artifactListeners.add(listener)
+      if (pendingArtifact) {
+        const payload = pendingArtifact
+        pendingArtifact = null
+        queueMicrotask(() => listener(payload))
+      }
+      return () => artifactListeners.delete(listener)
     },
   },
 }

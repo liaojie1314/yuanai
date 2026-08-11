@@ -48,6 +48,18 @@ export interface DesktopScreenSource {
   thumbnailDataUrl: string
 }
 
+/** 由主窗口显式提交给独立 Artifact 窗口的代码内容。 */
+export interface DesktopArtifactPayload {
+  /** Artifact 窗口标题。 */
+  title: string
+  /** 代码语言。 */
+  lang: string
+  /** 仅由用户点击消息中的代码块操作传递的文本内容。 */
+  code: string
+  /** 只读查看或受限运行。 */
+  mode: 'view' | 'run'
+}
+
 /** 全局快捷键注册结果。 */
 export interface ShortcutStatus {
   /** 当前仍然生效的快捷键；未注册时为 null。 */
@@ -85,6 +97,7 @@ export const IPC = {
     openForgot: 'window:open-forgot',
     openSettings: 'window:open-settings',
     openAbout: 'window:open-about',
+    openArtifact: 'window:open-artifact',
   },
   system: {
     getInfo: 'system:get-info',

@@ -140,6 +140,7 @@ app.whenReady().then(() => {
       openForgot: () => windowManager?.open('forgot'),
       openSettings: () => windowManager?.open('settings'),
       openAbout: () => windowManager?.open('about'),
+      openArtifact: (payload) => windowManager?.openArtifact(payload),
       openOAuth: () => windowManager?.open('oauth'),
       closeOAuth: () => windowManager?.close('oauth'),
     },

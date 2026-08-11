@@ -1,6 +1,7 @@
 import type { IpcMainInvokeEvent } from 'electron'
 
 import { IPC } from '../../shared/ipc-contract'
+import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { assertNoIpcPayload } from '../../shared/guards'
 import type { IpcMainRegistrar } from './auth'
 import type { IpcInvocationGuard } from './guards'
@@ -21,6 +22,23 @@ export interface NamedWindowController {
   openOAuth(): void
   /** 关闭 OAuth 加载窗口。 */
   closeOAuth(): void
+  /** 在独立窗口中展示消息内的代码 Artifact。 */
+  openArtifact(payload: DesktopArtifactPayload): void
+}
+
+function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPayload {
+  if (!value || typeof value !== 'object') return false
+  const payload = value as Record<string, unknown>
+  return (
+    typeof payload.title === 'string' &&
+    payload.title.length > 0 &&
+    payload.title.length <= 200 &&
+    typeof payload.lang === 'string' &&
+    payload.lang.length <= 80 &&
+    typeof payload.code === 'string' &&
+    payload.code.length <= 2 * 1024 * 1024 &&
+    (payload.mode === 'view' || payload.mode === 'run')
+  )
 }
 
 /** 注册用于打开命名窗口的最小 IPC 能力。 */
@@ -67,6 +85,17 @@ export function registerWindowIpcHandlers(
       guard.assertTrusted(event)
       assertNoIpcPayload(args)
       windows.openAbout()
+    }
+  )
+  ipcMain.handle(
+    IPC.window.openArtifact,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<void> => {
+      guard.assertTrusted(event)
+      const [payload] = args
+      if (args.length !== 1 || !isDesktopArtifactPayload(payload)) {
+        throw new Error('IPC_PAYLOAD_INVALID')
+      }
+      windows.openArtifact(payload)
     }
   )
 }

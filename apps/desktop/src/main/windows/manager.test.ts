@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { WindowManager } from './manager'
 
+const ARTIFACT_PAYLOAD = {
+  title: '示例代码',
+  lang: 'html',
+  code: '<h1>元AI</h1>',
+  mode: 'run' as const,
+}
+
 interface FakeWindow {
   readonly id: number
   readonly webContents: {
@@ -44,7 +51,7 @@ describe('WindowManager', () => {
     })
 
     expect(manager.open('settings')).toBe(manager.open('settings'))
-    expect(manager.openArtifact()).not.toBe(manager.openArtifact())
+    expect(manager.openArtifact(ARTIFACT_PAYLOAD)).not.toBe(manager.openArtifact(ARTIFACT_PAYLOAD))
   })
 
   it('loads login and registration in isolated windows with their own routes', () => {
@@ -89,6 +96,27 @@ describe('WindowManager', () => {
 
     readyListener?.()
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('event:deep-link', { type: 'chat' })
+  })
+
+  it('delivers Artifact content only after its isolated window has loaded', () => {
+    const artifactWindow = createFakeWindow(1)
+    let readyListener: (() => void) | undefined
+    artifactWindow.webContents.once = (event, listener) => {
+      if (event === 'did-finish-load') readyListener = listener
+    }
+    const manager = new WindowManager({
+      createWindow: () => artifactWindow,
+      rendererUrl: undefined,
+    })
+
+    manager.openArtifact(ARTIFACT_PAYLOAD)
+    expect(artifactWindow.webContents.send).not.toHaveBeenCalled()
+
+    readyListener?.()
+    expect(artifactWindow.webContents.send).toHaveBeenCalledWith(
+      'event:artifact-init',
+      ARTIFACT_PAYLOAD
+    )
   })
 
   it('closes only an existing named window', () => {
