@@ -71,6 +71,9 @@ describe('IPC sender guard', () => {
       guard.assertTrusted(createEvent(sender, 'yuanai-app://renderer/settings/index.html'))
     ).not.toThrow()
     expect(() =>
+      guard.assertTrusted(createEvent(sender, 'yuanai-app://renderer/login/index.html#/register'))
+    ).not.toThrow()
+    expect(() =>
       guard.assertTrusted(createEvent(sender, 'yuanai-app://renderer/unknown/index.html'))
     ).toThrow('IPC_UNTRUSTED_ORIGIN')
   })

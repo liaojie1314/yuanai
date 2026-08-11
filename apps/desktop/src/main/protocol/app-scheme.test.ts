@@ -9,6 +9,12 @@ describe('resolveRendererAssetPath', () => {
     )
   })
 
+  it('ignores a client-side hash route when resolving a renderer asset', () => {
+    expect(
+      resolveRendererAssetPath('yuanai-app://renderer/login/index.html#/register', '/app/renderer')
+    ).toBe('/app/renderer/login/index.html')
+  })
+
   it.each([
     'yuanai-app://unknown/main/index.html',
     'yuanai-app://renderer/unknown/index.html',

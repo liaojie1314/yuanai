@@ -42,8 +42,7 @@ function isPackagedRendererUrl(url: URL): boolean {
     url.hostname !== 'renderer' ||
     url.username ||
     url.password ||
-    url.search ||
-    url.hash
+    url.search
   ) {
     return false
   }

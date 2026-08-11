@@ -25,7 +25,6 @@ export function resolveRendererAssetPath(requestUrl: string, rendererRoot: strin
       url.username ||
       url.password ||
       url.search ||
-      url.hash ||
       /%(2f|5c|00)/i.test(url.pathname)
     ) {
       return null
