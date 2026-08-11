@@ -731,6 +731,92 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.desktop-chat__dialog-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 36%);
+  backdrop-filter: blur(2px);
+}
+
+.desktop-chat__confirm-dialog {
+  width: min(100%, 360px);
+  padding: 22px 22px 18px;
+  border: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
+  border-radius: 8px;
+  color: var(--desktop-fg);
+  background: var(--desktop-surface);
+  box-shadow:
+    0 20px 50px rgb(15 23 42 / 20%),
+    0 2px 8px rgb(15 23 42 / 12%);
+}
+
+.desktop-chat__confirm-dialog-copy h2,
+.desktop-chat__confirm-dialog-copy p {
+  margin: 0;
+}
+
+.desktop-chat__confirm-dialog-copy h2 {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.desktop-chat__confirm-dialog-copy p {
+  margin-top: 9px;
+  color: var(--desktop-fg-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.desktop-chat__confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.desktop-chat__confirm-dialog-actions button {
+  min-width: 72px;
+  min-height: 34px;
+  padding: 0 16px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  color: var(--desktop-fg);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.desktop-chat__confirm-dialog-actions button:hover:not(:disabled),
+.desktop-chat__confirm-dialog-actions button:focus-visible {
+  border-color: var(--desktop-border);
+  color: var(--desktop-fg);
+  background: var(--desktop-elevated);
+}
+
+.desktop-chat__confirm-dialog-actions .desktop-chat__confirm-dialog-delete {
+  border-color: #dc2626;
+  color: #ffffff;
+  background: #dc2626;
+  font-weight: 600;
+}
+
+.desktop-chat__confirm-dialog-actions .desktop-chat__confirm-dialog-delete:hover:not(:disabled),
+.desktop-chat__confirm-dialog-actions .desktop-chat__confirm-dialog-delete:focus-visible {
+  border-color: #b91c1c;
+  color: #ffffff;
+  background: #b91c1c;
+}
+
+.desktop-chat__confirm-dialog-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .desktop-chat__messages {
   min-height: 0;
   overflow-y: auto;

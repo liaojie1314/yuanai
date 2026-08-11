@@ -33,6 +33,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from 'react'
 import ReactMarkdown from 'react-markdown'
@@ -264,6 +265,84 @@ interface ConversationItemProps {
   onRemove(conversation: Conversation): void
 }
 
+interface ConfirmDialogProps {
+  description: string
+  isPending: boolean
+  title: string
+  onCancel(): void
+  onConfirm(): void
+}
+
+function ConfirmDialog({
+  description,
+  isPending,
+  title,
+  onCancel,
+  onConfirm,
+}: ConfirmDialogProps): ReactElement {
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  const confirmRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    cancelRef.current?.focus()
+    return () => previouslyFocused?.focus()
+  }, [])
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Escape' && !isPending) {
+      event.preventDefault()
+      onCancel()
+      return
+    }
+    if (event.key !== 'Tab') return
+
+    const first = cancelRef.current
+    const last = confirmRef.current
+    if (!first || !last) return
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  return (
+    <div className="desktop-chat__dialog-backdrop">
+      <div
+        className="desktop-chat__confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="delete-conversation-title"
+        aria-describedby="delete-conversation-description"
+        onKeyDown={handleKeyDown}
+      >
+        <div className="desktop-chat__confirm-dialog-copy">
+          <h2 id="delete-conversation-title">{title}</h2>
+          <p id="delete-conversation-description">{description}</p>
+        </div>
+        <div className="desktop-chat__confirm-dialog-actions">
+          <button ref={cancelRef} type="button" disabled={isPending} onClick={onCancel}>
+            取消
+          </button>
+          <button
+            ref={confirmRef}
+            className="desktop-chat__confirm-dialog-delete"
+            type="button"
+            disabled={isPending}
+            onClick={onConfirm}
+          >
+            {isPending ? '删除中...' : '删除'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ConversationItem({
   conversation,
   active,
@@ -356,6 +435,8 @@ export function App(): ReactElement {
   const [search, setSearch] = useState('')
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [conversationPendingDeletion, setConversationPendingDeletion] =
+    useState<Conversation | null>(null)
   const [actionError, setActionError] = useState('')
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [isDarkTheme, setIsDarkTheme] = useState(
@@ -493,8 +574,12 @@ export function App(): ReactElement {
 
   function handleSelectConversation(conversationId: string): void {
     if (isStreaming) return
+    const conversation = conversations.find((item) => item.id === conversationId)
     setActionError('')
     setActiveConversationId(conversationId)
+    if (conversation && availableModels.some((model) => model.id === conversation.model)) {
+      setSelectedModelId(conversation.model)
+    }
   }
 
   function handleSelectModel(modelId: string): void {
@@ -586,9 +671,14 @@ export function App(): ReactElement {
     }
   }
 
-  async function handleRemoveConversation(conversation: Conversation): Promise<void> {
-    if (isStreaming || !window.confirm(`确定删除“${getConversationTitle(conversation)}”吗？`))
-      return
+  function handleRequestRemoveConversation(conversation: Conversation): void {
+    if (isStreaming || deleteConversation.isPending) return
+    setConversationPendingDeletion(conversation)
+  }
+
+  async function handleConfirmRemoveConversation(): Promise<void> {
+    const conversation = conversationPendingDeletion
+    if (!conversation || deleteConversation.isPending) return
     const position = conversations.findIndex((item) => item.id === conversation.id)
     const replacement = conversations[position + 1] ?? conversations[position - 1] ?? null
     setActionError('')
@@ -599,6 +689,8 @@ export function App(): ReactElement {
       }
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法删除会话，请稍后重试'))
+    } finally {
+      setConversationPendingDeletion(null)
     }
   }
 
@@ -699,7 +791,7 @@ export function App(): ReactElement {
                         onRenameValueChange={setRenameValue}
                         onRenameStart={handleStartRename}
                         onRenameSave={(item) => void handleSaveRename(item)}
-                        onRemove={(item) => void handleRemoveConversation(item)}
+                        onRemove={handleRequestRemoveConversation}
                       />
                     ))}
                   </ul>
@@ -1065,6 +1157,15 @@ export function App(): ReactElement {
           </div>
         </form>
       </section>
+      {conversationPendingDeletion ? (
+        <ConfirmDialog
+          title="删除会话？"
+          description={`“${getConversationTitle(conversationPendingDeletion)}”及其中的消息将被永久删除。`}
+          isPending={deleteConversation.isPending}
+          onCancel={() => setConversationPendingDeletion(null)}
+          onConfirm={() => void handleConfirmRemoveConversation()}
+        />
+      ) : null}
     </main>
   )
 }

@@ -179,6 +179,41 @@ describe('desktop chat', () => {
     })
   })
 
+  it('uses the selected conversation model for the next message', async () => {
+    const user = userEvent.setup()
+    chat.conversations.push({
+      id: 'conversation-2',
+      title: '快速模型会话',
+      model: 'gpt-4.1-mini',
+      isPinned: false,
+      lastMessageAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    })
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '快速模型会话' }))
+
+    expect(screen.getByRole('button', { name: '选择模型：GPT-4.1 mini' })).toBeInTheDocument()
+  })
+
+  it('confirms deletion in an accessible app dialog instead of a browser popup', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '删除会话' }))
+
+    expect(screen.getByRole('alertdialog', { name: '删除会话？' })).toBeInTheDocument()
+    expect(screen.getByText('“测试会话”及其中的消息将被永久删除。')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '取消' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '删除会话' }))
+    await user.click(screen.getByRole('button', { name: '删除' }))
+
+    await waitFor(() => expect(chat.deleteConversation).toHaveBeenCalledWith('conversation-1'))
+  })
+
   it('exposes a stop action for the active streaming conversation', async () => {
     const user = userEvent.setup()
     chat.streamState.streamingConvId = 'conversation-1'
