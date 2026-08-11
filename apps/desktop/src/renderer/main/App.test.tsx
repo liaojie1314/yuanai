@@ -225,6 +225,16 @@ describe('desktop chat', () => {
     expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument()
   })
 
+  it('does not expose cached conversations while signed out', () => {
+    auth.user = null
+    render(<App />)
+
+    expect(screen.getByRole('searchbox', { name: '搜索会话' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '最近会话' })).toHaveTextContent('暂无会话')
+    expect(screen.queryByRole('button', { name: '测试会话' })).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '你好，我是元AI' })).toBeInTheDocument()
+  })
+
   it('fills the Web-aligned quick prompt from the empty chat state', async () => {
     const user = userEvent.setup()
     chat.conversations = []
@@ -341,7 +351,8 @@ describe('desktop chat', () => {
 
     await user.click(temporaryToggle)
     expect(screen.getByRole('button', { name: '退出临时对话' })).toHaveClass('is-active')
-    expect(screen.queryByText('临时对话不会保存到历史记录。')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('临时对话不会保存到历史记录。')
+    expect(screen.getByRole('button', { name: '退出临时对话模式' })).toBeInTheDocument()
 
     await user.type(screen.getByRole('textbox', { name: '输入消息' }), '这条消息不应保存')
     await user.click(screen.getByRole('button', { name: '发送消息' }))
@@ -414,7 +425,11 @@ describe('desktop chat', () => {
       '请先登录，开始与 AI 对话'
     )
     expect(screen.getByRole('button', { name: '添加附件' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: '联网搜索' })).toBeDisabled()
+    const composerWebSearch = screen
+      .getAllByRole('button', { name: '联网搜索' })
+      .find((button) => button.hasAttribute('aria-pressed'))
+    if (!composerWebSearch) throw new Error('未找到输入框工具栏的联网搜索按钮')
+    expect(composerWebSearch).toBeDisabled()
     expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
   })
 

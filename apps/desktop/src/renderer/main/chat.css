@@ -569,6 +569,10 @@ textarea:focus-visible {
   background: var(--desktop-bg);
 }
 
+.desktop-chat__workspace:has(.desktop-chat__temporary-banner) {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+}
+
 .desktop-chat__header {
   display: grid;
   min-height: 55px;
@@ -755,6 +759,39 @@ textarea:focus-visible {
   color: #b91c1c;
   background: #fef2f2;
   font-size: 13px;
+}
+
+.desktop-chat__temporary-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 24px;
+  border-bottom: 1px solid var(--desktop-brand-border);
+  color: var(--desktop-fg-muted);
+  background: var(--desktop-brand-light);
+  font-size: 12.5px;
+}
+
+.desktop-chat__temporary-banner > svg {
+  flex: 0 0 auto;
+  color: var(--desktop-brand-hover);
+}
+
+.desktop-chat__temporary-banner button {
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid var(--desktop-brand-border);
+  border-radius: 4px;
+  color: var(--desktop-brand-hover);
+  background: transparent;
+  font-size: 12px;
+}
+
+.desktop-chat__temporary-banner button:hover:not(:disabled),
+.desktop-chat__temporary-banner button:focus-visible {
+  background: color-mix(in srgb, var(--desktop-brand) 12%, transparent);
 }
 
 .desktop-chat__dialog-backdrop {

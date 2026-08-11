@@ -801,17 +801,23 @@ export function App(): ReactElement {
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
 
-  const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
+  const conversations = isLoggedIn
+    ? (conversationsQuery.data ?? EMPTY_CONVERSATIONS)
+    : EMPTY_CONVERSATIONS
   const availableModels = modelsQuery.data?.length ? modelsQuery.data : DEFAULT_MODELS
   const modelGroups = useMemo(() => groupModelsByProvider(availableModels), [availableModels])
   const selectedModel =
     availableModels.find((model) => model.id === selectedModelId) ??
     availableModels.find((model) => model.isDefault) ??
     FALLBACK_MODEL
-  const messagesQuery = useMessages(isTemporaryConversation ? '' : (activeConversationId ?? ''))
+  const messagesQuery = useMessages(
+    isLoggedIn && !isTemporaryConversation ? (activeConversationId ?? '') : ''
+  )
   const messages = isTemporaryConversation
     ? temporaryMessages
-    : (messagesQuery.data ?? EMPTY_MESSAGES)
+    : isLoggedIn
+      ? (messagesQuery.data ?? EMPTY_MESSAGES)
+      : EMPTY_MESSAGES
   const streamingConversationId = useChatStore((state) => state.streamingConvId)
   const streamingContent = useChatStore((state) => state.streamingContent)
   const streamingThinking = useChatStore((state) => state.streamingThink)
@@ -833,6 +839,13 @@ export function App(): ReactElement {
     [visibleConversations]
   )
   const userInitial = user?.username.slice(0, 1).toLocaleUpperCase() || '?'
+
+  useEffect(() => {
+    if (isLoggedIn) return
+    setActiveConversationId(null)
+    setRenamingConversationId(null)
+    setSearch('')
+  }, [isLoggedIn])
   const userName = user?.username ?? '登录'
   const userEmail = user?.email ?? ''
 
@@ -1213,7 +1226,7 @@ export function App(): ReactElement {
           />
         </label>
         <nav className="desktop-chat__conversation-nav" aria-label="最近会话">
-          {conversationsQuery.isLoading ? (
+          {isLoggedIn && conversationsQuery.isLoading ? (
             <div className="desktop-chat__sidebar-state">
               <LoaderCircle className="desktop-chat__spin" size={18} />
             </div>
@@ -1242,7 +1255,9 @@ export function App(): ReactElement {
               ))}
             </>
           ) : (
-            <p className="desktop-chat__sidebar-state">{search ? '未找到会话' : '还没有会话'}</p>
+            <p className="desktop-chat__sidebar-state">
+              {isLoggedIn ? (search ? '未找到会话' : '还没有会话') : '暂无会话'}
+            </p>
           )}
         </nav>
         <div ref={accountMenuRef} className="desktop-chat__account" aria-label="当前账户">
@@ -1416,6 +1431,21 @@ export function App(): ReactElement {
             <CircleAlert size={16} aria-hidden="true" />
             {actionError}
           </p>
+        ) : null}
+
+        {isTemporaryConversation ? (
+          <div className="desktop-chat__temporary-banner" role="status">
+            <Ghost size={15} aria-hidden="true" />
+            <span>临时对话不会保存到历史记录。</span>
+            <button
+              type="button"
+              aria-label="退出临时对话模式"
+              disabled={isStreaming}
+              onClick={handleToggleTemporaryConversation}
+            >
+              退出
+            </button>
+          </div>
         ) : null}
 
         <div className="desktop-chat__messages" aria-busy={messagesQuery.isLoading}>
