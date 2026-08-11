@@ -34,7 +34,8 @@ export function resolveRendererAssetPath(requestUrl: string, rendererRoot: strin
       .filter((segment) => segment.length > 0)
     if (
       segments.length < 2 ||
-      !RENDERER_ENTRIES.includes(segments[0] as (typeof RENDERER_ENTRIES)[number]) ||
+      (segments[0] !== 'assets' &&
+        !RENDERER_ENTRIES.includes(segments[0] as (typeof RENDERER_ENTRIES)[number])) ||
       segments.some(
         (segment) =>
           segment === '.' || segment === '..' || segment.includes('\\') || segment.includes('\0')

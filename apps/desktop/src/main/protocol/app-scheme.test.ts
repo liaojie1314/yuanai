@@ -15,6 +15,12 @@ describe('resolveRendererAssetPath', () => {
     ).toBe('/app/renderer/login/index.html')
   })
 
+  it('maps bundled static assets beneath the configured root', () => {
+    expect(
+      resolveRendererAssetPath('yuanai-app://renderer/assets/main-abc123.js', '/app/renderer')
+    ).toBe('/app/renderer/assets/main-abc123.js')
+  })
+
   it.each([
     'yuanai-app://unknown/main/index.html',
     'yuanai-app://renderer/unknown/index.html',
