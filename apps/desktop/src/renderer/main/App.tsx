@@ -6,12 +6,15 @@ import {
   ChevronDown,
   CircleAlert,
   Code2,
+  Copy,
   FileText,
   Globe2,
   Image,
   Languages,
+  Link,
   LoaderCircle,
   LogIn,
+  Lock,
   MessageSquareText,
   Mic,
   PanelLeftClose,
@@ -45,6 +48,9 @@ import {
   useDeleteConversation,
   useMessages,
   useModels,
+  useCreateShareLink,
+  useRevokeShareLink,
+  useShareLink,
   useStream,
   useUpdateConversation,
   uploadFileSmart,
@@ -66,6 +72,12 @@ const FALLBACK_MODEL: AIModel = {
 const DEFAULT_MODELS: AIModel[] = [FALLBACK_MODEL]
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
+const SHARE_EXPIRY_OPTIONS = [
+  { label: '永久有效', value: 0 },
+  { label: '1 天', value: 1 },
+  { label: '7 天', value: 7 },
+  { label: '30 天', value: 30 },
+] as const
 
 const SUGGESTIONS = [
   {
@@ -266,16 +278,299 @@ interface ConversationItemProps {
 }
 
 interface ConfirmDialogProps {
+  confirmLabel?: string
   description: string
   isPending: boolean
+  pendingLabel?: string
   title: string
   onCancel(): void
   onConfirm(): void
 }
 
+interface ShareDialogProps {
+  conversationId: string
+  webBaseUrl: string
+  onClose(): void
+}
+
+/** 将分享链接有效期格式化为当前用户可读的提示。 */
+function formatShareExpiry(expiresAt: string | null): string {
+  if (!expiresAt) return '永久有效'
+  const date = new Date(expiresAt)
+  if (Number.isNaN(date.getTime())) return '有效期已更新'
+  return `到期于 ${date.toLocaleString('zh-CN', {
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })}`
+}
+
+/** 使用真实分享 API 创建、更新、复制或撤销当前会话的公开只读链接。 */
+function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps): ReactElement {
+  const closeRef = useRef<HTMLButtonElement>(null)
+  const shareQuery = useShareLink(conversationId)
+  const createShareLink = useCreateShareLink()
+  const revokeShareLink = useRevokeShareLink()
+  const [expiresInDays, setExpiresInDays] = useState<0 | 1 | 7 | 30>(0)
+  const [hasPassword, setHasPassword] = useState(false)
+  const [password, setPassword] = useState('')
+  const [notice, setNotice] = useState('')
+  const [copied, setCopied] = useState(false)
+  const [isRevokeConfirmationOpen, setIsRevokeConfirmationOpen] = useState(false)
+
+  const shareLink = createShareLink.data ?? shareQuery.data ?? null
+  const shareUrl = shareLink ? `${webBaseUrl}/share/${shareLink.shareToken}` : ''
+  const isBusy = createShareLink.isPending || revokeShareLink.isPending
+
+  useEffect(() => {
+    closeRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (!shareQuery.data) return
+    setHasPassword(shareQuery.data.hasPassword)
+    if (!shareQuery.data.expiresAt) {
+      setExpiresInDays(0)
+      return
+    }
+
+    const daysRemaining = Math.ceil(
+      (new Date(shareQuery.data.expiresAt).getTime() - Date.now()) / 86_400_000
+    )
+    setExpiresInDays(daysRemaining <= 1 ? 1 : daysRemaining <= 7 ? 7 : 30)
+  }, [shareQuery.data])
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Escape' || isBusy || isRevokeConfirmationOpen) return
+    event.preventDefault()
+    onClose()
+  }
+
+  async function handleSave(): Promise<void> {
+    const normalizedPassword = password.trim()
+    if (hasPassword && normalizedPassword.length < 4) {
+      setNotice('访问密码至少需要 4 位')
+      return
+    }
+
+    setNotice('')
+    try {
+      await createShareLink.mutateAsync({
+        convId: conversationId,
+        opts: {
+          expiresInDays: expiresInDays === 0 ? null : expiresInDays,
+          password: hasPassword ? normalizedPassword : '',
+        },
+      })
+      setNotice(shareLink ? '分享设置已更新' : '分享链接已生成')
+    } catch (error: unknown) {
+      setNotice(getErrorMessage(error, '无法生成分享链接，请稍后重试'))
+    }
+  }
+
+  async function handleCopy(): Promise<void> {
+    if (!shareUrl) return
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setNotice('链接已复制到剪贴板')
+    } catch (error: unknown) {
+      setNotice(getErrorMessage(error, '复制失败，请手动复制链接'))
+    }
+  }
+
+  async function handleRevoke(): Promise<void> {
+    try {
+      await revokeShareLink.mutateAsync(conversationId)
+      setIsRevokeConfirmationOpen(false)
+      setCopied(false)
+      setNotice('分享链接已撤销')
+    } catch (error: unknown) {
+      setNotice(getErrorMessage(error, '撤销失败，请稍后重试'))
+    }
+  }
+
+  return (
+    <div
+      className="desktop-chat__dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose()
+      }}
+    >
+      <section
+        className="desktop-chat__share-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="share-dialog-title"
+        aria-describedby="share-dialog-description"
+        onKeyDown={handleKeyDown}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="desktop-chat__share-dialog-header">
+          <div>
+            <h2 id="share-dialog-title">分享此对话</h2>
+            <p id="share-dialog-description">生成公开只读链接，可随时撤销。</p>
+          </div>
+          <button
+            ref={closeRef}
+            className="desktop-chat__share-close"
+            type="button"
+            aria-label="关闭分享"
+            title="关闭"
+            disabled={isBusy}
+            onClick={onClose}
+          >
+            <X size={17} aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="desktop-chat__share-dialog-body">
+          {shareQuery.isLoading && !shareLink ? (
+            <div className="desktop-chat__share-loading" aria-label="正在加载分享设置">
+              <LoaderCircle className="desktop-chat__spin" size={19} />
+            </div>
+          ) : (
+            <>
+              <fieldset className="desktop-chat__share-fieldset" disabled={isBusy}>
+                <legend>有效期</legend>
+                <div className="desktop-chat__share-expiries">
+                  {SHARE_EXPIRY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      className={expiresInDays === option.value ? 'is-selected' : undefined}
+                      type="button"
+                      aria-pressed={expiresInDays === option.value}
+                      onClick={() => setExpiresInDays(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <div className="desktop-chat__share-password">
+                <div>
+                  <label htmlFor="share-password">访问密码</label>
+                  <small>未启用时，获得链接的任何人都可查看。</small>
+                </div>
+                <button
+                  className={
+                    hasPassword
+                      ? 'desktop-chat__share-toggle is-active'
+                      : 'desktop-chat__share-toggle'
+                  }
+                  type="button"
+                  role="switch"
+                  aria-label="启用访问密码"
+                  aria-checked={hasPassword}
+                  disabled={isBusy}
+                  onClick={() => {
+                    setHasPassword((value) => !value)
+                    setPassword('')
+                  }}
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              {hasPassword ? (
+                <label className="desktop-chat__share-password-input" htmlFor="share-password">
+                  <Lock size={15} aria-hidden="true" />
+                  <input
+                    id="share-password"
+                    type="text"
+                    minLength={4}
+                    maxLength={40}
+                    value={password}
+                    placeholder="设置 4 位以上密码"
+                    disabled={isBusy}
+                    onChange={(event) => setPassword(event.target.value)}
+                  />
+                </label>
+              ) : null}
+
+              {shareLink ? (
+                <div className="desktop-chat__share-link">
+                  <label htmlFor="share-link">分享链接</label>
+                  <div>
+                    <Link size={15} aria-hidden="true" />
+                    <input
+                      id="share-link"
+                      value={shareUrl}
+                      readOnly
+                      onFocus={(event) => event.target.select()}
+                    />
+                    <button
+                      type="button"
+                      aria-label="复制分享链接"
+                      title="复制链接"
+                      disabled={isBusy}
+                      onClick={() => void handleCopy()}
+                    >
+                      {copied ? (
+                        <Check size={16} aria-hidden="true" />
+                      ) : (
+                        <Copy size={16} aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
+                  <small>{formatShareExpiry(shareLink.expiresAt)}</small>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        {notice ? (
+          <p className="desktop-chat__share-notice" role="status">
+            {notice}
+          </p>
+        ) : null}
+        <footer className="desktop-chat__share-dialog-actions">
+          {shareLink ? (
+            <button
+              className="desktop-chat__share-revoke"
+              type="button"
+              disabled={isBusy}
+              onClick={() => setIsRevokeConfirmationOpen(true)}
+            >
+              撤销分享
+            </button>
+          ) : null}
+          <button type="button" disabled={isBusy} onClick={onClose}>
+            关闭
+          </button>
+          <button
+            className="desktop-chat__share-save"
+            type="button"
+            disabled={isBusy || shareQuery.isLoading}
+            onClick={() => void handleSave()}
+          >
+            {isBusy ? '处理中...' : shareLink ? '更新设置' : '生成分享链接'}
+          </button>
+        </footer>
+      </section>
+      {isRevokeConfirmationOpen ? (
+        <ConfirmDialog
+          title="撤销分享链接？"
+          description="撤销后，当前公开链接将立即失效。"
+          confirmLabel="撤销"
+          isPending={revokeShareLink.isPending}
+          pendingLabel="撤销中..."
+          onCancel={() => setIsRevokeConfirmationOpen(false)}
+          onConfirm={() => void handleRevoke()}
+        />
+      ) : null}
+    </div>
+  )
+}
+
 function ConfirmDialog({
+  confirmLabel = '删除',
   description,
   isPending,
+  pendingLabel = '删除中...',
   title,
   onCancel,
   onConfirm,
@@ -335,7 +630,7 @@ function ConfirmDialog({
             disabled={isPending}
             onClick={onConfirm}
           >
-            {isPending ? '删除中...' : '删除'}
+            {isPending ? pendingLabel : confirmLabel}
           </button>
         </div>
       </div>
@@ -437,6 +732,10 @@ export function App(): ReactElement {
   const [renameValue, setRenameValue] = useState('')
   const [conversationPendingDeletion, setConversationPendingDeletion] =
     useState<Conversation | null>(null)
+  const [shareDialog, setShareDialog] = useState<{
+    conversationId: string
+    webBaseUrl: string
+  } | null>(null)
   const [actionError, setActionError] = useState('')
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [isDarkTheme, setIsDarkTheme] = useState(
@@ -562,6 +861,17 @@ export function App(): ReactElement {
       await window.yuanai.window.openLogin()
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法打开登录窗口，请稍后重试'))
+    }
+  }
+
+  async function handleOpenShareDialog(): Promise<void> {
+    if (!activeConversation) return
+    setActionError('')
+    try {
+      const config = await window.yuanai.runtime.getConfig()
+      setShareDialog({ conversationId: activeConversation.id, webBaseUrl: config.webBaseUrl })
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开分享，请稍后重试'))
     }
   }
 
@@ -913,6 +1223,7 @@ export function App(): ReactElement {
               aria-label="分享对话"
               title="分享对话"
               disabled={!activeConversation}
+              onClick={() => void handleOpenShareDialog()}
             >
               <Share2 size={17} aria-hidden="true" />
             </button>
@@ -1164,6 +1475,13 @@ export function App(): ReactElement {
           isPending={deleteConversation.isPending}
           onCancel={() => setConversationPendingDeletion(null)}
           onConfirm={() => void handleConfirmRemoveConversation()}
+        />
+      ) : null}
+      {shareDialog ? (
+        <ShareDialog
+          conversationId={shareDialog.conversationId}
+          webBaseUrl={shareDialog.webBaseUrl}
+          onClose={() => setShareDialog(null)}
         />
       ) : null}
     </main>

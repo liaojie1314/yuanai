@@ -12,6 +12,7 @@ const chat = vi.hoisted(() => ({
     createdAt: string
   }>,
   createConversation: vi.fn(),
+  createShareLink: vi.fn(),
   deleteConversation: vi.fn(),
   messages: [] as Array<{
     id: string
@@ -43,6 +44,14 @@ const chat = vi.hoisted(() => ({
     },
   ],
   send: vi.fn(),
+  shareLink: null as {
+    shareToken: string
+    titleSnapshot: string
+    createdAt: string
+    expiresAt: string | null
+    hasPassword: boolean
+  } | null,
+  revokeShareLink: vi.fn(),
   stop: vi.fn(),
   streamState: {
     optimisticUserMsg: null as string | null,
@@ -74,6 +83,9 @@ vi.mock('@yuanai/core/hooks', () => ({
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
   useMessages: () => ({ data: chat.messages, isLoading: false }),
   useModels: () => ({ data: chat.models }),
+  useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
+  useCreateShareLink: () => ({ isPending: false, mutateAsync: chat.createShareLink }),
+  useRevokeShareLink: () => ({ isPending: false, mutateAsync: chat.revokeShareLink }),
   useStream: () => ({ send: chat.send, stop: chat.stop }),
   useUpdateConversation: () => ({ isPending: false, mutateAsync: chat.updateConversation }),
   uploadFileSmart: chat.uploadFileSmart,
@@ -98,6 +110,15 @@ beforeEach(() => {
         openForgot: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openSettings: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
         openAbout: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      },
+      runtime: {
+        getConfig: vi
+          .fn<() => Promise<{ apiBaseUrl: string; webBaseUrl: string; assetOrigins: [] }>>()
+          .mockResolvedValue({
+            apiBaseUrl: 'http://localhost:8000/api/v1',
+            webBaseUrl: 'http://localhost:3000',
+            assetOrigins: [],
+          }),
       },
     },
   })
@@ -135,6 +156,15 @@ beforeEach(() => {
     lastMessageAt: null,
     createdAt: '2026-08-10T08:00:00.000Z',
   })
+  chat.shareLink = null
+  chat.createShareLink.mockResolvedValue({
+    shareToken: 'desktop-share-token',
+    titleSnapshot: '测试会话',
+    createdAt: '2026-08-10T08:00:00.000Z',
+    expiresAt: null,
+    hasPassword: false,
+  })
+  chat.revokeShareLink.mockResolvedValue(undefined)
   chat.streamState.streamingConvId = null
   chat.streamState.streamingContent = ''
   chat.streamState.streamingThink = ''
@@ -212,6 +242,16 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '删除' }))
 
     await waitFor(() => expect(chat.deleteConversation).toHaveBeenCalledWith('conversation-1'))
+  })
+
+  it('opens a Web-compatible share dialog for the active conversation', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '分享对话' }))
+
+    expect(screen.getByRole('dialog', { name: '分享此对话' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '生成分享链接' })).toBeInTheDocument()
   })
 
   it('exposes a stop action for the active streaming conversation', async () => {

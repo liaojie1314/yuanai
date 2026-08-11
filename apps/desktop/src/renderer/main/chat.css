@@ -817,6 +817,277 @@ textarea:focus-visible {
   opacity: 0.58;
 }
 
+.desktop-chat__share-dialog {
+  width: min(100%, 440px);
+  border: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
+  border-radius: 8px;
+  color: var(--desktop-fg);
+  background: var(--desktop-surface);
+  box-shadow:
+    0 20px 50px rgb(15 23 42 / 20%),
+    0 2px 8px rgb(15 23 42 / 12%);
+}
+
+.desktop-chat__share-dialog-header,
+.desktop-chat__share-password,
+.desktop-chat__share-link > div,
+.desktop-chat__share-dialog-actions {
+  display: flex;
+  align-items: center;
+}
+
+.desktop-chat__share-dialog-header {
+  justify-content: space-between;
+  gap: 18px;
+  padding: 19px 20px 16px;
+  border-bottom: 1px solid var(--desktop-border);
+}
+
+.desktop-chat__share-dialog-header h2,
+.desktop-chat__share-dialog-header p,
+.desktop-chat__share-fieldset,
+.desktop-chat__share-link label,
+.desktop-chat__share-link small,
+.desktop-chat__share-password label,
+.desktop-chat__share-password small,
+.desktop-chat__share-notice {
+  margin: 0;
+}
+
+.desktop-chat__share-dialog-header h2 {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.desktop-chat__share-dialog-header p {
+  margin-top: 5px;
+  color: var(--desktop-fg-muted);
+  font-size: 12.5px;
+}
+
+.desktop-chat__share-close,
+.desktop-chat__share-link button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--desktop-fg-muted);
+  background: transparent;
+}
+
+.desktop-chat__share-close:hover:not(:disabled),
+.desktop-chat__share-close:focus-visible,
+.desktop-chat__share-link button:hover:not(:disabled),
+.desktop-chat__share-link button:focus-visible {
+  color: var(--desktop-fg);
+  background: var(--desktop-elevated);
+}
+
+.desktop-chat__share-dialog-body {
+  display: grid;
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.desktop-chat__share-loading {
+  display: grid;
+  min-height: 164px;
+  place-items: center;
+  color: var(--desktop-brand);
+}
+
+.desktop-chat__share-fieldset {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+
+.desktop-chat__share-fieldset legend,
+.desktop-chat__share-password label,
+.desktop-chat__share-link label {
+  padding: 0;
+  color: var(--desktop-fg);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.desktop-chat__share-expiries {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.desktop-chat__share-expiries button {
+  min-height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  color: var(--desktop-fg-muted);
+  background: transparent;
+  font-size: 12px;
+}
+
+.desktop-chat__share-expiries button:hover:not(:disabled),
+.desktop-chat__share-expiries button.is-selected {
+  border-color: var(--desktop-brand-border);
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__share-password {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.desktop-chat__share-password small,
+.desktop-chat__share-link small {
+  display: block;
+  margin-top: 4px;
+  color: var(--desktop-fg-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-chat__share-toggle {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--desktop-border);
+  transition: background 140ms ease;
+}
+
+.desktop-chat__share-toggle span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 20%);
+  transition: transform 140ms ease;
+}
+
+.desktop-chat__share-toggle.is-active {
+  background: var(--desktop-brand);
+}
+
+.desktop-chat__share-toggle.is-active span {
+  transform: translateX(14px);
+}
+
+.desktop-chat__share-password-input,
+.desktop-chat__share-link > div {
+  min-height: 36px;
+  margin-top: 9px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  background: var(--desktop-bg);
+}
+
+.desktop-chat__share-password-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--desktop-fg-subtle);
+}
+
+.desktop-chat__share-password-input input,
+.desktop-chat__share-link input {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  color: var(--desktop-fg);
+  background: transparent;
+  font-size: 13px;
+}
+
+.desktop-chat__share-link input {
+  padding-left: 10px;
+}
+
+.desktop-chat__share-link > div > svg {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  color: var(--desktop-fg-subtle);
+}
+
+.desktop-chat__share-link button {
+  margin-right: 3px;
+}
+
+.desktop-chat__share-notice {
+  min-height: 18px;
+  padding: 0 20px 10px;
+  color: var(--desktop-brand-hover);
+  font-size: 12.5px;
+}
+
+.desktop-chat__share-dialog-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--desktop-border);
+}
+
+.desktop-chat__share-dialog-actions button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  color: var(--desktop-fg);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.desktop-chat__share-dialog-actions button:hover:not(:disabled),
+.desktop-chat__share-dialog-actions button:focus-visible {
+  background: var(--desktop-elevated);
+}
+
+.desktop-chat__share-dialog-actions .desktop-chat__share-save {
+  border-color: var(--desktop-brand);
+  color: #ffffff;
+  background: var(--desktop-brand);
+  font-weight: 600;
+}
+
+.desktop-chat__share-dialog-actions .desktop-chat__share-save:hover:not(:disabled),
+.desktop-chat__share-dialog-actions .desktop-chat__share-save:focus-visible {
+  border-color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-hover);
+}
+
+.desktop-chat__share-dialog-actions .desktop-chat__share-revoke {
+  margin-right: auto;
+  border-color: transparent;
+  color: #dc2626;
+}
+
+.desktop-chat__share-dialog-actions .desktop-chat__share-revoke:hover:not(:disabled),
+.desktop-chat__share-dialog-actions .desktop-chat__share-revoke:focus-visible {
+  background: #fef2f2;
+}
+
+.desktop-chat__share-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .desktop-chat__messages {
   min-height: 0;
   overflow-y: auto;

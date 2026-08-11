@@ -19,6 +19,15 @@ let receivedStreamRequest: { conversationId: string; content: string; model: str
 let nextConversationNumber = 1
 let renamedConversationId: string | null = null
 let removedConversationId: string | null = null
+let revokedShareConversationId: string | null = null
+let shareLink: {
+  shareToken: string
+  titleSnapshot: string
+  createdAt: string
+  expiresAt: string | null
+  hasPassword: boolean
+} | null = null
+let receivedShareOptions: { expiresInDays: number | null; password: string } | null = null
 
 function createStreamResponse(events: Array<{ event: string; data: unknown }>): Response {
   const encoder = new TextEncoder()
@@ -75,6 +84,38 @@ const server = setupServer(
     conversations = conversations.filter((item) => item.id !== conversationId)
     delete messagesByConversation[conversationId]
     removedConversationId = conversationId
+    return new HttpResponse(null, { status: 204 })
+  }),
+  http.get(`${API_BASE_URL}/chat/conversations/:conversationId/share`, ({ params }) => {
+    if (typeof params['conversationId'] !== 'string' || !shareLink) {
+      return HttpResponse.json({ detail: '分享链接不存在' }, { status: 404 })
+    }
+    return HttpResponse.json(shareLink)
+  }),
+  http.post(
+    `${API_BASE_URL}/chat/conversations/:conversationId/share`,
+    async ({ params, request }) => {
+      const conversationId = params['conversationId']
+      if (typeof conversationId !== 'string') return new HttpResponse(null, { status: 404 })
+      receivedShareOptions = (await request.json()) as {
+        expiresInDays: number | null
+        password: string
+      }
+      shareLink = {
+        shareToken: 'desktop-share-token',
+        titleSnapshot: conversations.find((item) => item.id === conversationId)?.title ?? '新对话',
+        createdAt: '2026-08-10T08:00:00.000Z',
+        expiresAt: '2026-08-17T08:00:00.000Z',
+        hasPassword: receivedShareOptions.password.length > 0,
+      }
+      return HttpResponse.json(shareLink)
+    }
+  ),
+  http.delete(`${API_BASE_URL}/chat/conversations/:conversationId/share`, ({ params }) => {
+    const conversationId = params['conversationId']
+    if (typeof conversationId !== 'string') return new HttpResponse(null, { status: 404 })
+    revokedShareConversationId = conversationId
+    shareLink = null
     return new HttpResponse(null, { status: 204 })
   }),
   http.get(`${API_BASE_URL}/chat/conversations/:conversationId/messages`, ({ params }) => {
@@ -178,10 +219,25 @@ beforeEach(async () => {
   nextConversationNumber = 1
   renamedConversationId = null
   removedConversationId = null
+  revokedShareConversationId = null
+  shareLink = null
+  receivedShareOptions = null
   setApiBaseUrl(API_BASE_URL)
   useAuthStore.setState({ accessToken: 'desktop-test-token', refreshToken: null, user: null })
   useChatStore.getState().finalizeStream()
   await useAuthStore.persist.clearStorage()
+  Object.defineProperty(window, 'yuanai', {
+    configurable: true,
+    value: {
+      runtime: {
+        getConfig: async () => ({
+          apiBaseUrl: API_BASE_URL,
+          assetOrigins: [],
+          webBaseUrl: 'http://desktop-web.test',
+        }),
+      },
+    },
+  })
 })
 
 afterEach(() => {
@@ -276,5 +332,41 @@ describe('desktop chat integration', () => {
     })
     expect(await screen.findByText('已收到回复')).toBeInTheDocument()
     expect(screen.getByText('你好，元AI')).toBeInTheDocument()
+  })
+
+  it('creates a protected share link and revokes it through the Core API', async () => {
+    const user = userEvent.setup()
+    conversations = [
+      {
+        id: 'conversation-1',
+        title: '待分享会话',
+        model: 'gpt-4o',
+        isPinned: false,
+        lastMessageAt: '2026-08-10T08:00:00.000Z',
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    renderChatApp()
+
+    await user.click(await screen.findByRole('button', { name: '分享对话' }))
+    expect(await screen.findByRole('dialog', { name: '分享此对话' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '7 天' }))
+    await user.click(screen.getByRole('switch', { name: '启用访问密码' }))
+    await user.type(screen.getByPlaceholderText('设置 4 位以上密码'), 'desktop-secret')
+    await user.click(screen.getByRole('button', { name: '生成分享链接' }))
+
+    await waitFor(() => {
+      expect(receivedShareOptions).toEqual({ expiresInDays: 7, password: 'desktop-secret' })
+    })
+    expect(
+      await screen.findByDisplayValue('http://desktop-web.test/share/desktop-share-token')
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '撤销分享' }))
+    expect(screen.getByRole('alertdialog', { name: '撤销分享链接？' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '撤销' }))
+
+    await waitFor(() => expect(revokedShareConversationId).toBe('conversation-1'))
+    expect(await screen.findByText('分享链接已撤销')).toBeInTheDocument()
   })
 })
