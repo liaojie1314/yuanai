@@ -85,32 +85,36 @@ const SUGGESTIONS = [
   {
     description: '帮我写一个关于时间旅行的科幻短篇',
     icon: Sparkles,
+    prompt: '帮我写一个关于时间旅行的科幻短篇故事',
     title: '创意写作',
   },
   {
     description: '帮我排查这段代码为什么报 TypeError',
     icon: Code2,
+    prompt: '帮我排查这段代码为什么报 TypeError：',
     title: '代码调试',
   },
   {
     description: '搜索今天最新的 AI 行业动态',
     icon: Globe2,
+    prompt: '搜索今天最新的 AI 行业动态',
     title: '联网搜索',
   },
   {
     description: '用简单的方式解释量子纠缠是什么',
     icon: Calculator,
+    prompt: '用简单方式解释量子纠缠是什么',
     title: '学习辅导',
   },
 ] as const
 
 const CAPABILITIES = [
-  { icon: Globe2, label: '联网搜索' },
-  { icon: Code2, label: '代码生成' },
-  { icon: Image, label: '图片理解' },
-  { icon: FileText, label: '文件分析' },
-  { icon: Calculator, label: '数学推导' },
-  { icon: Languages, label: '多语种翻译' },
+  { icon: Globe2, label: '联网搜索', prompt: '联网搜索最新 AI 行业动态' },
+  { icon: Code2, label: '代码生成', prompt: '帮我写一段' },
+  { icon: Image, label: '图片理解', prompt: '帮我分析这张图片中的内容' },
+  { icon: FileText, label: '文件分析', prompt: '帮我总结这份文件的要点' },
+  { icon: Calculator, label: '数学推导', prompt: '解一道数学题：' },
+  { icon: Languages, label: '多语种翻译', prompt: '把下面内容翻译成地道英文：' },
 ] as const
 
 interface ComposerAttachment {
@@ -127,6 +131,23 @@ function getModelInitial(model: AIModel): string {
 
 function formatContextLength(contextLength: number): string {
   return contextLength >= 1000 ? `${Math.round(contextLength / 1000)}K` : String(contextLength)
+}
+
+function formatModelProvider(provider: string): string {
+  if (provider.toLocaleLowerCase() === 'deepseek') return 'DeepSeek'
+  if (provider.toLocaleLowerCase() === 'openai') return 'OpenAI'
+  return provider
+}
+
+function groupModelsByProvider(models: AIModel[]): Array<{ provider: string; models: AIModel[] }> {
+  const grouped = new Map<string, AIModel[]>()
+  for (const model of models) {
+    const provider = formatModelProvider(model.provider)
+    const group = grouped.get(provider) ?? []
+    group.push(model)
+    grouped.set(provider, group)
+  }
+  return Array.from(grouped, ([provider, items]) => ({ provider, models: items }))
 }
 
 function getConversationTitle(conversation: Conversation): string {
@@ -752,6 +773,7 @@ export function App(): ReactElement {
 
   const conversations = conversationsQuery.data ?? EMPTY_CONVERSATIONS
   const availableModels = modelsQuery.data?.length ? modelsQuery.data : DEFAULT_MODELS
+  const modelGroups = useMemo(() => groupModelsByProvider(availableModels), [availableModels])
   const selectedModel =
     availableModels.find((model) => model.id === selectedModelId) ??
     availableModels.find((model) => model.isDefault) ??
@@ -1302,7 +1324,7 @@ export function App(): ReactElement {
             <span className="desktop-chat__model-mark" aria-hidden="true">
               {getModelInitial(selectedModel)}
             </span>
-            <span>{selectedModel.name}</span>
+            <span className="desktop-chat__model-trigger-label">{selectedModel.name}</span>
             <ChevronDown size={15} aria-hidden="true" />
           </button>
           <div className="desktop-chat__header-side desktop-chat__header-side--end">
@@ -1328,32 +1350,37 @@ export function App(): ReactElement {
               onClick={() => setIsModelMenuOpen(false)}
             />
             <div className="desktop-chat__model-menu" role="listbox" aria-label="选择模型">
-              {availableModels.map((model) => {
-                const selected = model.id === selectedModel.id
-                return (
-                  <button
-                    key={model.id}
-                    className={selected ? 'is-selected' : undefined}
-                    type="button"
-                    role="option"
-                    aria-label={`选择 ${model.name}`}
-                    aria-selected={selected}
-                    onClick={() => handleSelectModel(model.id)}
-                  >
-                    <span className="desktop-chat__model-menu-mark" aria-hidden="true">
-                      {getModelInitial(model)}
-                    </span>
-                    <span className="desktop-chat__model-menu-copy">
-                      <strong>{model.name}</strong>
-                      <small>{model.description || model.provider}</small>
-                    </span>
-                    <span className="desktop-chat__model-menu-context">
-                      {formatContextLength(model.contextLength)}
-                    </span>
-                    {selected ? <Check size={16} aria-hidden="true" /> : null}
-                  </button>
-                )
-              })}
+              {modelGroups.map(({ provider, models }) => (
+                <section key={provider} className="desktop-chat__model-menu-group">
+                  <h2>{provider}</h2>
+                  {models.map((model) => {
+                    const selected = model.id === selectedModel.id
+                    return (
+                      <button
+                        key={model.id}
+                        className={selected ? 'is-selected' : undefined}
+                        type="button"
+                        role="option"
+                        aria-label={`选择 ${model.name}`}
+                        aria-selected={selected}
+                        onClick={() => handleSelectModel(model.id)}
+                      >
+                        <span className="desktop-chat__model-menu-mark" aria-hidden="true">
+                          {getModelInitial(model)}
+                        </span>
+                        <span className="desktop-chat__model-menu-copy">
+                          <strong>{model.name}</strong>
+                          <small>{model.description || model.provider}</small>
+                        </span>
+                        <span className="desktop-chat__model-menu-context">
+                          {formatContextLength(model.contextLength)}
+                        </span>
+                        {selected ? <Check size={16} aria-hidden="true" /> : null}
+                      </button>
+                    )
+                  })}
+                </section>
+              ))}
             </div>
           </>
         ) : null}
@@ -1412,20 +1439,25 @@ export function App(): ReactElement {
                 <p>集成多款顶尖 AI 模型，帮你完成任何任务</p>
               </div>
               <div className="desktop-chat__capabilities" aria-label="可用能力">
-                {CAPABILITIES.map(({ icon: Icon, label }) => (
-                  <span key={label}>
+                {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-label={`快捷提示：${label}`}
+                    onClick={() => setDraft(prompt)}
+                  >
                     <Icon size={14} aria-hidden="true" />
                     {label}
-                  </span>
+                  </button>
                 ))}
               </div>
               <div className="desktop-chat__suggestions">
-                {SUGGESTIONS.map(({ description, icon: Icon, title }) => (
+                {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
                   <button
                     key={title}
                     type="button"
                     aria-label={title}
-                    onClick={() => setDraft(description)}
+                    onClick={() => setDraft(prompt)}
                   >
                     <Icon size={17} aria-hidden="true" />
                     <span>

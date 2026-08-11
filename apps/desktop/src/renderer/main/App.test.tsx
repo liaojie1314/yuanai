@@ -219,6 +219,17 @@ describe('desktop chat', () => {
     expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument()
   })
 
+  it('fills the Web-aligned quick prompt from the empty chat state', async () => {
+    const user = userEvent.setup()
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '快捷提示：文件分析' }))
+
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('帮我总结这份文件的要点')
+  })
+
   it('creates a conversation using the selected model', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -401,7 +412,7 @@ describe('desktop chat', () => {
 
     await user.click(screen.getByRole('button', { name: '创意写作' }))
     expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue(
-      '帮我写一个关于时间旅行的科幻短篇'
+      '帮我写一个关于时间旅行的科幻短篇故事'
     )
   })
 

@@ -585,14 +585,13 @@ textarea:focus-visible {
 }
 
 .desktop-chat__model-trigger {
-  position: relative;
   display: inline-flex;
-  width: min(260px, 40vw);
+  max-width: min(280px, 40vw);
   height: 34px;
   align-items: center;
-  gap: 7px;
-  padding: 0 31px 0 34px;
-  border: 1px solid var(--desktop-border);
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--desktop-brand-border);
   border-radius: 17px;
   color: var(--desktop-fg);
   background: var(--desktop-surface);
@@ -607,10 +606,7 @@ textarea:focus-visible {
 }
 
 .desktop-chat__model-trigger > svg {
-  position: absolute;
-  right: 11px;
   color: var(--desktop-fg-subtle);
-  pointer-events: none;
 }
 
 .desktop-chat__model-mark,
@@ -625,11 +621,15 @@ textarea:focus-visible {
 }
 
 .desktop-chat__model-mark {
-  position: absolute;
-  left: 10px;
-  width: 17px;
-  height: 17px;
-  pointer-events: none;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.desktop-chat__model-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-chat__model-dismiss {
@@ -646,16 +646,36 @@ textarea:focus-visible {
   z-index: 3;
   top: 48px;
   left: 50%;
-  display: grid;
-  width: min(360px, calc(100vw - 32px));
-  gap: 4px;
-  padding: 6px;
+  width: min(300px, calc(100vw - 32px));
+  max-height: 60vh;
+  padding: 8px;
   border: 1px solid var(--desktop-border);
-  border-radius: 9px;
+  border-radius: 12px;
   color: var(--desktop-fg);
   background: var(--desktop-surface);
   box-shadow: 0 12px 28px rgba(30, 64, 175, 0.16);
   transform: translateX(-50%);
+  overflow-y: auto;
+}
+
+.desktop-chat__model-menu-group {
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+}
+
+.desktop-chat__model-menu-group:last-child {
+  margin-bottom: 0;
+}
+
+.desktop-chat__model-menu-group h2 {
+  margin: 0;
+  padding: 6px 10px 4px;
+  color: var(--desktop-fg-subtle);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
 }
 
 .desktop-chat__model-menu button {
@@ -664,9 +684,9 @@ textarea:focus-visible {
   grid-template-columns: 30px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
-  padding: 9px;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
   color: var(--desktop-fg);
   background: transparent;
   text-align: left;
@@ -674,7 +694,6 @@ textarea:focus-visible {
 
 .desktop-chat__model-menu button:hover,
 .desktop-chat__model-menu button.is-selected {
-  border-color: var(--desktop-brand-border);
   background: var(--desktop-brand-light);
 }
 
@@ -683,7 +702,7 @@ textarea:focus-visible {
   width: 30px;
   height: 30px;
   place-items: center;
-  border-radius: 50%;
+  border-radius: 8px;
   color: #ffffff;
   background: var(--desktop-brand);
   font-size: 13px;
@@ -1346,8 +1365,8 @@ textarea:focus-visible {
   gap: 7px;
 }
 
-.desktop-chat__capabilities span {
-  display: inline-flex;
+.desktop-chat__capabilities button {
+  display: flex;
   height: 30px;
   align-items: center;
   gap: 5px;
@@ -1356,7 +1375,15 @@ textarea:focus-visible {
   border-radius: 15px;
   color: var(--desktop-fg-muted);
   background: var(--desktop-surface);
+  cursor: pointer;
   font-size: 12px;
+}
+
+.desktop-chat__capabilities button:hover,
+.desktop-chat__capabilities button:focus-visible {
+  border-color: var(--desktop-brand);
+  color: var(--desktop-brand);
+  background: var(--desktop-brand-light);
 }
 
 .desktop-chat__capabilities svg,
@@ -1377,9 +1404,9 @@ textarea:focus-visible {
   min-height: 72px;
   align-items: flex-start;
   gap: 9px;
-  padding: 13px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--desktop-border);
-  border-radius: 8px;
+  border-radius: 12px;
   color: var(--desktop-fg);
   background: var(--desktop-surface);
   text-align: left;
@@ -1418,13 +1445,13 @@ textarea:focus-visible {
 
 .desktop-chat__composer {
   display: block;
-  width: min(calc(100% - 48px), 910px);
-  margin: 0 auto 20px;
-  padding: 11px 10px 10px 14px;
+  width: min(calc(100% - 40px), 800px);
+  margin: 0 auto 12px;
+  padding: 8px 10px;
   border: 1px solid var(--desktop-border);
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--desktop-surface);
-  box-shadow: 0 8px 20px rgba(30, 64, 175, 0.08);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.06);
 }
 
 .desktop-chat__composer:focus-within {
@@ -1438,7 +1465,7 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 28px;
   max-height: 200px;
-  padding: 4px 0;
+  padding: 6px;
   border: 0;
   outline: 0;
   resize: none;
@@ -1446,7 +1473,7 @@ textarea:focus-visible {
   color: var(--desktop-fg);
   background: transparent;
   font-size: 14px;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 
 .desktop-chat__composer textarea::placeholder {
@@ -1513,7 +1540,7 @@ textarea:focus-visible {
 .desktop-chat__composer-toolbar {
   justify-content: space-between;
   gap: 12px;
-  margin-top: 7px;
+  margin-top: 0;
 }
 
 .desktop-chat__composer-tools,
