@@ -16,7 +16,6 @@ import {
   LoaderCircle,
   LogIn,
   Lock,
-  MessageSquareText,
   Mic,
   PanelLeftClose,
   PanelLeftOpen,
@@ -1169,11 +1168,7 @@ export function App(): ReactElement {
               disabled={isStreaming}
               onClick={handleToggleTemporaryConversation}
             >
-              {isTemporaryConversation ? (
-                <Ghost size={16} aria-hidden="true" />
-              ) : (
-                <MessageSquareText size={16} aria-hidden="true" />
-              )}
+              <Ghost size={16} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -1403,16 +1398,6 @@ export function App(): ReactElement {
             <CircleAlert size={16} aria-hidden="true" />
             {actionError}
           </p>
-        ) : null}
-
-        {isTemporaryConversation ? (
-          <div className="desktop-chat__temporary-banner" role="status">
-            <Ghost size={15} aria-hidden="true" />
-            <span>临时对话不会保存到历史记录。</span>
-            <button type="button" onClick={handleToggleTemporaryConversation}>
-              退出
-            </button>
-          </div>
         ) : null}
 
         <div className="desktop-chat__messages" aria-busy={messagesQuery.isLoading}>

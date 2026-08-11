@@ -315,7 +315,13 @@ describe('desktop chat', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '开启临时对话' }))
+    const temporaryToggle = screen.getByRole('button', { name: '开启临时对话' })
+    expect(temporaryToggle).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(temporaryToggle)
+    expect(screen.getByRole('button', { name: '退出临时对话' })).toHaveClass('is-active')
+    expect(screen.queryByText('临时对话不会保存到历史记录。')).not.toBeInTheDocument()
+
     await user.type(screen.getByRole('textbox', { name: '输入消息' }), '这条消息不应保存')
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
