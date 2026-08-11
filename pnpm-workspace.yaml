@@ -2,6 +2,24 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
+# pnpm 10 only reads workspace-wide resolution settings from this file.
+overrides:
+  metro: 0.81.5
+  metro-cache: 0.81.5
+  metro-cache-key: 0.81.5
+  metro-config: 0.81.5
+  metro-core: 0.81.5
+  metro-file-map: 0.81.5
+  metro-resolver: 0.81.5
+  metro-runtime: 0.81.5
+  metro-source-map: 0.81.5
+  metro-symbolicate: 0.81.5
+  metro-transform-plugins: 0.81.5
+  metro-transform-worker: 0.81.5
+
+patchedDependencies:
+  react-native-css-interop@0.2.6: patches/react-native-css-interop@0.2.6.patch
+
 # 阻止 pnpm 把 @types/react / @types/react-dom 提升到 .pnpm/node_modules/。
 # apps/web 用 React 19，apps/mobile 用 React 18；提升会二选一，破坏另一端 typecheck。
 # 每个 workspace 依靠自己的 node_modules/@types/react 解析（都保持直接软链到 store 内正确版本）。
@@ -16,6 +34,25 @@ publicHoistPattern:
   - '!@types/react-dom'
   - '!zod'
 
-# Electron 下载平台二进制；仅显式许可这一安装脚本，其他依赖仍保持禁用。
+# 仅显式许可项目运行、构建和测试所需的依赖安装脚本。
 onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - '@sentry/cli'
+  - '@swc/core'
   - electron
+  - esbuild
+  - msw
+  - sharp
+  - unrs-resolver
+
+# pnpm 11 使用 allowBuilds 取代 onlyBuiltDependencies；保留两种格式以兼容
+# package.json 固定的 pnpm 10 与 CI/开发机上的 pnpm 11。
+allowBuilds:
+  '@parcel/watcher': true
+  '@sentry/cli': true
+  '@swc/core': true
+  electron: true
+  esbuild: true
+  msw: true
+  sharp: true
+  unrs-resolver: true
