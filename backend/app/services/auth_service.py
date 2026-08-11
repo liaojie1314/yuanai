@@ -98,7 +98,7 @@ async def get_stats(user_id: uuid.UUID, db: AsyncSession) -> UserStatsResponse:
         .join(Conversation, Message.conv_id == Conversation.id)
         .where(Conversation.user_id == user_id, Message.role == MessageRole.assistant)
     )
-    total_tokens = token_row.scalar_one()
+    total_tokens = token_row.scalar_one() or 0
 
     file_count_row = await db.execute(
         select(func.count()).select_from(File).where(File.user_id == user_id)
