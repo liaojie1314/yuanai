@@ -962,7 +962,7 @@ export function App(): ReactElement {
   const [isDarkTheme, setIsDarkTheme] = useState(
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   )
-  const messageEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const attachmentsRef = useRef<ComposerAttachment[]>([])
   const cameraVideoRef = useRef<HTMLVideoElement>(null)
@@ -1130,8 +1130,13 @@ export function App(): ReactElement {
   }, [isStreaming])
 
   useEffect(() => {
-    if (!messageEndRef.current?.scrollIntoView) return
-    messageEndRef.current.scrollIntoView({ block: 'end' })
+    const container = messagesContainerRef.current
+    if (!container) return
+    if (typeof container.scrollTo === 'function') {
+      container.scrollTo({ behavior: 'auto', top: container.scrollHeight })
+      return
+    }
+    container.scrollTop = container.scrollHeight
   }, [
     activeConversationId,
     messages,
@@ -2012,7 +2017,11 @@ export function App(): ReactElement {
           </div>
         ) : null}
 
-        <div className="desktop-chat__messages" aria-busy={messagesQuery.isLoading}>
+        <div
+          ref={messagesContainerRef}
+          className="desktop-chat__messages"
+          aria-busy={messagesQuery.isLoading}
+        >
           {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
             <div className="desktop-chat__messages-loading">
               <LoaderCircle className="desktop-chat__spin" size={22} />
@@ -2099,7 +2108,6 @@ export function App(): ReactElement {
                   onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
                 />
               ) : null}
-              <div ref={messageEndRef} />
             </div>
           ) : (
             <section className="desktop-chat__empty-state" aria-label="开始新对话">
