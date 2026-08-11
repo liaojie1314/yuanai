@@ -62,15 +62,18 @@ import {
   TEMPORARY_CONV_ID,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
-import { useArtifactStore, useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import type { ArtifactPayload, DateFmt, TimeFmt } from '@yuanai/core/stores'
+import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
 import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
-import type { DesktopScreenSource, DesktopSelectedFile } from '../../shared/ipc-contract'
+import type {
+  DesktopArtifactPayload,
+  DesktopScreenSource,
+  DesktopSelectedFile,
+} from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
-import { ArtifactPanel } from './ArtifactPanel'
 import { ChatMessage, StreamingMessage } from './MessageContent'
 
 const FALLBACK_MODEL: AIModel = {
@@ -912,8 +915,6 @@ export function App(): ReactElement {
   const setTheme = usePrefsStore((state) => state.setTheme)
   const setTimeFmt = usePrefsStore((state) => state.setTimeFmt)
   const setDateFmt = usePrefsStore((state) => state.setDateFmt)
-  const openArtifactView = useArtifactStore((state) => state.openView)
-  const openArtifactRun = useArtifactStore((state) => state.openRun)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isTemporaryConversation, setIsTemporaryConversation] = useState(false)
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
@@ -1239,13 +1240,13 @@ export function App(): ReactElement {
     }
   }
 
-  function handleOpenArtifact(payload: ArtifactPayload): void {
-    const { code, lang, title } = payload
-    if (payload.mode === 'run') {
-      openArtifactRun({ code, lang, title })
-      return
+  async function handleOpenArtifact(payload: DesktopArtifactPayload): Promise<void> {
+    setActionError('')
+    try {
+      await window.yuanai.window.openArtifact(payload)
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法打开代码面板，请稍后重试'))
     }
-    openArtifactView({ code, lang, title })
   }
 
   /** 覆盖用户原消息，并替换其后基于旧内容生成的回答。 */
@@ -2035,7 +2036,7 @@ export function App(): ReactElement {
                         timeFmt={timeFmt}
                         dateFmt={dateFmt}
                         onFeedback={handleOpenFeedback}
-                        onOpenArtifact={handleOpenArtifact}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
                         onRegenerate={() => undefined}
                         onEditMessage={handleEditMessage}
                       />
@@ -2046,7 +2047,7 @@ export function App(): ReactElement {
                         thinking={streamingThinking}
                         thinkingDurationMs={streamingThinkingDurationMs}
                         toolCalls={streamingToolCalls}
-                        onOpenArtifact={handleOpenArtifact}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
                       />
                     ) : assistantMessage ? (
                       <ChatMessage
@@ -2059,7 +2060,7 @@ export function App(): ReactElement {
                         versionCount={versionCount}
                         versionIndex={versionIndex}
                         onFeedback={handleOpenFeedback}
-                        onOpenArtifact={handleOpenArtifact}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
                         onRegenerate={() => {
                           if (pair.userMsg) {
                             handleRegenerateMessage(pair.userMsg.content, pair.pairKey)
@@ -2095,7 +2096,7 @@ export function App(): ReactElement {
                   thinking={streamingThinking}
                   thinkingDurationMs={streamingThinkingDurationMs}
                   toolCalls={streamingToolCalls}
-                  onOpenArtifact={handleOpenArtifact}
+                  onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
                 />
               ) : null}
               <div ref={messageEndRef} />
@@ -2538,7 +2539,6 @@ export function App(): ReactElement {
           </button>
         </div>
       ) : null}
-      <ArtifactPanel />
     </main>
   )
 }

@@ -93,14 +93,6 @@ const prefs = vi.hoisted(() => ({
   timeFmt: '24h' as const,
 }))
 
-const artifact = vi.hoisted(() => ({
-  close: vi.fn(),
-  open: false,
-  openRun: vi.fn(),
-  openView: vi.fn(),
-  payload: null,
-}))
-
 const desktop = vi.hoisted(() => ({
   writeClipboardText: vi.fn<(value: string) => Promise<void>>(),
   openFiles: vi.fn(),
@@ -124,7 +116,6 @@ vi.mock('@yuanai/core/hooks', () => ({
 }))
 
 vi.mock('@yuanai/core/stores', () => ({
-  useArtifactStore: (selector: (state: typeof artifact) => unknown) => selector(artifact),
   useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
   useChatStore: (selector: (state: typeof chat.streamState) => unknown) =>
     selector(chat.streamState),
@@ -163,11 +154,6 @@ beforeEach(() => {
       },
     },
   })
-  artifact.close.mockReset()
-  artifact.openRun.mockReset()
-  artifact.openView.mockReset()
-  artifact.open = false
-  artifact.payload = null
   auth.user = {
     id: 'desktop-user',
     email: 'desktop@example.com',
@@ -309,9 +295,10 @@ describe('desktop chat', () => {
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: '展示面板' }))
-    expect(artifact.openView).toHaveBeenCalledWith({
+    expect(desktop.openArtifact).toHaveBeenCalledWith({
       code: '<h1>元AI</h1>',
       lang: 'html',
+      mode: 'view',
       title: 'html',
     })
 
