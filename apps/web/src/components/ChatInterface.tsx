@@ -836,6 +836,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       content: newText,
       model: ctx.activeModel.id,
       enableThinking: ctx.showThinking,
+      replaceMessageId: msg.id,
+      skipOptimistic: true,
     })
   }, [])
 
