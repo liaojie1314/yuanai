@@ -26,10 +26,9 @@ import {
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
+import type { ArtifactPayload, DateFmt, TimeFmt } from '@yuanai/core/stores'
 import { formatMsgTime, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
-import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import type { Message, ToolCall, User } from '@yuanai/types'
 
@@ -39,8 +38,8 @@ export interface ChatMessageActions {
   onEditMessage(messageId: string, content: string): void
   /** 以对应的用户问题重新生成 AI 回复。 */
   onRegenerate(): void
-  /** 在独立 Artifact 窗口中查看或运行代码。 */
-  onOpenArtifact(payload: DesktopArtifactPayload): void
+  /** 在主窗口代码面板中查看或运行代码。 */
+  onOpenArtifact(payload: ArtifactPayload): void
   /** 提交 AI 回复的有用或无用反馈。 */
   onFeedback(messageId: string, type: 'like' | 'dislike'): void
 }
@@ -209,7 +208,7 @@ function DesktopCodeBlock({
   code: string
   lang: string
   title?: string
-  onOpenArtifact(payload: DesktopArtifactPayload): void
+  onOpenArtifact(payload: ArtifactPayload): void
 }): ReactElement {
   const [copied, setCopied] = useState(false)
   const displayLang = lang || 'Code'
@@ -284,7 +283,7 @@ function MarkdownContent({
   onOpenArtifact,
 }: {
   content: string
-  onOpenArtifact(payload: DesktopArtifactPayload): void
+  onOpenArtifact(payload: ArtifactPayload): void
 }): ReactElement {
   return (
     <ReactMarkdown
@@ -695,7 +694,7 @@ export function StreamingMessage({
   thinking: string
   thinkingDurationMs: number
   toolCalls: ToolCall[]
-  onOpenArtifact(payload: DesktopArtifactPayload): void
+  onOpenArtifact(payload: ArtifactPayload): void
 }): ReactElement {
   const message: Message = {
     id: 'streaming-message',
