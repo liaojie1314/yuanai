@@ -694,18 +694,22 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     stream.stop()
   }
 
-  const fill = useCallback((text: string): void => {
-    setInputValue(text)
-    setTimeout(() => {
-      inputRef.current?.focus()
-      const ta = inputRef.current
-      if (ta) {
-        ta.style.height = 'auto'
-        ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
-        ta.setSelectionRange(ta.value.length, ta.value.length)
-      }
-    }, 0)
-  }, [])
+  const fill = useCallback(
+    (text: string): void => {
+      if (!isLoggedIn) return
+      setInputValue(text)
+      setTimeout(() => {
+        inputRef.current?.focus()
+        const ta = inputRef.current
+        if (ta) {
+          ta.style.height = 'auto'
+          ta.style.height = Math.min(ta.scrollHeight, 200) + 'px'
+          ta.setSelectionRange(ta.value.length, ta.value.length)
+        }
+      }, 0)
+    },
+    [isLoggedIn]
+  )
 
   const toBottom = (): void => {
     virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
@@ -1296,22 +1300,42 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <h1 className="ch-e-title">{t('welcome.title')}</h1>
             <p className="ch-e-sub">{t('welcome.subtitle')}</p>
             <div className="ch-caps">
-              <button className="ch-cap" onClick={() => fill('联网搜索最新 AI 行业动态')}>
+              <button
+                className="ch-cap"
+                disabled={!isLoggedIn}
+                onClick={() => fill('联网搜索最新 AI 行业动态')}
+              >
                 <Globe size={14} /> 联网搜索
               </button>
-              <button className="ch-cap" onClick={() => fill('帮我写一段')}>
+              <button className="ch-cap" disabled={!isLoggedIn} onClick={() => fill('帮我写一段')}>
                 💻 代码生成
               </button>
-              <button className="ch-cap" onClick={() => fill('帮我分析这张图片中的内容')}>
+              <button
+                className="ch-cap"
+                disabled={!isLoggedIn}
+                onClick={() => fill('帮我分析这张图片中的内容')}
+              >
                 🎨 图片理解
               </button>
-              <button className="ch-cap" onClick={() => fill('帮我总结这份文件的要点')}>
+              <button
+                className="ch-cap"
+                disabled={!isLoggedIn}
+                onClick={() => fill('帮我总结这份文件的要点')}
+              >
                 <FileText size={14} /> 文件分析
               </button>
-              <button className="ch-cap" onClick={() => fill('解一道数学题：')}>
+              <button
+                className="ch-cap"
+                disabled={!isLoggedIn}
+                onClick={() => fill('解一道数学题：')}
+              >
                 🔢 数学推导
               </button>
-              <button className="ch-cap" onClick={() => fill('把下面内容翻译成地道英文：')}>
+              <button
+                className="ch-cap"
+                disabled={!isLoggedIn}
+                onClick={() => fill('把下面内容翻译成地道英文：')}
+              >
                 <Languages size={14} /> 多语种翻译
               </button>
             </div>
@@ -1321,6 +1345,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   key={card.title}
                   className="ch-sg-card"
                   style={{ animationDelay: `${i * 60}ms` }}
+                  disabled={!isLoggedIn}
                   onClick={() => fill(card.prompt)}
                 >
                   <div className="ch-sg-head">

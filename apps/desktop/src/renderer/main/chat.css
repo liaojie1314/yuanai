@@ -1605,11 +1605,17 @@ textarea:focus-visible {
   font-size: 12px;
 }
 
-.desktop-chat__capabilities button:hover,
-.desktop-chat__capabilities button:focus-visible {
+.desktop-chat__capabilities button:hover:not(:disabled),
+.desktop-chat__capabilities button:focus-visible:not(:disabled) {
   border-color: var(--desktop-brand);
   color: var(--desktop-brand);
   background: var(--desktop-brand-light);
+}
+
+.desktop-chat__capabilities button:disabled,
+.desktop-chat__suggestions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 .desktop-chat__capabilities svg,
@@ -1638,8 +1644,8 @@ textarea:focus-visible {
   text-align: left;
 }
 
-.desktop-chat__suggestions button:hover,
-.desktop-chat__suggestions button:focus-visible {
+.desktop-chat__suggestions button:hover:not(:disabled),
+.desktop-chat__suggestions button:focus-visible:not(:disabled) {
   border-color: var(--desktop-brand-border);
   background: var(--desktop-brand-light);
 }

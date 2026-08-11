@@ -265,6 +265,22 @@ test.describe('Chat interface', () => {
   })
 })
 
+test.describe('Guest chat interface', () => {
+  test('does not populate a prompt from welcome shortcuts', async ({ page }) => {
+    await page.goto('/chat')
+
+    const capability = page.locator('.ch-cap').filter({ hasText: '文件分析' })
+    const suggestion = page.locator('.ch-sg-card').filter({ hasText: '创意写作' })
+    const input = page.locator('.ch-input-ta')
+
+    await expect(capability).toBeDisabled()
+    await expect(suggestion).toBeDisabled()
+    await capability.click({ force: true })
+    await suggestion.click({ force: true })
+    await expect(input).toHaveValue('')
+  })
+})
+
 test.describe('Login form flow', () => {
   test('correct credentials login and redirect to /chat', async ({ page }) => {
     await loginViaForm(page)

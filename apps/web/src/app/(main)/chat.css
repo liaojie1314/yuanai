@@ -770,10 +770,16 @@
   font-family: inherit;
   white-space: nowrap;
 }
-.ch-cap:hover {
+.ch-cap:hover:not(:disabled) {
   border-color: var(--brand);
   color: var(--brand);
   background: var(--brand-light);
+}
+
+.ch-cap:disabled,
+.ch-sg-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
 }
 
 /* Suggestion cards */
@@ -795,7 +801,7 @@
   font-family: inherit;
   color: var(--fg);
 }
-.ch-sg-card:hover {
+.ch-sg-card:hover:not(:disabled) {
   border-color: var(--brand);
   background: var(--brand-light);
   transform: translateY(-1px);
@@ -1884,7 +1890,7 @@
   color: #e2e8f0;
 }
 
-[data-theme='dark'] .ch-sg-card:hover {
+[data-theme='dark'] .ch-sg-card:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 

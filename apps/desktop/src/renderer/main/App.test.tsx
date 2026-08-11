@@ -267,6 +267,25 @@ describe('desktop chat', () => {
     expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('帮我总结这份文件的要点')
   })
 
+  it('does not fill quick prompts while signed out', async () => {
+    const user = userEvent.setup()
+    auth.user = null
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    const capability = screen.getByRole('button', { name: '快捷提示：文件分析' })
+    const suggestion = screen.getByRole('button', { name: '创意写作' })
+
+    expect(capability).toBeDisabled()
+    expect(suggestion).toBeDisabled()
+
+    await user.click(capability)
+    await user.click(suggestion)
+
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('')
+  })
+
   it('creates a conversation using the selected model', async () => {
     const user = userEvent.setup()
     render(<App />)

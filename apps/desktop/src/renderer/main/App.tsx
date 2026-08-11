@@ -1088,6 +1088,17 @@ export function App(): ReactElement {
     input.style.height = `${Math.min(Math.max(input.scrollHeight, 36), 200)}px`
   }, [draft])
 
+  function handleQuickPrompt(prompt: string): void {
+    if (!isLoggedIn) return
+    setDraft(prompt)
+    window.setTimeout(() => {
+      const input = composerInputRef.current
+      if (!input) return
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    }, 0)
+  }
+
   useEffect(() => {
     if (!isAccountMenuOpen) return
     const handlePointerDown = (event: MouseEvent): void => {
@@ -1899,7 +1910,8 @@ export function App(): ReactElement {
                     key={label}
                     type="button"
                     aria-label={`快捷提示：${label}`}
-                    onClick={() => setDraft(prompt)}
+                    disabled={!isLoggedIn}
+                    onClick={() => handleQuickPrompt(prompt)}
                   >
                     <Icon size={14} aria-hidden="true" />
                     {label}
@@ -1912,7 +1924,8 @@ export function App(): ReactElement {
                     key={title}
                     type="button"
                     aria-label={title}
-                    onClick={() => setDraft(prompt)}
+                    disabled={!isLoggedIn}
+                    onClick={() => handleQuickPrompt(prompt)}
                   >
                     <Icon size={17} aria-hidden="true" />
                     <span>
