@@ -370,6 +370,21 @@ describe('desktop chat', () => {
     expect(window.yuanai.window.openLogin).toHaveBeenCalledOnce()
   })
 
+  it('disables message sending controls until the user signs in', () => {
+    auth.user = null
+    render(<App />)
+
+    expect(screen.getByRole('button', { name: '新建会话' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toBeDisabled()
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveAttribute(
+      'placeholder',
+      '请先登录，开始与 AI 对话'
+    )
+    expect(screen.getByRole('button', { name: '添加附件' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '联网搜索' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '发送消息' })).toBeDisabled()
+  })
+
   it('provides the Web-aligned quick theme and login actions for unauthenticated users', async () => {
     const user = userEvent.setup()
     auth.user = null

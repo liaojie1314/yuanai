@@ -740,6 +740,7 @@ export function App(): ReactElement {
   const modelsQuery = useModels()
   const stream = useStream()
   const user = useAuthStore((state) => state.user)
+  const isLoggedIn = user !== null
   const setTheme = usePrefsStore((state) => state.setTheme)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isTemporaryConversation, setIsTemporaryConversation] = useState(false)
@@ -860,7 +861,7 @@ export function App(): ReactElement {
   })
 
   async function handleCreateConversation(): Promise<void> {
-    if (createConversation.isPending || isStreaming) return
+    if (!isLoggedIn || createConversation.isPending || isStreaming) return
     if (isTemporaryConversation) {
       setTemporaryMessages([])
       setDraft('')
@@ -1058,7 +1059,7 @@ export function App(): ReactElement {
   async function handleSendMessage(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault()
     const content = draft.trim()
-    if (!content || isStreaming || isUploadingAttachments) return
+    if (!isLoggedIn || !content || isStreaming || isUploadingAttachments) return
     setActionError('')
     if (isTemporaryConversation) {
       const history = temporaryMessages.map((message) => ({
@@ -1166,7 +1167,7 @@ export function App(): ReactElement {
               type="button"
               aria-label="新建会话"
               title="新建会话"
-              disabled={createConversation.isPending || isStreaming}
+              disabled={!isLoggedIn || createConversation.isPending || isStreaming}
               onClick={() => void handleCreateConversation()}
             >
               {createConversation.isPending ? (
@@ -1501,8 +1502,8 @@ export function App(): ReactElement {
             aria-label="输入消息"
             rows={1}
             value={draft}
-            placeholder="发送消息"
-            disabled={isStreaming || isUploadingAttachments}
+            placeholder={isLoggedIn ? '发送消息' : '请先登录，开始与 AI 对话'}
+            disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -1527,7 +1528,9 @@ export function App(): ReactElement {
                 type="button"
                 aria-label="添加附件"
                 title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
-                disabled={isTemporaryConversation || isStreaming || isUploadingAttachments}
+                disabled={
+                  !isLoggedIn || isTemporaryConversation || isStreaming || isUploadingAttachments
+                }
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip size={18} aria-hidden="true" />
@@ -1541,7 +1544,7 @@ export function App(): ReactElement {
                 aria-label="联网搜索"
                 title="联网搜索"
                 aria-pressed={isWebSearchEnabled}
-                disabled={isStreaming || isUploadingAttachments}
+                disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
                 onClick={() => setIsWebSearchEnabled((value) => !value)}
               >
                 <Globe2 size={18} aria-hidden="true" />
@@ -1552,7 +1555,7 @@ export function App(): ReactElement {
                 aria-label={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
                 title={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
                 aria-pressed={isThinkingEnabled}
-                disabled={isStreaming || isUploadingAttachments}
+                disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
                 onClick={() => setIsThinkingEnabled((value) => !value)}
               >
                 <Brain size={18} aria-hidden="true" />
@@ -1587,7 +1590,7 @@ export function App(): ReactElement {
                   type="submit"
                   aria-label="发送消息"
                   title="发送消息"
-                  disabled={!draft.trim() || isUploadingAttachments}
+                  disabled={!isLoggedIn || !draft.trim() || isUploadingAttachments}
                 >
                   {isUploadingAttachments ? (
                     <LoaderCircle className="desktop-chat__spin" size={17} />
