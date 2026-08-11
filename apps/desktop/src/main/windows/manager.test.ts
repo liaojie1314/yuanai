@@ -79,6 +79,18 @@ describe('WindowManager', () => {
     )
   })
 
+  it('loads renderer entries from a development server without a duplicate path separator', () => {
+    const mainWindow = createFakeWindow(1)
+    const manager = new WindowManager({
+      createWindow: () => mainWindow,
+      rendererUrl: 'http://127.0.0.1:5175/',
+    })
+
+    manager.open('main')
+
+    expect(mainWindow.loadURL).toHaveBeenCalledWith('http://127.0.0.1:5175/main/index.html')
+  })
+
   it('queues messages until the target renderer has finished loading', () => {
     const mainWindow = createFakeWindow(1)
     let readyListener: (() => void) | undefined

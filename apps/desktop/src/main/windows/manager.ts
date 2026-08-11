@@ -60,7 +60,7 @@ function rendererEntryUrl(
   rendererUrl: string | undefined
 ): string {
   const baseUrl = rendererUrl
-    ? new URL(`${entry}/index.html`, `${rendererUrl}/`).toString()
+    ? new URL(`${entry}/index.html`, rendererUrl).toString()
     : `yuanai-app://renderer/${entry}/index.html`
   return hash ? `${baseUrl}#${hash}` : baseUrl
 }
