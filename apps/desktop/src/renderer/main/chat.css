@@ -188,6 +188,12 @@ textarea:focus-visible {
   background: var(--desktop-brand-light);
 }
 
+.desktop-chat__quick-actions button.is-active {
+  border-color: var(--desktop-brand-border);
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
+}
+
 .desktop-chat__quick-actions button:disabled,
 .desktop-chat__header-action:disabled {
   cursor: not-allowed;
@@ -729,6 +735,34 @@ textarea:focus-visible {
   color: #b91c1c;
   background: #fef2f2;
   font-size: 13px;
+}
+
+.desktop-chat__temporary-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 24px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--desktop-brand-border);
+  border-radius: 6px;
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
+  font-size: 12.5px;
+}
+
+.desktop-chat__temporary-banner button {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.desktop-chat__temporary-banner button:hover,
+.desktop-chat__temporary-banner button:focus-visible {
+  text-decoration: underline;
 }
 
 .desktop-chat__dialog-backdrop {

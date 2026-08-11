@@ -44,6 +44,7 @@ const chat = vi.hoisted(() => ({
     },
   ],
   send: vi.fn(),
+  sendTemporary: vi.fn(),
   shareLink: null as {
     shareToken: string
     titleSnapshot: string
@@ -86,7 +87,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
   useCreateShareLink: () => ({ isPending: false, mutateAsync: chat.createShareLink }),
   useRevokeShareLink: () => ({ isPending: false, mutateAsync: chat.revokeShareLink }),
-  useStream: () => ({ send: chat.send, stop: chat.stop }),
+  useStream: () => ({ send: chat.send, sendTemporary: chat.sendTemporary, stop: chat.stop }),
   useUpdateConversation: () => ({ isPending: false, mutateAsync: chat.updateConversation }),
   uploadFileSmart: chat.uploadFileSmart,
 }))
@@ -169,6 +170,7 @@ beforeEach(() => {
   chat.streamState.streamingContent = ''
   chat.streamState.streamingThink = ''
   chat.streamState.optimisticUserMsg = null
+  chat.sendTemporary.mockResolvedValue(undefined)
   chat.uploadFileSmart.mockResolvedValue({ id: 'file-1' })
 })
 
@@ -179,6 +181,15 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
+  it('shows the welcome state instead of a false streaming response when no conversation is active', () => {
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    expect(screen.getByRole('heading', { name: '你好，我是元AI' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument()
+  })
+
   it('creates a conversation using the selected model', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -252,6 +263,28 @@ describe('desktop chat', () => {
 
     expect(screen.getByRole('dialog', { name: '分享此对话' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '生成分享链接' })).toBeInTheDocument()
+  })
+
+  it('uses the temporary stream without creating a persisted conversation', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '开启临时对话' }))
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '这条消息不应保存')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await waitFor(() => {
+      expect(chat.sendTemporary).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '这条消息不应保存',
+          history: [],
+          model: 'gpt-4o',
+        })
+      )
+    })
+    expect(chat.createConversation).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: '添加附件' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '分享对话' })).toBeDisabled()
   })
 
   it('exposes a stop action for the active streaming conversation', async () => {

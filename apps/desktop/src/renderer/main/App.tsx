@@ -8,6 +8,7 @@ import {
   Code2,
   Copy,
   FileText,
+  Ghost,
   Globe2,
   Image,
   Languages,
@@ -53,6 +54,7 @@ import {
   useShareLink,
   useStream,
   useUpdateConversation,
+  TEMPORARY_CONV_ID,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
@@ -719,6 +721,8 @@ export function App(): ReactElement {
   const user = useAuthStore((state) => state.user)
   const setTheme = usePrefsStore((state) => state.setTheme)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [isTemporaryConversation, setIsTemporaryConversation] = useState(false)
+  const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(true)
@@ -752,14 +756,17 @@ export function App(): ReactElement {
     availableModels.find((model) => model.id === selectedModelId) ??
     availableModels.find((model) => model.isDefault) ??
     FALLBACK_MODEL
-  const messagesQuery = useMessages(activeConversationId ?? '')
-  const messages = messagesQuery.data ?? EMPTY_MESSAGES
+  const messagesQuery = useMessages(isTemporaryConversation ? '' : (activeConversationId ?? ''))
+  const messages = isTemporaryConversation
+    ? temporaryMessages
+    : (messagesQuery.data ?? EMPTY_MESSAGES)
   const streamingConversationId = useChatStore((state) => state.streamingConvId)
   const streamingContent = useChatStore((state) => state.streamingContent)
   const streamingThinking = useChatStore((state) => state.streamingThink)
   const optimisticUserMessage = useChatStore((state) => state.optimisticUserMsg)
   const isStreaming =
-    activeConversationId !== null && streamingConversationId === activeConversationId
+    streamingConversationId !== null &&
+    streamingConversationId === (isTemporaryConversation ? TEMPORARY_CONV_ID : activeConversationId)
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? null
   const visibleConversations = useMemo(() => {
@@ -778,6 +785,7 @@ export function App(): ReactElement {
   const userEmail = user?.email ?? ''
 
   useEffect(() => {
+    if (isTemporaryConversation) return
     if (
       activeConversationId &&
       conversations.some((conversation) => conversation.id === activeConversationId)
@@ -785,7 +793,7 @@ export function App(): ReactElement {
       return
     }
     setActiveConversationId(conversations[0]?.id ?? null)
-  }, [activeConversationId, conversations])
+  }, [activeConversationId, conversations, isTemporaryConversation])
 
   useEffect(() => {
     if (availableModels.some((model) => model.id === selectedModelId)) return
@@ -830,7 +838,12 @@ export function App(): ReactElement {
   })
 
   async function handleCreateConversation(): Promise<void> {
-    if (createConversation.isPending) return
+    if (createConversation.isPending || isStreaming) return
+    if (isTemporaryConversation) {
+      setTemporaryMessages([])
+      setDraft('')
+      return
+    }
     setActionError('')
     try {
       const conversation = await createConversation.mutateAsync({
@@ -842,6 +855,17 @@ export function App(): ReactElement {
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法创建会话，请稍后重试'))
     }
+  }
+
+  /** 切换临时会话；临时消息仅在当前 renderer 的内存中存活。 */
+  function handleToggleTemporaryConversation(): void {
+    if (isStreaming) return
+    setIsTemporaryConversation((value) => !value)
+    setTemporaryMessages([])
+    setAttachments([])
+    setDraft('')
+    setActionError('')
+    setShareDialog(null)
   }
 
   async function handleOpenSettings(): Promise<void> {
@@ -886,6 +910,10 @@ export function App(): ReactElement {
     if (isStreaming) return
     const conversation = conversations.find((item) => item.id === conversationId)
     setActionError('')
+    if (isTemporaryConversation) {
+      setIsTemporaryConversation(false)
+      setTemporaryMessages([])
+    }
     setActiveConversationId(conversationId)
     if (conversation && availableModels.some((model) => model.id === conversation.model)) {
       setSelectedModelId(conversation.model)
@@ -898,6 +926,7 @@ export function App(): ReactElement {
   }
 
   function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
+    if (isTemporaryConversation) return
     const files = Array.from(event.target.files ?? [])
     if (files.length === 0) return
     setAttachments((items) => [
@@ -1009,6 +1038,50 @@ export function App(): ReactElement {
     const content = draft.trim()
     if (!content || isStreaming || isUploadingAttachments) return
     setActionError('')
+    if (isTemporaryConversation) {
+      const history = temporaryMessages.map((message) => ({
+        role: message.role === Role.User ? ('user' as const) : ('assistant' as const),
+        content: message.content,
+      }))
+      const createdAt = new Date().toISOString()
+      setTemporaryMessages((items) => [
+        ...items,
+        {
+          id: `temporary-user-${Date.now()}`,
+          role: Role.User,
+          content,
+          files: [],
+          createdAt,
+        },
+      ])
+      setDraft('')
+      try {
+        await stream.sendTemporary({
+          content,
+          history,
+          model: selectedModel.id,
+          enableThinking: isThinkingEnabled,
+          onEnd: ({ content: response, think }) => {
+            if (!response && !think) return
+            setTemporaryMessages((items) => [
+              ...items,
+              {
+                id: `temporary-assistant-${Date.now()}`,
+                role: Role.Assistant,
+                content: response,
+                ...(think ? { thinkingContent: think } : {}),
+                files: [],
+                createdAt: new Date().toISOString(),
+              },
+            ])
+          },
+          onError: (error) => setActionError(getErrorMessage(error, '临时消息发送失败，请重试')),
+        })
+      } catch (error: unknown) {
+        setActionError(getErrorMessage(error, '临时消息发送失败，请重试'))
+      }
+      return
+    }
     let conversationId = activeConversationId
     try {
       if (!conversationId) {
@@ -1052,8 +1125,20 @@ export function App(): ReactElement {
             <strong>元AI</strong>
           </div>
           <div className="desktop-chat__quick-actions" aria-label="新建操作">
-            <button type="button" aria-label="开启临时对话" title="开启临时对话" disabled>
-              <MessageSquareText size={16} aria-hidden="true" />
+            <button
+              className={isTemporaryConversation ? 'is-active' : undefined}
+              type="button"
+              aria-label={isTemporaryConversation ? '退出临时对话' : '开启临时对话'}
+              title={isTemporaryConversation ? '退出临时对话' : '开启临时对话'}
+              aria-pressed={isTemporaryConversation}
+              disabled={isStreaming}
+              onClick={handleToggleTemporaryConversation}
+            >
+              {isTemporaryConversation ? (
+                <Ghost size={16} aria-hidden="true" />
+              ) : (
+                <MessageSquareText size={16} aria-hidden="true" />
+              )}
             </button>
             <button
               type="button"
@@ -1186,7 +1271,11 @@ export function App(): ReactElement {
         <header className="desktop-chat__header">
           <div className="desktop-chat__header-side">
             <h1 className="desktop-chat__sr-only">
-              {activeConversation ? getConversationTitle(activeConversation) : '开始新对话'}
+              {isTemporaryConversation
+                ? '临时对话'
+                : activeConversation
+                  ? getConversationTitle(activeConversation)
+                  : '开始新对话'}
             </h1>
             <button
               className="desktop-chat__header-action"
@@ -1222,7 +1311,7 @@ export function App(): ReactElement {
               type="button"
               aria-label="分享对话"
               title="分享对话"
-              disabled={!activeConversation}
+              disabled={!activeConversation || isTemporaryConversation}
               onClick={() => void handleOpenShareDialog()}
             >
               <Share2 size={17} aria-hidden="true" />
@@ -1276,8 +1365,18 @@ export function App(): ReactElement {
           </p>
         ) : null}
 
+        {isTemporaryConversation ? (
+          <div className="desktop-chat__temporary-banner" role="status">
+            <Ghost size={15} aria-hidden="true" />
+            <span>临时对话不会保存到历史记录。</span>
+            <button type="button" onClick={handleToggleTemporaryConversation}>
+              退出
+            </button>
+          </div>
+        ) : null}
+
         <div className="desktop-chat__messages" aria-busy={messagesQuery.isLoading}>
-          {messagesQuery.isLoading && activeConversationId ? (
+          {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
             <div className="desktop-chat__messages-loading">
               <LoaderCircle className="desktop-chat__spin" size={22} />
             </div>
@@ -1286,7 +1385,7 @@ export function App(): ReactElement {
               {messages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}
-              {isStreaming && optimisticUserMessage ? (
+              {isStreaming && optimisticUserMessage && !isTemporaryConversation ? (
                 <article className="desktop-chat__message desktop-chat__message--user">
                   <div className="desktop-chat__message-avatar" aria-hidden="true">
                     我
@@ -1388,14 +1487,15 @@ export function App(): ReactElement {
                 data-testid="attachment-input"
                 type="file"
                 multiple
+                disabled={isTemporaryConversation}
                 onChange={handleAttachmentChange}
               />
               <button
                 className={attachments.length > 0 ? 'is-active' : undefined}
                 type="button"
                 aria-label="添加附件"
-                title="添加附件"
-                disabled={isStreaming || isUploadingAttachments}
+                title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
+                disabled={isTemporaryConversation || isStreaming || isUploadingAttachments}
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip size={18} aria-hidden="true" />
