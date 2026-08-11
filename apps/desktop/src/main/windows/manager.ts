@@ -65,11 +65,12 @@ function rendererEntryUrl(
   return hash ? `${baseUrl}#${hash}` : baseUrl
 }
 
-/** 管理命名窗口、Artifact 多实例和 renderer 就绪前的消息投递。 */
+/** 管理命名窗口、唯一 Artifact 窗口和 renderer 就绪前的消息投递。 */
 export class WindowManager {
   private readonly namedWindows = new Map<ManagedWindowKey, ManagedWindow>()
   private readonly readyWindowIds = new Set<number>()
   private readonly pendingMessages = new Map<number, Array<{ channel: string; payload: unknown }>>()
+  private artifactWindow: ManagedWindow | undefined
 
   /** 使用已校验的窗口工厂和 renderer 地址创建管理器。 */
   public constructor(private readonly options: WindowManagerOptions) {}
@@ -89,9 +90,19 @@ export class WindowManager {
     return window
   }
 
-  /** 创建彼此隔离的 Artifact 窗口实例。 */
+  /** 打开唯一 Artifact 窗口，并将最新内容送入该窗口的源码或预览视图。 */
   public openArtifact(payload: DesktopArtifactPayload): ManagedWindow {
+    const existing = this.artifactWindow
+    if (existing && !existing.isDestroyed()) {
+      existing.restore()
+      existing.show()
+      existing.focus()
+      this.sendToWindowWhenReady(existing, IPC.events.artifactInit, payload)
+      return existing
+    }
+
     const window = this.create('artifact', { entry: 'artifact' })
+    this.artifactWindow = window
     this.sendToWindowWhenReady(window, IPC.events.artifactInit, payload)
     return window
   }
@@ -145,6 +156,7 @@ export class WindowManager {
   private clearWindow(window: ManagedWindow): void {
     this.readyWindowIds.delete(window.id)
     this.pendingMessages.delete(window.id)
+    if (this.artifactWindow === window) this.artifactWindow = undefined
     for (const [key, currentWindow] of Array.from(this.namedWindows.entries())) {
       if (currentWindow === window) this.namedWindows.delete(key)
     }

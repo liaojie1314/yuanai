@@ -43,15 +43,15 @@ function createFakeWindow(id: number): FakeWindow {
 }
 
 describe('WindowManager', () => {
-  it('reuses named windows but creates isolated artifact instances', () => {
-    const windows = [createFakeWindow(1), createFakeWindow(2), createFakeWindow(3)]
+  it('reuses named windows and keeps source and preview in one Artifact window', () => {
+    const windows = [createFakeWindow(1), createFakeWindow(2)]
     const manager = new WindowManager({
       createWindow: vi.fn(() => windows.shift() ?? createFakeWindow(4)),
       rendererUrl: undefined,
     })
 
     expect(manager.open('settings')).toBe(manager.open('settings'))
-    expect(manager.openArtifact(ARTIFACT_PAYLOAD)).not.toBe(manager.openArtifact(ARTIFACT_PAYLOAD))
+    expect(manager.openArtifact(ARTIFACT_PAYLOAD)).toBe(manager.openArtifact(ARTIFACT_PAYLOAD))
   })
 
   it('loads login and registration in isolated windows with their own routes', () => {
@@ -110,7 +110,7 @@ describe('WindowManager', () => {
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('event:deep-link', { type: 'chat' })
   })
 
-  it('delivers Artifact content only after its isolated window has loaded', () => {
+  it('delivers the latest Artifact modes through one window after it has loaded', () => {
     const artifactWindow = createFakeWindow(1)
     let readyListener: (() => void) | undefined
     artifactWindow.webContents.once = (event, listener) => {
@@ -121,13 +121,21 @@ describe('WindowManager', () => {
       rendererUrl: undefined,
     })
 
+    const viewPayload = { ...ARTIFACT_PAYLOAD, mode: 'view' as const }
     manager.openArtifact(ARTIFACT_PAYLOAD)
+    manager.openArtifact(viewPayload)
     expect(artifactWindow.webContents.send).not.toHaveBeenCalled()
 
     readyListener?.()
-    expect(artifactWindow.webContents.send).toHaveBeenCalledWith(
+    expect(artifactWindow.webContents.send).toHaveBeenNthCalledWith(
+      1,
       'event:artifact-init',
       ARTIFACT_PAYLOAD
+    )
+    expect(artifactWindow.webContents.send).toHaveBeenNthCalledWith(
+      2,
+      'event:artifact-init',
+      viewPayload
     )
   })
 

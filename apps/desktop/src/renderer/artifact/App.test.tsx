@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
@@ -46,18 +47,26 @@ describe('Artifact window', () => {
     expect(screen.getByText('代码查看')).toBeInTheDocument()
   })
 
-  it('runs previewable code only in a script-only iframe sandbox', () => {
+  it('switches previewable code between source and sandboxed preview in the same window', async () => {
+    const user = userEvent.setup()
     artifact.payload = {
       title: 'HTML 预览',
       lang: 'html',
       code: '<h1>元AI</h1>',
-      mode: 'run',
+      mode: 'view',
     }
 
     render(<App />)
 
+    await user.click(screen.getByRole('button', { name: '运行预览' }))
+
     const preview = screen.getByTitle('HTML 预览 预览')
-    expect(preview).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(preview).toHaveAttribute('sandbox', 'allow-scripts allow-forms')
     expect(preview).toHaveAttribute('srcdoc', expect.stringContaining('<h1>元AI</h1>'))
+    expect(screen.getByRole('button', { name: '查看源码' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '查看源码' }))
+
+    expect(screen.getByText('<h1>元AI</h1>')).toBeInTheDocument()
   })
 })
