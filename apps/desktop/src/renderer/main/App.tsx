@@ -71,7 +71,19 @@ const FALLBACK_MODEL: AIModel = {
   isDefault: true,
 }
 
-const DEFAULT_MODELS: AIModel[] = [FALLBACK_MODEL]
+const DEFAULT_MODELS: AIModel[] = [
+  FALLBACK_MODEL,
+  {
+    id: 'deepseek-v4-pro',
+    name: 'DeepSeek V4 Pro',
+    provider: 'deepseek',
+    description: '中文理解强，旗舰推理',
+    supportsVision: true,
+    supportsFiles: true,
+    contextLength: 128000,
+    isDefault: false,
+  },
+]
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const SHARE_EXPIRY_OPTIONS = [

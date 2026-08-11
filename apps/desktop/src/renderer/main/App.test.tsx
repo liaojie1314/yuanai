@@ -203,11 +203,17 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
-  it('uses the Web default model until the authenticated model list is available', () => {
+  it('uses both Web fallback models until the authenticated model list is available', async () => {
+    const user = userEvent.setup()
     chat.models = []
     render(<App />)
 
     expect(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash' }))
+
+    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Flash' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Pro' })).toBeInTheDocument()
   })
 
   it('shows the welcome state instead of a false streaming response when no conversation is active', () => {
