@@ -279,6 +279,24 @@ describe('desktop chat', () => {
     })
   })
 
+  it('renders user messages as a right-aligned Web-style bubble', () => {
+    chat.messages = [
+      {
+        id: 'message-user-1',
+        role: 'user',
+        content: '请将这条消息显示在右侧气泡中。',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    const message = screen.getByText('请将这条消息显示在右侧气泡中。')
+    expect(message.closest('article')).toHaveClass('desktop-chat__message--user')
+    expect(message.parentElement).toHaveClass('desktop-chat__message-bubble')
+    expect(message.closest('article')).not.toHaveTextContent('元')
+  })
+
   it('uses the selected conversation model for the next message', async () => {
     const user = userEvent.setup()
     chat.conversations.push({

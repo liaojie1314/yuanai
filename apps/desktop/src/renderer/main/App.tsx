@@ -242,9 +242,11 @@ function MessageBubble({ message }: { message: Message }): ReactElement {
         isUser ? 'desktop-chat__message desktop-chat__message--user' : 'desktop-chat__message'
       }
     >
-      <div className="desktop-chat__message-avatar" aria-hidden="true">
-        {isUser ? '我' : <Bot size={17} />}
-      </div>
+      {!isUser ? (
+        <div className="desktop-chat__message-avatar" aria-hidden="true">
+          元
+        </div>
+      ) : null}
       <div className="desktop-chat__message-body">
         {message.thinkingContent ? (
           <details className="desktop-chat__thinking">
@@ -252,7 +254,13 @@ function MessageBubble({ message }: { message: Message }): ReactElement {
             <p>{message.thinkingContent}</p>
           </details>
         ) : null}
-        <div className="desktop-chat__markdown">
+        <div
+          className={
+            isUser
+              ? 'desktop-chat__markdown desktop-chat__message-bubble'
+              : 'desktop-chat__markdown'
+          }
+        >
           <MarkdownContent content={message.content} />
         </div>
         {message.files.length > 0 ? (
@@ -1640,11 +1648,8 @@ export function App(): ReactElement {
               ))}
               {isStreaming && optimisticUserMessage && !isTemporaryConversation ? (
                 <article className="desktop-chat__message desktop-chat__message--user">
-                  <div className="desktop-chat__message-avatar" aria-hidden="true">
-                    我
-                  </div>
                   <div className="desktop-chat__message-body">
-                    <div className="desktop-chat__markdown">
+                    <div className="desktop-chat__markdown desktop-chat__message-bubble">
                       <p>{optimisticUserMessage}</p>
                     </div>
                   </div>
