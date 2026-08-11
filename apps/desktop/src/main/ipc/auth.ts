@@ -43,6 +43,25 @@ function broadcastAuthChanged(registry: TrustedWebContentsRegistry, hasSession: 
   registry.forEach((webContents) => webContents.send(IPC.events.authChanged, hasSession))
 }
 
+/** 判断 Zustand 持久化的认证载荷是否仍包含可用 access token。 */
+function hasPersistedSession(value: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (typeof parsed !== 'object' || parsed === null || !('state' in parsed)) return false
+
+    const state = parsed.state
+    return (
+      typeof state === 'object' &&
+      state !== null &&
+      'accessToken' in state &&
+      typeof state.accessToken === 'string' &&
+      state.accessToken.length > 0
+    )
+  } catch {
+    return false
+  }
+}
+
 /** 注册受 sender 校验保护的认证状态 IPC 处理器。 */
 export function registerAuthIpcHandlers(options: AuthIpcOptions): void {
   options.ipcMain.handle(IPC.auth.get, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
@@ -53,9 +72,14 @@ export function registerAuthIpcHandlers(options: AuthIpcOptions): void {
   options.ipcMain.handle(IPC.auth.set, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     options.guard.assertTrusted(event)
     const value = readBoundedIpcString(args)
-    await options.authStorage.setItem(AUTH_STORAGE_KEY, value)
-    broadcastAuthChanged(options.trustedWebContents, true)
-    options.onSessionChanged(true)
+    const hasSession = hasPersistedSession(value)
+    if (hasSession) {
+      await options.authStorage.setItem(AUTH_STORAGE_KEY, value)
+    } else {
+      await options.authStorage.removeItem(AUTH_STORAGE_KEY)
+    }
+    broadcastAuthChanged(options.trustedWebContents, hasSession)
+    options.onSessionChanged(hasSession)
   })
   options.ipcMain.handle(IPC.auth.remove, async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
     options.guard.assertTrusted(event)

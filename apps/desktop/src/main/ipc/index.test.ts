@@ -130,6 +130,16 @@ function getHandler(handlers: Map<string, InvokeHandler>, channel: string): Invo
   return handler
 }
 
+const AUTHENTICATED_SESSION = JSON.stringify({
+  state: { accessToken: 'secret', refreshToken: 'refresh-secret', user: { id: 'user-1' } },
+  version: 0,
+})
+
+const CLEARED_SESSION = JSON.stringify({
+  state: { accessToken: null, refreshToken: null, user: null },
+  version: 0,
+})
+
 describe('secure IPC handlers', () => {
   it('registers fixed auth, preference, runtime, system, and window channels', () => {
     const { handlers } = setupTestIpc()
@@ -156,27 +166,32 @@ describe('secure IPC handlers', () => {
     )
   })
 
-  it('persists authenticated state and broadcasts only its presence', async () => {
+  it('persists authenticated state and removes cleared state without broadcasting tokens', async () => {
     const { handlers, sender, authStorage, onSessionChanged } = setupTestIpc()
     const event = createEvent(sender)
 
     await expect(getHandler(handlers, IPC.auth.get)(event)).resolves.toBe('encrypted-session')
     await expect(
-      getHandler(handlers, IPC.auth.set)(event, '{"accessToken":"secret"}')
+      getHandler(handlers, IPC.auth.set)(event, AUTHENTICATED_SESSION)
+    ).resolves.toBeUndefined()
+    await expect(
+      getHandler(handlers, IPC.auth.set)(event, CLEARED_SESSION)
     ).resolves.toBeUndefined()
     await expect(getHandler(handlers, IPC.auth.remove)(event)).resolves.toBeUndefined()
 
     expect(authStorage.getItem).toHaveBeenCalledWith('yuanai-auth')
-    expect(authStorage.setItem).toHaveBeenCalledWith('yuanai-auth', '{"accessToken":"secret"}')
-    expect(authStorage.removeItem).toHaveBeenCalledWith('yuanai-auth')
+    expect(authStorage.setItem).toHaveBeenCalledWith('yuanai-auth', AUTHENTICATED_SESSION)
+    expect(authStorage.removeItem).toHaveBeenCalledTimes(2)
     expect(sender.send).toHaveBeenNthCalledWith(1, IPC.events.authChanged, true)
     expect(sender.send).toHaveBeenNthCalledWith(2, IPC.events.authChanged, false)
+    expect(sender.send).toHaveBeenNthCalledWith(3, IPC.events.authChanged, false)
     expect(sender.send).not.toHaveBeenCalledWith(
       IPC.events.authChanged,
       expect.stringContaining('secret')
     )
     expect(onSessionChanged).toHaveBeenNthCalledWith(1, true)
     expect(onSessionChanged).toHaveBeenNthCalledWith(2, false)
+    expect(onSessionChanged).toHaveBeenNthCalledWith(3, false)
   })
 
   it('rejects malformed and oversized auth requests before reaching encrypted storage', async () => {
@@ -197,7 +212,7 @@ describe('secure IPC handlers', () => {
     authStorage.setItem.mockRejectedValueOnce(new Error('SAFE_STORAGE_UNAVAILABLE'))
 
     await expect(
-      getHandler(handlers, IPC.auth.set)(createEvent(sender), '{"accessToken":"secret"}')
+      getHandler(handlers, IPC.auth.set)(createEvent(sender), AUTHENTICATED_SESSION)
     ).rejects.toThrow('SAFE_STORAGE_UNAVAILABLE')
 
     expect(onSessionChanged).not.toHaveBeenCalled()

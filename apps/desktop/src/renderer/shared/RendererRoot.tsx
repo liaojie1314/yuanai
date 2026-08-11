@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
+
+import { synchronizeDesktopAuthState } from './auth-client'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -7,5 +9,12 @@ const queryClient = new QueryClient({
 
 /** 为每个 Electron renderer 提供共享的服务端状态缓存。 */
 export function RendererRoot({ children }: { children: ReactNode }): ReactNode {
+  useEffect(() => {
+    return window.yuanai.events.onAuthChanged((hasSession) => {
+      if (!hasSession) return
+      void synchronizeDesktopAuthState()
+    })
+  }, [])
+
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }

@@ -14,12 +14,16 @@ const auth = vi.hoisted(() => ({
   setAccessToken: vi.fn(),
 }))
 
-vi.mock('@yuanai/core/api', () => api)
-vi.mock('@yuanai/core/stores', () => ({
-  useAuthStore: { getState: () => auth },
+const persist = vi.hoisted(() => ({
+  rehydrate: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }))
 
-import { configureDesktopAuthClient } from './auth-client'
+vi.mock('@yuanai/core/api', () => api)
+vi.mock('@yuanai/core/stores', () => ({
+  useAuthStore: { getState: () => auth, persist },
+}))
+
+import { configureDesktopAuthClient, synchronizeDesktopAuthState } from './auth-client'
 
 beforeEach(() => {
   auth.accessToken = 'desktop-access-token'
@@ -49,5 +53,13 @@ describe('configureDesktopAuthClient', () => {
 
     expect(auth.setAccessToken).toHaveBeenCalledWith('refreshed-access-token')
     expect(auth.clearAuth).toHaveBeenCalledOnce()
+  })
+})
+
+describe('synchronizeDesktopAuthState', () => {
+  it('rehydrates the current renderer from Electron safe storage', async () => {
+    await synchronizeDesktopAuthState()
+
+    expect(persist.rehydrate).toHaveBeenCalledOnce()
   })
 })

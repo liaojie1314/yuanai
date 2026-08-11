@@ -18,3 +18,8 @@ export function configureDesktopAuthClient(): void {
   setOnTokenRefreshed((accessToken) => useAuthStore.getState().setAccessToken(accessToken))
   setOnAuthFailure(() => useAuthStore.getState().clearAuth())
 }
+
+/** 重新读取主进程已加密保存的认证状态，以同步其他登录窗口的结果。 */
+export async function synchronizeDesktopAuthState(): Promise<void> {
+  await useAuthStore.persist.rehydrate()
+}
