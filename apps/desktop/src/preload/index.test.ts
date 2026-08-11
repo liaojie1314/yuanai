@@ -32,12 +32,13 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenCalledWith(IPC.runtime.getConfig)
   })
 
-  it('uses only the fixed auth and preference channels', async () => {
+  it('uses only fixed preload IPC channels', async () => {
     await api.auth.get()
     await api.auth.set('session')
     await api.auth.remove()
     await api.prefs.get()
     await api.prefs.update({ closeToTray: false })
+    await api.clipboard.writeText('元AI')
     await api.dialog.openFiles()
     await api.dialog.listScreenSources()
     await api.window.openLogin()
@@ -57,28 +58,29 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(3, IPC.auth.remove)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(4, IPC.prefs.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(5, IPC.prefs.update, { closeToTray: false })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.dialog.openFiles)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.dialog.listScreenSources)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.window.openLogin)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.window.openRegister)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openForgot)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.window.openSettings)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openAbout)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openArtifact, {
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.clipboard.writeText, '元AI')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.dialog.openFiles)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.dialog.listScreenSources)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.window.openLogin)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openRegister)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.window.openForgot)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openSettings)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openAbout)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.window.openArtifact, {
       title: '代码',
       lang: 'html',
       code: '<p>元AI</p>',
       mode: 'run',
     })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.system.getInfo)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
-      15,
+      16,
       IPC.system.setGlobalShortcut,
       'CommandOrControl+Alt+Y'
     )
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(19, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

@@ -254,6 +254,71 @@ class TestStream:
         assert "user" in roles
         assert "assistant" in roles
 
+    async def test_edit_stream_reuses_user_message_and_replaces_old_answer(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """编辑问题时复用原用户消息，并清除其后基于旧问题生成的回答。"""
+        import asyncio
+
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+
+        async def mock_stream(
+            _model: str, messages: list[dict[str, str]], **_kwargs: object
+        ):  # type: ignore[misc]
+            yield ("content", f"{messages[-1]['content']} 的回答")
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_id,
+                    "model": "gpt-4o",
+                    "message": {"content": "旧问题", "file_ids": []},
+                },
+                headers=auth_headers,
+            ) as response:
+                async for _ in response.aiter_lines():
+                    pass
+
+            initial_messages = (
+                await client.get(
+                    f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
+                )
+            ).json()["messages"]
+            user_message_id = initial_messages[0]["id"]
+
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_id,
+                    "model": "gpt-4o",
+                    "message": {"content": "新问题", "file_ids": []},
+                    "replace_message_id": user_message_id,
+                },
+                headers=auth_headers,
+            ) as response:
+                async for _ in response.aiter_lines():
+                    pass
+
+        await asyncio.sleep(0.1)
+        messages = (
+            await client.get(
+                f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
+            )
+        ).json()["messages"]
+        assert len(messages) == 2
+        assert messages[0]["id"] == user_message_id
+        assert messages[0]["content"] == "新问题"
+        assert messages[1]["role"] == "assistant"
+        assert messages[1]["content"] == "新问题 的回答"
+
     async def test_stream_message_order_user_before_assistant(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:

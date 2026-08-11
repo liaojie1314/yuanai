@@ -32,6 +32,9 @@ export interface YuanaiApi {
     openFiles: () => Promise<DesktopSelectedFile[]>
     listScreenSources: () => Promise<DesktopScreenSource[]>
   }
+  clipboard: {
+    writeText: (value: string) => Promise<void>
+  }
   window: {
     openLogin: () => Promise<void>
     openRegister: () => Promise<void>
@@ -96,6 +99,9 @@ export const api: YuanaiApi = {
   dialog: {
     openFiles: () => ipcRenderer.invoke(IPC.dialog.openFiles),
     listScreenSources: () => ipcRenderer.invoke(IPC.dialog.listScreenSources),
+  },
+  clipboard: {
+    writeText: (value) => ipcRenderer.invoke(IPC.clipboard.writeText, value),
   },
   window: {
     openLogin: () => ipcRenderer.invoke(IPC.window.openLogin),

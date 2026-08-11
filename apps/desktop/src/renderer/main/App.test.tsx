@@ -86,10 +86,15 @@ const auth = vi.hoisted(() => ({
 }))
 
 const prefs = vi.hoisted(() => ({
+  dateFmt: 'ymd' as const,
+  setDateFmt: vi.fn(),
   setTheme: vi.fn(),
+  setTimeFmt: vi.fn(),
+  timeFmt: '24h' as const,
 }))
 
 const desktop = vi.hoisted(() => ({
+  writeClipboardText: vi.fn<(value: string) => Promise<void>>(),
   openFiles: vi.fn(),
   listScreenSources: vi.fn(),
   openArtifact: vi.fn(),
@@ -123,6 +128,9 @@ beforeEach(() => {
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
+      clipboard: {
+        writeText: desktop.writeClipboardText,
+      },
       dialog: {
         openFiles: desktop.openFiles,
         listScreenSources: desktop.listScreenSources,
@@ -229,6 +237,7 @@ afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   vi.unstubAllGlobals()
+  vi.useRealTimers()
   document.documentElement.removeAttribute('data-theme')
 })
 
@@ -304,6 +313,225 @@ describe('desktop chat', () => {
         })
       )
     })
+  })
+
+  it('uses one assistant copy entry and reveals the Web copy formats on hover', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '请用 Markdown 回答',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant',
+        role: 'assistant',
+        content: '**这是 Markdown 回复**',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    expect(screen.getAllByRole('button', { name: '复制内容' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: '复制纯文本' })).not.toBeInTheDocument()
+
+    await user.hover(screen.getByRole('button', { name: '复制内容' }))
+
+    expect(screen.getByRole('menu', { name: '复制格式' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '复制 Markdown' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '复制纯文本' })).toBeInTheDocument()
+  })
+
+  it('writes assistant Markdown through the native clipboard bridge before showing success', async () => {
+    const user = userEvent.setup()
+    desktop.writeClipboardText.mockResolvedValue(undefined)
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '请复制下面回复',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant',
+        role: 'assistant',
+        content: '**可复制的 Markdown**',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '复制内容' }))
+
+    await waitFor(() => {
+      expect(desktop.writeClipboardText).toHaveBeenCalledWith('**可复制的 Markdown**')
+    })
+  })
+
+  it('groups regenerated answers into one user question and switches their versions', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user-v1',
+        role: 'user',
+        content: '给我两个不同版本的回答',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant-v1',
+        role: 'assistant',
+        content: '第一版回答',
+        files: [],
+        createdAt: '2026-08-10T08:00:01.000Z',
+      },
+      {
+        id: 'message-user-v2',
+        role: 'user',
+        content: '给我两个不同版本的回答',
+        files: [],
+        createdAt: '2026-08-10T08:00:02.000Z',
+      },
+      {
+        id: 'message-assistant-v2',
+        role: 'assistant',
+        content: '第二版回答',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    expect(screen.getAllByText('给我两个不同版本的回答')).toHaveLength(1)
+    expect(screen.getByText('2 / 2')).toBeInTheDocument()
+    expect(screen.getByText('第二版回答')).toBeInTheDocument()
+    expect(screen.queryByText('第一版回答')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '上一个版本' }))
+
+    expect(screen.getByText('第一版回答')).toBeInTheDocument()
+    expect(screen.queryByText('第二版回答')).not.toBeInTheDocument()
+  })
+
+  it('submits assistant feedback and cancels it when the same feedback is chosen again', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '这份回答怎么样？',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant',
+        role: 'assistant',
+        content: '这是一份可反馈的回答。',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '回答有帮助' }))
+    expect(screen.getByRole('dialog', { name: '哪方面让你满意？' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '解释清晰' }))
+    await user.type(screen.getByRole('textbox', { name: '反馈说明' }), '层次很清楚')
+    await user.click(screen.getByRole('button', { name: '提交反馈' }))
+
+    const feedbackButton = screen.getByRole('button', { name: '回答有帮助' })
+    expect(screen.queryByRole('dialog', { name: '哪方面让你满意？' })).not.toBeInTheDocument()
+    expect(feedbackButton).toHaveClass('is-active')
+
+    await user.click(feedbackButton)
+    expect(feedbackButton).not.toHaveClass('is-active')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('overwrites the edited user message instead of appending a new one', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '原始问题',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '编辑消息' }))
+    const editor = screen.getByRole('textbox', { name: '编辑消息' })
+    await user.clear(editor)
+    await user.type(editor, '编辑后的问题')
+    await user.click(screen.getByRole('button', { name: '提交' }))
+
+    await waitFor(() => {
+      expect(chat.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          content: '编辑后的问题',
+          convId: 'conversation-1',
+          model: 'gpt-4o',
+          replaceMessageId: 'message-user',
+          skipOptimistic: true,
+        })
+      )
+    })
+  })
+
+  it('replaces the user bubble with the Web-style editor while editing', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '需要替换的原始消息',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '编辑消息' }))
+
+    expect(
+      screen.queryByText('需要替换的原始消息', { selector: '.desktop-chat__message-bubble' })
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '编辑消息' })).toHaveValue('需要替换的原始消息')
+    expect(screen.getByText('Shift+Enter 换行 · Enter 提交')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '提交' })).toBeInTheDocument()
+  })
+
+  it('formats both user and assistant timestamps from the shared preference store', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-10T08:30:00.000Z'))
+    chat.messages = [
+      {
+        id: 'message-user',
+        role: 'user',
+        content: '带时间的用户消息',
+        files: [],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+      {
+        id: 'message-assistant',
+        role: 'assistant',
+        content: '带时间的 AI 消息',
+        files: [],
+        createdAt: '2026-08-10T08:01:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    expect(screen.getByText('16:00')).toBeInTheDocument()
+    expect(screen.getByText('16:01')).toBeInTheDocument()
+    vi.useRealTimers()
   })
 
   it('shows active thinking and tool calls for the streaming assistant message', () => {

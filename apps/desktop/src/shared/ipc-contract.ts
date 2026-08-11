@@ -90,6 +90,7 @@ export const IPC = {
     openFiles: 'dialog:open-files',
     listScreenSources: 'dialog:list-screen-sources',
   },
+  clipboard: { writeText: 'clipboard:write-text' },
   oauth: { start: 'oauth:start' },
   window: {
     openLogin: 'window:open-login',

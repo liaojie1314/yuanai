@@ -49,6 +49,7 @@ const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   notificationSound: true,
   aiReplyNotifications: true,
 }
+const USER_PREFERENCES_CHANNEL = 'yuanai-user-preferences'
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -65,6 +66,14 @@ function applyClientPreferences(preferences: UserPreferences): void {
     '--desktop-font-size',
     preferences.fontSize === 'small' ? '13px' : preferences.fontSize === 'large' ? '16px' : '14px'
   )
+}
+
+/** 向已打开的主窗口广播会影响渲染的用户偏好。 */
+function broadcastUserPreferences(preferences: UserPreferences): void {
+  if (typeof BroadcastChannel === 'undefined') return
+  const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
+  channel.postMessage({ dateFmt: preferences.dateFormat, timeFmt: preferences.timeFormat })
+  channel.close()
 }
 
 /** 提供七个已确认分区的桌面设置窗口。 */
@@ -146,6 +155,7 @@ export function App(): ReactElement {
       setDensity(saved.density)
       setTimeFmt(saved.timeFormat)
       setDateFmt(saved.dateFormat)
+      broadcastUserPreferences(saved)
       setNotice('偏好设置已保存')
     } catch (error: unknown) {
       setPreferences(previous)

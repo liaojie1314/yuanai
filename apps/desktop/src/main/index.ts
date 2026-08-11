@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
@@ -113,6 +114,7 @@ app.whenReady().then(() => {
     }),
     trustedWebContents,
     authStorage,
+    clipboard,
     desktopCapturer,
     dialog,
     getWindow: (webContents) => BrowserWindow.fromWebContents(webContents),

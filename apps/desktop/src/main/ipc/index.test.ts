@@ -39,6 +39,7 @@ function setupTestIpc(): {
   }
   dialog: { showOpenDialog: ReturnType<typeof vi.fn> }
   desktopCapturer: { getSources: ReturnType<typeof vi.fn> }
+  clipboard: { writeText: ReturnType<typeof vi.fn> }
   selectedFiles: { register: ReturnType<typeof vi.fn>; take: ReturnType<typeof vi.fn> }
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
@@ -82,6 +83,7 @@ function setupTestIpc(): {
       .fn<() => Promise<{ canceled: boolean; filePaths: string[] }>>()
       .mockResolvedValue({ canceled: false, filePaths: ['/tmp/desktop-notes.txt'] }),
   }
+  const clipboard = { writeText: vi.fn<(value: string) => void>() }
   const selectedFiles = {
     register: vi
       .fn<(paths: readonly string[]) => Array<{ name: string; url: string }>>()
@@ -145,6 +147,7 @@ function setupTestIpc(): {
     guard,
     trustedWebContents,
     authStorage,
+    clipboard,
     desktopCapturer,
     dialog,
     getWindow: vi.fn().mockReturnValue(null),
@@ -164,6 +167,7 @@ function setupTestIpc(): {
     preferencesStorage,
     dialog,
     desktopCapturer,
+    clipboard,
     selectedFiles,
     onSessionChanged,
     systemService,
@@ -189,7 +193,7 @@ const CLEARED_SESSION = JSON.stringify({
 })
 
 describe('secure IPC handlers', () => {
-  it('registers fixed auth, dialog, preference, runtime, system, and window channels', () => {
+  it('registers fixed auth, clipboard, dialog, preference, runtime, system, and window channels', () => {
     const { handlers } = setupTestIpc()
 
     expect(Array.from(handlers.keys()).sort()).toEqual(
@@ -197,6 +201,7 @@ describe('secure IPC handlers', () => {
         IPC.auth.get,
         IPC.auth.remove,
         IPC.auth.set,
+        IPC.clipboard.writeText,
         IPC.dialog.listScreenSources,
         IPC.dialog.openFiles,
         IPC.oauth.start,
@@ -214,6 +219,17 @@ describe('secure IPC handlers', () => {
         IPC.window.openRegister,
         IPC.window.openSettings,
       ].sort()
+    )
+  })
+
+  it('writes bounded clipboard text only for trusted renderer callers', () => {
+    const { clipboard, handlers, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.clipboard.writeText)
+
+    expect(handler(createEvent(sender), '元AI')).toBeUndefined()
+    expect(clipboard.writeText).toHaveBeenCalledWith('元AI')
+    expect(() => handler(createEvent(sender), 'x'.repeat(1024 * 1024 + 1))).toThrow(
+      'IPC_PAYLOAD_TOO_LARGE'
     )
   })
 

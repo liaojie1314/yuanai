@@ -147,19 +147,37 @@ async def stream_chat_endpoint(
 ) -> StreamingResponse:
     conv = await _get_user_conv(req.conversation_id, current_user.id, db)
 
-    # 用显式时间戳强制 user 早于 assistant，避免同一事务下 server_default=func.now()
-    # 让两条记录拿到完全相同的 created_at，导致 order_by(created_at) 顺序不确定，
-    # 进而在前端 buildPairs 中把 assistant 归到上一个用户消息下（表现为回复错位/丢失）。
     now = datetime.now(UTC)
-
-    # 保存用户消息
-    user_msg = Message(
-        conv_id=conv.id,
-        role=MessageRole.user,
-        content=req.message.content,
-        created_at=now,
-    )
-    db.add(user_msg)
+    if req.replace_message_id is None:
+        # 用显式时间戳强制 user 早于 assistant，避免同一事务下 server_default=func.now()
+        # 让两条记录拿到完全相同的 created_at，导致 order_by(created_at) 顺序不确定，
+        # 进而在前端 buildPairs 中把 assistant 归到上一个用户消息下（表现为回复错位/丢失）。
+        user_msg = Message(
+            conv_id=conv.id,
+            role=MessageRole.user,
+            content=req.message.content,
+            created_at=now,
+        )
+        db.add(user_msg)
+    else:
+        result = await db.execute(
+            select(Message)
+            .where(Message.id == req.replace_message_id)
+            .where(Message.conv_id == conv.id)
+            .where(Message.role == MessageRole.user)
+            .with_for_update()
+        )
+        existing_user_msg = result.scalar_one_or_none()
+        if existing_user_msg is None:
+            raise HTTPException(404, {"code": "MESSAGE_NOT_FOUND", "message": "消息不存在"})
+        user_msg = existing_user_msg
+        # 编辑历史问题会使后续上下文失效，因此保留编辑消息本身，删除其后的旧分支。
+        await db.execute(
+            delete(Message)
+            .where(Message.conv_id == conv.id)
+            .where(Message.created_at > user_msg.created_at)
+        )
+        user_msg.content = req.message.content
 
     # 创建 assistant 消息占位（流式填充内容）
     assistant_msg = Message(
@@ -177,9 +195,9 @@ async def stream_chat_endpoint(
     await db.refresh(user_msg)
     await db.refresh(assistant_msg)
 
-    # 关联文件（若有）
+    # 新消息关联上传文件；编辑既有消息时保留其原附件。
     attached_files: list[File] = []
-    if req.message.file_ids:
+    if req.message.file_ids and req.replace_message_id is None:
         file_results = await db.execute(
             select(File)
             .where(File.id.in_(req.message.file_ids))
@@ -189,6 +207,13 @@ async def stream_chat_endpoint(
         for i, f in enumerate(attached_files):
             db.add(MessageFile(message_id=user_msg.id, file_id=f.id, sort_order=i))
         await db.commit()
+    elif req.replace_message_id is not None:
+        file_results = await db.execute(
+            select(File).join(MessageFile, MessageFile.file_id == File.id).where(
+                MessageFile.message_id == user_msg.id
+            )
+        )
+        attached_files = list(file_results.scalars().all())
 
     # 构建历史消息（最多 50 条，排除刚创建的空 assistant 占位）
     history_result = await db.execute(
@@ -419,7 +444,9 @@ async def _generate_sse(
                     assistant_msg_id, full_content, full_thinking, thinking_duration_ms
                 )
             except Exception:  # noqa: BLE001 - 落库失败不应遮蔽原始错误
-                logger.exception("persist partial on error failed for assistant_msg=%s", assistant_msg_id)
+                logger.exception(
+                    "persist partial on error failed for assistant_msg=%s", assistant_msg_id
+                )
         yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 
     yield "data: [DONE]\n\n"

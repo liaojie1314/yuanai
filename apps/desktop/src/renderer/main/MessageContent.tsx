@@ -1,6 +1,8 @@
 import {
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   ExternalLink,
@@ -13,23 +15,34 @@ import {
   ThumbsUp,
   Wrench,
 } from 'lucide-react'
-import { useState, type KeyboardEvent, type ReactElement } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FocusEvent,
+  type KeyboardEvent,
+  type ReactElement,
+} from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
+import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
+import { formatMsgTime, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
+import { copyText } from '../shared/clipboard'
 import type { Message, ToolCall, User } from '@yuanai/types'
 
 /** 聊天消息区的交互回调。 */
 export interface ChatMessageActions {
-  /** 将编辑后的用户内容作为新一轮消息发送。 */
-  onResubmit(content: string): void
+  /** 覆盖既有用户消息并生成对应的新回复。 */
+  onEditMessage(messageId: string, content: string): void
   /** 以对应的用户问题重新生成 AI 回复。 */
   onRegenerate(): void
   /** 在独立 Artifact 窗口中查看或运行代码。 */
   onOpenArtifact(payload: DesktopArtifactPayload): void
+  /** 提交 AI 回复的有用或无用反馈。 */
+  onFeedback(messageId: string, type: 'like' | 'dislike'): void
 }
 
 /** 单条聊天消息的渲染输入。 */
@@ -42,6 +55,18 @@ export interface ChatMessageProps extends ChatMessageActions {
   isStreaming: boolean
   /** 当前 AI 消息是否存在对应的用户问题可重新生成。 */
   canRegenerate: boolean
+  /** 当前 AI 回复在同一问题下的版本总数。 */
+  versionCount?: number
+  /** 当前显示的 AI 回复版本下标。 */
+  versionIndex?: number
+  /** 切换 AI 回复版本。 */
+  onVersionChange?(index: number): void
+  /** 当前 AI 回复已提交的反馈。 */
+  feedback?: 'like' | 'dislike'
+  /** 用户偏好的消息时间格式。 */
+  timeFmt: TimeFmt
+  /** 用户偏好的消息日期格式。 */
+  dateFmt: DateFmt
 }
 
 const LANGUAGE_EXTENSIONS: Readonly<Record<string, string>> = {
@@ -56,13 +81,17 @@ const LANGUAGE_EXTENSIONS: Readonly<Record<string, string>> = {
   ts: 'ts',
   typescript: 'ts',
 }
+const MESSAGE_EDITOR_MAX_HEIGHT = 160
 
 function fileExtension(lang: string): string {
   return LANGUAGE_EXTENSIONS[lang.trim().toLocaleLowerCase()] ?? 'txt'
 }
 
-function copyToClipboard(value: string): Promise<void> {
-  return navigator.clipboard.writeText(value).catch(() => undefined)
+function resizeMessageEditor(editor: HTMLTextAreaElement): void {
+  editor.style.height = 'auto'
+  const height = Math.min(editor.scrollHeight, MESSAGE_EDITOR_MAX_HEIGHT)
+  editor.style.height = `${height}px`
+  editor.style.overflowY = editor.scrollHeight > MESSAGE_EDITOR_MAX_HEIGHT ? 'auto' : 'hidden'
 }
 
 function downloadCode(code: string, lang: string, title?: string): void {
@@ -187,7 +216,8 @@ function DesktopCodeBlock({
   const runnable = isRunnableLang(lang)
 
   function copy(): void {
-    void copyToClipboard(code).then(() => {
+    void copyText(code).then((didCopy) => {
+      if (!didCopy) return
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     })
@@ -309,61 +339,28 @@ function MessageAttachment({ file }: { file: Message['files'][number] }): ReactE
 
 function UserMessageActions({
   content,
+  timestamp,
   isStreaming,
-  onResubmit,
+  onStartEdit,
 }: {
   content: string
+  timestamp: string
   isStreaming: boolean
-  onResubmit(content: string): void
+  onStartEdit(): void
 }): ReactElement {
   const [copied, setCopied] = useState(false)
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(content)
 
   function copy(): void {
-    void copyToClipboard(content).then(() => {
+    void copyText(content).then((didCopy) => {
+      if (!didCopy) return
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     })
   }
 
-  function submit(): void {
-    const value = draft.trim()
-    setEditing(false)
-    if (value && value !== content) onResubmit(value)
-  }
-
-  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
-    if (event.key === 'Escape') setEditing(false)
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      submit()
-    }
-  }
-
-  if (editing) {
-    return (
-      <div className="desktop-chat__message-editor">
-        <textarea
-          aria-label="编辑消息"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-        />
-        <div>
-          <button type="button" onClick={() => setEditing(false)}>
-            取消
-          </button>
-          <button type="button" onClick={submit}>
-            发送
-          </button>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="desktop-chat__message-actions">
+      <time className="desktop-chat__message-time">{timestamp}</time>
       <button type="button" aria-label="复制消息" title="复制消息" onClick={copy}>
         {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
       </button>
@@ -372,10 +369,7 @@ function UserMessageActions({
         aria-label="编辑消息"
         title="编辑消息"
         disabled={isStreaming}
-        onClick={() => {
-          setDraft(content)
-          setEditing(true)
-        }}
+        onClick={onStartEdit}
       >
         <Pencil size={14} aria-hidden="true" />
       </button>
@@ -383,49 +377,154 @@ function UserMessageActions({
   )
 }
 
+/** 以 Web 端相同的就地编辑方式替换用户消息气泡。 */
+function UserMessageEditor({
+  content,
+  onCancel,
+  onSubmit,
+}: {
+  content: string
+  onCancel(): void
+  onSubmit(content: string): void
+}): ReactElement {
+  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const [draft, setDraft] = useState(content)
+
+  useEffect(() => {
+    setDraft(content)
+    window.requestAnimationFrame(() => {
+      const editor = editorRef.current
+      if (!editor) return
+      resizeMessageEditor(editor)
+      editor.focus()
+      editor.setSelectionRange(editor.value.length, editor.value.length)
+    })
+  }, [content])
+
+  function submit(): void {
+    const value = draft.trim()
+    if (value) onSubmit(value)
+    else onCancel()
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onCancel()
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      submit()
+    }
+  }
+
+  return (
+    <div className="desktop-chat__message-editor">
+      <textarea
+        ref={editorRef}
+        aria-label="编辑消息"
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.target.value)
+          resizeMessageEditor(event.currentTarget)
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      <div>
+        <span>Shift+Enter 换行 · Enter 提交</span>
+        <button type="button" onClick={onCancel}>
+          取消
+        </button>
+        <button type="button" onClick={submit}>
+          提交
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AssistantMessageActions({
   content,
   canRegenerate,
+  feedback,
   isStreaming,
+  onFeedback,
   onRegenerate,
+  timestamp,
 }: {
   content: string
   canRegenerate: boolean
+  feedback?: 'like' | 'dislike'
   isStreaming: boolean
+  onFeedback(type: 'like' | 'dislike'): void
   onRegenerate(): void
+  timestamp: string
 }): ReactElement {
-  const [copied, setCopied] = useState<'markdown' | 'text' | null>(null)
-  const [feedback, setFeedback] = useState<'like' | 'dislike' | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'open' | 'markdown' | 'text'>('idle')
+  const closeTimerRef = useRef<number | null>(null)
 
   function copy(kind: 'markdown' | 'text'): void {
     const value = kind === 'markdown' ? content : stripMarkdown(content)
-    void copyToClipboard(value).then(() => {
-      setCopied(kind)
-      window.setTimeout(() => setCopied(null), 2000)
+    void copyText(value).then((didCopy) => {
+      if (!didCopy) return
+      setCopyState(kind)
+      window.setTimeout(() => setCopyState('idle'), 2000)
     })
+  }
+
+  function openCopyMenu(): void {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    setCopyState((value) => (value === 'markdown' || value === 'text' ? value : 'open'))
+  }
+
+  function closeCopyMenu(): void {
+    if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = window.setTimeout(() => {
+      setCopyState((value) => (value === 'open' ? 'idle' : value))
+    }, 200)
+  }
+
+  function handleCopyBlur(event: FocusEvent<HTMLDivElement>): void {
+    if (!event.currentTarget.contains(event.relatedTarget)) closeCopyMenu()
   }
 
   return (
     <div className="desktop-chat__message-actions">
-      <button
-        type="button"
-        aria-label="复制 Markdown"
-        title="复制 Markdown"
-        onClick={() => copy('markdown')}
+      <time className="desktop-chat__message-time">{timestamp}</time>
+      <div
+        className="desktop-chat__copy-wrap"
+        onMouseEnter={openCopyMenu}
+        onMouseLeave={closeCopyMenu}
+        onFocus={openCopyMenu}
+        onBlur={handleCopyBlur}
       >
-        {copied === 'markdown' ? (
-          <Check size={14} aria-hidden="true" />
-        ) : (
-          <Copy size={14} aria-hidden="true" />
-        )}
-      </button>
-      <button type="button" aria-label="复制纯文本" title="复制纯文本" onClick={() => copy('text')}>
-        {copied === 'text' ? (
-          <Check size={14} aria-hidden="true" />
-        ) : (
-          <Copy size={14} aria-hidden="true" />
-        )}
-      </button>
+        <button
+          type="button"
+          aria-label="复制内容"
+          title="复制内容"
+          onClick={() => copy('markdown')}
+        >
+          {copyState === 'markdown' || copyState === 'text' ? (
+            <Check size={14} aria-hidden="true" />
+          ) : (
+            <Copy size={14} aria-hidden="true" />
+          )}
+        </button>
+        {copyState === 'open' ? (
+          <div className="desktop-chat__copy-dropdown" role="menu" aria-label="复制格式">
+            <button type="button" role="menuitem" onClick={() => copy('markdown')}>
+              复制 Markdown
+            </button>
+            <button type="button" role="menuitem" onClick={() => copy('text')}>
+              复制纯文本
+            </button>
+          </div>
+        ) : null}
+      </div>
       <span aria-hidden="true" />
       <button
         type="button"
@@ -441,7 +540,7 @@ function AssistantMessageActions({
         type="button"
         aria-label="回答有帮助"
         title="回答有帮助"
-        onClick={() => setFeedback((value) => (value === 'like' ? null : 'like'))}
+        onClick={() => onFeedback('like')}
       >
         <ThumbsUp size={14} aria-hidden="true" />
       </button>
@@ -450,7 +549,7 @@ function AssistantMessageActions({
         type="button"
         aria-label="回答有问题"
         title="回答有问题"
-        onClick={() => setFeedback((value) => (value === 'dislike' ? null : 'dislike'))}
+        onClick={() => onFeedback('dislike')}
       >
         <ThumbsDown size={14} aria-hidden="true" />
       </button>
@@ -464,12 +563,26 @@ export function ChatMessage({
   message,
   isStreaming,
   canRegenerate,
+  feedback,
   onOpenArtifact,
+  onFeedback,
   onRegenerate,
-  onResubmit,
+  onEditMessage,
+  onVersionChange,
+  timeFmt,
+  dateFmt,
+  versionCount = 1,
+  versionIndex = 0,
 }: ChatMessageProps): ReactElement {
   const isUser = message.role === Role.User
+  const [isEditing, setIsEditing] = useState(false)
   const codeParts = (message.messageParts ?? []).filter((part) => part.type === 'code')
+  const timestamp = formatMsgTime(message.createdAt, timeFmt, dateFmt)
+
+  function handleSubmitEdit(content: string): void {
+    setIsEditing(false)
+    if (content !== message.content) onEditMessage(message.id, content)
+  }
 
   return (
     <article
@@ -489,45 +602,82 @@ export function ChatMessage({
       )}
       <div className="desktop-chat__message-body">
         {!isUser ? <ThinkingBlock message={message} /> : null}
-        {isUser ? (
+        {isUser && isEditing ? (
+          <UserMessageEditor
+            content={message.content}
+            onCancel={() => setIsEditing(false)}
+            onSubmit={handleSubmitEdit}
+          />
+        ) : isUser ? (
           <div className="desktop-chat__markdown desktop-chat__message-bubble">
-            <MarkdownContent content={message.content} onOpenArtifact={onOpenArtifact} />
+            <p>{message.content}</p>
           </div>
         ) : (
           <div className="desktop-chat__markdown">
             <MarkdownContent content={message.content} onOpenArtifact={onOpenArtifact} />
           </div>
         )}
-        {codeParts.map((part, index) => (
-          <DesktopCodeBlock
-            key={`${message.id}-code-${index}`}
-            code={part.code}
-            lang={part.lang}
-            title={part.title ?? ''}
-            onOpenArtifact={onOpenArtifact}
-          />
-        ))}
-        {message.files.length > 0 ? (
+        {!isEditing
+          ? codeParts.map((part, index) => (
+              <DesktopCodeBlock
+                key={`${message.id}-code-${index}`}
+                code={part.code}
+                lang={part.lang}
+                title={part.title ?? ''}
+                onOpenArtifact={onOpenArtifact}
+              />
+            ))
+          : null}
+        {!isEditing && message.files.length > 0 ? (
           <ul className="desktop-chat__files" aria-label="消息附件">
             {message.files.map((file) => (
               <MessageAttachment key={file.id} file={file} />
             ))}
           </ul>
         ) : null}
-        {isUser ? (
+        {!isEditing && !isUser && versionCount > 1 && onVersionChange ? (
+          <div className="desktop-chat__version-nav" aria-label="回答版本">
+            <button
+              type="button"
+              aria-label="上一个版本"
+              title="上一个版本"
+              disabled={versionIndex === 0}
+              onClick={() => onVersionChange(versionIndex - 1)}
+            >
+              <ChevronLeft size={14} aria-hidden="true" />
+            </button>
+            <span>
+              {versionIndex + 1} / {versionCount}
+            </span>
+            <button
+              type="button"
+              aria-label="下一个版本"
+              title="下一个版本"
+              disabled={versionIndex === versionCount - 1}
+              onClick={() => onVersionChange(versionIndex + 1)}
+            >
+              <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+        {!isEditing && isUser ? (
           <UserMessageActions
             content={message.content}
+            timestamp={timestamp}
             isStreaming={isStreaming}
-            onResubmit={onResubmit}
+            onStartEdit={() => setIsEditing(true)}
           />
-        ) : (
+        ) : !isEditing ? (
           <AssistantMessageActions
             content={message.content}
             canRegenerate={canRegenerate}
             isStreaming={isStreaming}
+            onFeedback={(type) => onFeedback(message.id, type)}
             onRegenerate={onRegenerate}
+            timestamp={timestamp}
+            {...(feedback ? { feedback } : {})}
           />
-        )}
+        ) : null}
       </div>
     </article>
   )

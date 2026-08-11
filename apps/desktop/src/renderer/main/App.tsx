@@ -37,6 +37,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -62,6 +63,8 @@ import {
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
+import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
@@ -70,6 +73,7 @@ import type {
   DesktopScreenSource,
   DesktopSelectedFile,
 } from '../../shared/ipc-contract'
+import { copyText } from '../shared/clipboard'
 import { ChatMessage, StreamingMessage } from './MessageContent'
 
 const FALLBACK_MODEL: AIModel = {
@@ -104,6 +108,9 @@ const SHARE_EXPIRY_OPTIONS = [
   { label: '7 天', value: 7 },
   { label: '30 天', value: 30 },
 ] as const
+const LIKE_FEEDBACK_CATEGORIES = ['有帮助', '解释清晰', '创意出色', '回答详细', '思路新颖']
+const DISLIKE_FEEDBACK_CATEGORIES = ['信息有误', '答非所问', '内容冗余', '语言不自然', '缺乏细节']
+const USER_PREFERENCES_CHANNEL = 'yuanai-user-preferences'
 
 const SUGGESTIONS = [
   {
@@ -148,6 +155,20 @@ interface ComposerAttachment {
   previewUrl?: string
   progress: number
   status: 'ready' | 'uploading' | 'done' | 'error'
+}
+
+interface UserPreferenceSignal {
+  dateFmt: DateFmt
+  timeFmt: TimeFmt
+}
+
+function isUserPreferenceSignal(value: unknown): value is UserPreferenceSignal {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as Record<string, unknown>
+  return (
+    (candidate.timeFmt === '24h' || candidate.timeFmt === '12h') &&
+    (candidate.dateFmt === 'ymd' || candidate.dateFmt === 'mdy' || candidate.dateFmt === 'dmy')
+  )
 }
 
 function createAttachmentPreviewUrl(file: File): string | null {
@@ -240,14 +261,6 @@ function groupModelsByProvider(models: AIModel[]): Array<{ provider: string; mod
 
 function getConversationTitle(conversation: Conversation): string {
   return conversation.title.trim() || '新对话'
-}
-
-function findPreviousUserContent(messages: Message[], messageIndex: number): string | null {
-  for (let index = messageIndex - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role === Role.User && message.content.trim()) return message.content
-  }
-  return null
 }
 
 interface ConversationGroup {
@@ -346,6 +359,92 @@ interface ShareDialogProps {
   onClose(): void
 }
 
+interface FeedbackDialogProps {
+  category: string
+  reason: string
+  type: 'like' | 'dislike'
+  onCategoryChange(category: string): void
+  onClose(): void
+  onReasonChange(reason: string): void
+  onSubmit(): void
+}
+
+/** 收集与 Web 端一致的本地消息反馈。 */
+function FeedbackDialog({
+  category,
+  reason,
+  type,
+  onCategoryChange,
+  onClose,
+  onReasonChange,
+  onSubmit,
+}: FeedbackDialogProps): ReactElement {
+  const categories = type === 'like' ? LIKE_FEEDBACK_CATEGORIES : DISLIKE_FEEDBACK_CATEGORIES
+  const heading = type === 'like' ? '哪方面让你满意？' : '哪里让你不满意？'
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLElement>): void {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    onClose()
+  }
+
+  return (
+    <div
+      className="desktop-chat__dialog-backdrop"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose()
+      }}
+    >
+      <section
+        className="desktop-chat__feedback-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="desktop-feedback-title"
+        onKeyDown={handleKeyDown}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <h2 id="desktop-feedback-title">{heading}</h2>
+          <button type="button" aria-label="关闭反馈" title="关闭" onClick={onClose}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </header>
+        <div className="desktop-chat__feedback-categories">
+          {categories.map((item) => (
+            <button
+              key={item}
+              className={category === item ? 'is-selected' : undefined}
+              type="button"
+              aria-pressed={category === item}
+              onClick={() => onCategoryChange(category === item ? '' : item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <label className="desktop-chat__sr-only" htmlFor="desktop-feedback-reason">
+          反馈说明
+        </label>
+        <textarea
+          id="desktop-feedback-reason"
+          rows={3}
+          placeholder="写下你的建议（可选）"
+          value={reason}
+          onChange={(event) => onReasonChange(event.target.value)}
+        />
+        <footer>
+          <button type="button" onClick={onClose}>
+            取消
+          </button>
+          <button type="button" onClick={onSubmit}>
+            提交反馈
+          </button>
+        </footer>
+      </section>
+    </div>
+  )
+}
+
 /** 将分享链接有效期格式化为当前用户可读的提示。 */
 function formatShareExpiry(expiresAt: string | null): string {
   if (!expiresAt) return '永久有效'
@@ -426,12 +525,11 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
 
   async function handleCopy(): Promise<void> {
     if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(shareUrl)
+    if (await copyText(shareUrl)) {
       setCopied(true)
       setNotice('链接已复制到剪贴板')
-    } catch (error: unknown) {
-      setNotice(getErrorMessage(error, '复制失败，请手动复制链接'))
+    } else {
+      setNotice('复制失败，请手动复制链接')
     }
   }
 
@@ -812,7 +910,11 @@ export function App(): ReactElement {
   const stream = useStream()
   const user = useAuthStore((state) => state.user)
   const isLoggedIn = user !== null
+  const timeFmt = usePrefsStore((state) => state.timeFmt)
+  const dateFmt = usePrefsStore((state) => state.dateFmt)
   const setTheme = usePrefsStore((state) => state.setTheme)
+  const setTimeFmt = usePrefsStore((state) => state.setTimeFmt)
+  const setDateFmt = usePrefsStore((state) => state.setDateFmt)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isTemporaryConversation, setIsTemporaryConversation] = useState(false)
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
@@ -846,6 +948,15 @@ export function App(): ReactElement {
     conversationId: string
     webBaseUrl: string
   } | null>(null)
+  const [versionIndexes, setVersionIndexes] = useState<Record<string, number>>({})
+  const [regeneratingPairKey, setRegeneratingPairKey] = useState<string | null>(null)
+  const [feedbackDialog, setFeedbackDialog] = useState<{
+    messageId: string
+    type: 'like' | 'dislike'
+  } | null>(null)
+  const [feedbackCategory, setFeedbackCategory] = useState('')
+  const [feedbackReason, setFeedbackReason] = useState('')
+  const [messageFeedback, setMessageFeedback] = useState<Record<string, 'like' | 'dislike'>>({})
   const [actionError, setActionError] = useState('')
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [isDarkTheme, setIsDarkTheme] = useState(
@@ -876,6 +987,7 @@ export function App(): ReactElement {
     : isLoggedIn
       ? (messagesQuery.data ?? EMPTY_MESSAGES)
       : EMPTY_MESSAGES
+  const messagePairs = useMemo(() => buildMessagePairs(messages), [messages])
   const streamingConversationId = useChatStore((state) => state.streamingConvId)
   const streamingContent = useChatStore((state) => state.streamingContent)
   const streamingThinking = useChatStore((state) => state.streamingThink)
@@ -988,6 +1100,34 @@ export function App(): ReactElement {
     if (availableModels.some((model) => model.id === selectedModelId)) return
     setSelectedModelId(availableModels[0]?.id ?? FALLBACK_MODEL.id)
   }, [availableModels, selectedModelId])
+
+  useEffect(() => {
+    if (typeof BroadcastChannel === 'undefined') return
+    const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
+    const handlePreferenceChange = (event: MessageEvent<unknown>): void => {
+      if (!isUserPreferenceSignal(event.data)) return
+      setTimeFmt(event.data.timeFmt)
+      setDateFmt(event.data.dateFmt)
+    }
+    channel.addEventListener('message', handlePreferenceChange)
+    return () => {
+      channel.removeEventListener('message', handlePreferenceChange)
+      channel.close()
+    }
+  }, [setDateFmt, setTimeFmt])
+
+  useEffect(() => {
+    setVersionIndexes({})
+    setFeedbackDialog(null)
+    setFeedbackCategory('')
+    setFeedbackReason('')
+  }, [activeConversationId, isTemporaryConversation])
+
+  const wasStreamingRef = useRef(isStreaming)
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming) setRegeneratingPairKey(null)
+    wasStreamingRef.current = isStreaming
+  }, [isStreaming])
 
   useEffect(() => {
     if (!messageEndRef.current?.scrollIntoView) return
@@ -1109,8 +1249,8 @@ export function App(): ReactElement {
     }
   }
 
-  /** 重新发送用户编辑后的消息；临时会话不提供此操作以避免重复历史。 */
-  function handleResubmitMessage(content: string): void {
+  /** 覆盖用户原消息，并替换其后基于旧内容生成的回答。 */
+  function handleEditMessage(messageId: string, content: string): void {
     if (!isLoggedIn || isStreaming || isTemporaryConversation || !activeConversationId) return
     setActionError('')
     void stream
@@ -1119,25 +1259,64 @@ export function App(): ReactElement {
         content,
         enableThinking: isThinkingEnabled,
         model: selectedModel.id,
-        onError: (error) => setActionError(getErrorMessage(error, '消息发送失败，请重试')),
+        replaceMessageId: messageId,
+        skipOptimistic: true,
+        onError: (error) => setActionError(getErrorMessage(error, '编辑消息失败，请重试')),
       })
-      .catch((error: unknown) => setActionError(getErrorMessage(error, '消息发送失败，请重试')))
+      .catch((error: unknown) => setActionError(getErrorMessage(error, '编辑消息失败，请重试')))
   }
 
   /** 使用对应用户问题重新生成 AI 回复，不重复显示乐观用户消息。 */
-  function handleRegenerateMessage(content: string): void {
+  function handleRegenerateMessage(content: string, pairKey: string): void {
     if (!isLoggedIn || isStreaming || isTemporaryConversation || !activeConversationId) return
     setActionError('')
+    setVersionIndexes((items) => {
+      const next = { ...items }
+      delete next[pairKey]
+      return next
+    })
+    setRegeneratingPairKey(pairKey)
     void stream
       .send({
         convId: activeConversationId,
         content,
         enableThinking: isThinkingEnabled,
         model: selectedModel.id,
-        onError: (error) => setActionError(getErrorMessage(error, '重新生成失败，请重试')),
+        onError: (error) => {
+          setRegeneratingPairKey(null)
+          setActionError(getErrorMessage(error, '重新生成失败，请重试'))
+        },
         skipOptimistic: true,
       })
-      .catch((error: unknown) => setActionError(getErrorMessage(error, '重新生成失败，请重试')))
+      .catch((error: unknown) => {
+        setRegeneratingPairKey(null)
+        setActionError(getErrorMessage(error, '重新生成失败，请重试'))
+      })
+  }
+
+  /** 记录本地反馈；再次选择相同反馈时与 Web 一致地取消。 */
+  function handleOpenFeedback(messageId: string, type: 'like' | 'dislike'): void {
+    if (messageFeedback[messageId] === type) {
+      setMessageFeedback((items) => {
+        const next = { ...items }
+        delete next[messageId]
+        return next
+      })
+      return
+    }
+    setFeedbackDialog({ messageId, type })
+    setFeedbackCategory('')
+    setFeedbackReason('')
+  }
+
+  /** 将已确认的反馈状态绑定至具体 AI 消息。 */
+  function handleSubmitFeedback(): void {
+    if (!feedbackDialog) return
+    setMessageFeedback((items) => ({
+      ...items,
+      [feedbackDialog.messageId]: feedbackDialog.type,
+    }))
+    setFeedbackDialog(null)
   }
 
   async function handleOpenShareDialog(): Promise<void> {
@@ -1840,28 +2019,69 @@ export function App(): ReactElement {
             </div>
           ) : messages.length || isStreaming ? (
             <div className="desktop-chat__message-list">
-              {messages.map((message, messageIndex) => {
-                const previousUserContent = findPreviousUserContent(messages, messageIndex)
+              {messagePairs.map((pair) => {
+                const versionCount = pair.assistants.length
+                const versionIndex = clampVersionIdx(versionCount, versionIndexes[pair.pairKey])
+                const assistantMessage = pair.assistants[versionIndex]
+                const isPairRegenerating = isStreaming && regeneratingPairKey === pair.pairKey
+
                 return (
-                  <ChatMessage
-                    key={message.id}
-                    user={user}
-                    message={message}
-                    isStreaming={isStreaming}
-                    canRegenerate={
-                      !isTemporaryConversation &&
-                      message.role === Role.Assistant &&
-                      previousUserContent !== null
-                    }
-                    onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                    onRegenerate={() => {
-                      if (previousUserContent) handleRegenerateMessage(previousUserContent)
-                    }}
-                    onResubmit={handleResubmitMessage}
-                  />
+                  <Fragment key={pair.pairKey}>
+                    {pair.userMsg ? (
+                      <ChatMessage
+                        user={user}
+                        message={pair.userMsg}
+                        isStreaming={isStreaming}
+                        canRegenerate={false}
+                        timeFmt={timeFmt}
+                        dateFmt={dateFmt}
+                        onFeedback={handleOpenFeedback}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                        onRegenerate={() => undefined}
+                        onEditMessage={handleEditMessage}
+                      />
+                    ) : null}
+                    {isPairRegenerating ? (
+                      <StreamingMessage
+                        content={streamingContent}
+                        thinking={streamingThinking}
+                        thinkingDurationMs={streamingThinkingDurationMs}
+                        toolCalls={streamingToolCalls}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                      />
+                    ) : assistantMessage ? (
+                      <ChatMessage
+                        user={user}
+                        message={assistantMessage}
+                        isStreaming={isStreaming}
+                        canRegenerate={!isTemporaryConversation && pair.userMsg !== null}
+                        timeFmt={timeFmt}
+                        dateFmt={dateFmt}
+                        versionCount={versionCount}
+                        versionIndex={versionIndex}
+                        onFeedback={handleOpenFeedback}
+                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                        onRegenerate={() => {
+                          if (pair.userMsg) {
+                            handleRegenerateMessage(pair.userMsg.content, pair.pairKey)
+                          }
+                        }}
+                        onEditMessage={handleEditMessage}
+                        onVersionChange={(index) =>
+                          setVersionIndexes((items) => ({ ...items, [pair.pairKey]: index }))
+                        }
+                        {...(messageFeedback[assistantMessage.id]
+                          ? { feedback: messageFeedback[assistantMessage.id] }
+                          : {})}
+                      />
+                    ) : null}
+                  </Fragment>
                 )
               })}
-              {isStreaming && optimisticUserMessage && !isTemporaryConversation ? (
+              {isStreaming &&
+              regeneratingPairKey === null &&
+              optimisticUserMessage &&
+              !isTemporaryConversation ? (
                 <article className="desktop-chat__message desktop-chat__message--user">
                   <div className="desktop-chat__message-body">
                     <div className="desktop-chat__markdown desktop-chat__message-bubble">
@@ -1870,7 +2090,7 @@ export function App(): ReactElement {
                   </div>
                 </article>
               ) : null}
-              {isStreaming ? (
+              {isStreaming && regeneratingPairKey === null ? (
                 <StreamingMessage
                   content={streamingContent}
                   thinking={streamingThinking}
@@ -2157,6 +2377,17 @@ export function App(): ReactElement {
           conversationId={shareDialog.conversationId}
           webBaseUrl={shareDialog.webBaseUrl}
           onClose={() => setShareDialog(null)}
+        />
+      ) : null}
+      {feedbackDialog ? (
+        <FeedbackDialog
+          category={feedbackCategory}
+          reason={feedbackReason}
+          type={feedbackDialog.type}
+          onCategoryChange={setFeedbackCategory}
+          onClose={() => setFeedbackDialog(null)}
+          onReasonChange={setFeedbackReason}
+          onSubmit={handleSubmitFeedback}
         />
       ) : null}
       {isScreenCaptureOpen ? (

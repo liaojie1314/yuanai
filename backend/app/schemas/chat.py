@@ -83,6 +83,7 @@ class SendMessageRequest(BaseModel):
     model: str
     message: MessageContent
     enable_thinking: bool = False
+    replace_message_id: uuid.UUID | None = None
 
 
 class TemporaryChatMessage(BaseModel):

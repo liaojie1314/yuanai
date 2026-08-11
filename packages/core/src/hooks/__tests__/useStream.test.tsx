@@ -118,6 +118,32 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(receivedRequest).toBe(true)
   })
 
+  it('编辑消息时复用原消息 ID，不创建乐观用户消息', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>
+        return makeStreamResponse([])
+      })
+    )
+    const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
+
+    await act(async () => {
+      await result.current.send({
+        convId: 'c1',
+        content: '编辑后的问题',
+        model: 'gpt-4o',
+        replaceMessageId: 'original-user-message',
+      })
+    })
+
+    expect(body).toMatchObject({
+      conversation_id: 'c1',
+      replace_message_id: 'original-user-message',
+    })
+    expect(useChatStore.getState().optimisticUserMsg).toBeNull()
+  })
+
   it('stop() 把已收到的部分内容写入消息缓存（不丢已输出文本）', async () => {
     // 无限流：只发 message_start + 两个 delta，之后挂起等待被 stop 中断
     server.use(

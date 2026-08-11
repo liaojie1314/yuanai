@@ -56,6 +56,8 @@ export interface StreamParams {
   enableThinking?: boolean
   /** 为 true 时不显示乐观用户消息（重新生成场景：原用户消息已存在） */
   skipOptimistic?: boolean
+  /** 编辑既有用户消息时复用其记录，并截断其后的历史回复。 */
+  replaceMessageId?: string
   /** 流启动时回调 */
   onStart?: () => void
   /** 流完成时回调 */
@@ -206,11 +208,21 @@ export function useStream() {
       fileIds,
       enableThinking,
       skipOptimistic,
+      replaceMessageId,
       onStart,
       onEnd,
       onError,
     }: StreamParams): Promise<void> => {
-      startStreaming(convId, skipOptimistic ? null : content)
+      if (replaceMessageId) {
+        qc.setQueryData<Message[]>(['messages', convId], (previous) => {
+          const index = previous?.findIndex((message) => message.id === replaceMessageId) ?? -1
+          if (index < 0 || !previous) return previous
+          return previous
+            .slice(0, index + 1)
+            .map((message) => (message.id === replaceMessageId ? { ...message, content } : message))
+        })
+      }
+      startStreaming(convId, skipOptimistic || replaceMessageId ? null : content)
       stoppedRef.current = false
       streamMetaRef.current = null
       onStart?.()
@@ -231,6 +243,7 @@ export function useStream() {
                 model,
                 message: { content, fileIds: fileIds ?? [] },
                 enable_thinking: enableThinking ?? false,
+                ...(replaceMessageId ? { replace_message_id: replaceMessageId } : {}),
               }),
             },
             {
