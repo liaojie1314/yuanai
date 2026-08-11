@@ -166,17 +166,18 @@ export function buildCssDoc(code: string, opts?: RunDocOptions): string {
   )
 }
 
+function escapeInlineScript(code: string): string {
+  return code.replace(/<\/script/gi, '<\\/script')
+}
+
 /**
- * JS 预览文档：把源码作为字符串在全局作用域间接 eval 执行，错误经控制台桥回传。
+ * JS 预览文档：以已转义的内联脚本执行源码，错误经控制台桥回传。
  *
- * 纯计算脚本（不写 DOM）执行完页面会是全白，容易被误认为运行失败；
- * 执行后延时检查 body 无可视内容时注入「无可视输出」提示。
+ * 避免使用 `eval`，使运行时可保持不含 `unsafe-eval` 的 CSP。纯计算脚本执行完页面会是全白，
+ * 因此延时检查 body 无可视内容时注入「无可视输出」提示。
  */
 export function buildJsDoc(code: string, opts?: RunDocOptions): string {
-  const body =
-    'const __src = ' +
-    encodeSrc(code) +
-    ';try{(0,eval)(__src);}catch(e){console.error(e&&e.stack?e.stack:String(e));}' +
+  const noVisibleOutputHint =
     'setTimeout(function(){try{' +
     'if(document.body.innerText.trim())return;' +
     'if(document.body.querySelector("canvas,img,svg,video,iframe"))return;' +
@@ -186,7 +187,11 @@ export function buildJsDoc(code: string, opts?: RunDocOptions): string {
     'p.textContent="代码已执行，无可视输出；console 输出见控制台。";' +
     'app.appendChild(p);' +
     '}catch(e){}},80);'
-  return docShell('', '<div id="app"></div>' + jsScript(body), opts)
+  return docShell(
+    '',
+    '<div id="app"></div>' + jsScript(escapeInlineScript(code)) + jsScript(noVisibleOutputHint),
+    opts
+  )
 }
 
 /** 普通脚本包裹（非 module），供 JS 运行时使用 */

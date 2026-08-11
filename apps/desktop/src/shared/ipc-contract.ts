@@ -58,6 +58,8 @@ export interface DesktopArtifactPayload {
   code: string
   /** 只读查看或受限运行。 */
   mode: 'view' | 'run'
+  /** 打开 Artifact 时主窗口已解析的配色，避免独立 renderer 的主题闪烁。 */
+  theme?: 'light' | 'dark'
 }
 
 /** 全局快捷键注册结果。 */

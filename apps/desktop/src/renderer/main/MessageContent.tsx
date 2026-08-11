@@ -27,10 +27,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
-import { formatMsgTime, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
+import { formatMsgTime, isDataPreviewLang, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
+import { CodeHighlight } from '../shared/CodeHighlight'
 import type { Message, ToolCall, User } from '@yuanai/types'
 
 /** 聊天消息区的交互回调。 */
@@ -214,6 +215,8 @@ function DesktopCodeBlock({
   const [copied, setCopied] = useState(false)
   const displayLang = lang || 'Code'
   const runnable = isRunnableLang(lang)
+  const dataPreview = isDataPreviewLang(lang)
+  const previewable = runnable || dataPreview
 
   function copy(): void {
     void copyText(code).then((didCopy) => {
@@ -260,11 +263,11 @@ function DesktopCodeBlock({
           >
             <ExternalLink size={14} aria-hidden="true" />
           </button>
-          {runnable ? (
+          {previewable ? (
             <button
               type="button"
-              aria-label="运行预览"
-              title="运行预览"
+              aria-label={dataPreview ? '数据预览' : '运行预览'}
+              title={dataPreview ? '数据预览' : '运行预览'}
               onClick={() => openArtifact('run')}
             >
               <Play size={14} aria-hidden="true" />
@@ -272,9 +275,14 @@ function DesktopCodeBlock({
           ) : null}
         </div>
       </header>
-      <pre>
-        <code>{code}</code>
-      </pre>
+      <CodeHighlight
+        lang={lang}
+        code={code}
+        className="desktop-chat__code-highlight"
+        padding="13px"
+        fontSize="12px"
+        lineHeight={1.6}
+      />
     </section>
   )
 }

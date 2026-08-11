@@ -1,8 +1,9 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
+import { ARTIFACT_MSG_SOURCE } from '@yuanai/core/utils'
 
 import { App } from './App'
 
@@ -28,6 +29,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  document.documentElement.removeAttribute('data-theme')
   vi.clearAllMocks()
 })
 
@@ -44,6 +46,7 @@ describe('Artifact window', () => {
 
     expect(screen.getByRole('heading', { name: '示例代码' })).toBeInTheDocument()
     expect(screen.getByText('const answer = 42')).toBeInTheDocument()
+    expect(document.querySelector('.artifact__code')).toHaveTextContent('const answer = 42')
     expect(screen.getByText('代码查看')).toBeInTheDocument()
   })
 
@@ -68,5 +71,53 @@ describe('Artifact window', () => {
     await user.click(screen.getByRole('button', { name: '查看源码' }))
 
     expect(screen.getByText('<h1>元AI</h1>')).toBeInTheDocument()
+  })
+
+  it('renders JSON and CSV payloads as data previews', async () => {
+    const user = userEvent.setup()
+    artifact.payload = {
+      title: '用户数据',
+      lang: 'json',
+      code: '{"name":"元AI","enabled":true}',
+      mode: 'view',
+    }
+
+    const { unmount } = render(<App />)
+    await user.click(screen.getByRole('button', { name: '数据预览' }))
+    expect(screen.getByText('name:')).toBeInTheDocument()
+    expect(screen.getByText('"元AI"')).toBeInTheDocument()
+
+    unmount()
+    artifact.payload = {
+      title: '水果清单',
+      lang: 'csv',
+      code: '名称,价格\n苹果,5\n香蕉,3',
+      mode: 'run',
+    }
+    render(<App />)
+    expect(screen.getByRole('columnheader', { name: '名称' })).toBeInTheDocument()
+    expect(screen.getByRole('cell', { name: '苹果' })).toBeInTheDocument()
+  })
+
+  it('shows JavaScript console output inside the preview window', async () => {
+    const user = userEvent.setup()
+    artifact.payload = {
+      title: 'JS 输出',
+      lang: 'javascript',
+      code: 'console.log("完成")',
+      mode: 'view',
+    }
+
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: '运行预览' }))
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { source: ARTIFACT_MSG_SOURCE, level: 'log', text: '完成' },
+      })
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('complementary', { name: '运行输出' })).toHaveTextContent('完成')
+    })
   })
 })

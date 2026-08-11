@@ -158,17 +158,19 @@ interface ComposerAttachment {
 }
 
 interface UserPreferenceSignal {
-  dateFmt: DateFmt
-  timeFmt: TimeFmt
+  dateFmt?: DateFmt
+  timeFmt?: TimeFmt
+  theme?: 'light' | 'dark'
 }
 
 function isUserPreferenceSignal(value: unknown): value is UserPreferenceSignal {
   if (typeof value !== 'object' || value === null) return false
   const candidate = value as Record<string, unknown>
-  return (
-    (candidate.timeFmt === '24h' || candidate.timeFmt === '12h') &&
-    (candidate.dateFmt === 'ymd' || candidate.dateFmt === 'mdy' || candidate.dateFmt === 'dmy')
-  )
+  const validTime = candidate.timeFmt === '24h' || candidate.timeFmt === '12h'
+  const validDate =
+    candidate.dateFmt === 'ymd' || candidate.dateFmt === 'dmy' || candidate.dateFmt === 'mdy'
+  const validTheme = candidate.theme === 'light' || candidate.theme === 'dark'
+  return validTime || validDate || validTheme
 }
 
 function createAttachmentPreviewUrl(file: File): string | null {
@@ -1106,8 +1108,12 @@ export function App(): ReactElement {
     const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
     const handlePreferenceChange = (event: MessageEvent<unknown>): void => {
       if (!isUserPreferenceSignal(event.data)) return
-      setTimeFmt(event.data.timeFmt)
-      setDateFmt(event.data.dateFmt)
+      if (event.data.timeFmt) setTimeFmt(event.data.timeFmt)
+      if (event.data.dateFmt) setDateFmt(event.data.dateFmt)
+      if (event.data.theme) {
+        document.documentElement.setAttribute('data-theme', event.data.theme)
+        setIsDarkTheme(event.data.theme === 'dark')
+      }
     }
     channel.addEventListener('message', handlePreferenceChange)
     return () => {
@@ -1248,7 +1254,10 @@ export function App(): ReactElement {
   async function handleOpenArtifact(payload: DesktopArtifactPayload): Promise<void> {
     setActionError('')
     try {
-      await window.yuanai.window.openArtifact(payload)
+      await window.yuanai.window.openArtifact({
+        ...payload,
+        theme: isDarkTheme ? 'dark' : 'light',
+      })
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法打开代码面板，请稍后重试'))
     }
@@ -1340,6 +1349,11 @@ export function App(): ReactElement {
     document.documentElement.setAttribute('data-theme', nextTheme)
     setTheme(nextTheme)
     setIsDarkTheme(nextTheme === 'dark')
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
+      channel.postMessage({ theme: nextTheme })
+      channel.close()
+    }
   }
 
   function handleSelectConversation(conversationId: string): void {

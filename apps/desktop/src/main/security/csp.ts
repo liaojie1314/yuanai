@@ -8,7 +8,8 @@ function isLoopbackOrigin(origin: string): boolean {
 /** 从已经校验的运行时配置构建严格且无通配符的 Content Security Policy。 */
 export function buildContentSecurityPolicy(
   config: AppRuntimeConfig,
-  allowDevelopmentInlineScripts = false
+  allowDevelopmentInlineScripts = false,
+  allowSandboxedArtifactScripts = false
 ): string {
   const apiOrigin = new URL(config.apiBaseUrl).origin
   const loopbackAssetOrigins = config.assetOrigins.filter(isLoopbackOrigin)
@@ -20,10 +21,15 @@ export function buildContentSecurityPolicy(
     apiOrigin,
     ...loopbackAssetOrigins,
   ].join(' ')
+  const scriptSources = allowSandboxedArtifactScripts
+    ? "'self' 'unsafe-inline' blob: https://esm.sh"
+    : allowDevelopmentInlineScripts
+      ? "'self' 'unsafe-inline'"
+      : "'self'"
 
   return [
     "default-src 'self'",
-    allowDevelopmentInlineScripts ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
+    `script-src ${scriptSources}`,
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imageSources}`,
     "font-src 'self' data:",

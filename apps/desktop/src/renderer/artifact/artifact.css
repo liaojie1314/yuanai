@@ -83,7 +83,8 @@ body {
 }
 
 .artifact__actions button:hover,
-.artifact__actions button:focus-visible {
+.artifact__actions button:focus-visible,
+.artifact__actions button.is-active {
   color: #2563eb;
   background: #eff6ff;
 }
@@ -102,6 +103,11 @@ body {
   min-height: 0;
   overflow: hidden;
   padding: 0;
+  background: #f8fafc;
+}
+
+.artifact__content--run {
+  grid-template-rows: minmax(0, 1fr) auto;
 }
 .artifact__code {
   min-width: 0;
@@ -112,17 +118,17 @@ body {
   padding: 16px;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-color: rgba(148, 163, 184, 0.72) transparent;
+  scrollbar-color: rgba(100, 116, 139, 0.38) transparent;
   scrollbar-width: thin;
   border: 0;
   border-radius: 0;
-  color: #d7e3fb;
-  background: #111827;
+  color: #1e293b;
+  background: transparent;
   font:
     13px/1.65 'SFMono-Regular',
     Consolas,
     monospace;
-  white-space: pre-wrap;
+  white-space: pre;
 }
 
 .artifact__code::-webkit-scrollbar {
@@ -137,12 +143,12 @@ body {
 .artifact__code::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.72);
+  background: rgba(100, 116, 139, 0.42);
   background-clip: padding-box;
 }
 
 .artifact__code::-webkit-scrollbar-thumb:hover {
-  background: rgba(203, 213, 225, 0.92);
+  background: rgba(71, 85, 105, 0.6);
   background-clip: padding-box;
 }
 .artifact__frame {
@@ -150,6 +156,204 @@ body {
   height: 100%;
   border: 0;
   background: #ffffff;
+}
+
+.artifact__console {
+  max-height: 180px;
+  min-height: 94px;
+  border-top: 1px solid #dbe3f0;
+  background: #ffffff;
+}
+
+.artifact__console > header {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid #e6edf7;
+  color: #5b6d8d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.artifact__console > header button {
+  min-height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  color: #5b6d8d;
+  background: transparent;
+  font-size: 11px;
+}
+
+.artifact__console > header button:hover:not(:disabled),
+.artifact__console > header button:focus-visible {
+  color: #2563eb;
+  background: #eff6ff;
+}
+
+.artifact__console > header button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.artifact__console-body,
+.artifact-data,
+.artifact-data__table-scroll {
+  scrollbar-color: rgba(100, 116, 139, 0.38) transparent;
+  scrollbar-width: thin;
+}
+
+.artifact__console-body {
+  max-height: 146px;
+  overflow: auto;
+  padding: 8px 16px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.artifact__console-body p {
+  margin: 0 0 5px;
+  color: #475569;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.artifact__console-body p[data-level='warn'] {
+  color: #b45309;
+}
+
+.artifact__console-body p[data-level='error'] {
+  color: #dc2626;
+}
+
+.artifact__console-empty {
+  color: #94a3b8;
+}
+
+.artifact-data {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  color: #334155;
+  background: #f8fafc;
+  font-size: 13px;
+}
+
+.artifact-data__empty,
+.artifact-data__error {
+  display: grid;
+  place-items: center;
+  color: #71809d;
+}
+
+.artifact-data__error {
+  color: #dc2626;
+}
+
+.artifact-data__table-scroll {
+  overflow: auto;
+}
+
+.artifact-data__table {
+  min-width: max-content;
+  border-spacing: 0;
+  border: 1px solid #dbe3f0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #ffffff;
+  text-align: left;
+}
+
+.artifact-data__table th,
+.artifact-data__table td {
+  min-width: 120px;
+  max-width: 260px;
+  padding: 9px 12px;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.artifact-data__table th:last-child,
+.artifact-data__table td:last-child {
+  border-right: 0;
+}
+
+.artifact-data__table tr:last-child td {
+  border-bottom: 0;
+}
+
+.artifact-data__table th {
+  color: #334155;
+  background: #eff6ff;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.artifact-data__table td {
+  color: #475569;
+  background: #ffffff;
+}
+
+.artifact-data__json {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.artifact-data__json-node {
+  min-width: max-content;
+}
+
+.artifact-data__json-row {
+  display: flex;
+  min-height: 22px;
+  align-items: center;
+  gap: 3px;
+  white-space: pre;
+}
+
+.artifact-data__branch {
+  padding: 0;
+  border: 0;
+  color: #64748b;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.artifact-data__branch:hover,
+.artifact-data__branch:focus-visible {
+  color: #2563eb;
+}
+
+.artifact-data__json-children {
+  padding-left: 20px;
+}
+
+.artifact-data__key {
+  color: #2563eb;
+}
+
+.artifact-data__value--string {
+  color: #047857;
+}
+
+.artifact-data__value--number {
+  color: #b45309;
+}
+
+.artifact-data__value--boolean {
+  color: #7c3aed;
+}
+
+.artifact-data__value--null {
+  color: #94a3b8;
 }
 .artifact__footer {
   min-height: 48px;
@@ -186,4 +390,46 @@ body {
   place-items: center;
   color: #71809d;
   font-size: 14px;
+}
+
+:root[data-theme='dark'] {
+  color: #e2e8f0;
+  background: #111827;
+}
+
+:root[data-theme='dark'] .artifact__header,
+:root[data-theme='dark'] .artifact__footer,
+:root[data-theme='dark'] .artifact__console,
+:root[data-theme='dark'] .artifact-data__table,
+:root[data-theme='dark'] .artifact-data__table td {
+  border-color: #334155;
+  background: #1f2937;
+}
+
+:root[data-theme='dark'] .artifact__header h1,
+:root[data-theme='dark'] .artifact__footer button,
+:root[data-theme='dark'] .artifact__console > header,
+:root[data-theme='dark'] .artifact-data,
+:root[data-theme='dark'] .artifact-data__table th {
+  color: #e2e8f0;
+}
+
+:root[data-theme='dark'] .artifact__header p,
+:root[data-theme='dark'] .artifact__footer > span,
+:root[data-theme='dark'] .artifact__console-body p,
+:root[data-theme='dark'] .artifact-data__table td {
+  color: #94a3b8;
+}
+
+:root[data-theme='dark'] .artifact__content,
+:root[data-theme='dark'] .artifact-data {
+  background: #111827;
+}
+
+:root[data-theme='dark'] .artifact__console > header {
+  border-color: #334155;
+}
+
+:root[data-theme='dark'] .artifact-data__table th {
+  background: #263448;
 }

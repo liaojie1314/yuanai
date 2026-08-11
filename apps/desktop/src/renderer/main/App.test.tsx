@@ -294,11 +294,16 @@ describe('desktop chat', () => {
     ]
     render(<App />)
 
+    expect(document.querySelector('.desktop-chat__code-highlight')).toHaveTextContent(
+      '<h1>元AI</h1>'
+    )
+
     await user.click(screen.getByRole('button', { name: '展示面板' }))
     expect(desktop.openArtifact).toHaveBeenCalledWith({
       code: '<h1>元AI</h1>',
       lang: 'html',
       mode: 'view',
+      theme: 'light',
       title: 'html',
     })
 
@@ -312,6 +317,53 @@ describe('desktop chat', () => {
           skipOptimistic: true,
         })
       )
+    })
+  })
+
+  it('opens JSON and CSV code blocks directly in data preview mode', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-json',
+        role: 'assistant',
+        content: '```json\n{"name":"元AI"}\n```',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    const { unmount } = render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '数据预览' }))
+
+    expect(desktop.openArtifact).toHaveBeenCalledWith({
+      code: '{"name":"元AI"}',
+      lang: 'json',
+      mode: 'run',
+      theme: 'light',
+      title: 'json 预览',
+    })
+
+    unmount()
+    desktop.openArtifact.mockClear()
+    chat.messages = [
+      {
+        id: 'message-csv',
+        role: 'assistant',
+        content: '```csv\n名称,价格\n苹果,5\n```',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '数据预览' }))
+
+    expect(desktop.openArtifact).toHaveBeenCalledWith({
+      code: '名称,价格\n苹果,5',
+      lang: 'csv',
+      mode: 'run',
+      theme: 'light',
+      title: 'csv 预览',
     })
   })
 

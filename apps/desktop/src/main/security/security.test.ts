@@ -28,6 +28,14 @@ describe('renderer security policy', () => {
     expect(buildContentSecurityPolicy(config, true)).toContain("script-src 'self' 'unsafe-inline'")
   })
 
+  it('permits inline scripts only for the isolated Artifact runtime in production', () => {
+    expect(buildContentSecurityPolicy(config, false, true)).toContain(
+      "script-src 'self' 'unsafe-inline' blob: https://esm.sh"
+    )
+    expect(buildContentSecurityPolicy(config)).not.toContain("script-src 'self' 'unsafe-inline'")
+    expect(buildContentSecurityPolicy(config, false, true)).not.toContain("'unsafe-eval'")
+  })
+
   it('allows video capture only from a trusted renderer and always denies audio', () => {
     expect(permissionDecision(true, 'media', ['video'])).toBe(true)
     expect(permissionDecision(true, 'media', ['audio'])).toBe(false)

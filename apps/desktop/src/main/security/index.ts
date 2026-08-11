@@ -6,6 +6,10 @@ import { buildContentSecurityPolicy } from './csp'
 import { lockRendererNavigation } from './navigation'
 import { installPermissionHandler } from './permissions'
 
+function isArtifactRendererUrl(url: string): boolean {
+  return url.startsWith('yuanai-app://renderer/artifact/')
+}
+
 /** 安装单个 renderer 所需的 CSP、权限和导航安全策略。 */
 export function secureRenderer(
   webContents: WebContents,
@@ -13,15 +17,18 @@ export function secureRenderer(
   runtimeConfig: AppRuntimeConfig,
   allowDevelopmentInlineScripts = false
 ): void {
-  const contentSecurityPolicy = buildContentSecurityPolicy(
-    runtimeConfig,
-    allowDevelopmentInlineScripts
-  )
   webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [contentSecurityPolicy],
+        // Artifact 的 srcdoc 继承此 CSP；它仍是无同源权限的 sandbox，仅需运行自身内联脚本。
+        'Content-Security-Policy': [
+          buildContentSecurityPolicy(
+            runtimeConfig,
+            allowDevelopmentInlineScripts,
+            isArtifactRendererUrl(details.url)
+          ),
+        ],
       },
     })
   })

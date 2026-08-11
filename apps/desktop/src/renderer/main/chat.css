@@ -1979,16 +1979,39 @@ textarea:focus-visible {
   background: var(--desktop-brand-light);
 }
 
-.desktop-chat__code-block > pre {
+.desktop-chat__code-highlight {
   max-height: 420px;
   margin: 0;
   overflow: auto;
-  padding: 13px;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(100, 116, 139, 0.38) transparent;
+  scrollbar-width: thin;
   color: var(--desktop-fg);
   background: var(--desktop-surface);
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 12px;
   line-height: 1.6;
+}
+
+.desktop-chat__code-highlight::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.desktop-chat__code-highlight::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.desktop-chat__code-highlight::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.42);
+  background-clip: padding-box;
+}
+
+.desktop-chat__code-highlight::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.6);
+  background-clip: padding-box;
 }
 
 .desktop-chat__files {

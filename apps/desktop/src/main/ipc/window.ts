@@ -29,6 +29,7 @@ export interface NamedWindowController {
 function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPayload {
   if (!value || typeof value !== 'object') return false
   const payload = value as Record<string, unknown>
+  const theme = payload.theme
   return (
     typeof payload.title === 'string' &&
     payload.title.length > 0 &&
@@ -37,7 +38,8 @@ function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPaylo
     payload.lang.length <= 80 &&
     typeof payload.code === 'string' &&
     payload.code.length <= 2 * 1024 * 1024 &&
-    (payload.mode === 'view' || payload.mode === 'run')
+    (payload.mode === 'view' || payload.mode === 'run') &&
+    (theme === undefined || theme === 'light' || theme === 'dark')
   )
 }
 

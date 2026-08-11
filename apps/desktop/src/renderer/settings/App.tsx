@@ -72,7 +72,8 @@ function applyClientPreferences(preferences: UserPreferences): void {
 function broadcastUserPreferences(preferences: UserPreferences): void {
   if (typeof BroadcastChannel === 'undefined') return
   const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
-  channel.postMessage({ dateFmt: preferences.dateFormat, timeFmt: preferences.timeFormat })
+  const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
+  channel.postMessage({ dateFmt: preferences.dateFormat, timeFmt: preferences.timeFormat, theme })
   channel.close()
 }
 
