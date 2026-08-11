@@ -2257,6 +2257,16 @@ textarea:focus-visible {
   display: none;
 }
 
+/* Keep the collapsed avatar rail free of actions even while a row is hovered or active. */
+.desktop-chat--sidebar-collapsed
+  .desktop-chat__conversation:hover
+  .desktop-chat__conversation-actions,
+.desktop-chat--sidebar-collapsed
+  .desktop-chat__conversation--active
+  .desktop-chat__conversation-actions {
+  display: none;
+}
+
 .desktop-chat--sidebar-collapsed .desktop-chat__conversation-select {
   justify-items: center;
   min-height: 40px;
