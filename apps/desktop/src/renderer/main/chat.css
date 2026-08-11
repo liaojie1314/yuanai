@@ -2510,39 +2510,19 @@ textarea:focus-visible {
   margin-bottom: 2px;
 }
 
-.desktop-chat--sidebar-collapsed .desktop-chat__conversation-group h2 {
-  display: none;
-}
-
+.desktop-chat--sidebar-collapsed .desktop-chat__conversation-group h2,
 .desktop-chat--sidebar-collapsed .desktop-chat__conversation-actions {
-  right: auto;
-  left: 50%;
-  display: none;
-  transform: translateX(-50%);
-}
-
-.desktop-chat--sidebar-collapsed
-  .desktop-chat__conversation--active
-  .desktop-chat__conversation-actions {
   display: none;
 }
 
+/* Keep the collapsed avatar rail free of actions even while a row is hovered or active. */
 .desktop-chat--sidebar-collapsed
   .desktop-chat__conversation:hover
   .desktop-chat__conversation-actions,
 .desktop-chat--sidebar-collapsed
-  .desktop-chat__conversation:focus-within
+  .desktop-chat__conversation--active
   .desktop-chat__conversation-actions {
-  display: flex;
-}
-
-.desktop-chat--sidebar-collapsed
-  .desktop-chat__conversation:hover
-  .desktop-chat__conversation-avatar,
-.desktop-chat--sidebar-collapsed
-  .desktop-chat__conversation:focus-within
-  .desktop-chat__conversation-avatar {
-  visibility: hidden;
+  display: none;
 }
 
 .desktop-chat--sidebar-collapsed .desktop-chat__conversation-select {
@@ -2619,7 +2599,8 @@ textarea:focus-visible {
     margin-bottom: 2px;
   }
 
-  .desktop-chat__conversation-group h2 {
+  .desktop-chat__conversation-group h2,
+  .desktop-chat__conversation-actions {
     display: none;
   }
 

@@ -315,6 +315,7 @@ interface ConversationItemProps {
   renaming: boolean
   renameValue: string
   selectionMode: boolean
+  sidebarCollapsed: boolean
   selected: boolean
   onSelect(id: string): void
   onToggleSelection(id: string): void
@@ -712,6 +713,7 @@ function ConversationItem({
   renaming,
   renameValue,
   selectionMode,
+  sidebarCollapsed,
   selected,
   onSelect,
   onToggleSelection,
@@ -780,7 +782,7 @@ function ConversationItem({
           <span>{getConversationTitle(conversation)}</span>
         </button>
       )}
-      {!renaming && !selectionMode ? (
+      {!renaming && !selectionMode && !sidebarCollapsed ? (
         <div className="desktop-chat__conversation-actions">
           <button
             type="button"
@@ -1624,6 +1626,7 @@ export function App(): ReactElement {
                         renaming={conversation.id === renamingConversationId}
                         renameValue={renameValue}
                         selectionMode={isSelectionMode}
+                        sidebarCollapsed={isSidebarCollapsed}
                         selected={selectedConversationIds.has(conversation.id)}
                         onSelect={handleSelectConversation}
                         onToggleSelection={handleToggleConversationSelection}

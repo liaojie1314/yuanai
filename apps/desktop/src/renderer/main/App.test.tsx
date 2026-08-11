@@ -671,7 +671,7 @@ describe('desktop chat', () => {
     )
   })
 
-  it('keeps conversation actions available on hover while the sidebar is collapsed', async () => {
+  it('removes conversation actions while the sidebar is collapsed', async () => {
     const user = userEvent.setup()
     render(<App />)
 
@@ -680,7 +680,7 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '折叠侧边栏' }))
 
     expect(screen.getByRole('button', { name: '展开侧边栏' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '更多会话操作' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '更多会话操作' })).not.toBeInTheDocument()
   })
 
   it('uses the custom model menu and sends uploaded attachment IDs with the stream', async () => {
