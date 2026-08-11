@@ -45,7 +45,9 @@ const OPEN_FILES_OPTIONS = {
 
 const SCREEN_SOURCE_OPTIONS = {
   fetchWindowIcons: false,
-  thumbnailSize: { height: 540, width: 960 },
+  // `desktopCapturer` 返回的 thumbnail 会直接作为聊天附件上传，不能使用选择器预览尺寸。
+  // 4096 上限覆盖常见 4K 显示器，同时避免超高分屏捕获造成不可控的 IPC 负载。
+  thumbnailSize: { height: 4096, width: 4096 },
   types: ['screen', 'window'],
 } satisfies SourcesOptions
 

@@ -245,7 +245,10 @@ describe('secure IPC handlers', () => {
     ])
 
     expect(desktopCapturer.getSources).toHaveBeenCalledWith(
-      expect.objectContaining({ types: ['screen', 'window'] })
+      expect.objectContaining({
+        thumbnailSize: { height: 4096, width: 4096 },
+        types: ['screen', 'window'],
+      })
     )
     await expect(handler(createEvent(sender), 'unexpected')).rejects.toThrow('IPC_PAYLOAD_INVALID')
   })
