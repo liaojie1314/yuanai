@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -122,7 +123,7 @@ async def change_password(
     if not user.hashed_password or not verify_password(old_password, user.hashed_password):
         raise ValueError("OLD_PASSWORD_WRONG")
     user.hashed_password = hash_password(new_password)
-    await db.commit()
+    await _revoke_sessions_after_password_change(user, db)
 
 
 async def reset_password(req: ResetPasswordRequest, db: AsyncSession) -> None:
@@ -141,9 +142,15 @@ async def reset_password(req: ResetPasswordRequest, db: AsyncSession) -> None:
     await verify_code_service.verify_code(req.email, req.verify_code, scene="reset_password")
 
     user.hashed_password = hash_password(req.new_password)
+    await _revoke_sessions_after_password_change(user, db)
+
+
+async def _revoke_sessions_after_password_change(user: User, db: AsyncSession) -> None:
+    """持久化密码变更并撤销该用户在所有设备上的会话。"""
+    user.password_changed_at = datetime.now(UTC)
     await db.commit()
 
-    # 密码变更后同时撤销所有 refresh token，强制其他设备重新登录
+    # access token 由 password_changed_at 拒绝，refresh token 则立即从 Redis 移除。
     await redis_client.delete(f"refresh:{user.id}")
 
 

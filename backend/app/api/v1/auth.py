@@ -1,5 +1,4 @@
 import uuid
-from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
@@ -212,8 +211,6 @@ async def change_password(
                 400, {"code": "OLD_PASSWORD_WRONG", "message": "当前密码不正确"}
             ) from e
         raise HTTPException(500, {"code": "INTERNAL_ERROR", "message": "修改密码失败"}) from e
-    current_user.password_changed_at = datetime.now(UTC)
-    await db.commit()
     return {"message": "密码已修改"}
 
 

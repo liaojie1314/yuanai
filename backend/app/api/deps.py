@@ -36,6 +36,16 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "AUTH_TOKEN_INVALID", "message": "用户不存在"},
         )
+    session_issued_at = payload.get("session_issued_at")
+    if user.password_changed_at and (
+        not isinstance(session_issued_at, (int, float))
+        or isinstance(session_issued_at, bool)
+        or session_issued_at < user.password_changed_at.timestamp()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_TOKEN_REVOKED", "message": "登录状态已失效，请重新登录"},
+        )
     return user
 
 

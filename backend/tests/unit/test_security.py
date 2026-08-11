@@ -31,6 +31,7 @@ def test_create_and_decode_access_token() -> None:
     payload = decode_token(token)
     assert payload["sub"] == subject
     assert payload["type"] == "access"
+    assert isinstance(payload["session_issued_at"], float)
 
 
 def test_create_and_decode_refresh_token() -> None:

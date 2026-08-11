@@ -16,12 +16,16 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(subject: str) -> str:
-    expire = datetime.now(UTC) + timedelta(
-        minutes=settings.access_token_expire_minutes
-    )
+    issued_at = datetime.now(UTC)
+    expire = issued_at + timedelta(minutes=settings.access_token_expire_minutes)
     return str(
         jwt.encode(
-            {"sub": subject, "exp": expire, "type": "access"},
+            {
+                "sub": subject,
+                "exp": expire,
+                "type": "access",
+                "session_issued_at": issued_at.timestamp(),
+            },
             settings.jwt_secret_key,
             algorithm=settings.jwt_algorithm,
         )
@@ -29,9 +33,7 @@ def create_access_token(subject: str) -> str:
 
 
 def create_refresh_token(subject: str) -> str:
-    expire = datetime.now(UTC) + timedelta(
-        days=settings.refresh_token_expire_days
-    )
+    expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     return str(
         jwt.encode(
             {"sub": subject, "exp": expire, "type": "refresh"},

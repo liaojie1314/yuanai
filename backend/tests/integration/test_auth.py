@@ -8,7 +8,6 @@ from httpx import AsyncClient
 
 from app.models.user import User
 
-
 # 测试环境统一使用 conftest 里注入的 debug bypass 值作为验证码
 VALID_CODE = "888888"
 
@@ -197,10 +196,16 @@ class TestSendVerifyCode:
 
 
 class TestResetPassword:
-    async def test_reset_password_success(
-        self, client: AsyncClient, test_user: User
-    ) -> None:
+    async def test_reset_password_success(self, client: AsyncClient, test_user: User) -> None:
         """正确邮箱 + 正确验证码 + 合法新密码 → 200，用新密码可以登录"""
+        prior_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "Test1234!"},
+        )
+        assert prior_login.status_code == 200
+        previous_access_token = prior_login.json()["access_token"]
+        previous_refresh_token = prior_login.json()["refresh_token"]
+
         response = await client.post(
             "/api/v1/auth/reset-password",
             json={
@@ -212,12 +217,31 @@ class TestResetPassword:
         assert response.status_code == 200
         assert "已重置" in response.json()["message"]
 
+        stale_access = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {previous_access_token}"},
+        )
+        assert stale_access.status_code == 401
+        assert stale_access.json()["detail"]["code"] == "AUTH_TOKEN_REVOKED"
+
+        stale_refresh = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": previous_refresh_token},
+        )
+        assert stale_refresh.status_code == 401
+
         # 用新密码登录成功
         login_res = await client.post(
             "/api/v1/auth/login",
             json={"email": test_user.email, "password": "BrandNew99!"},
         )
         assert login_res.status_code == 200
+
+        fresh_access = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {login_res.json()['access_token']}"},
+        )
+        assert fresh_access.status_code == 200
 
         # 旧密码不再可用
         old_login = await client.post(
@@ -238,9 +262,7 @@ class TestResetPassword:
         assert response.status_code == 404
         assert response.json()["detail"]["code"] == "EMAIL_NOT_FOUND"
 
-    async def test_reset_password_wrong_code(
-        self, client: AsyncClient, test_user: User
-    ) -> None:
+    async def test_reset_password_wrong_code(self, client: AsyncClient, test_user: User) -> None:
         response = await client.post(
             "/api/v1/auth/reset-password",
             json={
@@ -337,9 +359,7 @@ class TestProtectedRoutes:
         assert data["email"] == test_user.email
         assert data["username"] == test_user.username
 
-    async def test_update_me(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_update_me(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.patch(
             "/api/v1/auth/me",
             json={"username": "updatedname"},
@@ -348,9 +368,7 @@ class TestProtectedRoutes:
         assert response.status_code == 200
         assert response.json()["username"] == "updatedname"
 
-    async def test_logout(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_logout(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.post("/api/v1/auth/logout", headers=auth_headers)
         assert response.status_code == 200
         assert "已退出" in response.json()["message"]
@@ -371,16 +389,41 @@ class TestUserSettings:
         assert data["totalTokens"] == 0
         assert data["fileCount"] == 0
 
-    async def test_change_password_success(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_change_password_success(self, client: AsyncClient, test_user: User) -> None:
+        prior_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "Test1234!"},
+        )
+        assert prior_login.status_code == 200
+        previous_access_token = prior_login.json()["access_token"]
+        previous_refresh_token = prior_login.json()["refresh_token"]
+
         response = await client.patch(
             "/api/v1/auth/me/password",
             json={"old_password": "Test1234!", "new_password": "NewPass99!"},
-            headers=auth_headers,
+            headers={"Authorization": f"Bearer {previous_access_token}"},
         )
         assert response.status_code == 200
         assert "密码" in response.json()["message"]
+
+        stale_access = await client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {previous_access_token}"},
+        )
+        assert stale_access.status_code == 401
+        assert stale_access.json()["detail"]["code"] == "AUTH_TOKEN_REVOKED"
+
+        stale_refresh = await client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": previous_refresh_token},
+        )
+        assert stale_refresh.status_code == 401
+
+        fresh_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "NewPass99!"},
+        )
+        assert fresh_login.status_code == 200
 
     async def test_change_password_wrong_old_password(
         self, client: AsyncClient, auth_headers: dict[str, str]
