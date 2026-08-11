@@ -3,6 +3,7 @@ import {
   Bot,
   Calculator,
   Check,
+  CheckSquare,
   ChevronDown,
   CircleAlert,
   Code2,
@@ -19,10 +20,12 @@ import {
   LogIn,
   Lock,
   Mic,
+  MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Paperclip,
+  Pin,
   SendHorizontal,
   Share2,
   Sparkles,
@@ -48,6 +51,7 @@ import {
   useConversations,
   useCreateConversation,
   useDeleteConversation,
+  useDeleteConversations,
   useMessages,
   useModels,
   useCreateShareLink,
@@ -306,11 +310,19 @@ interface ConversationItemProps {
   active: boolean
   renaming: boolean
   renameValue: string
+  selectionMode: boolean
+  selected: boolean
   onSelect(id: string): void
+  onToggleSelection(id: string): void
+  onOpenMenu(conversation: Conversation, x: number, y: number): void
   onRenameValueChange(value: string): void
-  onRenameStart(conversation: Conversation): void
   onRenameSave(conversation: Conversation): void
-  onRemove(conversation: Conversation): void
+}
+
+interface ConversationMenuState {
+  conversationId: string
+  x: number
+  y: number
 }
 
 interface ConfirmDialogProps {
@@ -695,18 +707,32 @@ function ConversationItem({
   active,
   renaming,
   renameValue,
+  selectionMode,
+  selected,
   onSelect,
+  onToggleSelection,
+  onOpenMenu,
   onRenameValueChange,
-  onRenameStart,
   onRenameSave,
-  onRemove,
 }: ConversationItemProps): ReactElement {
   return (
     <li
       className={
-        active
-          ? 'desktop-chat__conversation desktop-chat__conversation--active'
-          : 'desktop-chat__conversation'
+        active && selected
+          ? 'desktop-chat__conversation desktop-chat__conversation--active desktop-chat__conversation--selected'
+          : active
+            ? 'desktop-chat__conversation desktop-chat__conversation--active'
+            : selected
+              ? 'desktop-chat__conversation desktop-chat__conversation--selected'
+              : 'desktop-chat__conversation'
+      }
+      onContextMenu={
+        renaming
+          ? undefined
+          : (event) => {
+              event.preventDefault()
+              onOpenMenu(conversation, event.clientX, event.clientY)
+            }
       }
     >
       {renaming ? (
@@ -730,32 +756,41 @@ function ConversationItem({
           className="desktop-chat__conversation-select"
           type="button"
           aria-current={active ? 'page' : undefined}
-          onClick={() => onSelect(conversation.id)}
+          aria-pressed={selectionMode ? selected : undefined}
+          onClick={() => {
+            if (selectionMode) {
+              onToggleSelection(conversation.id)
+              return
+            }
+            onSelect(conversation.id)
+          }}
         >
+          {selectionMode ? (
+            <span className="desktop-chat__conversation-checkbox" aria-hidden="true">
+              {selected ? <Check size={13} strokeWidth={3} /> : null}
+            </span>
+          ) : null}
           <span className="desktop-chat__conversation-avatar" aria-hidden="true">
             {getConversationTitle(conversation).slice(0, 1).toLocaleUpperCase()}
           </span>
           <span>{getConversationTitle(conversation)}</span>
         </button>
       )}
-      <div className="desktop-chat__conversation-actions">
-        <button
-          type="button"
-          title="重命名会话"
-          aria-label="重命名会话"
-          onClick={() => onRenameStart(conversation)}
-        >
-          <Pencil size={14} />
-        </button>
-        <button
-          type="button"
-          title="删除会话"
-          aria-label="删除会话"
-          onClick={() => onRemove(conversation)}
-        >
-          <Trash2 size={14} />
-        </button>
-      </div>
+      {!renaming && !selectionMode ? (
+        <div className="desktop-chat__conversation-actions">
+          <button
+            type="button"
+            title="更多会话操作"
+            aria-label="更多会话操作"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect()
+              onOpenMenu(conversation, rect.right, rect.bottom + 4)
+            }}
+          >
+            <MoreVertical size={15} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
     </li>
   )
 }
@@ -765,6 +800,7 @@ export function App(): ReactElement {
   const conversationsQuery = useConversations()
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
+  const deleteConversations = useDeleteConversations()
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
   const stream = useStream()
@@ -785,8 +821,14 @@ export function App(): ReactElement {
   const [search, setSearch] = useState('')
   const [renamingConversationId, setRenamingConversationId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(
+    () => new Set()
+  )
+  const [conversationMenu, setConversationMenu] = useState<ConversationMenuState | null>(null)
   const [conversationPendingDeletion, setConversationPendingDeletion] =
     useState<Conversation | null>(null)
+  const [isBatchDeleteConfirmationOpen, setIsBatchDeleteConfirmationOpen] = useState(false)
   const [shareDialog, setShareDialog] = useState<{
     conversationId: string
     webBaseUrl: string
@@ -838,14 +880,43 @@ export function App(): ReactElement {
     () => groupConversations(visibleConversations),
     [visibleConversations]
   )
+  const contextMenuConversation = conversationMenu
+    ? (conversations.find((conversation) => conversation.id === conversationMenu.conversationId) ??
+      null)
+    : null
   const userInitial = user?.username.slice(0, 1).toLocaleUpperCase() || '?'
 
   useEffect(() => {
     if (isLoggedIn) return
     setActiveConversationId(null)
     setRenamingConversationId(null)
+    setIsSelectionMode(false)
+    setSelectedConversationIds(new Set())
+    setConversationMenu(null)
     setSearch('')
   }, [isLoggedIn])
+
+  useEffect(() => {
+    if (!conversationMenu) return
+    const handlePointerDown = (event: PointerEvent): void => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest('.desktop-chat__conversation-menu')
+      ) {
+        return
+      }
+      setConversationMenu(null)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setConversationMenu(null)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [conversationMenu])
   const userName = user?.username ?? '登录'
   const userEmail = user?.email ?? ''
 
@@ -1059,8 +1130,66 @@ export function App(): ReactElement {
   }
 
   function handleStartRename(conversation: Conversation): void {
+    setConversationMenu(null)
     setRenamingConversationId(conversation.id)
     setRenameValue(getConversationTitle(conversation))
+  }
+
+  /** 打开会话操作菜单，并确保菜单不会超出当前窗口。 */
+  function handleOpenConversationMenu(conversation: Conversation, x: number, y: number): void {
+    const menuWidth = 184
+    const menuHeight = 176
+    setConversationMenu({
+      conversationId: conversation.id,
+      x: Math.max(8, Math.min(x, window.innerWidth - menuWidth - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - menuHeight - 8)),
+    })
+  }
+
+  /** 在多选模式中切换单个会话的选择状态。 */
+  function handleToggleConversationSelection(conversationId: string): void {
+    setSelectedConversationIds((current) => {
+      const next = new Set(current)
+      if (next.has(conversationId)) next.delete(conversationId)
+      else next.add(conversationId)
+      return next
+    })
+  }
+
+  /** 从会话菜单进入多选模式，并默认选择发起操作的会话。 */
+  function handleEnterSelectionMode(conversationId: string): void {
+    setConversationMenu(null)
+    setIsSelectionMode(true)
+    setSelectedConversationIds(new Set([conversationId]))
+  }
+
+  /** 退出多选模式并丢弃当前选择。 */
+  function handleExitSelectionMode(): void {
+    setIsSelectionMode(false)
+    setSelectedConversationIds(new Set())
+  }
+
+  /** 全选或取消全选当前账号的全部会话。 */
+  function handleToggleAllConversations(): void {
+    if (selectedConversationIds.size === conversations.length) {
+      setSelectedConversationIds(new Set())
+      return
+    }
+    setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)))
+  }
+
+  /** 通过真实会话更新 API 切换置顶状态。 */
+  async function handleToggleConversationPin(conversation: Conversation): Promise<void> {
+    setConversationMenu(null)
+    setActionError('')
+    try {
+      await updateConversation.mutateAsync({
+        id: conversation.id,
+        isPinned: !conversation.isPinned,
+      })
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法更新会话置顶状态，请稍后重试'))
+    }
   }
 
   async function handleSaveRename(conversation: Conversation): Promise<void> {
@@ -1095,6 +1224,26 @@ export function App(): ReactElement {
       setActionError(getErrorMessage(error, '无法删除会话，请稍后重试'))
     } finally {
       setConversationPendingDeletion(null)
+    }
+  }
+
+  /** 批量删除已选择的会话，并将活跃会话切换到仍存在的相邻项。 */
+  async function handleConfirmBatchRemoveConversations(): Promise<void> {
+    const selectedIds = Array.from(selectedConversationIds)
+    if (!selectedIds.length || deleteConversations.isPending) return
+    const selectedIdSet = new Set(selectedIds)
+    const replacement = conversations.find((conversation) => !selectedIdSet.has(conversation.id))
+    setActionError('')
+    try {
+      await deleteConversations.mutateAsync(selectedIds)
+      if (activeConversationId && selectedIdSet.has(activeConversationId)) {
+        setActiveConversationId(replacement?.id ?? null)
+      }
+      handleExitSelectionMode()
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法删除所选会话，请稍后重试'))
+    } finally {
+      setIsBatchDeleteConfirmationOpen(false)
     }
   }
 
@@ -1225,6 +1374,35 @@ export function App(): ReactElement {
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
+        {isSelectionMode ? (
+          <div className="desktop-chat__selection-toolbar" role="toolbar" aria-label="批量选择会话">
+            <button
+              type="button"
+              disabled={conversations.length === 0}
+              onClick={handleToggleAllConversations}
+            >
+              {selectedConversationIds.size === conversations.length ? '取消全选' : '全选'}
+            </button>
+            <span>已选择 {selectedConversationIds.size} 项</span>
+            <button
+              className="desktop-chat__selection-delete"
+              type="button"
+              disabled={
+                selectedConversationIds.size === 0 || isStreaming || deleteConversations.isPending
+              }
+              onClick={() => setIsBatchDeleteConfirmationOpen(true)}
+            >
+              删除已选
+            </button>
+            <button
+              type="button"
+              disabled={deleteConversations.isPending}
+              onClick={handleExitSelectionMode}
+            >
+              取消
+            </button>
+          </div>
+        ) : null}
         <nav className="desktop-chat__conversation-nav" aria-label="最近会话">
           {isLoggedIn && conversationsQuery.isLoading ? (
             <div className="desktop-chat__sidebar-state">
@@ -1243,11 +1421,13 @@ export function App(): ReactElement {
                         active={conversation.id === activeConversationId}
                         renaming={conversation.id === renamingConversationId}
                         renameValue={renameValue}
+                        selectionMode={isSelectionMode}
+                        selected={selectedConversationIds.has(conversation.id)}
                         onSelect={handleSelectConversation}
+                        onToggleSelection={handleToggleConversationSelection}
+                        onOpenMenu={handleOpenConversationMenu}
                         onRenameValueChange={setRenameValue}
-                        onRenameStart={handleStartRename}
                         onRenameSave={(item) => void handleSaveRename(item)}
-                        onRemove={handleRequestRemoveConversation}
                       />
                     ))}
                   </ul>
@@ -1657,12 +1837,71 @@ export function App(): ReactElement {
           onConfirm={() => void handleConfirmRemoveConversation()}
         />
       ) : null}
+      {isBatchDeleteConfirmationOpen ? (
+        <ConfirmDialog
+          title={`删除 ${selectedConversationIds.size} 个会话？`}
+          description={`所选 ${selectedConversationIds.size} 个会话及其中的消息将被永久删除。`}
+          isPending={deleteConversations.isPending}
+          pendingLabel="删除中..."
+          onCancel={() => setIsBatchDeleteConfirmationOpen(false)}
+          onConfirm={() => void handleConfirmBatchRemoveConversations()}
+        />
+      ) : null}
       {shareDialog ? (
         <ShareDialog
           conversationId={shareDialog.conversationId}
           webBaseUrl={shareDialog.webBaseUrl}
           onClose={() => setShareDialog(null)}
         />
+      ) : null}
+      {conversationMenu && contextMenuConversation ? (
+        <div
+          className="desktop-chat__conversation-menu"
+          role="menu"
+          aria-label="会话操作"
+          style={{ left: conversationMenu.x, top: conversationMenu.y }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={isStreaming}
+            onClick={() => handleStartRename(contextMenuConversation)}
+          >
+            <Pencil size={15} aria-hidden="true" />
+            重命名
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={updateConversation.isPending}
+            onClick={() => void handleToggleConversationPin(contextMenuConversation)}
+          >
+            <Pin size={15} aria-hidden="true" />
+            {contextMenuConversation.isPinned ? '取消置顶' : '置顶'}
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleEnterSelectionMode(contextMenuConversation.id)}
+          >
+            <CheckSquare size={15} aria-hidden="true" />
+            多选
+          </button>
+          <div className="desktop-chat__conversation-menu-separator" role="separator" />
+          <button
+            className="desktop-chat__conversation-menu-delete"
+            type="button"
+            role="menuitem"
+            disabled={isStreaming || deleteConversation.isPending}
+            onClick={() => {
+              setConversationMenu(null)
+              handleRequestRemoveConversation(contextMenuConversation)
+            }}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+            删除
+          </button>
+        </div>
       ) : null}
     </main>
   )

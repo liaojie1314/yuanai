@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -14,6 +14,7 @@ const chat = vi.hoisted(() => ({
   createConversation: vi.fn(),
   createShareLink: vi.fn(),
   deleteConversation: vi.fn(),
+  deleteConversations: vi.fn(),
   messages: [] as Array<{
     id: string
     role: string
@@ -82,6 +83,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useConversations: () => ({ data: chat.conversations, isLoading: false }),
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
+  useDeleteConversations: () => ({ isPending: false, mutateAsync: chat.deleteConversations }),
   useMessages: () => ({ data: chat.messages, isLoading: false }),
   useModels: () => ({ data: chat.models }),
   useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
@@ -179,6 +181,7 @@ beforeEach(() => {
     lastMessageAt: null,
     createdAt: '2026-08-10T08:00:00.000Z',
   })
+  chat.deleteConversations.mockResolvedValue(undefined)
   chat.shareLink = null
   chat.createShareLink.mockResolvedValue({
     shareToken: 'desktop-share-token',
@@ -297,7 +300,8 @@ describe('desktop chat', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: '删除会话' }))
+    await user.click(screen.getByRole('button', { name: '更多会话操作' }))
+    await user.click(screen.getByRole('menuitem', { name: '删除' }))
 
     expect(screen.getByRole('alertdialog', { name: '删除会话？' })).toBeInTheDocument()
     expect(screen.getByText('“测试会话”及其中的消息将被永久删除。')).toBeInTheDocument()
@@ -305,10 +309,46 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '取消' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '删除会话' }))
+    await user.click(screen.getByRole('button', { name: '更多会话操作' }))
+    await user.click(screen.getByRole('menuitem', { name: '删除' }))
     await user.click(screen.getByRole('button', { name: '删除' }))
 
     await waitFor(() => expect(chat.deleteConversation).toHaveBeenCalledWith('conversation-1'))
+  })
+
+  it('opens conversation actions on right click and batch deletes the selected conversations', async () => {
+    const user = userEvent.setup()
+    chat.conversations.push({
+      id: 'conversation-2',
+      title: '第二个会话',
+      model: 'gpt-4o',
+      isPinned: false,
+      lastMessageAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    })
+    render(<App />)
+
+    fireEvent.contextMenu(screen.getByRole('button', { name: '测试会话' }), {
+      clientX: 120,
+      clientY: 180,
+    })
+
+    expect(screen.getByRole('menu', { name: '会话操作' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '重命名' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '置顶' })).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: '多选' }))
+
+    expect(screen.getByRole('toolbar', { name: '批量选择会话' })).toHaveTextContent('已选择 1 项')
+    await user.click(screen.getByRole('button', { name: '第二个会话' }))
+    expect(screen.getByRole('toolbar', { name: '批量选择会话' })).toHaveTextContent('已选择 2 项')
+
+    await user.click(screen.getByRole('button', { name: '删除已选' }))
+    expect(screen.getByRole('alertdialog', { name: '删除 2 个会话？' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '删除' }))
+
+    await waitFor(() => {
+      expect(chat.deleteConversations).toHaveBeenCalledWith(['conversation-1', 'conversation-2'])
+    })
   })
 
   it('opens a Web-compatible share dialog for the active conversation', async () => {

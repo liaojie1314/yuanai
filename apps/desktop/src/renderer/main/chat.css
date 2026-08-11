@@ -305,6 +305,10 @@ textarea:focus-visible {
   box-shadow: inset 2px 0 0 var(--desktop-brand);
 }
 
+.desktop-chat__conversation--selected {
+  background: var(--desktop-brand-light);
+}
+
 .desktop-chat__conversation-select {
   display: grid;
   width: 100%;
@@ -321,6 +325,10 @@ textarea:focus-visible {
   text-align: left;
 }
 
+.desktop-chat__conversation-select:has(.desktop-chat__conversation-checkbox) {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+
 .desktop-chat__conversation-select span {
   overflow: hidden;
   color: var(--desktop-fg);
@@ -328,6 +336,23 @@ textarea:focus-visible {
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.desktop-chat__conversation-checkbox {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  overflow: visible !important;
+  border: 1px solid var(--desktop-border);
+  border-radius: 4px;
+  color: #ffffff !important;
+  background: var(--desktop-surface);
+}
+
+.desktop-chat__conversation-select[aria-pressed='true'] .desktop-chat__conversation-checkbox {
+  border-color: var(--desktop-brand);
+  background: var(--desktop-brand);
 }
 
 .desktop-chat__conversation-avatar {
@@ -370,6 +395,98 @@ textarea:focus-visible {
 .desktop-chat__conversation-actions button:focus-visible {
   color: var(--desktop-brand-hover);
   background: var(--desktop-brand-light);
+}
+
+.desktop-chat__selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 7px;
+  border-bottom: 1px solid var(--desktop-border);
+  color: var(--desktop-fg-muted);
+  font-size: 12px;
+}
+
+.desktop-chat__selection-toolbar span {
+  min-width: 0;
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.desktop-chat__selection-toolbar button {
+  flex: 0 0 auto;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--desktop-brand-hover);
+  background: transparent;
+  font-size: 12px;
+}
+
+.desktop-chat__selection-toolbar button:hover:not(:disabled),
+.desktop-chat__selection-toolbar button:focus-visible {
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__selection-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.desktop-chat__selection-toolbar .desktop-chat__selection-delete {
+  color: #dc2626;
+}
+
+.desktop-chat__conversation-menu {
+  position: fixed;
+  z-index: 25;
+  display: grid;
+  width: 184px;
+  padding: 5px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 7px;
+  background: var(--desktop-surface);
+  box-shadow: 0 10px 28px rgb(15 23 42 / 16%);
+}
+
+.desktop-chat__conversation-menu button {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--desktop-fg);
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+}
+
+.desktop-chat__conversation-menu button:hover:not(:disabled),
+.desktop-chat__conversation-menu button:focus-visible {
+  background: var(--desktop-elevated);
+}
+
+.desktop-chat__conversation-menu button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.desktop-chat__conversation-menu-separator {
+  height: 1px;
+  margin: 4px 3px;
+  background: var(--desktop-border);
+}
+
+.desktop-chat__conversation-menu .desktop-chat__conversation-menu-delete {
+  color: #dc2626;
+}
+
+.desktop-chat__conversation-menu .desktop-chat__conversation-menu-delete:hover:not(:disabled),
+.desktop-chat__conversation-menu .desktop-chat__conversation-menu-delete:focus-visible {
+  background: #fef2f2;
 }
 
 .desktop-chat__conversation-rename {
@@ -1721,6 +1838,7 @@ textarea:focus-visible {
 .desktop-chat--sidebar-collapsed .desktop-chat__brand strong,
 .desktop-chat--sidebar-collapsed .desktop-chat__quick-actions,
 .desktop-chat--sidebar-collapsed .desktop-chat__search,
+.desktop-chat--sidebar-collapsed .desktop-chat__selection-toolbar,
 .desktop-chat--sidebar-collapsed .desktop-chat__account-info,
 .desktop-chat--sidebar-collapsed .desktop-chat__account-settings,
 .desktop-chat--sidebar-collapsed .desktop-chat__account-menu {
@@ -1799,6 +1917,7 @@ textarea:focus-visible {
   .desktop-chat__brand strong,
   .desktop-chat__quick-actions,
   .desktop-chat__search,
+  .desktop-chat__selection-toolbar,
   .desktop-chat__account-info,
   .desktop-chat__account-settings,
   .desktop-chat__account-menu {
