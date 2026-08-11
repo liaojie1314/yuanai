@@ -7,6 +7,8 @@ import {
   CircleAlert,
   Code2,
   Copy,
+  Eye,
+  EyeOff,
   FileText,
   Ghost,
   Globe2,
@@ -350,6 +352,7 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
   const [expiresInDays, setExpiresInDays] = useState<0 | 1 | 7 | 30>(0)
   const [hasPassword, setHasPassword] = useState(false)
   const [password, setPassword] = useState('')
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [notice, setNotice] = useState('')
   const [copied, setCopied] = useState(false)
   const [isRevokeConfirmationOpen, setIsRevokeConfirmationOpen] = useState(false)
@@ -497,12 +500,13 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
                   }
                   type="button"
                   role="switch"
-                  aria-label="启用访问密码"
+                  aria-label={hasPassword ? '关闭访问密码' : '启用访问密码'}
                   aria-checked={hasPassword}
                   disabled={isBusy}
                   onClick={() => {
                     setHasPassword((value) => !value)
                     setPassword('')
+                    setIsPasswordVisible(false)
                   }}
                 >
                   <span aria-hidden="true" />
@@ -513,7 +517,7 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
                   <Lock size={15} aria-hidden="true" />
                   <input
                     id="share-password"
-                    type="text"
+                    type={isPasswordVisible ? 'text' : 'password'}
                     minLength={4}
                     maxLength={40}
                     value={password}
@@ -521,6 +525,20 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
                     disabled={isBusy}
                     onChange={(event) => setPassword(event.target.value)}
                   />
+                  <button
+                    className="desktop-chat__share-password-visibility"
+                    type="button"
+                    aria-label={isPasswordVisible ? '隐藏访问密码' : '显示访问密码'}
+                    title={isPasswordVisible ? '隐藏访问密码' : '显示访问密码'}
+                    disabled={isBusy}
+                    onClick={() => setIsPasswordVisible((value) => !value)}
+                  >
+                    {isPasswordVisible ? (
+                      <EyeOff size={16} aria-hidden="true" />
+                    ) : (
+                      <Eye size={16} aria-hidden="true" />
+                    )}
+                  </button>
                 </label>
               ) : null}
 

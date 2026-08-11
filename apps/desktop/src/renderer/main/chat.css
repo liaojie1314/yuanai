@@ -1041,6 +1041,26 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.desktop-chat__share-password-visibility {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--desktop-fg-subtle);
+  background: transparent;
+}
+
+.desktop-chat__share-password-visibility:hover:not(:disabled),
+.desktop-chat__share-password-visibility:focus-visible {
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
+}
+
 .desktop-chat__share-link input {
   padding-left: 10px;
 }

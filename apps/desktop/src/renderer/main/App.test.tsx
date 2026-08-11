@@ -311,6 +311,27 @@ describe('desktop chat', () => {
     expect(screen.getByRole('button', { name: '生成分享链接' })).toBeInTheDocument()
   })
 
+  it('keeps a share password hidden until the user requests to reveal it', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '分享对话' }))
+    await user.click(screen.getByRole('switch', { name: '启用访问密码' }))
+
+    const passwordInput = screen.getByLabelText('访问密码')
+    expect(passwordInput).toHaveAttribute('type', 'password')
+
+    await user.type(passwordInput, 'share-password')
+    await user.click(screen.getByRole('button', { name: '显示访问密码' }))
+    expect(passwordInput).toHaveAttribute('type', 'text')
+
+    await user.click(screen.getByRole('switch', { name: '关闭访问密码' }))
+    await user.click(screen.getByRole('switch', { name: '启用访问密码' }))
+
+    expect(screen.getByLabelText('访问密码')).toHaveAttribute('type', 'password')
+    expect(screen.getByLabelText('访问密码')).toHaveValue('')
+  })
+
   it('uses the temporary stream without creating a persisted conversation', async () => {
     const user = userEvent.setup()
     render(<App />)
