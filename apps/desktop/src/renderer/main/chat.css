@@ -1877,7 +1877,9 @@ textarea:focus-visible {
   bottom: calc(100% + 8px);
   left: 10px;
   width: 208px;
-  padding: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 8px;
   border: 1px solid var(--desktop-brand-border);
   border-radius: 8px;
   background: var(--desktop-surface);
@@ -1887,9 +1889,10 @@ textarea:focus-visible {
 .desktop-chat__attachment-menu button {
   display: flex;
   width: 100%;
-  align-items: center;
+  min-height: 52px;
+  align-items: flex-start;
   gap: 9px;
-  padding: 11px 10px;
+  padding: 10px;
   border: 0;
   border-radius: 6px;
   color: var(--desktop-fg);
@@ -1904,12 +1907,13 @@ textarea:focus-visible {
 
 .desktop-chat__attachment-menu button > svg {
   flex: 0 0 auto;
+  margin-top: 2px;
   color: var(--desktop-brand-hover);
 }
 
 .desktop-chat__attachment-menu button > span {
   display: grid;
-  gap: 2px;
+  gap: 4px;
 }
 
 .desktop-chat__attachment-menu strong {
@@ -1921,7 +1925,7 @@ textarea:focus-visible {
 .desktop-chat__attachment-menu small {
   color: var(--desktop-fg-muted);
   font-size: 10.5px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .desktop-chat__media-backdrop {
