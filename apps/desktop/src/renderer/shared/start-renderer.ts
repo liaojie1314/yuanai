@@ -13,6 +13,8 @@ export function startDesktopRenderer(mount: () => void | Promise<void>): void {
     setApiUrl: setApiBaseUrl,
     importStores: async () => {
       await import('@yuanai/core/stores')
+      const { configureDesktopAuthClient } = await import('./auth-client')
+      configureDesktopAuthClient()
     },
     mount,
   }).catch((error: unknown) => {
