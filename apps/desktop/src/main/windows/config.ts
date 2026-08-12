@@ -2,7 +2,7 @@ import type { BrowserWindowConstructorOptions } from 'electron'
 
 /** 各 renderer 入口对应的固定窗口尺寸。 */
 export const WINDOW_SPECS = {
-  main: { width: 1280, height: 820, minWidth: 960, minHeight: 640, resizable: true },
+  main: { width: 1280, height: 820, minWidth: 1100, minHeight: 640, resizable: true },
   login: {
     width: 520,
     height: 600,
