@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { createElement, type Key, type ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -104,6 +105,53 @@ const desktop = vi.hoisted(() => ({
   openArtifact: vi.fn(),
 }))
 
+const virtuoso = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
+}))
+
+vi.mock('react-virtuoso', async () => {
+  return {
+    Virtuoso: (props: {
+      'aria-busy'?: boolean
+      atBottomStateChange?(atBottom: boolean): void
+      className?: string
+      computeItemKey?(index: number, item: unknown): Key
+      data: unknown[]
+      itemContent(index: number, item: unknown): ReactNode
+      ref?:
+        | ((value: { scrollToIndex: typeof virtuoso.scrollToIndex } | null) => void)
+        | { current: { scrollToIndex: typeof virtuoso.scrollToIndex } | null }
+        | null
+    }) => {
+      if (typeof props.ref === 'function') {
+        props.ref({ scrollToIndex: virtuoso.scrollToIndex })
+      } else if (props.ref) {
+        props.ref.current = { scrollToIndex: virtuoso.scrollToIndex }
+      }
+
+      // JSDOM does not implement layout measurement. Keep a bounded viewport so
+      // App tests exercise the same virtual-rendering contract as Electron.
+      const visibleRows = props.data.slice(-12)
+      return createElement(
+        'div',
+        {
+          'aria-busy': props['aria-busy'],
+          className: props.className,
+          'data-testid': 'virtual-message-scroller',
+          onScroll: () => props.atBottomStateChange?.(false),
+        },
+        visibleRows.map((row, index) =>
+          createElement(
+            'div',
+            { key: props.computeItemKey?.(index, row) ?? index },
+            props.itemContent(index, row)
+          )
+        )
+      )
+    },
+  }
+})
+
 vi.mock('@yuanai/core/hooks', () => ({
   useConversations: () => ({ data: chat.conversations, isLoading: false }),
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
@@ -132,6 +180,7 @@ import { changeDesktopLanguage } from '../shared/i18n'
 import { App } from './App'
 
 beforeEach(() => {
+  virtuoso.scrollToIndex.mockReset()
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
@@ -683,14 +732,16 @@ describe('desktop chat', () => {
   it('shows a scroll-to-bottom action without forcing readers back during streaming', async () => {
     const user = userEvent.setup()
     const view = render(<App />)
-    const messages = document.querySelector('.desktop-chat__messages') as HTMLDivElement
-    const scrollTo = vi.fn()
-    Object.defineProperties(messages, {
-      clientHeight: { configurable: true, value: 240 },
-      scrollHeight: { configurable: true, value: 1200 },
-      scrollTo: { configurable: true, value: scrollTo },
-      scrollTop: { configurable: true, writable: true, value: 640 },
+    const messages = screen.getByTestId('virtual-message-scroller')
+
+    await waitFor(() => {
+      expect(virtuoso.scrollToIndex).toHaveBeenCalledWith({
+        behavior: 'auto',
+        index: 'LAST',
+        align: 'end',
+      })
     })
+    virtuoso.scrollToIndex.mockClear()
 
     fireEvent.scroll(messages)
 
@@ -701,12 +752,32 @@ describe('desktop chat', () => {
     chat.streamState.streamingContent = '仍在生成的回复'
     view.rerender(<App />)
 
-    expect(scrollTo).not.toHaveBeenCalled()
+    expect(virtuoso.scrollToIndex).not.toHaveBeenCalled()
 
     await user.click(action)
 
-    expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 1200 })
+    expect(virtuoso.scrollToIndex).toHaveBeenCalledWith({
+      behavior: 'smooth',
+      index: 'LAST',
+      align: 'end',
+    })
     expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
+  })
+
+  it('virtualizes long chat history instead of retaining every message node', () => {
+    chat.messages = Array.from({ length: 80 }, (_value, index) => ({
+      id: `message-${index + 1}`,
+      role: index % 2 === 0 ? 'user' : 'assistant',
+      content: `历史消息 ${index + 1}`,
+      files: [],
+      createdAt: `2026-08-10T08:${String(index).padStart(2, '0')}:00.000Z`,
+    }))
+
+    render(<App />)
+
+    expect(screen.getByText('历史消息 80')).toBeInTheDocument()
+    expect(screen.queryByText('历史消息 1')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.desktop-chat__message').length).toBeLessThan(30)
   })
 
   it('renders user messages as a right-aligned Web-style bubble', () => {

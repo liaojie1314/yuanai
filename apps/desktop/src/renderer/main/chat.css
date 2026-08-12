@@ -1510,6 +1510,38 @@ textarea:focus-visible {
   background-clip: padding-box;
 }
 
+.desktop-chat__messages [data-testid='virtuoso-item-list'] {
+  width: 100%;
+}
+
+.desktop-chat__messages [data-item-index] .desktop-chat__message {
+  animation: none;
+}
+
+.desktop-chat__scroll-seek-placeholder {
+  margin: 0 auto;
+  width: min(calc(100% - 40px), 800px);
+  min-height: 56px;
+  border-radius: 8px;
+  background: linear-gradient(
+    90deg,
+    var(--desktop-elevated) 20%,
+    var(--desktop-brand-light) 50%,
+    var(--desktop-elevated) 80%
+  );
+  background-size: 220% 100%;
+  animation: desktop-chat-scroll-seek 1.15s ease-in-out infinite;
+}
+
+@keyframes desktop-chat-scroll-seek {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
 .desktop-chat__scroll-to-bottom {
   position: absolute;
   z-index: 3;
@@ -1539,7 +1571,11 @@ textarea:focus-visible {
   width: min(100%, 800px);
   flex-direction: column;
   margin: 0 auto;
-  padding: 4px 20px 28px;
+  padding: 0 20px;
+}
+
+.desktop-chat__message-list-spacer {
+  height: 20px;
 }
 
 .desktop-chat__messages-loading {

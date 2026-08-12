@@ -39,7 +39,6 @@ import {
   X,
 } from 'lucide-react'
 import {
-  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -50,6 +49,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from 'react'
+import type { VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from 'react-i18next'
 import {
   useConversations,
@@ -69,7 +69,7 @@ import {
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
+import { buildMessagePairs } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
@@ -79,7 +79,7 @@ import type {
   DesktopSelectedFile,
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
-import { ChatMessage, StreamingMessage } from './MessageContent'
+import { MessageList } from './MessageList'
 import '../shared/i18n'
 
 const FALLBACK_MODEL: AIModel = {
@@ -959,7 +959,7 @@ export function App(): ReactElement {
   const [isDarkTheme, setIsDarkTheme] = useState(
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   )
-  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const messagesListRef = useRef<VirtuosoHandle>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const attachmentsRef = useRef<ComposerAttachment[]>([])
   const cameraVideoRef = useRef<HTMLVideoElement>(null)
@@ -1133,24 +1133,9 @@ export function App(): ReactElement {
   }, [])
 
   const scrollMessagesToBottom = useCallback(
-    (behavior: ScrollBehavior): void => {
-      const container = messagesContainerRef.current
-      if (!container) return
+    (behavior: 'auto' | 'smooth'): void => {
       setMessagesAtBottom(true)
-      if (typeof container.scrollTo === 'function') {
-        container.scrollTo({ behavior, top: container.scrollHeight })
-        return
-      }
-      container.scrollTop = container.scrollHeight
-    },
-    [setMessagesAtBottom]
-  )
-
-  const handleMessagesScroll = useCallback(
-    (event: React.UIEvent<HTMLDivElement>): void => {
-      const container = event.currentTarget
-      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
-      setMessagesAtBottom(distanceToBottom <= 80)
+      messagesListRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior })
     },
     [setMessagesAtBottom]
   )
@@ -1158,12 +1143,14 @@ export function App(): ReactElement {
   useEffect(() => {
     isMessagesAtBottomRef.current = true
     setIsMessagesAtBottom(true)
-    scrollMessagesToBottom('auto')
+    const frame = window.requestAnimationFrame(() => scrollMessagesToBottom('auto'))
+    return () => window.cancelAnimationFrame(frame)
   }, [activeConversationId, isTemporaryConversation, scrollMessagesToBottom])
 
   useEffect(() => {
     if (!isMessagesAtBottomRef.current) return
-    scrollMessagesToBottom('auto')
+    const frame = window.requestAnimationFrame(() => scrollMessagesToBottom('auto'))
+    return () => window.cancelAnimationFrame(frame)
   }, [
     messages,
     optimisticUserMessage,
@@ -2158,148 +2145,84 @@ export function App(): ReactElement {
         ) : null}
 
         <div className="desktop-chat__messages-shell">
-          <div
-            ref={messagesContainerRef}
-            className="desktop-chat__messages"
-            aria-busy={messagesQuery.isLoading}
-            onScroll={handleMessagesScroll}
-          >
-            {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
-              <div className="desktop-chat__messages-loading">
-                <LoaderCircle className="desktop-chat__spin" size={22} />
+          {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
+            <div className="desktop-chat__messages-loading">
+              <LoaderCircle className="desktop-chat__spin" size={22} />
+            </div>
+          ) : messages.length || isStreaming ? (
+            <MessageList
+              listRef={messagesListRef}
+              pairs={messagePairs}
+              user={user}
+              isStreaming={isStreaming}
+              isTemporaryConversation={isTemporaryConversation}
+              regeneratingPairKey={regeneratingPairKey}
+              optimisticUserMessage={optimisticUserMessage}
+              streamingContent={streamingContent}
+              streamingThinking={streamingThinking}
+              streamingThinkingDurationMs={streamingThinkingDurationMs}
+              streamingToolCalls={streamingToolCalls}
+              versionIndexes={versionIndexes}
+              messageFeedback={messageFeedback}
+              timeFmt={timeFmt}
+              dateFmt={dateFmt}
+              onAtBottomStateChange={setMessagesAtBottom}
+              onEditMessage={handleEditMessage}
+              onRegenerateMessage={handleRegenerateMessage}
+              onOpenFeedback={handleOpenFeedback}
+              onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+              onVersionChange={(pairKey, index) =>
+                setVersionIndexes((items) => ({ ...items, [pairKey]: index }))
+              }
+            />
+          ) : (
+            <section
+              className="desktop-chat__empty-state"
+              aria-label={t('desktop.chat.startNewConversation')}
+            >
+              <div className="desktop-chat__empty-icon" aria-hidden="true">
+                元
               </div>
-            ) : messages.length || isStreaming ? (
-              <div className="desktop-chat__message-list">
-                {messagePairs.map((pair) => {
-                  const versionCount = pair.assistants.length
-                  const versionIndex = clampVersionIdx(versionCount, versionIndexes[pair.pairKey])
-                  const assistantMessage = pair.assistants[versionIndex]
-                  const isPairRegenerating = isStreaming && regeneratingPairKey === pair.pairKey
-
-                  return (
-                    <Fragment key={pair.pairKey}>
-                      {pair.userMsg ? (
-                        <ChatMessage
-                          user={user}
-                          message={pair.userMsg}
-                          isStreaming={isStreaming}
-                          canRegenerate={false}
-                          timeFmt={timeFmt}
-                          dateFmt={dateFmt}
-                          onFeedback={handleOpenFeedback}
-                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                          onRegenerate={() => undefined}
-                          onEditMessage={handleEditMessage}
-                        />
-                      ) : null}
-                      {isPairRegenerating ? (
-                        <StreamingMessage
-                          content={streamingContent}
-                          thinking={streamingThinking}
-                          thinkingDurationMs={streamingThinkingDurationMs}
-                          toolCalls={streamingToolCalls}
-                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                        />
-                      ) : assistantMessage ? (
-                        <ChatMessage
-                          user={user}
-                          message={assistantMessage}
-                          isStreaming={isStreaming}
-                          canRegenerate={!isTemporaryConversation && pair.userMsg !== null}
-                          timeFmt={timeFmt}
-                          dateFmt={dateFmt}
-                          versionCount={versionCount}
-                          versionIndex={versionIndex}
-                          onFeedback={handleOpenFeedback}
-                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                          onRegenerate={() => {
-                            if (pair.userMsg) {
-                              handleRegenerateMessage(pair.userMsg.content, pair.pairKey)
-                            }
-                          }}
-                          onEditMessage={handleEditMessage}
-                          onVersionChange={(index) =>
-                            setVersionIndexes((items) => ({ ...items, [pair.pairKey]: index }))
-                          }
-                          {...(messageFeedback[assistantMessage.id]
-                            ? { feedback: messageFeedback[assistantMessage.id] }
-                            : {})}
-                        />
-                      ) : null}
-                    </Fragment>
-                  )
-                })}
-                {isStreaming &&
-                regeneratingPairKey === null &&
-                optimisticUserMessage &&
-                !isTemporaryConversation ? (
-                  <article className="desktop-chat__message desktop-chat__message--user">
-                    <div className="desktop-chat__message-body">
-                      <div className="desktop-chat__markdown desktop-chat__message-bubble">
-                        <p>{optimisticUserMessage}</p>
-                      </div>
-                    </div>
-                  </article>
-                ) : null}
-                {isStreaming && regeneratingPairKey === null ? (
-                  <StreamingMessage
-                    content={streamingContent}
-                    thinking={streamingThinking}
-                    thinkingDurationMs={streamingThinkingDurationMs}
-                    toolCalls={streamingToolCalls}
-                    onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                  />
-                ) : null}
+              <div className="desktop-chat__empty-copy">
+                <h2>{t('chat.welcome.title')}</h2>
+                <p>{t('chat.welcome.subtitle')}</p>
               </div>
-            ) : (
-              <section
-                className="desktop-chat__empty-state"
-                aria-label={t('desktop.chat.startNewConversation')}
+              <div
+                className="desktop-chat__capabilities"
+                aria-label={t('desktop.chat.capabilities')}
               >
-                <div className="desktop-chat__empty-icon" aria-hidden="true">
-                  元
-                </div>
-                <div className="desktop-chat__empty-copy">
-                  <h2>{t('chat.welcome.title')}</h2>
-                  <p>{t('chat.welcome.subtitle')}</p>
-                </div>
-                <div
-                  className="desktop-chat__capabilities"
-                  aria-label={t('desktop.chat.capabilities')}
-                >
-                  {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      aria-label={`快捷提示：${label}`}
-                      disabled={!isLoggedIn}
-                      onClick={() => handleQuickPrompt(prompt)}
-                    >
-                      <Icon size={14} aria-hidden="true" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="desktop-chat__suggestions">
-                  {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
-                    <button
-                      key={title}
-                      type="button"
-                      aria-label={title}
-                      disabled={!isLoggedIn}
-                      onClick={() => handleQuickPrompt(prompt)}
-                    >
-                      <Icon size={17} aria-hidden="true" />
-                      <span>
-                        <strong>{title}</strong>
-                        <small>{description}</small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
+                {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
+                  <button
+                    key={label}
+                    type="button"
+                    aria-label={`快捷提示：${label}`}
+                    disabled={!isLoggedIn}
+                    onClick={() => handleQuickPrompt(prompt)}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="desktop-chat__suggestions">
+                {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
+                  <button
+                    key={title}
+                    type="button"
+                    aria-label={title}
+                    disabled={!isLoggedIn}
+                    onClick={() => handleQuickPrompt(prompt)}
+                  >
+                    <Icon size={17} aria-hidden="true" />
+                    <span>
+                      <strong>{title}</strong>
+                      <small>{description}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
           {showScrollToBottom ? (
             <button
               className="desktop-chat__scroll-to-bottom"
