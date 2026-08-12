@@ -7,10 +7,12 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  nativeImage,
   Notification,
   nativeTheme,
   protocol,
   shell,
+  Tray,
 } from 'electron'
 import { join } from 'node:path'
 
@@ -29,6 +31,8 @@ import { IPC } from '../shared/ipc-contract'
 import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
 import { DesktopSystemService } from './system/desktop-system'
 import { DesktopAppearanceService } from './system/desktop-appearance'
+import { createTrayController, type TrayController } from './tray'
+import { installCloseToTrayBehavior } from './windows/close-to-tray'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,6 +50,19 @@ const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined
 let desktopSystem: DesktopSystemService | undefined
 let desktopAppearance: DesktopAppearanceService | undefined
+let trayController: TrayController | undefined
+let isQuitting = false
+
+function trayIconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'tray-icon.png')
+    : join(__dirname, '../../../mobile/assets/icon.png')
+}
+
+function quitApplication(): void {
+  isQuitting = true
+  app.quit()
+}
 
 function handleDeepLink(value: string): void {
   const deepLink = parseDeepLink(value)
@@ -100,6 +117,14 @@ app.whenReady().then(() => {
       desktopAppearance?.applyToWindow(window)
       trustedWebContents.add(window.webContents)
       secureRenderer(window.webContents, trustedWebContents, runtimeConfig, Boolean(rendererUrl))
+      if (key === 'main') {
+        installCloseToTrayBehavior({
+          isQuitting: () => isQuitting,
+          onQuit: quitApplication,
+          preferencesStorage,
+          window,
+        })
+      }
       window.once('ready-to-show', () => window.show())
       return window
     },
@@ -131,6 +156,14 @@ app.whenReady().then(() => {
       ),
   })
   desktopAppearance.start()
+  trayController = createTrayController({
+    createTray: (icon) => new Tray(icon),
+    icon: nativeImage.createFromPath(trayIconPath()),
+    menu: Menu,
+    onOpenSettings: () => windowManager?.open('settings'),
+    onQuit: quitApplication,
+    onShowMain: () => windowManager?.focusMain(),
+  })
   setupIpc({
     ipcMain,
     guard: createIpcInvocationGuard({
@@ -185,6 +218,8 @@ app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) windowManager?.focusMain()
   })
   app.once('before-quit', () => {
+    isQuitting = true
+    trayController?.dispose()
     desktopSystem?.dispose()
     desktopAppearance?.dispose()
     unregisterAppScheme()
