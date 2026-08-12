@@ -1,5 +1,5 @@
 import { BellRing, MessageSquareText, Volume2 } from 'lucide-react'
-import { useState, type ReactElement } from 'react'
+import type { ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { DesktopPreferences } from '../../../shared/ipc-contract'
@@ -20,7 +20,6 @@ export function NotificationSection({
   onPreferencesChanged,
 }: NotificationSectionProps): ReactElement {
   const { t } = useTranslation()
-  const [testFeedback, setTestFeedback] = useState('')
   const rows = [
     [
       'nativeNotifications',
@@ -41,21 +40,6 @@ export function NotificationSection({
       MessageSquareText,
     ],
   ] as const
-
-  async function handleTestNotification(): Promise<void> {
-    setTestFeedback('')
-    try {
-      const sent = await window.yuanai.system.notify({
-        title: t('desktop.notifications.replyCompleted'),
-        body: t('desktop.notifications.testBody'),
-      })
-      setTestFeedback(
-        sent ? t('desktop.notifications.testSent') : t('desktop.notifications.testUnavailable')
-      )
-    } catch {
-      setTestFeedback(t('desktop.notifications.testFailed'))
-    }
-  }
 
   return (
     <div className="settings-section">
@@ -84,24 +68,6 @@ export function NotificationSection({
               />
             </div>
           ))}
-          <div className="settings-row settings-row--notification-test">
-            <div>
-              <strong>{t('desktop.notifications.test')}</strong>
-              <p>{t('desktop.notifications.testDescription')}</p>
-            </div>
-            <button
-              type="button"
-              className="settings-button settings-button--secondary"
-              onClick={() => void handleTestNotification()}
-            >
-              {t('desktop.notifications.test')}
-            </button>
-          </div>
-          {testFeedback ? (
-            <p className="settings-field-feedback" role="status">
-              {testFeedback}
-            </p>
-          ) : null}
         </section>
       </div>
     </div>
