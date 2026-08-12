@@ -1,4 +1,12 @@
-import { useMemo, type ReactElement, type RefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+} from 'react'
 import { Virtuoso, type ListProps, type VirtuosoHandle } from 'react-virtuoso'
 
 import { clampVersionIdx } from '@yuanai/core/utils'
@@ -24,6 +32,8 @@ interface StreamingAssistantRow {
 }
 
 type MessageListRow = PairRow | OptimisticUserRow | StreamingAssistantRow
+
+const CODE_HIGHLIGHT_IDLE_DELAY_MS = 180
 
 /** 桌面端虚拟消息列表的交互输入。 */
 export interface MessageListProps {
@@ -100,6 +110,32 @@ export function MessageList({
   onOpenArtifact,
   onVersionChange,
 }: MessageListProps): ReactElement {
+  const [deferCodeHighlight, setDeferCodeHighlight] = useState(false)
+  const codeHighlightTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (codeHighlightTimerRef.current !== null) {
+        window.clearTimeout(codeHighlightTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleListScrolling = useCallback((scrolling: boolean): void => {
+    if (codeHighlightTimerRef.current !== null) {
+      window.clearTimeout(codeHighlightTimerRef.current)
+      codeHighlightTimerRef.current = null
+    }
+    if (scrolling) {
+      setDeferCodeHighlight(true)
+      return
+    }
+    codeHighlightTimerRef.current = window.setTimeout(() => {
+      codeHighlightTimerRef.current = null
+      setDeferCodeHighlight(false)
+    }, CODE_HIGHLIGHT_IDLE_DELAY_MS)
+  }, [])
+
   const rows = useMemo((): MessageListRow[] => {
     const nextRows: MessageListRow[] = pairs.map((pair) => ({ kind: 'pair', pair }))
     const shouldRenderOptimisticUser =
@@ -132,6 +168,7 @@ export function MessageList({
       atBottomThreshold={80}
       increaseViewportBy={{ top: 120, bottom: 120 }}
       overscan={{ main: 480, reverse: 480 }}
+      isScrolling={handleListScrolling}
       components={{
         Header: () => <div className="desktop-chat__message-list-spacer" />,
         Footer: () => <div className="desktop-chat__message-list-spacer" />,
@@ -158,6 +195,7 @@ export function MessageList({
               thinkingDurationMs={streamingThinkingDurationMs}
               toolCalls={streamingToolCalls}
               onOpenArtifact={onOpenArtifact}
+              deferCodeHighlight={deferCodeHighlight}
             />
           )
         }
@@ -182,6 +220,7 @@ export function MessageList({
                 onOpenArtifact={onOpenArtifact}
                 onRegenerate={() => undefined}
                 onEditMessage={onEditMessage}
+                deferCodeHighlight={deferCodeHighlight}
               />
             ) : null}
             {isPairRegenerating ? (
@@ -191,6 +230,7 @@ export function MessageList({
                 thinkingDurationMs={streamingThinkingDurationMs}
                 toolCalls={streamingToolCalls}
                 onOpenArtifact={onOpenArtifact}
+                deferCodeHighlight={deferCodeHighlight}
               />
             ) : assistantMessage ? (
               <ChatMessage
@@ -209,6 +249,7 @@ export function MessageList({
                 }}
                 onEditMessage={onEditMessage}
                 onVersionChange={(index) => onVersionChange(pair.pairKey, index)}
+                deferCodeHighlight={deferCodeHighlight}
                 {...(messageFeedback[assistantMessage.id]
                   ? { feedback: messageFeedback[assistantMessage.id] }
                   : {})}

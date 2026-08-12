@@ -3,6 +3,8 @@ import { PrismAsyncLight as SyntaxHighlighterRaw } from 'react-syntax-highlighte
 import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 const FONT_STACK = '"SF Mono", "Fira Code", "Cascadia Code", "Courier New", monospace'
+const MAX_HIGHLIGHT_CHARACTERS = 48_000
+const MAX_HIGHLIGHT_LINES = 300
 
 const PRISM_LANG_ALIASES: Readonly<Record<string, string>> = {
   html: 'markup',
@@ -28,6 +30,7 @@ const SyntaxHighlighter = SyntaxHighlighterRaw as unknown as (props: {
   className?: string | undefined
   customStyle?: CSSProperties | undefined
   codeTagProps?: { style?: CSSProperties | undefined } | undefined
+  'data-code-rendering'?: 'syntax' | undefined
   children: string
 }) => JSX.Element
 
@@ -45,6 +48,8 @@ export interface CodeHighlightProps {
   fontSize?: CSSProperties['fontSize']
   /** 代码行高。 */
   lineHeight?: CSSProperties['lineHeight']
+  /** 列表滚动期间延后 Prism 解析，先稳定显示原始源码。 */
+  defer?: boolean
 }
 
 function normalizePrismLang(lang: string): string {
@@ -66,6 +71,12 @@ function useIsDarkTheme(): boolean {
   return dark
 }
 
+function shouldRenderPlainCode(code: string, defer: boolean): boolean {
+  return (
+    defer || code.length > MAX_HIGHLIGHT_CHARACTERS || code.split('\n').length > MAX_HIGHLIGHT_LINES
+  )
+}
+
 /**
  * 使用 Web 同款 Prism 异步引擎渲染桌面端聊天和 Artifact 的只读源码。
  * @param props 代码语言、正文以及调用方所需的排版参数。
@@ -78,31 +89,42 @@ export function CodeHighlight({
   padding = 0,
   fontSize,
   lineHeight,
+  defer = false,
 }: CodeHighlightProps): JSX.Element {
   const dark = useIsDarkTheme()
+  const plainCode = shouldRenderPlainCode(code, defer)
+  const customStyle: CSSProperties = {
+    margin: 0,
+    padding,
+    borderRadius: 0,
+    background: 'transparent',
+    fontFamily: FONT_STACK,
+    fontSize,
+    lineHeight,
+  }
+  const codeStyle: CSSProperties = {
+    background: 'transparent',
+    fontFamily: 'inherit',
+    fontSize: 'inherit',
+    lineHeight: 'inherit',
+  }
+
+  if (plainCode) {
+    return (
+      <pre className={className} data-code-rendering="plain" style={customStyle}>
+        <code style={codeStyle}>{code}</code>
+      </pre>
+    )
+  }
 
   return (
     <SyntaxHighlighter
       language={normalizePrismLang(lang)}
       style={dark ? oneDark : oneLight}
       className={className}
-      customStyle={{
-        margin: 0,
-        padding,
-        borderRadius: 0,
-        background: 'transparent',
-        fontFamily: FONT_STACK,
-        fontSize,
-        lineHeight,
-      }}
-      codeTagProps={{
-        style: {
-          background: 'transparent',
-          fontFamily: 'inherit',
-          fontSize: 'inherit',
-          lineHeight: 'inherit',
-        },
-      }}
+      customStyle={customStyle}
+      codeTagProps={{ style: codeStyle }}
+      data-code-rendering="syntax"
     >
       {code}
     </SyntaxHighlighter>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { createElement, type Key, type ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -106,6 +106,7 @@ const desktop = vi.hoisted(() => ({
 }))
 
 const virtuoso = vi.hoisted(() => ({
+  isScrolling: null as ((scrolling: boolean) => void) | null,
   scrollToIndex: vi.fn(),
 }))
 
@@ -117,12 +118,14 @@ vi.mock('react-virtuoso', async () => {
       className?: string
       computeItemKey?(index: number, item: unknown): Key
       data: unknown[]
+      isScrolling?(scrolling: boolean): void
       itemContent(index: number, item: unknown): ReactNode
       ref?:
         | ((value: { scrollToIndex: typeof virtuoso.scrollToIndex } | null) => void)
         | { current: { scrollToIndex: typeof virtuoso.scrollToIndex } | null }
         | null
     }) => {
+      virtuoso.isScrolling = props.isScrolling ?? null
       if (typeof props.ref === 'function') {
         props.ref({ scrollToIndex: virtuoso.scrollToIndex })
       } else if (props.ref) {
@@ -180,6 +183,7 @@ import { changeDesktopLanguage } from '../shared/i18n'
 import { App } from './App'
 
 beforeEach(() => {
+  virtuoso.isScrolling = null
   virtuoso.scrollToIndex.mockReset()
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
@@ -382,6 +386,39 @@ describe('desktop chat', () => {
         })
       )
     })
+  })
+
+  it('uses plain code while the virtual chat list is moving, then restores highlighting', () => {
+    vi.useFakeTimers()
+    chat.messages = [
+      {
+        id: 'message-code',
+        role: 'assistant',
+        content: '```javascript\nconst answer = 42\n```',
+        files: [],
+        createdAt: '2026-08-10T08:00:03.000Z',
+      },
+    ]
+    const { container } = render(<App />)
+
+    expect(
+      container.querySelector('.desktop-chat__code-highlight[data-code-rendering="syntax"]')
+    ).toBeInTheDocument()
+
+    act(() => virtuoso.isScrolling?.(true))
+
+    expect(
+      container.querySelector('.desktop-chat__code-highlight[data-code-rendering="plain"]')
+    ).toBeInTheDocument()
+
+    act(() => {
+      virtuoso.isScrolling?.(false)
+      vi.advanceTimersByTime(180)
+    })
+
+    expect(
+      container.querySelector('.desktop-chat__code-highlight[data-code-rendering="syntax"]')
+    ).toBeInTheDocument()
   })
 
   it('opens JSON and CSV code blocks directly in data preview mode', async () => {

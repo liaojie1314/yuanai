@@ -69,6 +69,8 @@ export interface ChatMessageProps extends ChatMessageActions {
   timeFmt: TimeFmt
   /** 用户偏好的消息日期格式。 */
   dateFmt: DateFmt
+  /** 列表滚动期间延后代码语法高亮。 */
+  deferCodeHighlight?: boolean
 }
 
 const LANGUAGE_EXTENSIONS: Readonly<Record<string, string>> = {
@@ -211,11 +213,13 @@ function DesktopCodeBlock({
   lang,
   title,
   onOpenArtifact,
+  deferCodeHighlight = false,
 }: {
   code: string
   lang: string
   title?: string
   onOpenArtifact(payload: DesktopArtifactPayload): void
+  deferCodeHighlight?: boolean
 }): ReactElement {
   const [copied, setCopied] = useState(false)
   const displayLang = lang || 'Code'
@@ -287,6 +291,7 @@ function DesktopCodeBlock({
         padding="13px"
         fontSize="12px"
         lineHeight={1.6}
+        defer={deferCodeHighlight}
       />
     </section>
   )
@@ -295,9 +300,11 @@ function DesktopCodeBlock({
 function MarkdownContent({
   content,
   onOpenArtifact,
+  deferCodeHighlight = false,
 }: {
   content: string
   onOpenArtifact(payload: DesktopArtifactPayload): void
+  deferCodeHighlight?: boolean
 }): ReactElement {
   return (
     <ReactMarkdown
@@ -317,6 +324,7 @@ function MarkdownContent({
               code={String(children).replace(/\n$/, '')}
               lang={lang}
               onOpenArtifact={onOpenArtifact}
+              deferCodeHighlight={deferCodeHighlight}
             />
           )
         },
@@ -584,6 +592,7 @@ export function ChatMessage({
   onVersionChange,
   timeFmt,
   dateFmt,
+  deferCodeHighlight = false,
   versionCount = 1,
   versionIndex = 0,
 }: ChatMessageProps): ReactElement {
@@ -630,7 +639,11 @@ export function ChatMessage({
           </div>
         ) : (
           <div className="desktop-chat__markdown">
-            <MarkdownContent content={message.content} onOpenArtifact={onOpenArtifact} />
+            <MarkdownContent
+              content={message.content}
+              onOpenArtifact={onOpenArtifact}
+              deferCodeHighlight={deferCodeHighlight}
+            />
           </div>
         )}
         {!isEditing
@@ -641,6 +654,7 @@ export function ChatMessage({
                 lang={part.lang}
                 title={part.title ?? ''}
                 onOpenArtifact={onOpenArtifact}
+                deferCodeHighlight={deferCodeHighlight}
               />
             ))
           : null}
@@ -706,12 +720,14 @@ export function StreamingMessage({
   thinkingDurationMs,
   toolCalls,
   onOpenArtifact,
+  deferCodeHighlight = false,
 }: {
   content: string
   thinking: string
   thinkingDurationMs: number
   toolCalls: ToolCall[]
   onOpenArtifact(payload: DesktopArtifactPayload): void
+  deferCodeHighlight?: boolean
 }): ReactElement {
   const message: Message = {
     id: 'streaming-message',
@@ -738,7 +754,11 @@ export function StreamingMessage({
         />
         {content ? (
           <div className="desktop-chat__markdown">
-            <MarkdownContent content={content} onOpenArtifact={onOpenArtifact} />
+            <MarkdownContent
+              content={content}
+              onOpenArtifact={onOpenArtifact}
+              deferCodeHighlight={deferCodeHighlight}
+            />
           </div>
         ) : (
           <div className="desktop-chat__typing" aria-label="正在生成">
