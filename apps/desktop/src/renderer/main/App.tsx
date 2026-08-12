@@ -19,6 +19,7 @@ import {
   Link,
   LoaderCircle,
   LogIn,
+  LogOut,
   Lock,
   Mic,
   MoreVertical,
@@ -52,6 +53,7 @@ import {
   useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
+  useLogout,
   useMessages,
   useModels,
   useCreateShareLink,
@@ -892,6 +894,7 @@ export function App(): ReactElement {
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
   const stream = useStream()
+  const logout = useLogout()
   const updatePreferences = useUpdateMyPreferences()
   const user = useAuthStore((state) => state.user)
   const isLoggedIn = user !== null
@@ -1222,6 +1225,17 @@ export function App(): ReactElement {
       await window.yuanai.window.openLogin()
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法打开登录窗口，请稍后重试'))
+    }
+  }
+
+  /** 退出当前账号，并由安全存储变更驱动主进程显示登录窗口。 */
+  async function handleLogout(): Promise<void> {
+    setIsAccountMenuOpen(false)
+    setActionError('')
+    try {
+      await logout.mutateAsync()
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '退出登录失败，请稍后重试'))
     }
   }
 
@@ -1845,21 +1859,15 @@ export function App(): ReactElement {
           <button
             className="desktop-chat__account-settings"
             type="button"
-            aria-label={user ? '打开设置' : '打开快捷设置'}
-            title={user ? '打开设置' : '打开快捷设置'}
-            aria-expanded={user ? undefined : isAccountMenuOpen}
-            aria-haspopup={user ? undefined : 'menu'}
-            onClick={() => {
-              if (user) {
-                void handleOpenSettings()
-                return
-              }
-              setIsAccountMenuOpen((value) => !value)
-            }}
+            aria-label="打开快捷设置"
+            title="打开快捷设置"
+            aria-expanded={isAccountMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setIsAccountMenuOpen((value) => !value)}
           >
             <Settings size={15} aria-hidden="true" />
           </button>
-          {!user && isAccountMenuOpen ? (
+          {isAccountMenuOpen ? (
             <div className="desktop-chat__account-menu" role="menu" aria-label="快捷设置">
               <button
                 className="desktop-chat__account-menu-theme"
@@ -1880,18 +1888,45 @@ export function App(): ReactElement {
                 />
               </button>
               <div className="desktop-chat__account-menu-separator" />
-              <button
-                className="desktop-chat__account-menu-login"
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setIsAccountMenuOpen(false)
-                  void handleOpenAccount()
-                }}
-              >
-                <LogIn size={16} aria-hidden="true" />
-                去登录
-              </button>
+              {user ? (
+                <>
+                  <button
+                    className="desktop-chat__account-menu-login"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIsAccountMenuOpen(false)
+                      void handleOpenSettings()
+                    }}
+                  >
+                    <Settings size={16} aria-hidden="true" />
+                    个人设置
+                  </button>
+                  <div className="desktop-chat__account-menu-separator" />
+                  <button
+                    className="desktop-chat__account-menu-login desktop-chat__account-menu-logout"
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleLogout()}
+                  >
+                    <LogOut size={16} aria-hidden="true" />
+                    退出登录
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="desktop-chat__account-menu-login"
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setIsAccountMenuOpen(false)
+                    void handleOpenAccount()
+                  }}
+                >
+                  <LogIn size={16} aria-hidden="true" />
+                  去登录
+                </button>
+              )}
             </div>
           ) : null}
         </div>

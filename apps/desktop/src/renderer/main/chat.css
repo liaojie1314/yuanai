@@ -686,6 +686,26 @@ textarea:focus-visible {
   background: var(--desktop-brand-light);
 }
 
+.desktop-chat__account-menu-logout {
+  color: #dc2626;
+}
+
+.desktop-chat__account-menu-logout:hover,
+.desktop-chat__account-menu-logout:focus-visible {
+  color: #b91c1c;
+  background: #fef2f2;
+}
+
+:root[data-theme='dark'] .desktop-chat__account-menu-logout {
+  color: #fca5a5;
+}
+
+:root[data-theme='dark'] .desktop-chat__account-menu-logout:hover,
+:root[data-theme='dark'] .desktop-chat__account-menu-logout:focus-visible {
+  color: #fecaca;
+  background: #3f1d28;
+}
+
 .desktop-chat__account-theme-toggle {
   position: relative;
   display: block;

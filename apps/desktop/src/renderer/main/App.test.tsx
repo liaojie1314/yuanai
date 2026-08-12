@@ -54,6 +54,7 @@ const chat = vi.hoisted(() => ({
   ],
   send: vi.fn(),
   sendTemporary: vi.fn(),
+  logout: vi.fn(),
   shareLink: null as {
     shareToken: string
     titleSnapshot: string
@@ -77,6 +78,7 @@ const chat = vi.hoisted(() => ({
 }))
 
 const auth = vi.hoisted(() => ({
+  clearAuth: vi.fn(),
   user: null as {
     id: string
     email: string
@@ -107,6 +109,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
   useDeleteConversations: () => ({ isPending: false, mutateAsync: chat.deleteConversations }),
+  useLogout: () => ({ isPending: false, mutateAsync: chat.logout }),
   useMessages: () => ({ data: chat.messages, isLoading: false }),
   useModels: () => ({ data: chat.models }),
   useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
@@ -873,9 +876,25 @@ describe('desktop chat', () => {
     expect(screen.getByText('今天')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '打开个人设置' }))
-    await user.click(screen.getByRole('button', { name: '打开设置' }))
+    await user.click(screen.getByRole('button', { name: '打开快捷设置' }))
+    await user.click(screen.getByRole('menuitem', { name: '个人设置' }))
 
     expect(window.yuanai.window.openSettings).toHaveBeenCalledTimes(2)
+  })
+
+  it('provides the Web-aligned quick theme and logout actions for authenticated users', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '打开快捷设置' }))
+    expect(screen.getByRole('menu', { name: '快捷设置' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '切换深色模式' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '退出登录' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('menuitem', { name: '退出登录' }))
+
+    await waitFor(() => expect(chat.logout).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('menu', { name: '快捷设置' })).not.toBeInTheDocument()
   })
 
   it('shows a disabled voice input entry until transcription is available', () => {
