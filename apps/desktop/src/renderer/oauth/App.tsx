@@ -1,19 +1,22 @@
 import { CircleAlert, LoaderCircle } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useDesktopOAuthExchange } from '@yuanai/core/hooks'
 
-function getErrorMessage(error: unknown): string {
+import '../shared/i18n'
+
+function getErrorMessage(error: unknown, fallback: string): string {
   if (typeof error !== 'object' || error === null || !('response' in error)) {
-    return '登录未完成，请返回后重试'
+    return fallback
   }
   const response = error.response
   if (typeof response !== 'object' || response === null || !('data' in response)) {
-    return '登录未完成，请返回后重试'
+    return fallback
   }
   const data = response.data
   if (typeof data !== 'object' || data === null || !('detail' in data)) {
-    return '登录未完成，请返回后重试'
+    return fallback
   }
   const detail = data.detail
   if (
@@ -24,11 +27,12 @@ function getErrorMessage(error: unknown): string {
   ) {
     return detail.message
   }
-  return '登录未完成，请返回后重试'
+  return fallback
 }
 
 /** 处理桌面 OAuth 深链接的一次性授权码交换。 */
 export function App(): ReactElement {
+  const { t } = useTranslation()
   const { mutateAsync } = useDesktopOAuthExchange()
   const [error, setError] = useState<string | null>(null)
   const hasHandledResult = useRef(false)
@@ -38,33 +42,33 @@ export function App(): ReactElement {
       if (hasHandledResult.current) return
       hasHandledResult.current = true
       if (result.type === 'oauth-error') {
-        setError(result.description || '第三方登录未完成，请返回后重试')
+        setError(result.description || t('desktop.oauth.providerRetry'))
         return
       }
       void mutateAsync(result.code).catch((reason: unknown) => {
-        setError(getErrorMessage(reason))
+        setError(getErrorMessage(reason, t('desktop.oauth.retry')))
       })
     })
-  }, [mutateAsync])
+  }, [mutateAsync, t])
 
   if (error) {
     return (
-      <main className="desktop-oauth" aria-label="登录未完成">
+      <main className="desktop-oauth" aria-label={t('desktop.oauth.incomplete')}>
         <CircleAlert aria-hidden="true" className="desktop-oauth__error-icon" size={34} />
-        <h1>登录未完成</h1>
+        <h1>{t('desktop.oauth.incomplete')}</h1>
         <p role="alert">{error}</p>
         <button type="button" onClick={() => window.close()}>
-          返回登录
+          {t('desktop.oauth.backToLogin')}
         </button>
       </main>
     )
   }
 
   return (
-    <main className="desktop-oauth" aria-label="正在完成登录">
+    <main className="desktop-oauth" aria-label={t('desktop.oauth.completing')}>
       <LoaderCircle aria-hidden="true" className="desktop-oauth__spinner" size={34} />
-      <h1>正在完成登录</h1>
-      <p role="status">请稍候。</p>
+      <h1>{t('desktop.oauth.completing')}</h1>
+      <p role="status">{t('desktop.oauth.waiting')}</p>
     </main>
   )
 }

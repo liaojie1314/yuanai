@@ -99,6 +99,18 @@ export interface ShortcutStatus {
   errorCode?: 'CONFLICT' | 'INVALID'
 }
 
+/** 由 renderer 明确请求展示的安全原生通知内容。 */
+export interface DesktopNotificationPayload {
+  /** 通知标题。 */
+  title: string
+  /** 通知正文。 */
+  body: string
+  /** 点击通知后应聚焦的会话；测试通知不携带此字段。 */
+  conversationId?: string
+  /** 是否允许播放系统提示音。 */
+  playSound: boolean
+}
+
 /** 允许由主进程打开的固定帮助链接。 */
 export type ExternalLinkId = 'documentation' | 'repository' | 'feedback' | 'privacy'
 
@@ -141,6 +153,7 @@ export const IPC = {
     getInfo: 'system:get-info',
     setAutoLaunch: 'system:set-auto-launch',
     setGlobalShortcut: 'system:set-global-shortcut',
+    notify: 'system:notify',
   },
   shell: { openExternal: 'shell:open-external' },
   events: {

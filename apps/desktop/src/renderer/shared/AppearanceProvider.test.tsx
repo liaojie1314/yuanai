@@ -30,6 +30,7 @@ vi.mock('@yuanai/core/stores', () => ({
 }))
 
 import { AppearanceProvider } from './AppearanceProvider'
+import { desktopI18n } from './i18n'
 
 beforeEach(() => {
   handlers.displayPreferences = undefined
@@ -53,6 +54,7 @@ afterEach(() => {
   vi.clearAllMocks()
   document.documentElement.removeAttribute('data-density')
   document.documentElement.style.removeProperty('--desktop-font-size')
+  void desktopI18n.changeLanguage('zh-CN')
 })
 
 describe('AppearanceProvider', () => {
@@ -83,5 +85,26 @@ describe('AppearanceProvider', () => {
       timeFmt: '12h',
       dateFmt: 'mdy',
     })
+  })
+
+  it('changes the current renderer language when another window saves display preferences', async () => {
+    render(
+      <AppearanceProvider>
+        <span>内容</span>
+      </AppearanceProvider>
+    )
+
+    await waitFor(() => expect(handlers.displayPreferences).toBeDefined())
+    handlers.displayPreferences?.({
+      theme: 'light',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: 'en',
+    })
+
+    await waitFor(() => expect(desktopI18n.language).toBe('en'))
+    expect(desktopI18n.t('settings.title')).toBe('Settings')
   })
 })

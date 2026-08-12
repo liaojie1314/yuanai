@@ -57,8 +57,7 @@ button {
 
 .desktop-auth__subtitle,
 .desktop-auth__switch,
-.desktop-auth__field-error,
-.desktop-auth__alert {
+.desktop-auth__field-error {
   margin: 0;
 }
 
@@ -204,14 +203,45 @@ button {
   visibility: hidden;
 }
 
-.desktop-auth__alert {
-  padding: 10px 12px;
+.desktop-auth__toast {
+  position: fixed;
+  z-index: 20;
+  top: calc(var(--desktop-titlebar-height, 0px) + 12px);
+  left: 50%;
+  display: flex;
+  width: min(calc(100vw - 48px), 408px);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 12px;
   border: 1px solid #fecaca;
-  border-radius: 6px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(127, 29, 29, 0.12);
   color: #b91c1c;
   background: #fef2f2;
   font-size: 13px;
   line-height: 1.4;
+  transform: translateX(-50%);
+}
+
+.desktop-auth__toast > button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.desktop-auth__toast > button:hover,
+.desktop-auth__toast > button:focus-visible {
+  background: rgba(185, 28, 28, 0.1);
 }
 
 .desktop-auth__options {
@@ -463,8 +493,14 @@ button {
   background: #3b4b63;
 }
 
-:root[data-theme='dark'] .desktop-auth__alert {
+:root[data-theme='dark'] .desktop-auth__toast {
   border-color: #7f1d1d;
   color: #fecaca;
   background: #451a1a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+:root[data-theme='dark'] .desktop-auth__toast > button:hover,
+:root[data-theme='dark'] .desktop-auth__toast > button:focus-visible {
+  background: rgba(254, 202, 202, 0.12);
 }

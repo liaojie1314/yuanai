@@ -6,6 +6,9 @@ import {
   type ReactElement,
   type ReactNode,
 } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import '../../shared/i18n'
 
 /** 设置中需要二次确认的操作。 */
 export type SettingsDialogMode =
@@ -117,6 +120,7 @@ function DialogFrame({
 
 /** 渲染账号安全相关的确认和凭据修改对话框。 */
 export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | null {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [verifyCode, setVerifyCode] = useState('')
   const [oldPassword, setOldPassword] = useState('')
@@ -147,7 +151,7 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
       await operation()
       props.onClose()
     } catch (caught: unknown) {
-      setError(getErrorMessage(caught, success ?? '操作未完成，请重试'))
+      setError(getErrorMessage(caught, success ?? t('desktop.security.actionFailed')))
     } finally {
       setIsPending(false)
     }
@@ -156,21 +160,21 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
     const submit = (event: FormEvent<HTMLFormElement>): void => {
       event.preventDefault()
       if (!/^\S+@\S+\.\S+$/.test(email) || !/^\d{6}$/.test(verifyCode)) {
-        setError('请输入有效邮箱和 6 位验证码')
+        setError(t('desktop.security.invalidEmailCode'))
         return
       }
       void run(() => props.onChangeEmail({ newEmail: email.trim(), verifyCode }))
     }
     return (
-      <DialogFrame dialog={dialog} onClose={close} title="更换邮箱">
+      <DialogFrame dialog={dialog} onClose={close} title={t('settings.security.changeEmail')}>
         <form onSubmit={submit}>
-          <p>验证码将发送到新的邮箱地址。</p>
+          <p>{t('desktop.security.emailUpdating')}</p>
           <label className="settings-field">
-            <span>新邮箱</span>
+            <span>{t('desktop.security.newEmail')}</span>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
           </label>
           <label className="settings-field">
-            <span>验证码</span>
+            <span>{t('settings.dialogs.changeEmail.code')}</span>
             <div className="settings-inline-field">
               <input
                 inputMode="numeric"
@@ -183,10 +187,13 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
                 className="settings-button settings-button--secondary"
                 disabled={isPending || !/^\S+@\S+\.\S+$/.test(email)}
                 onClick={() =>
-                  void run(() => props.onSendVerifyCode(email.trim()), '验证码发送失败')
+                  void run(
+                    () => props.onSendVerifyCode(email.trim()),
+                    t('desktop.security.codeSendFailed')
+                  )
                 }
               >
-                发送验证码
+                {t('auth.sendCode')}
               </button>
             </div>
           </label>
@@ -201,10 +208,10 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
               className="settings-button settings-button--secondary"
               onClick={close}
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button className="settings-button settings-button--primary" disabled={isPending}>
-              确认更换
+              {t('desktop.security.changeConfirm')}
             </button>
           </div>
         </form>
@@ -215,16 +222,16 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
     const submit = (event: FormEvent<HTMLFormElement>): void => {
       event.preventDefault()
       if (newPassword.length < 8) {
-        setError('新密码至少需要 8 位')
+        setError(t('desktop.security.newPasswordTooShort'))
         return
       }
       void run(() => props.onChangePassword({ oldPassword, newPassword }))
     }
     return (
-      <DialogFrame dialog={dialog} onClose={close} title="修改密码">
+      <DialogFrame dialog={dialog} onClose={close} title={t('settings.security.changePassword')}>
         <form onSubmit={submit}>
           <label className="settings-field">
-            <span>当前密码</span>
+            <span>{t('desktop.security.currentPassword')}</span>
             <input
               type="password"
               autoComplete="current-password"
@@ -233,7 +240,7 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
             />
           </label>
           <label className="settings-field">
-            <span>新密码</span>
+            <span>{t('desktop.auth.newPassword')}</span>
             <input
               type="password"
               autoComplete="new-password"
@@ -252,10 +259,10 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
               className="settings-button settings-button--secondary"
               onClick={close}
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button className="settings-button settings-button--primary" disabled={isPending}>
-              保存密码
+              {t('desktop.security.passwordSave')}
             </button>
           </div>
         </form>
@@ -272,16 +279,16 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
           : props.onUnlinkGoogle
   const title =
     dialog === 'clear-conversations'
-      ? '清空全部会话'
+      ? t('desktop.security.clearAll')
       : dialog === 'delete-account'
-        ? '注销账号'
+        ? t('settings.security.deleteAccount')
         : dialog === 'unlink-github'
-          ? '解除 GitHub 关联'
-          : '解除 Google 关联'
+          ? `${t('desktop.security.unlink')} GitHub`
+          : `${t('desktop.security.unlink')} Google`
   const needsConfirmation = dialog === 'delete-account'
   const confirm = (): void => {
-    if (needsConfirmation && confirmation !== '删除我的账号') {
-      setError('请输入“删除我的账号”以确认')
+    if (needsConfirmation && confirmation !== t('desktop.security.deleteAccountText')) {
+      setError(t('desktop.security.deleteAccountPrompt'))
       return
     }
     void run(action)
@@ -290,14 +297,14 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
     <DialogFrame dialog={dialog} onClose={close} title={title}>
       <p>
         {dialog === 'clear-conversations'
-          ? '此操作会永久删除所有聊天记录，无法恢复。'
+          ? t('desktop.security.clearWarning')
           : dialog === 'delete-account'
-            ? '账号和所有关联数据将被永久删除，无法恢复。'
-            : '解除后将不能再使用该第三方账号登录。'}
+            ? t('desktop.security.deleteWarning')
+            : t('desktop.security.unlinkWarning')}
       </p>
       {needsConfirmation ? (
         <label className="settings-field">
-          <span>请输入“删除我的账号”确认</span>
+          <span>{t('desktop.security.deleteAccountHelp')}</span>
           <input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} />
         </label>
       ) : null}
@@ -312,7 +319,7 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
           className="settings-button settings-button--secondary"
           onClick={close}
         >
-          取消
+          {t('common.cancel')}
         </button>
         <button
           type="button"
@@ -320,7 +327,7 @@ export function SettingsDialogs(props: SettingsDialogsProps): ReactElement | nul
           disabled={isPending}
           onClick={confirm}
         >
-          确认操作
+          {t('desktop.security.confirmAction')}
         </button>
       </div>
     </DialogFrame>

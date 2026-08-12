@@ -63,6 +63,7 @@ describe('preload API', () => {
     await api.system.getInfo()
     await api.system.setGlobalShortcut('CommandOrControl+Alt+Y')
     await api.system.setAutoLaunch(true)
+    await api.system.notify({ title: '元AI', body: '回复已完成' })
     await api.shell.openExternal('repository')
     await api.oauth.start('github')
 
@@ -105,8 +106,12 @@ describe('preload API', () => {
       'CommandOrControl+Alt+Y'
     )
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(23, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(24, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(25, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(24, IPC.system.notify, {
+      title: '元AI',
+      body: '回复已完成',
+    })
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(25, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(26, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

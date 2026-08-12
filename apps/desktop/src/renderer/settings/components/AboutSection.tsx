@@ -1,7 +1,10 @@
 import { BookOpen, ExternalLink, Github, HeartHandshake, ShieldCheck } from 'lucide-react'
 import type { ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { DesktopAppInfo, ExternalLinkId } from '../../../shared/ipc-contract'
+
+import '../../shared/i18n'
 
 /** 关于与帮助分区属性。 */
 export interface AboutSectionProps {
@@ -13,30 +16,31 @@ export interface AboutSectionProps {
 
 /** 展示版本信息和受控的帮助入口。 */
 export function AboutSection({ appInfo, onOpenExternal }: AboutSectionProps): ReactElement {
+  const { t } = useTranslation()
   const links = [
-    ['documentation', '使用文档', BookOpen],
-    ['repository', '项目仓库', Github],
-    ['feedback', '反馈问题', HeartHandshake],
-    ['privacy', '隐私政策', ShieldCheck],
+    ['documentation', t('settings.about.documentation'), BookOpen],
+    ['repository', t('desktop.about.repository'), Github],
+    ['feedback', t('desktop.about.feedback'), HeartHandshake],
+    ['privacy', t('settings.about.privacyPolicy'), ShieldCheck],
   ] as const
   return (
     <div className="settings-section">
       <div className="settings-section__heading">
-        <h2>关于与帮助</h2>
-        <p>元AI 桌面端的版本与支持信息。</p>
+        <h2>{t('settings.sections.about')}</h2>
+        <p>{t('desktop.about.desktopDescription')}</p>
       </div>
       <div className="settings-section__body">
         <section className="settings-block settings-about">
           <div className="settings-about__mark">元</div>
           <div>
-            <h3>元AI</h3>
+            <h3>{t('common.appName')}</h3>
             <p>
               v{appInfo?.version ?? '--'} · {appInfo?.platform ?? 'desktop'}
             </p>
           </div>
         </section>
         <section className="settings-block">
-          <h3>帮助与支持</h3>
+          <h3>{t('desktop.about.help')}</h3>
           {links.map(([id, label, Icon]) => (
             <div key={id} className="settings-row">
               <div>

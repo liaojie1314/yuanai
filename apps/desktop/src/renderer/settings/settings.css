@@ -371,8 +371,92 @@ textarea:focus-visible {
 }
 .settings-inline-field {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
+}
+.settings-icon-button {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  color: #53627a;
+  background: #fff;
+}
+.settings-icon-button:hover,
+.settings-icon-button.is-recording {
+  border-color: #3b82f6;
+  color: #2563eb;
+  background: #eff6ff;
+}
+.settings-icon-button.is-recording {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+.settings-field-hint,
+.settings-field-feedback {
+  margin: -10px 20px 20px;
+  color: #718096;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settings-field-feedback {
+  color: #2563eb;
+}
+.settings-select {
+  position: relative;
+  width: min(100%, 260px);
+}
+.settings-select > button {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  color: #172033;
+  background: #fff;
+  text-align: left;
+}
+.settings-select > button:hover,
+.settings-select > button[aria-expanded='true'] {
+  border-color: #3b82f6;
+}
+.settings-select [role='listbox'] {
+  position: absolute;
+  z-index: 4;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  display: grid;
+  overflow: hidden;
+  padding: 4px;
+  border: 1px solid #dbe7f6;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+}
+.settings-select [role='option'] {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  color: #334155;
+  background: transparent;
+  text-align: left;
+}
+.settings-select [role='option']:hover,
+.settings-select [role='option'][aria-selected='true'] {
+  color: #2563eb;
+  background: #eff6ff;
 }
 .profile-avatar-row {
   display: flex;
@@ -446,10 +530,11 @@ textarea:focus-visible {
   font-weight: 600;
 }
 .profile-edit-row__label {
-  width: 80px;
-  flex: 0 0 80px;
+  width: 128px;
+  flex: 0 0 128px;
   color: #53627a;
   font-size: 14px;
+  white-space: nowrap;
 }
 .profile-edit-row__value,
 .profile-edit-row__editor {
@@ -785,6 +870,29 @@ textarea:focus-visible {
   border-color: #475569;
   color: #e2e8f0;
   background: #1e293b;
+}
+[data-theme='dark'] .settings-icon-button,
+[data-theme='dark'] .settings-select > button,
+[data-theme='dark'] .settings-select [role='listbox'] {
+  border-color: #475569;
+  color: #e2e8f0;
+  background: #1e293b;
+}
+[data-theme='dark'] .settings-icon-button:hover,
+[data-theme='dark'] .settings-icon-button.is-recording,
+[data-theme='dark'] .settings-select > button:hover,
+[data-theme='dark'] .settings-select > button[aria-expanded='true'],
+[data-theme='dark'] .settings-select [role='option']:hover,
+[data-theme='dark'] .settings-select [role='option'][aria-selected='true'] {
+  border-color: #60a5fa;
+  color: #dbeafe;
+  background: #1e3a5f;
+}
+[data-theme='dark'] .settings-field-hint {
+  color: #a9bad1;
+}
+[data-theme='dark'] .settings-field-feedback {
+  color: #93c5fd;
 }
 [data-theme='dark'] .profile-edit-row__editor input:focus {
   border-color: #60a5fa;

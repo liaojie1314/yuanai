@@ -1,7 +1,10 @@
 import { Monitor, Moon, Sun } from 'lucide-react'
 import type { ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { UserPreferences } from '@yuanai/core/api'
+
+import '../../shared/i18n'
 
 /** 外观分区属性。 */
 export interface AppearanceSectionProps {
@@ -24,6 +27,7 @@ export function AppearanceSection({
   preferences,
   onPreferencesChanged,
 }: AppearanceSectionProps): ReactElement {
+  const { t } = useTranslation()
   function changeTheme(theme: UserPreferences['theme']): void {
     applyTheme(theme)
     void onPreferencesChanged({ theme }).catch(() => undefined)
@@ -32,17 +36,21 @@ export function AppearanceSection({
   return (
     <div className="settings-section">
       <div className="settings-section__heading">
-        <h2>外观与主题</h2>
-        <p>调整桌面窗口的阅读与排版体验。</p>
+        <h2>{t('settings.sections.appearance')}</h2>
+        <p>{t('desktop.appearance.description')}</p>
       </div>
       <div className="settings-section__body">
         <section className="settings-block">
-          <h3>主题</h3>
-          <div className="settings-choice-grid" role="radiogroup" aria-label="主题">
+          <h3>{t('settings.appearance.theme')}</h3>
+          <div
+            className="settings-choice-grid"
+            role="radiogroup"
+            aria-label={t('settings.appearance.theme')}
+          >
             {[
-              { icon: Monitor, label: '跟随系统', value: 'auto' },
-              { icon: Sun, label: '浅色', value: 'light' },
-              { icon: Moon, label: '深色', value: 'dark' },
+              { icon: Monitor, label: t('settings.appearance.themeAuto'), value: 'auto' },
+              { icon: Sun, label: t('settings.appearance.themeLight'), value: 'light' },
+              { icon: Moon, label: t('settings.appearance.themeDark'), value: 'dark' },
             ].map(({ icon: Icon, label, value }) => (
               <button
                 key={value}
@@ -59,11 +67,11 @@ export function AppearanceSection({
           </div>
         </section>
         <section className="settings-block">
-          <h3>字体大小</h3>
+          <h3>{t('settings.appearance.fontSize')}</h3>
           <label className="settings-range">
-            <span>字体大小</span>
+            <span>{t('settings.appearance.fontSize')}</span>
             <input
-              aria-label="字体大小"
+              aria-label={t('settings.appearance.fontSize')}
               type="range"
               min="0"
               max="2"
@@ -77,21 +85,25 @@ export function AppearanceSection({
             />
             <output>
               {preferences.fontSize === 'small'
-                ? '小'
+                ? t('settings.appearance.fontSmall')
                 : preferences.fontSize === 'large'
-                  ? '大'
-                  : '标准'}
+                  ? t('settings.appearance.fontLarge')
+                  : t('settings.appearance.fontMedium')}
             </output>
           </label>
         </section>
         <section className="settings-block">
-          <h3>内容密度</h3>
-          <div className="settings-segmented" role="radiogroup" aria-label="内容密度">
+          <h3>{t('settings.appearance.density')}</h3>
+          <div
+            className="settings-segmented"
+            role="radiogroup"
+            aria-label={t('settings.appearance.density')}
+          >
             {(
               [
-                ['compact', '紧凑'],
-                ['standard', '标准'],
-                ['loose', '宽松'],
+                ['compact', t('settings.appearance.densityCompact')],
+                ['standard', t('settings.appearance.densityStandard')],
+                ['loose', t('settings.appearance.densityLoose')],
               ] as const
             ).map(([value, label]) => (
               <button

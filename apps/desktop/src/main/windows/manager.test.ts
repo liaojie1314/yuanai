@@ -19,6 +19,8 @@ interface FakeWindow {
   isDestroyed: () => boolean
   loadURL: ReturnType<typeof vi.fn>
   show: ReturnType<typeof vi.fn>
+  hide: ReturnType<typeof vi.fn>
+  isVisible: ReturnType<typeof vi.fn>
   focus: ReturnType<typeof vi.fn>
   restore: ReturnType<typeof vi.fn>
   close: ReturnType<typeof vi.fn>
@@ -36,6 +38,8 @@ function createFakeWindow(id: number): FakeWindow {
     isDestroyed: () => false,
     loadURL: vi.fn(),
     show: vi.fn(),
+    hide: vi.fn(),
+    isVisible: vi.fn(() => true),
     focus: vi.fn(),
     restore: vi.fn(),
     close: vi.fn(),
@@ -152,5 +156,24 @@ describe('WindowManager', () => {
     manager.open('login')
     manager.close('login')
     expect(loginWindow.close).toHaveBeenCalledOnce()
+  })
+
+  it('toggles the existing main window without creating a second instance', () => {
+    const mainWindow = createFakeWindow(1)
+    const createWindow = vi.fn(() => mainWindow)
+    const manager = new WindowManager({ createWindow, rendererUrl: undefined })
+
+    manager.open('main')
+    manager.toggleMainWindow()
+
+    expect(mainWindow.hide).toHaveBeenCalledOnce()
+    expect(createWindow).toHaveBeenCalledOnce()
+
+    mainWindow.isVisible.mockReturnValue(false)
+    manager.toggleMainWindow()
+
+    expect(mainWindow.restore).toHaveBeenCalledOnce()
+    expect(mainWindow.show).toHaveBeenCalledOnce()
+    expect(mainWindow.focus).toHaveBeenCalledOnce()
   })
 })

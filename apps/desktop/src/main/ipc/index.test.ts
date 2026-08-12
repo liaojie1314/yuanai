@@ -151,6 +151,7 @@ function setupTestIpc(): {
     getInfo: vi.fn(),
     setAutoLaunch: vi.fn(),
     setGlobalShortcut: vi.fn(),
+    notifyAiReply: vi.fn().mockResolvedValue(true),
   } as unknown as DesktopSystemService
   const appearanceService = {
     apply: vi.fn().mockReturnValue({ choice: 'auto', resolved: 'light' }),
@@ -238,6 +239,7 @@ describe('secure IPC handlers', () => {
         IPC.system.getInfo,
         IPC.system.setAutoLaunch,
         IPC.system.setGlobalShortcut,
+        IPC.system.notify,
         IPC.window.openAbout,
         IPC.window.openArtifact,
         IPC.window.openForgot,
@@ -248,6 +250,18 @@ describe('secure IPC handlers', () => {
         IPC.window.minimize,
         IPC.window.toggleMaximize,
       ].sort()
+    )
+  })
+
+  it('shows validated native notifications only for trusted callers', async () => {
+    const { handlers, sender, systemService } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.system.notify)
+    const payload = { title: '元AI', body: '回复已完成', conversationId: 'conversation-1' }
+
+    await expect(handler(createEvent(sender), payload)).resolves.toBe(true)
+    expect(systemService.notifyAiReply).toHaveBeenCalledWith(payload)
+    await expect(handler(createEvent(sender), { title: '', body: 'x' })).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
     )
   })
 

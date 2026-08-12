@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { UserPreferences } from '@yuanai/core/api'
 import {
@@ -30,6 +31,7 @@ import { SecuritySection } from './components/SecuritySection'
 import { SettingsDialogs, type SettingsDialogMode } from './components/SettingsDialogs'
 import { SettingsShell, type SettingsSectionId } from './components/SettingsShell'
 import { applyRendererPreferences } from '../shared/appearance'
+import { changeDesktopLanguage } from '../shared/i18n'
 
 const DEFAULT_USER_PREFERENCES: UserPreferences = {
   theme: 'auto',
@@ -56,6 +58,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 /** 提供七个已确认分区的桌面设置窗口。 */
 export function App(): ReactElement {
+  const { t } = useTranslation()
   const [section, setSection] = useState<SettingsSectionId>('profile')
   const [dialog, setDialog] = useState<SettingsDialogMode | null>(null)
   const [desktopPreferences, setDesktopPreferences] = useState<DesktopPreferences>(
@@ -99,29 +102,30 @@ export function App(): ReactElement {
     setDensity(preferenceQuery.data.density)
     setTimeFmt(preferenceQuery.data.timeFormat)
     setDateFmt(preferenceQuery.data.dateFormat)
+    void changeDesktopLanguage(preferenceQuery.data.language)
   }, [preferenceQuery.data, setDateFmt, setDensity, setFontSize, setTheme, setTimeFmt])
 
   useEffect(() => {
     void window.yuanai.prefs
       .get()
       .then(setDesktopPreferences)
-      .catch(() => setActionError('无法读取桌面设置'))
+      .catch(() => setActionError(t('desktop.settings.readDesktopFailed')))
     void window.yuanai.system
       .getInfo()
       .then(setAppInfo)
-      .catch(() => setActionError('无法读取应用信息'))
-  }, [])
+      .catch(() => setActionError(t('desktop.settings.readAppInfoFailed')))
+  }, [t])
 
   async function saveProfile(values: { username: string; bio: string }): Promise<void> {
     setActionError('')
     await updateMe.mutateAsync(values)
-    setNotice('资料已保存')
+    setNotice(t('desktop.settings.profileSaved'))
   }
 
   async function saveAvatar(file: File): Promise<void> {
     setActionError('')
     await uploadAvatar.mutateAsync(file)
-    setNotice('头像已更新')
+    setNotice(t('desktop.settings.avatarSaved'))
   }
 
   async function saveUserPreferences(patch: Partial<UserPreferences>): Promise<void> {
@@ -130,6 +134,7 @@ export function App(): ReactElement {
     setActionError('')
     setPreferences(next)
     applyRendererPreferences(next)
+    if (patch.language) void changeDesktopLanguage(next.language)
     try {
       if (patch.theme) await window.yuanai.appearance.apply(patch.theme)
       const saved = await updatePreferences.mutateAsync(patch)
@@ -140,13 +145,15 @@ export function App(): ReactElement {
       setDensity(saved.density)
       setTimeFmt(saved.timeFormat)
       setDateFmt(saved.dateFormat)
+      void changeDesktopLanguage(saved.language)
       void window.yuanai.appearance.syncPreferences(saved).catch(() => undefined)
-      setNotice('偏好设置已保存')
+      setNotice(t('desktop.settings.preferencesSaved'))
     } catch (error: unknown) {
       setPreferences(previous)
       applyRendererPreferences(previous)
+      if (patch.language) void changeDesktopLanguage(previous.language)
       if (patch.theme) void window.yuanai.appearance.apply(previous.theme).catch(() => undefined)
-      setActionError(getErrorMessage(error, '偏好设置保存失败'))
+      setActionError(getErrorMessage(error, t('desktop.settings.preferencesSaveFailed')))
       throw error
     }
   }
@@ -157,10 +164,10 @@ export function App(): ReactElement {
     setActionError('')
     try {
       setDesktopPreferences(await window.yuanai.prefs.update(patch))
-      setNotice('桌面设置已保存')
+      setNotice(t('desktop.settings.desktopSaved'))
     } catch (error: unknown) {
       setDesktopPreferences(previous)
-      setActionError(getErrorMessage(error, '桌面设置保存失败'))
+      setActionError(getErrorMessage(error, t('desktop.settings.desktopSaveFailed')))
       throw error
     }
   }

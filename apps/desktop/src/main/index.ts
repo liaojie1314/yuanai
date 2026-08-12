@@ -7,6 +7,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  Notification,
   nativeTheme,
   protocol,
   shell,
@@ -21,6 +22,7 @@ import { preferencesStorage } from './storage/prefs-storage'
 import { secureRenderer } from './security'
 import { createWindowOptions } from './windows/config'
 import { WindowManager } from './windows/manager'
+import { createDesktopActionRegistry } from './actions/registry'
 import { registerAppScheme } from './protocol/app-scheme'
 import { createSelectedFileRegistry, registerSelectedFileScheme } from './protocol/selected-file'
 import { IPC } from '../shared/ipc-contract'
@@ -105,10 +107,20 @@ app.whenReady().then(() => {
   })
   desktopSystem = new DesktopSystemService({
     app,
-    focusMain: () => windowManager?.focusMain(),
+    actionRegistry: createDesktopActionRegistry({
+      toggleMainWindow: () => windowManager?.toggleMainWindow(),
+    }),
     globalShortcut,
     platform: process.platform,
     preferencesStorage,
+    notifications: {
+      isSupported: () => Notification.isSupported(),
+      show: ({ title, body, conversationId, playSound }) => {
+        const notification = new Notification({ title, body, silent: !playSound })
+        if (conversationId) notification.on('click', () => windowManager?.focusMain())
+        notification.show()
+      },
+    },
   })
   desktopAppearance = new DesktopAppearanceService({
     nativeTheme,

@@ -1,5 +1,6 @@
 import { Check, Copy, Eye, Play, Terminal } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   ARTIFACT_MSG_SOURCE,
@@ -10,6 +11,7 @@ import {
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { CodeHighlight } from '../shared/CodeHighlight'
+import '../shared/i18n'
 
 import { DataPreview } from './DataPreview'
 
@@ -48,6 +50,7 @@ function applyTheme(theme: 'light' | 'dark'): void {
 
 /** 独立 Artifact 窗口，在同一窗口内切换源码展示和隔离运行预览。 */
 export function App(): ReactElement {
+  const { t } = useTranslation()
   const [payload, setPayload] = useState<DesktopArtifactPayload | null>(null)
   const [copied, setCopied] = useState(false)
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
@@ -97,7 +100,7 @@ export function App(): ReactElement {
     return buildRunSrcDoc(payload.lang, payload.code, { dark: isDarkTheme })
   }, [isDarkTheme, payload])
 
-  if (!payload) return <main className="artifact__empty">正在准备 Artifact…</main>
+  if (!payload) return <main className="artifact__empty">{t('desktop.artifact.preparing')}</main>
 
   const shown = payload
   const runnable = isRunnableLang(shown.lang)
@@ -132,8 +135,12 @@ export function App(): ReactElement {
           {shown.mode === 'view' && previewable ? (
             <button
               type="button"
-              aria-label={dataPreview ? '数据预览' : '运行预览'}
-              title={dataPreview ? '数据预览' : '运行预览'}
+              aria-label={
+                dataPreview ? t('desktop.artifact.dataPreview') : t('desktop.artifact.runPreview')
+              }
+              title={
+                dataPreview ? t('desktop.artifact.dataPreview') : t('desktop.artifact.runPreview')
+              }
               onClick={() => switchMode('run')}
             >
               <Play size={16} aria-hidden="true" />
@@ -142,8 +149,8 @@ export function App(): ReactElement {
           {shown.mode === 'run' ? (
             <button
               type="button"
-              aria-label="查看源码"
-              title="查看源码"
+              aria-label={t('desktop.artifact.viewSource')}
+              title={t('desktop.artifact.viewSource')}
               onClick={() => switchMode('view')}
             >
               <Eye size={16} aria-hidden="true" />
@@ -153,15 +160,19 @@ export function App(): ReactElement {
             <button
               type="button"
               className={isConsoleOpen ? 'is-active' : undefined}
-              aria-label="运行输出"
-              title="运行输出"
+              aria-label={t('desktop.artifact.output')}
+              title={t('desktop.artifact.output')}
               onClick={() => setIsConsoleOpen((current) => !current)}
             >
               <Terminal size={16} aria-hidden="true" />
             </button>
           ) : null}
           <span className="artifact__mode">
-            {shown.mode === 'run' ? (dataPreview ? '数据预览' : '运行预览') : '代码查看'}
+            {shown.mode === 'run'
+              ? dataPreview
+                ? t('desktop.artifact.dataPreview')
+                : t('desktop.artifact.runPreview')
+              : t('desktop.artifact.codeView')}
           </span>
         </div>
       </header>
@@ -180,23 +191,25 @@ export function App(): ReactElement {
               className="artifact__frame"
               sandbox="allow-scripts allow-forms"
               srcDoc={srcDoc}
-              title={`${shown.title} 预览`}
+              title={`${shown.title} ${t('desktop.artifact.preview')}`}
             />
             {isConsoleOpen ? (
-              <aside className="artifact__console" aria-label="运行输出">
+              <aside className="artifact__console" aria-label={t('desktop.artifact.output')}>
                 <header>
-                  <span>运行输出</span>
+                  <span>{t('desktop.artifact.output')}</span>
                   <button
                     type="button"
                     disabled={consoleEntries.length === 0}
                     onClick={() => setConsoleEntries([])}
                   >
-                    清空
+                    {t('desktop.artifact.clear')}
                   </button>
                 </header>
                 <div className="artifact__console-body">
                   {consoleEntries.length === 0 ? (
-                    <span className="artifact__console-empty">暂无输出</span>
+                    <span className="artifact__console-empty">
+                      {t('desktop.artifact.noOutput')}
+                    </span>
                   ) : (
                     consoleEntries.map((entry, index) => (
                       <p key={`${entry.level}-${index}`} data-level={entry.level}>
@@ -222,10 +235,11 @@ export function App(): ReactElement {
       <footer className="artifact__footer">
         <button type="button" onClick={handleCopy}>
           {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-          {copied ? '已复制' : '复制代码'}
+          {copied ? t('common.copied') : t('desktop.artifact.copyCode')}
         </button>
         <span>
-          {shown.lang || 'Code'} · {shown.code.split('\n').length} 行
+          {shown.lang || 'Code'} ·{' '}
+          {t('desktop.artifact.lines', { count: shown.code.split('\n').length })}
         </span>
       </footer>
     </main>

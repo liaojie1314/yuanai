@@ -1,7 +1,10 @@
 import { CalendarDays, Clock3, Languages } from 'lucide-react'
 import type { ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { UserPreferences } from '@yuanai/core/api'
+
+import '../../shared/i18n'
 
 /** 语言与地区分区属性。 */
 export interface LanguageSectionProps {
@@ -16,21 +19,22 @@ export function LanguageSection({
   preferences,
   onPreferencesChanged,
 }: LanguageSectionProps): ReactElement {
+  const { t } = useTranslation()
   return (
     <div className="settings-section">
       <div className="settings-section__heading">
-        <h2>语言与地区</h2>
-        <p>选择界面语言和本地时间格式。</p>
+        <h2>{t('settings.sections.language')}</h2>
+        <p>{t('desktop.language.description')}</p>
       </div>
       <div className="settings-section__body">
         <section className="settings-block">
           <h3>
-            <Languages size={17} aria-hidden="true" /> 界面语言
+            <Languages size={17} aria-hidden="true" /> {t('settings.language.interface')}
           </h3>
           <div
             className="settings-choice-grid settings-choice-grid--two"
             role="radiogroup"
-            aria-label="界面语言"
+            aria-label={t('settings.language.interface')}
           >
             {(
               [
@@ -53,13 +57,17 @@ export function LanguageSection({
         </section>
         <section className="settings-block">
           <h3>
-            <Clock3 size={17} aria-hidden="true" /> 时间格式
+            <Clock3 size={17} aria-hidden="true" /> {t('settings.language.timeFormat')}
           </h3>
-          <div className="settings-segmented" role="radiogroup" aria-label="时间格式">
+          <div
+            className="settings-segmented"
+            role="radiogroup"
+            aria-label={t('settings.language.timeFormat')}
+          >
             {(
               [
-                ['24h', '24 小时'],
-                ['12h', '12 小时'],
+                ['24h', t('settings.language.time24h')],
+                ['12h', t('settings.language.time12h')],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -77,9 +85,13 @@ export function LanguageSection({
         </section>
         <section className="settings-block">
           <h3>
-            <CalendarDays size={17} aria-hidden="true" /> 日期格式
+            <CalendarDays size={17} aria-hidden="true" /> {t('settings.language.dateFormat')}
           </h3>
-          <div className="settings-segmented" role="radiogroup" aria-label="日期格式">
+          <div
+            className="settings-segmented"
+            role="radiogroup"
+            aria-label={t('settings.language.dateFormat')}
+          >
             {(
               [
                 ['ymd', '2026-08-10'],

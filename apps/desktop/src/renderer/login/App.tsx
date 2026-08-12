@@ -9,14 +9,17 @@ import {
   UserRound,
 } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useLogin, useRegister, useResetPassword, useSendVerifyCode } from '@yuanai/core/hooks'
 
 import googleIcon from './google.svg'
+import '../shared/i18n'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const VERIFICATION_CODE_PATTERN = /^\d{6}$/
 const VERIFICATION_CODE_COOLDOWN_SECONDS = 60
+const REQUEST_ERROR_TIMEOUT_MS = 4000
 
 type AuthMode = 'login' | 'register' | 'forgot'
 
@@ -63,9 +66,11 @@ function getModeFromLocation(): AuthMode {
   }
 }
 
-function getPasswordError(password: string): string {
-  if (password.length < 8) return '密码至少需要 8 位'
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) return '密码须同时包含字母和数字'
+function getPasswordError(password: string, translate: (key: string) => string): string {
+  if (password.length < 8) return translate('auth.errors.passwordTooShort')
+  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
+    return translate('desktop.auth.passwordLettersAndNumbers')
+  }
   return ''
 }
 
@@ -93,6 +98,34 @@ function FieldError({ id, message }: { id: string; message: string }): ReactElem
     <p id={id} className="desktop-auth__field-error" aria-live="polite">
       {message}
     </p>
+  )
+}
+
+/** 展示不会改变认证表单布局的短时请求错误提示。 */
+function RequestErrorAlert({
+  message,
+  onDismiss,
+}: {
+  message: string
+  onDismiss(message: string): void
+}): ReactElement | null {
+  const { t } = useTranslation()
+
+  useEffect(() => {
+    if (!message) return undefined
+    const timeout = window.setTimeout(() => onDismiss(''), REQUEST_ERROR_TIMEOUT_MS)
+    return () => window.clearTimeout(timeout)
+  }, [message, onDismiss])
+
+  if (!message) return null
+
+  return (
+    <div className="desktop-auth__toast" role="alert">
+      <span>{message}</span>
+      <button type="button" aria-label={t('common.close')} onClick={() => onDismiss('')}>
+        &times;
+      </button>
+    </div>
   )
 }
 
@@ -168,6 +201,7 @@ function PasswordField({
   error,
   onChange,
 }: FieldProps): ReactElement {
+  const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
   const errorId = `${id}-error`
   return (
@@ -188,7 +222,7 @@ function PasswordField({
         <button
           className="desktop-auth__icon-button"
           type="button"
-          aria-label={visible ? '隐藏密码' : '显示密码'}
+          aria-label={visible ? t('desktop.auth.hidePassword') : t('desktop.auth.showPassword')}
           onClick={() => setVisible((current) => !current)}
         >
           {visible ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -214,10 +248,11 @@ function VerificationCodeField({
   requestCodeDisabled: boolean
   onRequestCode(): void
 }): ReactElement {
+  const { t } = useTranslation()
   const errorId = 'verify-code-error'
   return (
     <div className="desktop-auth__field">
-      <label htmlFor="verify-code">邮箱验证码</label>
+      <label htmlFor="verify-code">{t('auth.emailCode')}</label>
       <div className="desktop-auth__input-wrap desktop-auth__input-wrap--verification-code">
         <KeyRound aria-hidden="true" size={17} />
         <input
@@ -228,7 +263,7 @@ function VerificationCodeField({
           aria-invalid={Boolean(error)}
           aria-describedby={error ? errorId : undefined}
           value={value}
-          placeholder="输入 6 位验证码"
+          placeholder={t('auth.placeholders.code')}
           maxLength={6}
           onChange={(event) => onChange(event.target.value.replace(/\D/g, ''))}
         />
@@ -247,6 +282,7 @@ function VerificationCodeField({
 }
 
 function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactElement {
+  const { t } = useTranslation()
   const loginMutation = useLogin()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -262,7 +298,7 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
     try {
       await window.yuanai.oauth.start(provider)
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '无法打开第三方登录，请稍后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.oauthUnavailable')))
     } finally {
       setOauthProvider(null)
     }
@@ -272,8 +308,8 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
     event.preventDefault()
     setRequestError('')
     const normalizedEmail = email.trim().toLowerCase()
-    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : '请输入正确的邮箱地址'
-    const nextPasswordError = password ? '' : '请输入密码'
+    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : t('auth.errors.invalidEmail')
+    const nextPasswordError = password ? '' : t('auth.errors.passwordRequired')
     setEmailError(nextEmailError)
     setPasswordError(nextPasswordError)
     if (nextEmailError || nextPasswordError) return
@@ -281,36 +317,32 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
     try {
       await loginMutation.mutateAsync({ email: normalizedEmail, password, remember })
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '登录失败，请检查邮箱和密码后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.invalidCredentials')))
     }
   }
 
   return (
-    <AuthFrame title="登录元AI" subtitle="使用你的账号继续">
+    <AuthFrame title={t('desktop.auth.loginTitle')} subtitle={t('desktop.auth.loginSubtitle')}>
       <form
         className="desktop-auth__form-fields"
         noValidate
         onSubmit={(event) => void handleSubmit(event)}
       >
-        {requestError ? (
-          <p className="desktop-auth__alert" role="alert">
-            {requestError}
-          </p>
-        ) : null}
+        <RequestErrorAlert message={requestError} onDismiss={setRequestError} />
         <EmailField
           id="login-email"
-          label="邮箱"
+          label={t('auth.email')}
           value={email}
-          placeholder="name@example.com"
+          placeholder={t('auth.placeholders.email')}
           autoComplete="email"
           error={emailError}
           onChange={setEmail}
         />
         <PasswordField
           id="login-password"
-          label="密码"
+          label={t('auth.password')}
           value={password}
-          placeholder="输入密码"
+          placeholder={t('auth.placeholders.password')}
           autoComplete="current-password"
           error={passwordError}
           onChange={setPassword}
@@ -322,17 +354,17 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
               checked={remember}
               onChange={(event) => setRemember(event.target.checked)}
             />
-            <span>保持登录</span>
+            <span>{t('desktop.auth.keepSignedIn')}</span>
           </label>
           <button type="button" className="desktop-auth__link" onClick={() => onNavigate('forgot')}>
-            忘记密码？
+            {t('auth.forgotPassword')}
           </button>
         </div>
         <button className="desktop-auth__submit" type="submit" disabled={loginMutation.isPending}>
-          {loginMutation.isPending ? '登录中...' : '登录'}
+          {loginMutation.isPending ? t('auth.loggingIn') : t('auth.login')}
         </button>
         <div className="desktop-auth__divider" role="separator">
-          <span>或使用以下方式登录</span>
+          <span>{t('auth.orLoginWith')}</span>
         </div>
         <div className="desktop-auth__social-row">
           <button
@@ -342,7 +374,9 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
             onClick={() => void handleOAuth('github')}
           >
             <Github aria-hidden="true" size={18} />
-            {oauthProvider === 'github' ? '正在打开 GitHub...' : 'GitHub'}
+            {oauthProvider === 'github'
+              ? t('desktop.auth.openingProvider', { provider: 'GitHub' })
+              : 'GitHub'}
           </button>
           <button
             className="desktop-auth__social-button"
@@ -351,17 +385,19 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
             onClick={() => void handleOAuth('google')}
           >
             <img src={googleIcon} alt="" />
-            {oauthProvider === 'google' ? '正在打开 Google...' : 'Google'}
+            {oauthProvider === 'google'
+              ? t('desktop.auth.openingProvider', { provider: 'Google' })
+              : 'Google'}
           </button>
         </div>
         <p className="desktop-auth__switch">
-          还没有账号？
+          {t('auth.noAccount')}
           <button
             type="button"
             className="desktop-auth__link"
             onClick={() => onNavigate('register')}
           >
-            创建账号
+            {t('desktop.auth.createAccount')}
           </button>
         </p>
       </form>
@@ -370,6 +406,7 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
 }
 
 function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactElement {
+  const { t } = useTranslation()
   const registerMutation = useRegister()
   const sendCodeMutation = useSendVerifyCode()
   const [username, setUsername] = useState('')
@@ -395,7 +432,7 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
 
   async function sendVerificationCode(): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase()
-    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : '请输入正确的邮箱地址'
+    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : t('auth.errors.invalidEmail')
     setEmailError(nextEmailError)
     setRequestError('')
     if (nextEmailError) return
@@ -403,7 +440,7 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
       await sendCodeMutation.mutateAsync({ email: normalizedEmail, scene: 'register' })
       setCooldown(VERIFICATION_CODE_COOLDOWN_SECONDS)
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '验证码发送失败，请稍后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.codeFailed')))
     }
   }
 
@@ -411,12 +448,14 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
     event.preventDefault()
     setRequestError('')
     const normalizedEmail = email.trim().toLowerCase()
-    const nextUsernameError = username.trim().length >= 2 ? '' : '用户名至少需要 2 个字符'
-    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : '请输入正确的邮箱地址'
-    const nextCodeError = VERIFICATION_CODE_PATTERN.test(verifyCode) ? '' : '请输入 6 位验证码'
-    const nextPasswordError = getPasswordError(password)
-    const nextConfirmationError = confirmation === password ? '' : '两次输入的密码不一致'
-    const nextTermsError = acceptedTerms ? '' : '请先同意服务条款和隐私政策'
+    const nextUsernameError = username.trim().length >= 2 ? '' : t('auth.errors.usernameRequired')
+    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : t('auth.errors.invalidEmail')
+    const nextCodeError = VERIFICATION_CODE_PATTERN.test(verifyCode)
+      ? ''
+      : t('auth.errors.codeRequired')
+    const nextPasswordError = getPasswordError(password, t)
+    const nextConfirmationError = confirmation === password ? '' : t('auth.errors.passwordMismatch')
+    const nextTermsError = acceptedTerms ? '' : t('desktop.auth.termsRequired')
     setUsernameError(nextUsernameError)
     setEmailError(nextEmailError)
     setCodeError(nextCodeError)
@@ -442,36 +481,35 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
         password,
       })
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '注册失败，请稍后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.registerFailed')))
     }
   }
 
   return (
-    <AuthFrame title="创建账号" subtitle="开始使用元AI">
+    <AuthFrame
+      title={t('desktop.auth.registerTitle')}
+      subtitle={t('desktop.auth.registerSubtitle')}
+    >
       <form
         className="desktop-auth__form-fields"
         noValidate
         onSubmit={(event) => void handleSubmit(event)}
       >
-        {requestError ? (
-          <p className="desktop-auth__alert" role="alert">
-            {requestError}
-          </p>
-        ) : null}
+        <RequestErrorAlert message={requestError} onDismiss={setRequestError} />
         <TextField
           id="register-username"
-          label="用户名"
+          label={t('auth.username')}
           value={username}
-          placeholder="输入用户名"
+          placeholder={t('auth.placeholders.username')}
           autoComplete="username"
           error={usernameError}
           onChange={setUsername}
         />
         <EmailField
           id="register-email"
-          label="邮箱"
+          label={t('auth.email')}
           value={email}
-          placeholder="name@example.com"
+          placeholder={t('auth.placeholders.email')}
           autoComplete="email"
           error={emailError}
           onChange={setEmail}
@@ -481,10 +519,10 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
           error={codeError}
           requestCodeLabel={
             sendCodeMutation.isPending
-              ? '发送中...'
+              ? t('common.loading')
               : cooldown > 0
-                ? `${cooldown} 秒后重发`
-                : '发送验证码'
+                ? t('auth.resendIn', { seconds: cooldown })
+                : t('auth.sendCode')
           }
           requestCodeDisabled={cooldown > 0 || sendCodeMutation.isPending}
           onChange={setVerifyCode}
@@ -492,18 +530,18 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
         />
         <PasswordField
           id="register-password"
-          label="密码"
+          label={t('auth.password')}
           value={password}
-          placeholder="至少 8 位，含字母和数字"
+          placeholder={t('auth.placeholders.password')}
           autoComplete="new-password"
           error={passwordError}
           onChange={setPassword}
         />
         <PasswordField
           id="register-confirmation"
-          label="确认密码"
+          label={t('auth.confirmPassword')}
           value={confirmation}
-          placeholder="再次输入密码"
+          placeholder={t('auth.placeholders.confirmPassword')}
           autoComplete="new-password"
           error={confirmationError}
           onChange={setConfirmation}
@@ -514,7 +552,7 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
             checked={acceptedTerms}
             onChange={(event) => setAcceptedTerms(event.target.checked)}
           />
-          <span>我已阅读并同意服务条款与隐私政策</span>
+          <span>{t('desktop.auth.termsFull')}</span>
         </label>
         <FieldError id="terms-error" message={termsError} />
         <button
@@ -522,12 +560,12 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
           type="submit"
           disabled={registerMutation.isPending}
         >
-          {registerMutation.isPending ? '创建中...' : '创建账号'}
+          {registerMutation.isPending ? t('auth.registering') : t('desktop.auth.createAccount')}
         </button>
         <p className="desktop-auth__switch">
-          已有账号？
+          {t('auth.hasAccount')}
           <button type="button" className="desktop-auth__link" onClick={() => onNavigate('login')}>
-            去登录
+            {t('desktop.auth.signIn')}
           </button>
         </p>
       </form>
@@ -536,6 +574,7 @@ function RegisterForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): Rea
 }
 
 function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactElement {
+  const { t } = useTranslation()
   const resetPasswordMutation = useResetPassword()
   const sendCodeMutation = useSendVerifyCode()
   const [email, setEmail] = useState('')
@@ -558,7 +597,7 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
 
   async function sendVerificationCode(): Promise<void> {
     const normalizedEmail = email.trim().toLowerCase()
-    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : '请输入正确的邮箱地址'
+    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : t('auth.errors.invalidEmail')
     setEmailError(nextEmailError)
     setRequestError('')
     if (nextEmailError) return
@@ -566,7 +605,7 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
       await sendCodeMutation.mutateAsync({ email: normalizedEmail, scene: 'reset_password' })
       setCooldown(VERIFICATION_CODE_COOLDOWN_SECONDS)
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '验证码发送失败，请稍后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.codeFailed')))
     }
   }
 
@@ -574,10 +613,12 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
     event.preventDefault()
     setRequestError('')
     const normalizedEmail = email.trim().toLowerCase()
-    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : '请输入正确的邮箱地址'
-    const nextCodeError = VERIFICATION_CODE_PATTERN.test(verifyCode) ? '' : '请输入 6 位验证码'
-    const nextPasswordError = getPasswordError(password)
-    const nextConfirmationError = confirmation === password ? '' : '两次输入的密码不一致'
+    const nextEmailError = EMAIL_PATTERN.test(normalizedEmail) ? '' : t('auth.errors.invalidEmail')
+    const nextCodeError = VERIFICATION_CODE_PATTERN.test(verifyCode)
+      ? ''
+      : t('auth.errors.codeRequired')
+    const nextPasswordError = getPasswordError(password, t)
+    const nextConfirmationError = confirmation === password ? '' : t('auth.errors.passwordMismatch')
     setEmailError(nextEmailError)
     setCodeError(nextCodeError)
     setPasswordError(nextPasswordError)
@@ -592,13 +633,16 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
       })
       setCompleted(true)
     } catch (error: unknown) {
-      setRequestError(getApiErrorMessage(error, '密码重置失败，请稍后重试'))
+      setRequestError(getApiErrorMessage(error, t('desktop.auth.resetFailed')))
     }
   }
 
   if (completed) {
     return (
-      <AuthFrame title="密码已重置" subtitle="现在可以使用新密码登录">
+      <AuthFrame
+        title={t('desktop.auth.resetDoneTitle')}
+        subtitle={t('desktop.auth.resetDoneSubtitle')}
+      >
         <div className="desktop-auth__success">
           <CheckCircle2 aria-hidden="true" size={42} />
           <button
@@ -606,7 +650,7 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
             type="button"
             onClick={() => onNavigate('login')}
           >
-            返回登录
+            {t('desktop.oauth.backToLogin')}
           </button>
         </div>
       </AuthFrame>
@@ -614,22 +658,18 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
   }
 
   return (
-    <AuthFrame title="重置密码" subtitle="验证邮箱后设置新密码">
+    <AuthFrame title={t('desktop.auth.resetTitle')} subtitle={t('desktop.auth.resetSubtitle')}>
       <form
         className="desktop-auth__form-fields"
         noValidate
         onSubmit={(event) => void handleSubmit(event)}
       >
-        {requestError ? (
-          <p className="desktop-auth__alert" role="alert">
-            {requestError}
-          </p>
-        ) : null}
+        <RequestErrorAlert message={requestError} onDismiss={setRequestError} />
         <EmailField
           id="forgot-email"
-          label="注册邮箱"
+          label={t('desktop.auth.emailForRegistration')}
           value={email}
-          placeholder="name@example.com"
+          placeholder={t('auth.placeholders.email')}
           autoComplete="email"
           error={emailError}
           onChange={setEmail}
@@ -639,10 +679,10 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
           error={codeError}
           requestCodeLabel={
             sendCodeMutation.isPending
-              ? '发送中...'
+              ? t('common.loading')
               : cooldown > 0
-                ? `${cooldown} 秒后重发`
-                : '发送验证码'
+                ? t('auth.resendIn', { seconds: cooldown })
+                : t('auth.sendCode')
           }
           requestCodeDisabled={cooldown > 0 || sendCodeMutation.isPending}
           onChange={setVerifyCode}
@@ -650,18 +690,18 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
         />
         <PasswordField
           id="forgot-password"
-          label="新密码"
+          label={t('desktop.auth.newPassword')}
           value={password}
-          placeholder="至少 8 位，含字母和数字"
+          placeholder={t('auth.placeholders.password')}
           autoComplete="new-password"
           error={passwordError}
           onChange={setPassword}
         />
         <PasswordField
           id="forgot-confirmation"
-          label="确认新密码"
+          label={t('auth.confirmPassword')}
           value={confirmation}
-          placeholder="再次输入新密码"
+          placeholder={t('auth.placeholders.confirmPassword')}
           autoComplete="new-password"
           error={confirmationError}
           onChange={setConfirmation}
@@ -671,12 +711,14 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
           type="submit"
           disabled={resetPasswordMutation.isPending}
         >
-          {resetPasswordMutation.isPending ? '重置中...' : '重置密码'}
+          {resetPasswordMutation.isPending
+            ? t('desktop.auth.resetting')
+            : t('desktop.auth.resetPassword')}
         </button>
         <p className="desktop-auth__switch">
-          想起密码了？
+          {t('desktop.auth.rememberedPassword')}
           <button type="button" className="desktop-auth__link" onClick={() => onNavigate('login')}>
-            返回登录
+            {t('desktop.oauth.backToLogin')}
           </button>
         </p>
       </form>

@@ -1,7 +1,10 @@
 import { BellRing, MessageSquareText, Volume2 } from 'lucide-react'
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { DesktopPreferences } from '../../../shared/ipc-contract'
+
+import '../../shared/i18n'
 
 /** 通知分区属性。 */
 export interface NotificationSectionProps {
@@ -16,25 +19,53 @@ export function NotificationSection({
   preferences,
   onPreferencesChanged,
 }: NotificationSectionProps): ReactElement {
+  const { t } = useTranslation()
+  const [testFeedback, setTestFeedback] = useState('')
   const rows = [
-    ['nativeNotifications', '原生通知', '允许元AI使用系统通知提醒你。', BellRing],
-    ['notificationSound', '通知声音', '收到系统通知时播放提示音。', Volume2],
+    [
+      'nativeNotifications',
+      t('desktop.notifications.native'),
+      t('desktop.notifications.nativeDescription'),
+      BellRing,
+    ],
+    [
+      'notificationSound',
+      t('desktop.notifications.sound'),
+      t('desktop.notifications.soundDescription'),
+      Volume2,
+    ],
     [
       'aiReplyNotifications',
-      'AI 回复完成提醒',
-      '在聊天不位于前台时提醒回复已完成。',
+      t('desktop.notifications.reply'),
+      t('desktop.notifications.replyDescription'),
       MessageSquareText,
     ],
   ] as const
+
+  async function handleTestNotification(): Promise<void> {
+    setTestFeedback('')
+    try {
+      const sent = await window.yuanai.system.notify({
+        title: t('desktop.notifications.replyCompleted'),
+        body: t('desktop.notifications.testBody'),
+      })
+      setTestFeedback(
+        sent ? t('desktop.notifications.testSent') : t('desktop.notifications.testUnavailable')
+      )
+    } catch {
+      setTestFeedback(t('desktop.notifications.testFailed'))
+    }
+  }
+
   return (
     <div className="settings-section">
       <div className="settings-section__heading">
-        <h2>通知设置</h2>
-        <p>选择桌面端如何提醒你。</p>
+        <h2>{t('settings.sections.notifications')}</h2>
+        <p>{t('desktop.notifications.description')}</p>
       </div>
       <div className="settings-section__body">
         <section className="settings-block">
-          <h3>原生通知</h3>
+          <h3>{t('desktop.notifications.native')}</h3>
           {rows.map(([key, label, description, Icon]) => (
             <div className="settings-row" key={key}>
               <div>
@@ -53,6 +84,24 @@ export function NotificationSection({
               />
             </div>
           ))}
+          <div className="settings-row settings-row--notification-test">
+            <div>
+              <strong>{t('desktop.notifications.test')}</strong>
+              <p>{t('desktop.notifications.testDescription')}</p>
+            </div>
+            <button
+              type="button"
+              className="settings-button settings-button--secondary"
+              onClick={() => void handleTestNotification()}
+            >
+              {t('desktop.notifications.test')}
+            </button>
+          </div>
+          {testFeedback ? (
+            <p className="settings-field-feedback" role="status">
+              {testFeedback}
+            </p>
+          ) : null}
         </section>
       </div>
     </div>

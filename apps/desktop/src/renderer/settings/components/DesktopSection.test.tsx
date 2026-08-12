@@ -52,13 +52,14 @@ describe('DesktopSection', () => {
     )
 
     const field = screen.getByLabelText('全局唤起快捷键')
-    await user.clear(field)
-    await user.type(field, 'CommandOrControl+Shift+Y')
+    await user.click(field)
+    await user.keyboard('{Control>}{Shift>}Y{/Shift}{/Control}')
     await user.click(screen.getByRole('button', { name: '应用快捷键' }))
 
     await waitFor(() => {
       expect(field).toHaveValue('CommandOrControl+Alt+Y')
     })
+    expect(setGlobalShortcut).toHaveBeenCalledWith('CommandOrControl+Shift+Y')
     expect(screen.getByRole('alert')).toHaveTextContent('快捷键已被其他应用占用')
   })
 })

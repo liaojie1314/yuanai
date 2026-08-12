@@ -585,7 +585,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         history,
         model: activeModel.id,
         enableThinking: showThinking,
-        onEnd: ({ content: finalContent, think, thinkDurationMs }) => {
+        onEnd: ({ completed, content: finalContent, think, thinkDurationMs }) => {
           const assistantMsg: MockMessage = {
             id: `temp-assistant-${Date.now()}`,
             role: 'assistant',
@@ -595,7 +595,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             createdAt: Date.now(),
           }
           setTempMessages((prev) => [...prev, assistantMsg])
-          triggerAIReplyNotification()
+          if (completed) triggerAIReplyNotification()
         },
       })
       return
@@ -686,7 +686,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       model: activeModel.id,
       fileIds: fileIds.length > 0 ? fileIds : undefined,
       enableThinking: showThinking,
-      onEnd: triggerAIReplyNotification,
+      onEnd: ({ completed }) => {
+        if (completed) triggerAIReplyNotification()
+      },
     })
   }
 

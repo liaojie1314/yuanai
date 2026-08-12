@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useRef, type KeyboardEvent, type ReactNode, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 /** 设置页面的固定分区标识。 */
 export type SettingsSectionId =
@@ -18,8 +19,8 @@ export type SettingsSectionId =
 export interface SettingsNavigationItem {
   /** 分区标识。 */
   id: SettingsSectionId
-  /** 面向用户的分区名称。 */
-  label: string
+  /** 分区名称的翻译键。 */
+  labelKey: string
   /** 设置导航所属分组。 */
   group: 'account' | 'application' | 'support'
   /** 导航图标。 */
@@ -42,8 +43,9 @@ export function SettingsShell({
   onSectionChange,
   children,
 }: SettingsShellProps): ReactElement {
+  const { t } = useTranslation()
   const buttonRefs = useRef(new Map<SettingsSectionId, HTMLButtonElement>())
-  const items = SETTINGS_ITEMS
+  const items = SETTINGS_ITEMS.map((item) => ({ ...item, label: t(item.labelKey) }))
 
   function selectSection(section: SettingsSectionId): void {
     onSectionChange(section)
@@ -69,10 +71,10 @@ export function SettingsShell({
   }
 
   return (
-    <main className="desktop-settings" aria-label="元AI 设置">
-      <nav className="desktop-settings__nav" aria-label="设置分区">
+    <main className="desktop-settings" aria-label={`${t('common.appName')} ${t('settings.title')}`}>
+      <nav className="desktop-settings__nav" aria-label={t('settings.title')}>
         <div className="desktop-settings__nav-header">
-          <h1>设置</h1>
+          <h1>{t('settings.title')}</h1>
         </div>
         <div
           className="desktop-settings__nav-body"
@@ -80,9 +82,9 @@ export function SettingsShell({
           aria-orientation="vertical"
           onKeyDown={handleKeyDown}
         >
-          {SETTINGS_GROUPS.map(({ id, label }) => (
+          {SETTINGS_GROUPS.map(({ id, labelKey }) => (
             <div key={id} className="desktop-settings__nav-group">
-              <p>{label}</p>
+              <p>{t(labelKey)}</p>
               {items
                 .filter((item) => item.group === id)
                 .map((item) => {
@@ -112,12 +114,12 @@ export function SettingsShell({
             </div>
           ))}
         </div>
-        <p className="desktop-settings__nav-footer">元AI v1.0.0</p>
+        <p className="desktop-settings__nav-footer">{t('common.appName')} v1.0.0</p>
       </nav>
       <header className="desktop-settings__mobile-header">
-        <h1>设置</h1>
+        <h1>{t('settings.title')}</h1>
         <label className="desktop-settings__mobile-select">
-          <span>设置分区</span>
+          <span>{t('settings.title')}</span>
           <select
             value={activeSection}
             onChange={(event) => selectSection(event.target.value as SettingsSectionId)}
@@ -143,17 +145,27 @@ export function SettingsShell({
 }
 
 const SETTINGS_ITEMS: readonly SettingsNavigationItem[] = [
-  { id: 'profile', label: '个人资料', group: 'account', icon: UserRound },
-  { id: 'security', label: '账号安全', group: 'account', icon: ShieldCheck },
-  { id: 'appearance', label: '外观与主题', group: 'application', icon: Palette },
-  { id: 'notifications', label: '通知设置', group: 'application', icon: Bell },
-  { id: 'language', label: '语言与地区', group: 'application', icon: Globe2 },
-  { id: 'desktop', label: '桌面设置', group: 'application', icon: MonitorCog },
-  { id: 'about', label: '关于与帮助', group: 'support', icon: CircleHelp },
+  { id: 'profile', labelKey: 'settings.sections.profile', group: 'account', icon: UserRound },
+  { id: 'security', labelKey: 'settings.sections.security', group: 'account', icon: ShieldCheck },
+  {
+    id: 'appearance',
+    labelKey: 'settings.sections.appearance',
+    group: 'application',
+    icon: Palette,
+  },
+  {
+    id: 'notifications',
+    labelKey: 'settings.sections.notifications',
+    group: 'application',
+    icon: Bell,
+  },
+  { id: 'language', labelKey: 'settings.sections.language', group: 'application', icon: Globe2 },
+  { id: 'desktop', labelKey: 'desktop.settings.desktop', group: 'application', icon: MonitorCog },
+  { id: 'about', labelKey: 'settings.sections.about', group: 'support', icon: CircleHelp },
 ]
 
 const SETTINGS_GROUPS = [
-  { id: 'account', label: '账户' },
-  { id: 'application', label: '应用' },
-  { id: 'support', label: '支持' },
+  { id: 'account', labelKey: 'desktop.settings.account' },
+  { id: 'application', labelKey: 'desktop.settings.application' },
+  { id: 'support', labelKey: 'desktop.settings.support' },
 ] as const

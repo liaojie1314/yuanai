@@ -1,5 +1,11 @@
-import type { DesktopAppInfo, DesktopPreferences, ShortcutStatus } from '../../shared/ipc-contract'
+import type {
+  DesktopAppInfo,
+  DesktopNotificationPayload,
+  DesktopPreferences,
+  ShortcutStatus,
+} from '../../shared/ipc-contract'
 import type { PreferencesIpcStorage } from '../ipc/prefs'
+import type { DesktopActionRegistry } from '../actions/registry'
 
 const MAX_SHORTCUT_LENGTH = 128
 
@@ -21,6 +27,14 @@ export interface GlobalShortcutApi {
   unregisterAll(): void
 }
 
+/** Electron 原生通知的最小能力。 */
+export interface DesktopNotificationApi {
+  /** 当前系统是否可显示原生通知。 */
+  isSupported(): boolean
+  /** 显示一个已经校验的通知。 */
+  show(payload: DesktopNotificationPayload): void
+}
+
 /** 桌面系统服务的显式依赖。 */
 export interface DesktopSystemOptions {
   /** Electron 应用实例。 */
@@ -29,10 +43,12 @@ export interface DesktopSystemOptions {
   globalShortcut: GlobalShortcutApi
   /** 已校验的桌面偏好存储。 */
   preferencesStorage: PreferencesIpcStorage
-  /** 将主窗口恢复到前台。 */
-  focusMain(): void
+  /** 系统级快捷键可调用的已登记动作。 */
+  actionRegistry: DesktopActionRegistry
   /** 当前 Electron 平台。 */
   platform: NodeJS.Platform
+  /** 可选的原生通知实现。 */
+  notifications?: DesktopNotificationApi
 }
 
 function normalizeShortcut(value: string | null): string | null {
@@ -86,7 +102,7 @@ export class DesktopSystemService {
     }
 
     try {
-      if (!this.options.globalShortcut.register(accelerator, () => this.options.focusMain())) {
+      if (!this.options.globalShortcut.register(accelerator, () => this.runGlobalAction())) {
         return this.status('CONFLICT')
       }
     } catch {
@@ -117,6 +133,18 @@ export class DesktopSystemService {
     }
   }
 
+  /** 根据已持久化的三项通知偏好展示一次 AI 回复完成提醒。 */
+  public async notifyAiReply(
+    payload: Omit<DesktopNotificationPayload, 'playSound'>
+  ): Promise<boolean> {
+    const preferences = await this.options.preferencesStorage.get()
+    if (!preferences.nativeNotifications || !preferences.aiReplyNotifications) return false
+    const notifications = this.options.notifications
+    if (!notifications?.isSupported()) return false
+    notifications.show({ ...payload, playSound: preferences.notificationSound })
+    return true
+  }
+
   /** 释放应用注册的系统资源。 */
   public dispose(): void {
     this.options.globalShortcut.unregisterAll()
@@ -132,7 +160,7 @@ export class DesktopSystemService {
     }
     if (!accelerator) return
     try {
-      if (this.options.globalShortcut.register(accelerator, () => this.options.focusMain())) {
+      if (this.options.globalShortcut.register(accelerator, () => this.runGlobalAction())) {
         this.activeShortcut = accelerator
       }
     } catch {
@@ -144,7 +172,7 @@ export class DesktopSystemService {
     this.activeShortcut = null
     if (!value) return
     try {
-      if (this.options.globalShortcut.register(value, () => this.options.focusMain())) {
+      if (this.options.globalShortcut.register(value, () => this.runGlobalAction())) {
         this.activeShortcut = value
       }
     } catch {
@@ -161,5 +189,9 @@ export class DesktopSystemService {
       }
     }
     return { accelerator: this.activeShortcut, registered: this.activeShortcut !== null }
+  }
+
+  private runGlobalAction(): void {
+    this.options.actionRegistry['toggle-main-window']()
   }
 }

@@ -19,6 +19,10 @@ export interface ManagedWindow {
   loadURL(url: string): Promise<void>
   /** 显示窗口。 */
   show(): void
+  /** 隐藏窗口。 */
+  hide(): void
+  /** 判断窗口是否当前可见。 */
+  isVisible(): boolean
   /** 置顶并聚焦窗口。 */
   focus(): void
   /** 恢复最小化窗口。 */
@@ -110,6 +114,22 @@ export class WindowManager {
   /** 聚焦主窗口，并在尚未创建时建立它。 */
   public focusMain(): void {
     this.open('main')
+  }
+
+  /** 切换元AI 主窗口的显示状态，供全局唤起快捷键复用。 */
+  public toggleMainWindow(): void {
+    const mainWindow = this.namedWindows.get('main')
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      this.open('main')
+      return
+    }
+    if (mainWindow.isVisible()) {
+      mainWindow.hide()
+      return
+    }
+    mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
   }
 
   /** 关闭已创建的命名窗口；不存在或已销毁时保持幂等。 */

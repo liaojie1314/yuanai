@@ -1,7 +1,10 @@
 import { Camera, Check, MessageSquare, Paperclip, Pencil, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type ReactElement } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import type { User, UserStats } from '@yuanai/types'
+
+import '../../shared/i18n'
 
 /** 个人资料分区属性。 */
 export interface ProfileSectionProps {
@@ -25,6 +28,7 @@ export function ProfileSection({
   onUploadAvatar,
   isSaving,
 }: ProfileSectionProps): ReactElement {
+  const { t } = useTranslation()
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const [username, setUsername] = useState(user?.username ?? '')
   const [bio, setBio] = useState(user?.bio ?? '')
@@ -39,7 +43,7 @@ export function ProfileSection({
   async function saveProfile(field: 'username' | 'bio'): Promise<void> {
     const normalizedUsername = username.trim()
     if (field === 'username' && (normalizedUsername.length < 2 || normalizedUsername.length > 20)) {
-      setError('昵称需要 2 至 20 个字符')
+      setError(t('desktop.profile.invalidDisplayName'))
       return
     }
     setError('')
@@ -52,11 +56,11 @@ export function ProfileSection({
     event.target.value = ''
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      setError('请选择图片文件')
+      setError(t('desktop.profile.imageOnly'))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      setError('头像文件不能超过 5 MB')
+      setError(t('desktop.profile.avatarTooLarge'))
       return
     }
     setError('')
@@ -66,16 +70,16 @@ export function ProfileSection({
   return (
     <div className="settings-section">
       <div className="settings-section__heading">
-        <h2>个人资料</h2>
+        <h2>{t('settings.sections.profile')}</h2>
       </div>
       <div className="settings-section__body">
         <section className="settings-block" aria-labelledby="profile-avatar-title">
-          <h3 id="profile-avatar-title">头像</h3>
+          <h3 id="profile-avatar-title">{t('settings.profile.avatar')}</h3>
           <div className="profile-avatar-row">
             <button
               type="button"
               className="profile-avatar"
-              aria-label="更换头像"
+              aria-label={t('settings.profile.changeAvatar')}
               disabled={isSaving}
               onClick={() => avatarInputRef.current?.click()}
             >
@@ -89,9 +93,9 @@ export function ProfileSection({
               </span>
             </button>
             <div className="profile-avatar-row__meta">
-              <strong>{user?.username || '未设置昵称'}</strong>
-              <p>{user?.email ?? '正在加载'}</p>
-              <span>Free</span>
+              <strong>{user?.username || t('desktop.profile.unsetDisplayName')}</strong>
+              <p>{user?.email ?? t('common.loading')}</p>
+              <span>{t('desktop.profile.plan')}</span>
             </div>
             <input
               ref={avatarInputRef}
@@ -103,15 +107,15 @@ export function ProfileSection({
           </div>
         </section>
         <section className="settings-block" aria-labelledby="profile-details-title">
-          <h3 id="profile-details-title">个人资料</h3>
+          <h3 id="profile-details-title">{t('settings.sections.profile')}</h3>
           <div className="settings-row profile-edit-row">
-            <span className="profile-edit-row__label">昵称</span>
+            <span className="profile-edit-row__label">{t('desktop.profile.displayName')}</span>
             {editingField === 'username' ? (
               <div className="profile-edit-row__editor">
                 <input
                   value={username}
                   maxLength={20}
-                  aria-label="昵称"
+                  aria-label={t('desktop.profile.displayName')}
                   autoFocus
                   onChange={(event) => setUsername(event.target.value)}
                 />
@@ -123,7 +127,7 @@ export function ProfileSection({
                     setEditingField(null)
                   }}
                 >
-                  <X size={15} aria-hidden="true" /> 取消
+                  <X size={15} aria-hidden="true" /> {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -131,15 +135,15 @@ export function ProfileSection({
                   disabled={!user || isSaving}
                   onClick={() => void saveProfile('username')}
                 >
-                  <Check size={15} aria-hidden="true" /> 保存
+                  <Check size={15} aria-hidden="true" /> {t('common.save')}
                 </button>
               </div>
             ) : (
               <div className="profile-edit-row__value">
-                <span>{user?.username || '未设置昵称'}</span>
+                <span>{user?.username || t('desktop.profile.unsetDisplayName')}</span>
                 <button
                   type="button"
-                  aria-label="编辑昵称"
+                  aria-label={`${t('common.edit')}${t('desktop.profile.displayName')}`}
                   onClick={() => setEditingField('username')}
                 >
                   <Pencil size={14} aria-hidden="true" />
@@ -148,15 +152,15 @@ export function ProfileSection({
             )}
           </div>
           <div className="settings-row profile-edit-row">
-            <span className="profile-edit-row__label">个人简介</span>
+            <span className="profile-edit-row__label">{t('settings.profile.bio')}</span>
             {editingField === 'bio' ? (
               <div className="profile-edit-row__editor">
                 <input
                   value={bio}
                   maxLength={200}
-                  aria-label="个人简介"
+                  aria-label={t('settings.profile.bio')}
                   autoFocus
-                  placeholder="介绍一下你自己"
+                  placeholder={t('settings.profile.bioPlaceholder')}
                   onChange={(event) => setBio(event.target.value)}
                 />
                 <button
@@ -167,7 +171,7 @@ export function ProfileSection({
                     setEditingField(null)
                   }}
                 >
-                  <X size={15} aria-hidden="true" /> 取消
+                  <X size={15} aria-hidden="true" /> {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -175,17 +179,17 @@ export function ProfileSection({
                   disabled={!user || isSaving}
                   onClick={() => void saveProfile('bio')}
                 >
-                  <Check size={15} aria-hidden="true" /> 保存
+                  <Check size={15} aria-hidden="true" /> {t('common.save')}
                 </button>
               </div>
             ) : (
               <div className="profile-edit-row__value">
                 <span className={user?.bio ? undefined : 'is-muted'}>
-                  {user?.bio || '介绍一下你自己'}
+                  {user?.bio || t('settings.profile.bioPlaceholder')}
                 </span>
                 <button
                   type="button"
-                  aria-label="编辑个人简介"
+                  aria-label={`${t('common.edit')}${t('settings.profile.bio')}`}
                   onClick={() => setEditingField('bio')}
                 >
                   <Pencil size={14} aria-hidden="true" />
@@ -200,12 +204,12 @@ export function ProfileSection({
           ) : null}
         </section>
         <section className="settings-block" aria-labelledby="profile-stats-title">
-          <h3 id="profile-stats-title">使用统计</h3>
+          <h3 id="profile-stats-title">{t('desktop.profile.usage')}</h3>
           <dl className="settings-stats">
             <div>
               <MessageSquare size={18} aria-hidden="true" />
               <dd>{stats?.conversationCount ?? '--'}</dd>
-              <dt>次对话</dt>
+              <dt>{t('desktop.profile.conversations')}</dt>
             </div>
             <div>
               <Zap size={18} aria-hidden="true" />
@@ -215,7 +219,7 @@ export function ProfileSection({
             <div>
               <Paperclip size={18} aria-hidden="true" />
               <dd>{stats?.fileCount ?? '--'}</dd>
-              <dt>文件</dt>
+              <dt>{t('desktop.profile.files')}</dt>
             </div>
           </dl>
         </section>

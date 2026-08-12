@@ -11,7 +11,16 @@ const hooks = vi.hoisted(() => ({
   unlinkGithub: vi.fn(),
   unlinkGoogle: vi.fn(),
   updateMe: vi.fn(),
-  updatePreferences: vi.fn(),
+  updatePreferences: vi.fn((patch: Record<string, unknown>) =>
+    Promise.resolve({
+      theme: 'auto',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: patch['language'] === 'en' ? 'en' : 'zh-CN',
+    })
+  ),
   uploadAvatar: vi.fn(),
 }))
 
@@ -62,6 +71,15 @@ vi.mock('@yuanai/core/stores', () => ({
 }))
 
 import { App } from './App'
+import { DesktopI18nProvider, changeDesktopLanguage } from '../shared/i18n'
+
+function renderSettings(): ReturnType<typeof render> {
+  return render(
+    <DesktopI18nProvider>
+      <App />
+    </DesktopI18nProvider>
+  )
+}
 
 function installDesktopApi(): void {
   Object.defineProperty(window, 'yuanai', {
@@ -93,6 +111,7 @@ function installDesktopApi(): void {
 
 beforeEach(() => {
   installDesktopApi()
+  void changeDesktopLanguage('zh-CN')
 })
 
 afterEach(() => {
@@ -103,7 +122,7 @@ afterEach(() => {
 
 describe('desktop settings', () => {
   it('renders exactly the seven approved sections', async () => {
-    render(<App />)
+    renderSettings()
 
     const labels = [
       '个人资料',
@@ -123,7 +142,7 @@ describe('desktop settings', () => {
 
   it('updates profile fields through the web-aligned inline editor', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    renderSettings()
 
     await user.click(screen.getByRole('button', { name: '编辑昵称' }))
     const username = screen.getByRole('textbox', { name: '昵称' })
@@ -139,7 +158,7 @@ describe('desktop settings', () => {
   it('shows a save notification without taking content space and dismisses it automatically', async () => {
     vi.useFakeTimers()
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    render(<App />)
+    renderSettings()
 
     await user.click(screen.getByRole('button', { name: '编辑昵称' }))
     const username = screen.getByRole('textbox', { name: '昵称' })
@@ -150,5 +169,17 @@ describe('desktop settings', () => {
     expect(await screen.findByText('资料已保存')).toHaveClass('settings-notice')
     act(() => vi.advanceTimersByTime(3_000))
     expect(screen.queryByText('资料已保存')).not.toBeInTheDocument()
+  })
+
+  it('persists English through the real preference mutation and updates the settings UI', async () => {
+    const user = userEvent.setup()
+    renderSettings()
+
+    await user.click(screen.getByRole('tab', { name: '语言与地区' }))
+    await user.click(screen.getByRole('radio', { name: 'English' }))
+
+    await waitFor(() => expect(hooks.updatePreferences).toHaveBeenCalledWith({ language: 'en' }))
+    expect(screen.getByRole('tab', { name: 'Profile' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Language & Region' })).toBeInTheDocument()
   })
 })

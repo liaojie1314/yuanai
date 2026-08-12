@@ -128,6 +128,7 @@ vi.mock('@yuanai/core/stores', () => ({
   usePrefsStore: (selector: (state: typeof prefs) => unknown) => selector(prefs),
 }))
 
+import { changeDesktopLanguage } from '../shared/i18n'
 import { App } from './App'
 
 beforeEach(() => {
@@ -252,6 +253,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
   document.documentElement.removeAttribute('data-theme')
+  void changeDesktopLanguage('zh-CN')
 })
 
 describe('desktop chat', () => {
@@ -613,7 +615,7 @@ describe('desktop chat', () => {
     ]
     render(<App />)
 
-    expect(screen.getByRole('button', { name: '正在思考' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '正在思考…' })).toBeInTheDocument()
     expect(screen.getByText('search_web')).toBeInTheDocument()
     expect(screen.getByText('{"query":"元AI"}')).toBeInTheDocument()
   })
@@ -676,6 +678,35 @@ describe('desktop chat', () => {
         })
       )
     })
+  })
+
+  it('shows a scroll-to-bottom action without forcing readers back during streaming', async () => {
+    const user = userEvent.setup()
+    const view = render(<App />)
+    const messages = document.querySelector('.desktop-chat__messages') as HTMLDivElement
+    const scrollTo = vi.fn()
+    Object.defineProperties(messages, {
+      clientHeight: { configurable: true, value: 240 },
+      scrollHeight: { configurable: true, value: 1200 },
+      scrollTo: { configurable: true, value: scrollTo },
+      scrollTop: { configurable: true, writable: true, value: 640 },
+    })
+
+    fireEvent.scroll(messages)
+
+    const action = screen.getByRole('button', { name: '回到底部' })
+    expect(action).toBeInTheDocument()
+
+    chat.streamState.streamingConvId = 'conversation-1'
+    chat.streamState.streamingContent = '仍在生成的回复'
+    view.rerender(<App />)
+
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    await user.click(action)
+
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 1200 })
+    expect(screen.queryByRole('button', { name: '回到底部' })).not.toBeInTheDocument()
   })
 
   it('renders user messages as a right-aligned Web-style bubble', () => {
@@ -880,6 +911,26 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('menuitem', { name: '个人设置' }))
 
     expect(window.yuanai.window.openSettings).toHaveBeenCalledTimes(2)
+  })
+
+  it('localizes conversation date groups while keeping the product name fixed', async () => {
+    const yesterday = new Date()
+    yesterday.setDate(yesterday.getDate() - 1)
+    chat.conversations = [
+      {
+        id: 'conversation-yesterday',
+        title: 'Yesterday conversation',
+        model: 'gpt-4o',
+        isPinned: false,
+        lastMessageAt: yesterday.toISOString(),
+        createdAt: yesterday.toISOString(),
+      },
+    ]
+    await changeDesktopLanguage('en')
+    render(<App />)
+
+    expect(screen.getByText('Yesterday')).toBeInTheDocument()
+    expect(screen.getByText('元AI', { exact: true })).toBeInTheDocument()
   })
 
   it('provides the Web-aligned quick theme and logout actions for authenticated users', async () => {

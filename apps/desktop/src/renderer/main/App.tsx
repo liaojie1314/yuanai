@@ -1,4 +1,5 @@
 import {
+  ArrowDown,
   Brain,
   Calculator,
   Camera,
@@ -39,6 +40,7 @@ import {
 } from 'lucide-react'
 import {
   Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -48,6 +50,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactElement,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   useConversations,
   useCreateConversation,
@@ -77,6 +80,7 @@ import type {
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { ChatMessage, StreamingMessage } from './MessageContent'
+import '../shared/i18n'
 
 const FALLBACK_MODEL: AIModel = {
   id: 'deepseek-v4-flash',
@@ -255,6 +259,15 @@ interface ConversationGroup {
   conversations: Conversation[]
 }
 
+type ConversationGroupLabels = Record<'pinned' | 'today' | 'yesterday' | 'week' | 'earlier', string>
+const CONVERSATION_GROUP_ORDER: Array<keyof ConversationGroupLabels> = [
+  'pinned',
+  'today',
+  'yesterday',
+  'week',
+  'earlier',
+]
+
 function getConversationGroupId(conversation: Conversation, referenceDate: Date): string {
   if (conversation.isPinned) return 'pinned'
 
@@ -279,15 +292,10 @@ function getConversationGroupId(conversation: Conversation, referenceDate: Date)
   return 'earlier'
 }
 
-function groupConversations(conversations: Conversation[]): ConversationGroup[] {
-  const labels: Record<string, string> = {
-    pinned: '置顶',
-    today: '今天',
-    yesterday: '昨天',
-    week: '最近 7 天',
-    earlier: '更早',
-  }
-  const groupOrder = ['pinned', 'today', 'yesterday', 'week', 'earlier']
+function groupConversations(
+  conversations: Conversation[],
+  labels: ConversationGroupLabels
+): ConversationGroup[] {
   const groups = new Map<string, Conversation[]>()
   const referenceDate = new Date()
 
@@ -298,7 +306,7 @@ function groupConversations(conversations: Conversation[]): ConversationGroup[] 
     groups.set(id, group)
   }
 
-  return groupOrder.flatMap((id) => {
+  return CONVERSATION_GROUP_ORDER.flatMap((id) => {
     const group = groups.get(id)
     return group ? [{ id, label: labels[id] ?? id, conversations: group }] : []
   })
@@ -887,6 +895,7 @@ function ConversationItem({
 
 /** 提供桌面端的会话列表、消息历史和 SSE 流式聊天体验。 */
 export function App(): ReactElement {
+  const { t } = useTranslation()
   const conversationsQuery = useConversations()
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
@@ -946,6 +955,7 @@ export function App(): ReactElement {
   const [messageFeedback, setMessageFeedback] = useState<Record<string, 'like' | 'dislike'>>({})
   const [actionError, setActionError] = useState('')
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
+  const [isMessagesAtBottom, setIsMessagesAtBottom] = useState(true)
   const [isDarkTheme, setIsDarkTheme] = useState(
     () => document.documentElement.getAttribute('data-theme') === 'dark'
   )
@@ -956,6 +966,7 @@ export function App(): ReactElement {
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
+  const isMessagesAtBottomRef = useRef(true)
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -1001,10 +1012,16 @@ export function App(): ReactElement {
       getConversationTitle(conversation).toLocaleLowerCase().includes(normalizedSearch)
     )
   }, [conversations, search])
-  const groupedConversations = useMemo(
-    () => groupConversations(visibleConversations),
-    [visibleConversations]
-  )
+  const groupedConversations = useMemo(() => {
+    const labels: ConversationGroupLabels = {
+      pinned: t('chat.groups.pinned'),
+      today: t('chat.groups.today'),
+      yesterday: t('chat.groups.yesterday'),
+      week: t('chat.groups.week'),
+      earlier: t('desktop.chat.earlier'),
+    }
+    return groupConversations(visibleConversations, labels)
+  }, [t, visibleConversations])
   const contextMenuConversation = conversationMenu
     ? (conversations.find((conversation) => conversation.id === conversationMenu.conversationId) ??
       null)
@@ -1077,7 +1094,7 @@ export function App(): ReactElement {
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [conversationMenu])
-  const userName = user?.username ?? '登录'
+  const userName = user?.username ?? t('chat.sidebar.login')
   const userEmail = user?.email ?? ''
 
   useEffect(() => {
@@ -1109,23 +1126,56 @@ export function App(): ReactElement {
     wasStreamingRef.current = isStreaming
   }, [isStreaming])
 
+  const setMessagesAtBottom = useCallback((atBottom: boolean): void => {
+    if (isMessagesAtBottomRef.current === atBottom) return
+    isMessagesAtBottomRef.current = atBottom
+    setIsMessagesAtBottom(atBottom)
+  }, [])
+
+  const scrollMessagesToBottom = useCallback(
+    (behavior: ScrollBehavior): void => {
+      const container = messagesContainerRef.current
+      if (!container) return
+      setMessagesAtBottom(true)
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({ behavior, top: container.scrollHeight })
+        return
+      }
+      container.scrollTop = container.scrollHeight
+    },
+    [setMessagesAtBottom]
+  )
+
+  const handleMessagesScroll = useCallback(
+    (event: React.UIEvent<HTMLDivElement>): void => {
+      const container = event.currentTarget
+      const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight
+      setMessagesAtBottom(distanceToBottom <= 80)
+    },
+    [setMessagesAtBottom]
+  )
+
   useEffect(() => {
-    const container = messagesContainerRef.current
-    if (!container) return
-    if (typeof container.scrollTo === 'function') {
-      container.scrollTo({ behavior: 'auto', top: container.scrollHeight })
-      return
-    }
-    container.scrollTop = container.scrollHeight
+    isMessagesAtBottomRef.current = true
+    setIsMessagesAtBottom(true)
+    scrollMessagesToBottom('auto')
+  }, [activeConversationId, isTemporaryConversation, scrollMessagesToBottom])
+
+  useEffect(() => {
+    if (!isMessagesAtBottomRef.current) return
+    scrollMessagesToBottom('auto')
   }, [
-    activeConversationId,
     messages,
     optimisticUserMessage,
     streamingContent,
     streamingThinking,
     streamingThinkingDurationMs,
     streamingToolCalls,
+    scrollMessagesToBottom,
   ])
+
+  const showScrollToBottom =
+    !isMessagesAtBottom && (messages.length > 0 || isStreaming || optimisticUserMessage !== null)
 
   useEffect(() => {
     const input = composerInputRef.current
@@ -1249,6 +1299,17 @@ export function App(): ReactElement {
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, '无法打开代码面板，请稍后重试'))
     }
+  }
+
+  /** 在 AI 回复正常结束后请求主进程按已保存的通知偏好提醒用户。 */
+  function notifyReplyCompleted(conversationId?: string): void {
+    void window.yuanai.system
+      .notify({
+        title: t('desktop.notifications.replyCompleted'),
+        body: t('desktop.notifications.replyBody'),
+        ...(conversationId ? { conversationId } : {}),
+      })
+      .catch(() => undefined)
   }
 
   /** 覆盖用户原消息，并替换其后基于旧内容生成的回答。 */
@@ -1674,7 +1735,7 @@ export function App(): ReactElement {
           history,
           model: selectedModel.id,
           enableThinking: isThinkingEnabled,
-          onEnd: ({ content: response, think }) => {
+          onEnd: ({ completed, content: response, think }) => {
             if (!response && !think) return
             setTemporaryMessages((items) => [
               ...items,
@@ -1687,6 +1748,7 @@ export function App(): ReactElement {
                 createdAt: new Date().toISOString(),
               },
             ])
+            if (completed) notifyReplyCompleted()
           },
           onError: (error) => setActionError(getErrorMessage(error, '临时消息发送失败，请重试')),
         })
@@ -1707,12 +1769,16 @@ export function App(): ReactElement {
       }
       setIsUploadingAttachments(true)
       const fileIds = await resolveAttachmentIds()
+      const targetConversationId = conversationId
       await stream.send({
-        convId: conversationId,
+        convId: targetConversationId,
         content,
         enableThinking: isThinkingEnabled,
         fileIds,
         model: selectedModel.id,
+        onEnd: ({ completed }) => {
+          if (completed) notifyReplyCompleted(targetConversationId)
+        },
         onError: (error) => setActionError(getErrorMessage(error, '消息发送失败，请重试')),
       })
       revokeAttachmentPreviews(attachments)
@@ -1730,20 +1796,28 @@ export function App(): ReactElement {
       className={
         isSidebarCollapsed ? 'desktop-chat desktop-chat--sidebar-collapsed' : 'desktop-chat'
       }
-      aria-label="元AI 聊天"
+      aria-label={`${t('common.appName')} ${t('desktop.chat.title')}`}
     >
-      <aside className="desktop-chat__sidebar" aria-label="会话列表">
+      <aside className="desktop-chat__sidebar" aria-label={t('desktop.chat.conversations')}>
         <div className="desktop-chat__sidebar-header">
           <div className="desktop-chat__brand">
             <span aria-hidden="true">元</span>
-            <strong>元AI</strong>
+            <strong>{t('common.appName')}</strong>
           </div>
-          <div className="desktop-chat__quick-actions" aria-label="新建操作">
+          <div className="desktop-chat__quick-actions" aria-label={t('desktop.chat.newActions')}>
             <button
               className={isTemporaryConversation ? 'is-active' : undefined}
               type="button"
-              aria-label={isTemporaryConversation ? '退出临时对话' : '开启临时对话'}
-              title={isTemporaryConversation ? '退出临时对话' : '开启临时对话'}
+              aria-label={
+                isTemporaryConversation
+                  ? t('chat.temporary.exit')
+                  : t('desktop.chat.startTemporary')
+              }
+              title={
+                isTemporaryConversation
+                  ? t('chat.temporary.exit')
+                  : t('desktop.chat.startTemporary')
+              }
               aria-pressed={isTemporaryConversation}
               disabled={isStreaming}
               onClick={handleToggleTemporaryConversation}
@@ -1752,8 +1826,8 @@ export function App(): ReactElement {
             </button>
             <button
               type="button"
-              aria-label="新建会话"
-              title="新建会话"
+              aria-label={t('desktop.chat.newConversation')}
+              title={t('desktop.chat.newConversation')}
               disabled={!isLoggedIn || createConversation.isPending || isStreaming}
               onClick={() => void handleCreateConversation()}
             >
@@ -1766,24 +1840,30 @@ export function App(): ReactElement {
           </div>
         </div>
         <label className="desktop-chat__search">
-          <span className="desktop-chat__sr-only">搜索会话</span>
+          <span className="desktop-chat__sr-only">{t('desktop.chat.searchConversations')}</span>
           <input
             type="search"
             value={search}
-            placeholder="搜索会话"
+            placeholder={t('chat.searchPlaceholder')}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
         {isSelectionMode ? (
-          <div className="desktop-chat__selection-toolbar" role="toolbar" aria-label="批量选择会话">
+          <div
+            className="desktop-chat__selection-toolbar"
+            role="toolbar"
+            aria-label={t('desktop.chat.selectConversations')}
+          >
             <button
               type="button"
               disabled={conversations.length === 0}
               onClick={handleToggleAllConversations}
             >
-              {selectedConversationIds.size === conversations.length ? '取消全选' : '全选'}
+              {selectedConversationIds.size === conversations.length
+                ? t('chat.actions.deselectAll')
+                : t('chat.actions.selectAll')}
             </button>
-            <span>已选择 {selectedConversationIds.size} 项</span>
+            <span>{t('desktop.chat.selectedCount', { count: selectedConversationIds.size })}</span>
             <button
               className="desktop-chat__selection-delete"
               type="button"
@@ -1792,18 +1872,21 @@ export function App(): ReactElement {
               }
               onClick={() => setIsBatchDeleteConfirmationOpen(true)}
             >
-              删除已选
+              {t('desktop.chat.deleteSelected')}
             </button>
             <button
               type="button"
               disabled={deleteConversations.isPending}
               onClick={handleExitSelectionMode}
             >
-              取消
+              {t('common.cancel')}
             </button>
           </div>
         ) : null}
-        <nav className="desktop-chat__conversation-nav" aria-label="最近会话">
+        <nav
+          className="desktop-chat__conversation-nav"
+          aria-label={t('desktop.chat.recentConversations')}
+        >
           {isLoggedIn && conversationsQuery.isLoading ? (
             <div className="desktop-chat__sidebar-state">
               <LoaderCircle className="desktop-chat__spin" size={18} />
@@ -1837,15 +1920,23 @@ export function App(): ReactElement {
             </>
           ) : (
             <p className="desktop-chat__sidebar-state">
-              {isLoggedIn ? (search ? '未找到会话' : '还没有会话') : '暂无会话'}
+              {isLoggedIn
+                ? search
+                  ? t('desktop.chat.noSearchResults')
+                  : t('chat.noConversations')
+                : t('chat.noConversations')}
             </p>
           )}
         </nav>
-        <div ref={accountMenuRef} className="desktop-chat__account" aria-label="当前账户">
+        <div
+          ref={accountMenuRef}
+          className="desktop-chat__account"
+          aria-label={t('desktop.chat.currentAccount')}
+        >
           <button
             className="desktop-chat__account-trigger"
             type="button"
-            aria-label={user ? '打开个人设置' : '打开登录窗口'}
+            aria-label={user ? t('desktop.chat.openProfile') : t('desktop.chat.openLogin')}
             onClick={() => void handleOpenAccount()}
           >
             <span className="desktop-chat__account-avatar" aria-hidden="true">
@@ -1859,8 +1950,8 @@ export function App(): ReactElement {
           <button
             className="desktop-chat__account-settings"
             type="button"
-            aria-label="打开快捷设置"
-            title="打开快捷设置"
+            aria-label={t('desktop.chat.openQuickSettings')}
+            title={t('desktop.chat.openQuickSettings')}
             aria-expanded={isAccountMenuOpen}
             aria-haspopup="menu"
             onClick={() => setIsAccountMenuOpen((value) => !value)}
@@ -1868,16 +1959,20 @@ export function App(): ReactElement {
             <Settings size={15} aria-hidden="true" />
           </button>
           {isAccountMenuOpen ? (
-            <div className="desktop-chat__account-menu" role="menu" aria-label="快捷设置">
+            <div
+              className="desktop-chat__account-menu"
+              role="menu"
+              aria-label={t('desktop.chat.quickSettings')}
+            >
               <button
                 className="desktop-chat__account-menu-theme"
                 type="button"
                 role="menuitem"
-                aria-label="切换深色模式"
+                aria-label={t('theme.toggleDark')}
                 aria-pressed={isDarkTheme}
                 onClick={() => void handleToggleTheme()}
               >
-                <span>深色模式</span>
+                <span>{t('chat.sidebar.darkMode')}</span>
                 <span
                   className={
                     isDarkTheme
@@ -1900,7 +1995,7 @@ export function App(): ReactElement {
                     }}
                   >
                     <Settings size={16} aria-hidden="true" />
-                    个人设置
+                    {t('chat.sidebar.profile')}
                   </button>
                   <div className="desktop-chat__account-menu-separator" />
                   <button
@@ -1910,7 +2005,7 @@ export function App(): ReactElement {
                     onClick={() => void handleLogout()}
                   >
                     <LogOut size={16} aria-hidden="true" />
-                    退出登录
+                    {t('chat.sidebar.logout')}
                   </button>
                 </>
               ) : (
@@ -1924,7 +2019,7 @@ export function App(): ReactElement {
                   }}
                 >
                   <LogIn size={16} aria-hidden="true" />
-                  去登录
+                  {t('chat.sidebar.login')}
                 </button>
               )}
             </div>
@@ -1937,16 +2032,24 @@ export function App(): ReactElement {
           <div className="desktop-chat__header-side">
             <h1 className="desktop-chat__sr-only">
               {isTemporaryConversation
-                ? '临时对话'
+                ? t('chat.toolbar.temporaryOn')
                 : activeConversation
                   ? getConversationTitle(activeConversation)
-                  : '开始新对话'}
+                  : t('desktop.chat.startNewConversation')}
             </h1>
             <button
               className="desktop-chat__header-action"
               type="button"
-              aria-label={isSidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
-              title={isSidebarCollapsed ? '展开侧边栏' : '折叠侧边栏'}
+              aria-label={
+                isSidebarCollapsed
+                  ? t('desktop.chat.expandSidebar')
+                  : t('desktop.chat.collapseSidebar')
+              }
+              title={
+                isSidebarCollapsed
+                  ? t('desktop.chat.expandSidebar')
+                  : t('desktop.chat.collapseSidebar')
+              }
               onClick={() => setIsSidebarCollapsed((value) => !value)}
             >
               {isSidebarCollapsed ? (
@@ -1959,7 +2062,7 @@ export function App(): ReactElement {
           <button
             className="desktop-chat__model-trigger"
             type="button"
-            aria-label={`选择模型：${selectedModel.name}`}
+            aria-label={t('desktop.chat.selectModel', { name: selectedModel.name })}
             aria-expanded={isModelMenuOpen}
             aria-haspopup="listbox"
             onClick={() => setIsModelMenuOpen((value) => !value)}
@@ -1974,8 +2077,8 @@ export function App(): ReactElement {
             <button
               className="desktop-chat__header-action"
               type="button"
-              aria-label="分享对话"
-              title="分享对话"
+              aria-label={t('chat.toolbar.share')}
+              title={t('chat.toolbar.share')}
               disabled={!activeConversation || isTemporaryConversation}
               onClick={() => void handleOpenShareDialog()}
             >
@@ -1989,10 +2092,14 @@ export function App(): ReactElement {
             <button
               className="desktop-chat__model-dismiss"
               type="button"
-              aria-label="关闭模型选择"
+              aria-label={t('desktop.chat.modelSelectClose')}
               onClick={() => setIsModelMenuOpen(false)}
             />
-            <div className="desktop-chat__model-menu" role="listbox" aria-label="选择模型">
+            <div
+              className="desktop-chat__model-menu"
+              role="listbox"
+              aria-label={t('desktop.chat.modelSelect')}
+            >
               {modelGroups.map(({ provider, models }) => (
                 <section key={provider} className="desktop-chat__model-menu-group">
                   <h2>{provider}</h2>
@@ -2004,7 +2111,7 @@ export function App(): ReactElement {
                         className={selected ? 'is-selected' : undefined}
                         type="button"
                         role="option"
-                        aria-label={`选择 ${model.name}`}
+                        aria-label={t('desktop.chat.selectModelOption', { name: model.name })}
                         aria-selected={selected}
                         onClick={() => handleSelectModel(model.id)}
                       >
@@ -2038,152 +2145,172 @@ export function App(): ReactElement {
         {isTemporaryConversation ? (
           <div className="desktop-chat__temporary-banner" role="status">
             <Ghost size={15} aria-hidden="true" />
-            <span>临时对话不会保存到历史记录。</span>
+            <span>{t('desktop.chat.temporaryBanner')}</span>
             <button
               type="button"
-              aria-label="退出临时对话模式"
+              aria-label={t('desktop.chat.exitTemporaryMode')}
               disabled={isStreaming}
               onClick={handleToggleTemporaryConversation}
             >
-              退出
+              {t('chat.temporary.exit')}
             </button>
           </div>
         ) : null}
 
-        <div
-          ref={messagesContainerRef}
-          className="desktop-chat__messages"
-          aria-busy={messagesQuery.isLoading}
-        >
-          {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
-            <div className="desktop-chat__messages-loading">
-              <LoaderCircle className="desktop-chat__spin" size={22} />
-            </div>
-          ) : messages.length || isStreaming ? (
-            <div className="desktop-chat__message-list">
-              {messagePairs.map((pair) => {
-                const versionCount = pair.assistants.length
-                const versionIndex = clampVersionIdx(versionCount, versionIndexes[pair.pairKey])
-                const assistantMessage = pair.assistants[versionIndex]
-                const isPairRegenerating = isStreaming && regeneratingPairKey === pair.pairKey
+        <div className="desktop-chat__messages-shell">
+          <div
+            ref={messagesContainerRef}
+            className="desktop-chat__messages"
+            aria-busy={messagesQuery.isLoading}
+            onScroll={handleMessagesScroll}
+          >
+            {messagesQuery.isLoading && activeConversationId && !isTemporaryConversation ? (
+              <div className="desktop-chat__messages-loading">
+                <LoaderCircle className="desktop-chat__spin" size={22} />
+              </div>
+            ) : messages.length || isStreaming ? (
+              <div className="desktop-chat__message-list">
+                {messagePairs.map((pair) => {
+                  const versionCount = pair.assistants.length
+                  const versionIndex = clampVersionIdx(versionCount, versionIndexes[pair.pairKey])
+                  const assistantMessage = pair.assistants[versionIndex]
+                  const isPairRegenerating = isStreaming && regeneratingPairKey === pair.pairKey
 
-                return (
-                  <Fragment key={pair.pairKey}>
-                    {pair.userMsg ? (
-                      <ChatMessage
-                        user={user}
-                        message={pair.userMsg}
-                        isStreaming={isStreaming}
-                        canRegenerate={false}
-                        timeFmt={timeFmt}
-                        dateFmt={dateFmt}
-                        onFeedback={handleOpenFeedback}
-                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                        onRegenerate={() => undefined}
-                        onEditMessage={handleEditMessage}
-                      />
-                    ) : null}
-                    {isPairRegenerating ? (
-                      <StreamingMessage
-                        content={streamingContent}
-                        thinking={streamingThinking}
-                        thinkingDurationMs={streamingThinkingDurationMs}
-                        toolCalls={streamingToolCalls}
-                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                      />
-                    ) : assistantMessage ? (
-                      <ChatMessage
-                        user={user}
-                        message={assistantMessage}
-                        isStreaming={isStreaming}
-                        canRegenerate={!isTemporaryConversation && pair.userMsg !== null}
-                        timeFmt={timeFmt}
-                        dateFmt={dateFmt}
-                        versionCount={versionCount}
-                        versionIndex={versionIndex}
-                        onFeedback={handleOpenFeedback}
-                        onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                        onRegenerate={() => {
-                          if (pair.userMsg) {
-                            handleRegenerateMessage(pair.userMsg.content, pair.pairKey)
+                  return (
+                    <Fragment key={pair.pairKey}>
+                      {pair.userMsg ? (
+                        <ChatMessage
+                          user={user}
+                          message={pair.userMsg}
+                          isStreaming={isStreaming}
+                          canRegenerate={false}
+                          timeFmt={timeFmt}
+                          dateFmt={dateFmt}
+                          onFeedback={handleOpenFeedback}
+                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                          onRegenerate={() => undefined}
+                          onEditMessage={handleEditMessage}
+                        />
+                      ) : null}
+                      {isPairRegenerating ? (
+                        <StreamingMessage
+                          content={streamingContent}
+                          thinking={streamingThinking}
+                          thinkingDurationMs={streamingThinkingDurationMs}
+                          toolCalls={streamingToolCalls}
+                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                        />
+                      ) : assistantMessage ? (
+                        <ChatMessage
+                          user={user}
+                          message={assistantMessage}
+                          isStreaming={isStreaming}
+                          canRegenerate={!isTemporaryConversation && pair.userMsg !== null}
+                          timeFmt={timeFmt}
+                          dateFmt={dateFmt}
+                          versionCount={versionCount}
+                          versionIndex={versionIndex}
+                          onFeedback={handleOpenFeedback}
+                          onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                          onRegenerate={() => {
+                            if (pair.userMsg) {
+                              handleRegenerateMessage(pair.userMsg.content, pair.pairKey)
+                            }
+                          }}
+                          onEditMessage={handleEditMessage}
+                          onVersionChange={(index) =>
+                            setVersionIndexes((items) => ({ ...items, [pair.pairKey]: index }))
                           }
-                        }}
-                        onEditMessage={handleEditMessage}
-                        onVersionChange={(index) =>
-                          setVersionIndexes((items) => ({ ...items, [pair.pairKey]: index }))
-                        }
-                        {...(messageFeedback[assistantMessage.id]
-                          ? { feedback: messageFeedback[assistantMessage.id] }
-                          : {})}
-                      />
-                    ) : null}
-                  </Fragment>
-                )
-              })}
-              {isStreaming &&
-              regeneratingPairKey === null &&
-              optimisticUserMessage &&
-              !isTemporaryConversation ? (
-                <article className="desktop-chat__message desktop-chat__message--user">
-                  <div className="desktop-chat__message-body">
-                    <div className="desktop-chat__markdown desktop-chat__message-bubble">
-                      <p>{optimisticUserMessage}</p>
+                          {...(messageFeedback[assistantMessage.id]
+                            ? { feedback: messageFeedback[assistantMessage.id] }
+                            : {})}
+                        />
+                      ) : null}
+                    </Fragment>
+                  )
+                })}
+                {isStreaming &&
+                regeneratingPairKey === null &&
+                optimisticUserMessage &&
+                !isTemporaryConversation ? (
+                  <article className="desktop-chat__message desktop-chat__message--user">
+                    <div className="desktop-chat__message-body">
+                      <div className="desktop-chat__markdown desktop-chat__message-bubble">
+                        <p>{optimisticUserMessage}</p>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ) : null}
-              {isStreaming && regeneratingPairKey === null ? (
-                <StreamingMessage
-                  content={streamingContent}
-                  thinking={streamingThinking}
-                  thinkingDurationMs={streamingThinkingDurationMs}
-                  toolCalls={streamingToolCalls}
-                  onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
-                />
-              ) : null}
-            </div>
-          ) : (
-            <section className="desktop-chat__empty-state" aria-label="开始新对话">
-              <div className="desktop-chat__empty-icon" aria-hidden="true">
-                元
+                  </article>
+                ) : null}
+                {isStreaming && regeneratingPairKey === null ? (
+                  <StreamingMessage
+                    content={streamingContent}
+                    thinking={streamingThinking}
+                    thinkingDurationMs={streamingThinkingDurationMs}
+                    toolCalls={streamingToolCalls}
+                    onOpenArtifact={(payload) => void handleOpenArtifact(payload)}
+                  />
+                ) : null}
               </div>
-              <div className="desktop-chat__empty-copy">
-                <h2>你好，我是元AI</h2>
-                <p>集成多款顶尖 AI 模型，帮你完成任何任务</p>
-              </div>
-              <div className="desktop-chat__capabilities" aria-label="可用能力">
-                {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
-                  <button
-                    key={label}
-                    type="button"
-                    aria-label={`快捷提示：${label}`}
-                    disabled={!isLoggedIn}
-                    onClick={() => handleQuickPrompt(prompt)}
-                  >
-                    <Icon size={14} aria-hidden="true" />
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="desktop-chat__suggestions">
-                {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
-                  <button
-                    key={title}
-                    type="button"
-                    aria-label={title}
-                    disabled={!isLoggedIn}
-                    onClick={() => handleQuickPrompt(prompt)}
-                  >
-                    <Icon size={17} aria-hidden="true" />
-                    <span>
-                      <strong>{title}</strong>
-                      <small>{description}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
+            ) : (
+              <section
+                className="desktop-chat__empty-state"
+                aria-label={t('desktop.chat.startNewConversation')}
+              >
+                <div className="desktop-chat__empty-icon" aria-hidden="true">
+                  元
+                </div>
+                <div className="desktop-chat__empty-copy">
+                  <h2>{t('chat.welcome.title')}</h2>
+                  <p>{t('chat.welcome.subtitle')}</p>
+                </div>
+                <div
+                  className="desktop-chat__capabilities"
+                  aria-label={t('desktop.chat.capabilities')}
+                >
+                  {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      aria-label={`快捷提示：${label}`}
+                      disabled={!isLoggedIn}
+                      onClick={() => handleQuickPrompt(prompt)}
+                    >
+                      <Icon size={14} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <div className="desktop-chat__suggestions">
+                  {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
+                    <button
+                      key={title}
+                      type="button"
+                      aria-label={title}
+                      disabled={!isLoggedIn}
+                      onClick={() => handleQuickPrompt(prompt)}
+                    >
+                      <Icon size={17} aria-hidden="true" />
+                      <span>
+                        <strong>{title}</strong>
+                        <small>{description}</small>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+          {showScrollToBottom ? (
+            <button
+              className="desktop-chat__scroll-to-bottom"
+              type="button"
+              aria-label={t('chat.actions.scrollToBottom')}
+              title={t('chat.actions.scrollToBottom')}
+              onClick={() => scrollMessagesToBottom('smooth')}
+            >
+              <ArrowDown size={18} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
 
         <form
@@ -2242,7 +2369,9 @@ export function App(): ReactElement {
             aria-label="输入消息"
             rows={1}
             value={draft}
-            placeholder={isLoggedIn ? '发送消息' : '请先登录，开始与 AI 对话'}
+            placeholder={
+              isLoggedIn ? t('chat.inputPlaceholder') : t('chat.inputPlaceholderLoggedOut')
+            }
             disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
             onChange={(event) => setDraft(event.target.value)}
             onKeyDown={(event) => {

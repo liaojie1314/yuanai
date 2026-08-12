@@ -17,14 +17,19 @@ const system = vi.hoisted(() => ({
     get: vi.fn(),
     update: vi.fn(),
   },
-  focusMain: vi.fn(),
+  actionRegistry: { 'toggle-main-window': vi.fn() },
+  notifications: {
+    isSupported: vi.fn(() => true),
+    show: vi.fn(),
+  },
 }))
 
 function createService(): DesktopSystemService {
   return new DesktopSystemService({
     app: system.app,
-    focusMain: system.focusMain,
+    actionRegistry: system.actionRegistry,
     globalShortcut: system.globalShortcut,
+    notifications: system.notifications,
     platform: 'linux',
     preferencesStorage: system.preferencesStorage,
   })
@@ -79,5 +84,30 @@ describe('DesktopSystemService', () => {
 
     service.dispose()
     expect(system.globalShortcut.unregisterAll).toHaveBeenCalledOnce()
+  })
+
+  it('runs the registered show-or-hide action when the global shortcut fires', async () => {
+    const service = createService()
+    await service.restore()
+    const registeredCallback = system.globalShortcut.register.mock.calls[0]?.[1]
+
+    registeredCallback?.()
+
+    expect(system.actionRegistry['toggle-main-window']).toHaveBeenCalledOnce()
+  })
+
+  it('only sends reply notifications when the persisted notification preferences allow it', async () => {
+    const service = createService()
+    const payload = { title: '元AI', body: '回复已完成' }
+
+    await expect(service.notifyAiReply(payload)).resolves.toBe(true)
+    expect(system.notifications.show).toHaveBeenCalledWith({ ...payload, playSound: true })
+
+    system.preferencesStorage.get.mockResolvedValueOnce({
+      ...DEFAULT_DESKTOP_PREFERENCES,
+      aiReplyNotifications: false,
+    })
+    await expect(service.notifyAiReply(payload)).resolves.toBe(false)
+    expect(system.notifications.show).toHaveBeenCalledOnce()
   })
 })

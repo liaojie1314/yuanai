@@ -37,7 +37,12 @@ export interface TemporaryStreamParams {
    * 只保证正文部分，思考文本 / 耗时只在 store 里活着。onEnd 在 `finalizeStream` **之前**
    * 拍快照，之后 store 就被清空。
    */
-  onEnd?: (result: { content: string; think: string; thinkDurationMs: number }) => void
+  onEnd?: (result: {
+    content: string
+    think: string
+    thinkDurationMs: number
+    completed: boolean
+  }) => void
   /** 流出错时回调 */
   onError?: (err: Error) => void
 }
@@ -60,8 +65,8 @@ export interface StreamParams {
   replaceMessageId?: string
   /** 流启动时回调 */
   onStart?: () => void
-  /** 流完成时回调 */
-  onEnd?: () => void
+  /** 流结束时回调；`completed` 仅在服务器正常完成回复时为 true。 */
+  onEnd?: (result: { completed: boolean }) => void
   /** 流出错时回调 */
   onError?: (err: Error) => void
 }
@@ -227,9 +232,12 @@ export function useStream() {
       streamMetaRef.current = null
       onStart?.()
 
-      // 单次流式尝试；resolve('auth') 表示未开流就撞上 token 失效（可刷新后重试）
-      const attempt = (accessToken: string | null): Promise<'ok' | 'auth'> =>
-        new Promise<'ok' | 'auth'>((resolve) => {
+      // 单次流式尝试；auth 表示未开流就撞上 token 失效（可刷新后重试）。
+      // 失败、主动停止和正常收尾必须可区分，供上层决定是否提示“回复完成”。
+      const attempt = (
+        accessToken: string | null
+      ): Promise<'completed' | 'failed' | 'auth' | 'stopped'> =>
+        new Promise<'completed' | 'failed' | 'auth' | 'stopped'>((resolve) => {
           const handle = getPlatformAdapter().stream(
             {
               url: `${getApiBaseUrl()}/chat/stream`,
@@ -281,7 +289,7 @@ export function useStream() {
                 }
                 finalizeStream()
                 onError?.(err)
-                resolve('ok')
+                resolve('failed')
               },
               onClose: () => {
                 // 收尾前先把缓冲中的尾部 delta 刷进 store，避免短暂丢尾
@@ -289,7 +297,7 @@ export function useStream() {
                 // 用户主动停止：close 由 stop() 触发，缓存已在 stop() 内写好，
                 // 不 refetch（后端占位行内容为空，会覆盖掉刚写入的部分内容）
                 if (stoppedRef.current) {
-                  resolve('ok')
+                  resolve('stopped')
                   return
                 }
                 void Promise.all([
@@ -297,7 +305,7 @@ export function useStream() {
                   qc.refetchQueries({ queryKey: ['conversations'] }),
                 ]).finally(() => {
                   finalizeStream()
-                  resolve('ok')
+                  resolve('completed')
                 })
               },
             }
@@ -320,7 +328,7 @@ export function useStream() {
       }
 
       streamRef.current = null
-      onEnd?.()
+      onEnd?.({ completed: result === 'completed' })
     },
     [startStreaming, finalizeStream, qc, dispatchMessage, flushDeltas]
   )
@@ -346,6 +354,8 @@ export function useStream() {
       const token = useAuthStore.getState().accessToken
 
       startStreaming(TEMPORARY_CONV_ID, content)
+      stoppedRef.current = false
+      streamMetaRef.current = null
       onStart?.()
 
       let finalContent = ''
@@ -391,6 +401,7 @@ export function useStream() {
                 content: finalContent,
                 think: snap.streamingThink,
                 thinkDurationMs: snap.streamingThinkDurationMs,
+                completed: false,
               }
               finalizeStream()
               onError?.(err)
@@ -404,6 +415,7 @@ export function useStream() {
                 content: finalContent,
                 think: snap.streamingThink,
                 thinkDurationMs: snap.streamingThinkDurationMs,
+                completed: !stoppedRef.current,
               }
               finalizeStream()
               onEnd?.(result)

@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from 'react'
 import { synchronizeDesktopAuthState } from './auth-client'
 import { AppearanceProvider } from './AppearanceProvider'
 import { DesktopTitlebar } from './DesktopTitlebar'
+import { DesktopI18nProvider } from './i18n'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -27,9 +28,11 @@ export function RendererRoot({ children }: { children: ReactNode }): ReactNode {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppearanceProvider>
-        <DesktopTitlebar>{children}</DesktopTitlebar>
-      </AppearanceProvider>
+      <DesktopI18nProvider>
+        <AppearanceProvider>
+          <DesktopTitlebar>{children}</DesktopTitlebar>
+        </AppearanceProvider>
+      </DesktopI18nProvider>
     </QueryClientProvider>
   )
 }

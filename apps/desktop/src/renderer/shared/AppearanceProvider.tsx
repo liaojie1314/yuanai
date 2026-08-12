@@ -4,6 +4,7 @@ import { useMyPreferences } from '@yuanai/core/hooks'
 import { useAuthStore, usePrefsStore } from '@yuanai/core/stores'
 
 import { applyDesktopAppearance, applyRendererPreferences, applyRendererTheme } from './appearance'
+import { changeDesktopLanguage } from './i18n'
 
 /** 为所有 renderer 同步真实用户偏好与 Electron 原生主题。 */
 export function AppearanceProvider({ children }: { children: ReactNode }): ReactElement {
@@ -36,6 +37,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }): React
     () =>
       window.yuanai.events.onDisplayPreferencesChanged((preferences) => {
         applyRendererPreferences(preferences)
+        void changeDesktopLanguage(preferences.language)
         replaceAll({
           theme: preferences.theme,
           fontSize: preferences.fontSize,
@@ -51,6 +53,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }): React
     if (!hasSession || !preferencesQuery.data) return
     const preferences = preferencesQuery.data
     applyRendererPreferences(preferences)
+    void changeDesktopLanguage(preferences.language)
     replaceAll({
       theme: preferences.theme,
       fontSize: preferences.fontSize,

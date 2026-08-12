@@ -81,7 +81,9 @@ export const ToolCallRow = memo(function ToolCallRow({
   const meta = statusMeta(toolCall.status, (k) => t(`chat.${k}`))
   const argsPreview = toolCall.arguments.replace(/\s+/g, ' ').slice(0, 40)
   const durationLabel =
-    toolCall.durationMs !== undefined ? `${(toolCall.durationMs / 1000).toFixed(1)}s` : null
+    toolCall.durationMs !== undefined
+      ? t('chat.toolDuration', { seconds: (toolCall.durationMs / 1000).toFixed(1) })
+      : null
 
   return (
     <View

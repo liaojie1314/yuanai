@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type JSX } from 'react'
 import { Sparkles, ChevronDown } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import type { ToolCall } from '@yuanai/types'
 import { ToolCallRow } from './ToolCallRow'
 
@@ -32,6 +33,7 @@ export function ThinkBlock({
   durationMs,
   defaultOpen,
 }: ThinkBlockProps): JSX.Element {
+  const t = useTranslations('chat')
   // 流式思考中默认展开；思考完成后自动折叠（对标原型图行为）
   const [open, setOpen] = useState(defaultOpen ?? active)
 
@@ -46,10 +48,10 @@ export function ThinkBlock({
   }, [active])
 
   const state = active ? 'active' : 'done'
-  const label = active ? '正在思考…' : '已完成思考'
+  const label = active ? t('thinking') : t('thinkingDone')
   const durationLabel =
     !active && durationMs !== undefined && durationMs > 0
-      ? `${(durationMs / 1000).toFixed(1)} 秒`
+      ? t('thinkingDuration', { seconds: (durationMs / 1000).toFixed(1) })
       : null
 
   return (
@@ -83,7 +85,7 @@ export function ThinkBlock({
           </div>
         )}
         {!content && (!toolCalls || toolCalls.length === 0) && active && (
-          <div className="ch-think-text ch-think-empty">正在准备…</div>
+          <div className="ch-think-text ch-think-empty">{t('thinkingPreparing')}</div>
         )}
       </div>
     </div>

@@ -56,15 +56,17 @@ describe('useStream — SSE 解析（端到端行为）', () => {
         ])
       )
     )
+    const onEnd = vi.fn()
     const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
     await act(async () => {
-      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o' })
+      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o', onEnd })
     })
     // 流结束应清空流式态
     const s = useChatStore.getState()
     expect(s.streamingConvId).toBeNull()
     expect(s.streamingContent).toBe('')
     expect(s.optimisticUserMsg).toBeNull()
+    expect(onEnd).toHaveBeenCalledWith({ completed: true })
   })
 
   it('未知事件不抛错', async () => {
@@ -89,12 +91,14 @@ describe('useStream — SSE 解析（端到端行为）', () => {
         HttpResponse.json({ error: 'boom' }, { status: 500 })
       )
     )
+    const onEnd = vi.fn()
     const onError = vi.fn()
     const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
     await act(async () => {
-      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o', onError })
+      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o', onEnd, onError })
     })
     expect(onError).toHaveBeenCalled()
+    expect(onEnd).toHaveBeenCalledWith({ completed: false })
     expect(useChatStore.getState().streamingConvId).toBeNull()
   })
 

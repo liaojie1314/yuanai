@@ -7,6 +7,7 @@ import type {
   DesktopRendererPreferences,
   DesktopOAuthProvider,
   DesktopOAuthResult,
+  DesktopNotificationPayload,
   DesktopPreferences,
   DesktopSelectedFile,
   DesktopThemeChoice,
@@ -60,6 +61,7 @@ export interface YuanaiApi {
     getInfo: () => Promise<DesktopAppInfo>
     setGlobalShortcut: (accelerator: string | null) => Promise<ShortcutStatus>
     setAutoLaunch: (enabled: boolean) => Promise<DesktopPreferences>
+    notify: (payload: Omit<DesktopNotificationPayload, 'playSound'>) => Promise<boolean>
   }
   shell: {
     openExternal: (link: ExternalLinkId) => Promise<void>
@@ -143,6 +145,7 @@ export const api: YuanaiApi = {
     setGlobalShortcut: (accelerator) =>
       ipcRenderer.invoke(IPC.system.setGlobalShortcut, accelerator),
     setAutoLaunch: (enabled) => ipcRenderer.invoke(IPC.system.setAutoLaunch, enabled),
+    notify: (payload) => ipcRenderer.invoke(IPC.system.notify, payload),
   },
   shell: {
     openExternal: (link) => ipcRenderer.invoke(IPC.shell.openExternal, link),

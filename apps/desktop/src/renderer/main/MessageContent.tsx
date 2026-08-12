@@ -23,6 +23,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -127,15 +128,16 @@ export function UserAvatar({
 }
 
 function ToolCallDetails({ toolCall }: { toolCall: ToolCall }): ReactElement {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const status =
     toolCall.status === 'done'
-      ? '已完成'
+      ? t('chat.toolDone')
       : toolCall.status === 'error'
-        ? '失败'
+        ? t('chat.toolFailed')
         : toolCall.status === 'running'
-          ? '进行中'
-          : '等待中'
+          ? t('chat.toolRunning')
+          : t('chat.toolPending')
 
   return (
     <details className="desktop-chat__tool-call" open={open}>
@@ -162,6 +164,7 @@ function ThinkingBlock({
   message: Message
   active?: boolean
 }): ReactElement | null {
+  const { t } = useTranslation()
   const [open, setOpen] = useState(active)
   const parts = message.messageParts ?? []
   const partThinking = parts
@@ -182,16 +185,18 @@ function ThinkingBlock({
       <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span>
           <Sparkles size={14} aria-hidden="true" />
-          {active ? '正在思考' : '已完成思考'}
+          {active ? t('chat.thinking') : t('chat.thinkingDone')}
         </span>
         <span>
-          {!active && duration && duration > 0 ? `${(duration / 1000).toFixed(1)} 秒` : null}
+          {!active && duration && duration > 0
+            ? t('chat.thinkingDuration', { seconds: (duration / 1000).toFixed(1) })
+            : null}
           <ChevronDown size={14} aria-hidden="true" />
         </span>
       </button>
       {open ? (
         <div className="desktop-chat__thinking-body">
-          {content ? <p>{content}</p> : <p>正在准备…</p>}
+          {content ? <p>{content}</p> : <p>{t('chat.thinkingPreparing')}</p>}
           {toolCalls.map((toolCall) => (
             <ToolCallDetails key={toolCall.id} toolCall={toolCall} />
           ))}
@@ -582,10 +587,13 @@ export function ChatMessage({
   versionCount = 1,
   versionIndex = 0,
 }: ChatMessageProps): ReactElement {
+  const { t } = useTranslation()
   const isUser = message.role === Role.User
   const [isEditing, setIsEditing] = useState(false)
   const codeParts = (message.messageParts ?? []).filter((part) => part.type === 'code')
-  const timestamp = formatMsgTime(message.createdAt, timeFmt, dateFmt)
+  const timestamp = formatMsgTime(message.createdAt, timeFmt, dateFmt, {
+    yesterdayLabel: t('chat.groups.yesterday'),
+  })
 
   function handleSubmitEdit(content: string): void {
     setIsEditing(false)

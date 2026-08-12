@@ -49,7 +49,7 @@ export const ThinkBlock = memo(function ThinkBlock({
   const label = active ? t('chat.thinking') : t('chat.thinkingDone')
   const durationLabel =
     !active && durationMs !== undefined && durationMs > 0
-      ? `${(durationMs / 1000).toFixed(1)} 秒`
+      ? t('chat.thinkingDuration', { seconds: (durationMs / 1000).toFixed(1) })
       : null
   const hasToolCalls = toolCalls !== undefined && toolCalls.length > 0
 
@@ -102,7 +102,9 @@ export const ThinkBlock = memo(function ThinkBlock({
             </View>
           ) : null}
           {!content && !hasToolCalls && active ? (
-            <Text style={[styles.emptyHint, { color: theme.text.muted }]}>正在准备…</Text>
+            <Text style={[styles.emptyHint, { color: theme.text.muted }]}>
+              {t('chat.thinkingPreparing')}
+            </Text>
           ) : null}
         </View>
       ) : null}

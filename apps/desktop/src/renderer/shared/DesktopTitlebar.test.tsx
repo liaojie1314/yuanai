@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { changeDesktopLanguage, DesktopI18nProvider } from './i18n'
 import { DesktopTitlebar } from './DesktopTitlebar'
 
 function installDesktopApi(platform: NodeJS.Platform): void {
@@ -24,15 +25,18 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  void changeDesktopLanguage('zh-CN')
 })
 
 describe('DesktopTitlebar', () => {
   it('provides Linux title-bar controls through fixed desktop APIs', () => {
     installDesktopApi('linux')
     render(
-      <DesktopTitlebar>
-        <main>设置内容</main>
-      </DesktopTitlebar>
+      <DesktopI18nProvider>
+        <DesktopTitlebar>
+          <main>设置内容</main>
+        </DesktopTitlebar>
+      </DesktopI18nProvider>
     )
 
     const minimize = screen.getByRole('button', { name: '最小化' })
@@ -51,9 +55,11 @@ describe('DesktopTitlebar', () => {
     installDesktopApi('linux')
     window.history.replaceState({}, '', '/login/index.html')
     render(
-      <DesktopTitlebar>
-        <main>登录内容</main>
-      </DesktopTitlebar>
+      <DesktopI18nProvider>
+        <DesktopTitlebar>
+          <main>登录内容</main>
+        </DesktopTitlebar>
+      </DesktopI18nProvider>
     )
 
     expect(screen.getByRole('button', { name: '最小化' })).toBeInTheDocument()
@@ -63,11 +69,29 @@ describe('DesktopTitlebar', () => {
   it('leaves macOS native title bars in control', () => {
     installDesktopApi('darwin')
     render(
-      <DesktopTitlebar>
-        <main>关于内容</main>
-      </DesktopTitlebar>
+      <DesktopI18nProvider>
+        <DesktopTitlebar>
+          <main>关于内容</main>
+        </DesktopTitlebar>
+      </DesktopI18nProvider>
     )
 
     expect(screen.queryByRole('banner', { name: '窗口标题栏' })).not.toBeInTheDocument()
+  })
+
+  it('keeps 元AI in the custom title bar after switching the interface language', async () => {
+    installDesktopApi('linux')
+    render(
+      <DesktopI18nProvider>
+        <DesktopTitlebar>
+          <main>Settings content</main>
+        </DesktopTitlebar>
+      </DesktopI18nProvider>
+    )
+
+    await changeDesktopLanguage('en')
+
+    expect(await screen.findByText('Settings - 元AI')).toBeInTheDocument()
+    expect(document.title).toBe('Settings - 元AI')
   })
 })

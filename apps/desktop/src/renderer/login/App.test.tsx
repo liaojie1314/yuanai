@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -40,6 +40,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.clearAllMocks()
   setAuthRoute('login')
@@ -62,6 +63,27 @@ describe('desktop authentication', () => {
         remember: false,
       })
     })
+  })
+
+  it('shows request failures as a temporary layout-independent toast', async () => {
+    vi.useFakeTimers()
+    mutations.login.mockRejectedValueOnce(new Error('网络异常'))
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('邮箱'), { target: { value: 'test@example.com' } })
+    fireEvent.change(document.querySelector('#login-password') as HTMLInputElement, {
+      target: { value: 'Test1234!' },
+    })
+    await act(async () => {
+      fireEvent.submit(document.querySelector('.desktop-auth__form-fields') as HTMLFormElement)
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent('登录失败，请检查邮箱和密码后重试')
+    expect(alert.className).toContain('desktop-auth__toast')
+
+    act(() => vi.advanceTimersByTime(4000))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('opens registration in a dedicated window without replacing the login form', async () => {

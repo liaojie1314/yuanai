@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent } from 'electron'
 
-import type { ExternalLinkId } from '../../shared/ipc-contract'
+import type { DesktopNotificationPayload, ExternalLinkId } from '../../shared/ipc-contract'
 import { IPC } from '../../shared/ipc-contract'
 import { assertNoIpcPayload, readSingleIpcPayload } from '../../shared/guards'
 import type { IpcMainRegistrar } from './auth'
@@ -60,6 +60,35 @@ function readExternalLink(args: readonly unknown[]): ExternalLinkId {
   throw new Error('IPC_PAYLOAD_INVALID')
 }
 
+function readNotificationPayload(
+  args: readonly unknown[]
+): Omit<DesktopNotificationPayload, 'playSound'> {
+  const value = readSingleIpcPayload(args)
+  const notification =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null
+  if (
+    !notification ||
+    typeof notification.title !== 'string' ||
+    typeof notification.body !== 'string' ||
+    notification.title.length === 0 ||
+    notification.title.length > 120 ||
+    notification.body.length > 500 ||
+    (notification.conversationId !== undefined &&
+      (typeof notification.conversationId !== 'string' || notification.conversationId.length > 128))
+  ) {
+    throw new Error('IPC_PAYLOAD_INVALID')
+  }
+  return {
+    title: notification.title,
+    body: notification.body,
+    ...(typeof notification.conversationId === 'string'
+      ? { conversationId: notification.conversationId }
+      : {}),
+  }
+}
+
 /** 注册只暴露固定动作的桌面系统 IPC。 */
 export function registerSystemIpcHandlers(options: SystemIpcOptions): void {
   options.ipcMain.handle(
@@ -82,6 +111,13 @@ export function registerSystemIpcHandlers(options: SystemIpcOptions): void {
     async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
       options.guard.assertTrusted(event)
       return options.systemService.setAutoLaunch(readBooleanPayload(args))
+    }
+  )
+  options.ipcMain.handle(
+    IPC.system.notify,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<boolean> => {
+      options.guard.assertTrusted(event)
+      return options.systemService.notifyAiReply(readNotificationPayload(args))
     }
   )
   options.ipcMain.handle(

@@ -1479,7 +1479,13 @@ textarea:focus-visible {
   opacity: 0.55;
 }
 
+.desktop-chat__messages-shell {
+  position: relative;
+  min-height: 0;
+}
+
 .desktop-chat__messages {
+  height: 100%;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1502,6 +1508,30 @@ textarea:focus-visible {
 .desktop-chat__messages::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.64);
   background-clip: padding-box;
+}
+
+.desktop-chat__scroll-to-bottom {
+  position: absolute;
+  z-index: 3;
+  right: clamp(16px, 3vw, 28px);
+  bottom: 20px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--desktop-border);
+  border-radius: 50%;
+  color: var(--desktop-fg-muted);
+  background: var(--desktop-surface);
+  box-shadow: 0 5px 16px rgb(15 23 42 / 16%);
+}
+
+.desktop-chat__scroll-to-bottom:hover,
+.desktop-chat__scroll-to-bottom:focus-visible {
+  border-color: var(--desktop-brand-border);
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
 }
 
 .desktop-chat__message-list {
