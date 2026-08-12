@@ -10,6 +10,33 @@ export interface DesktopPreferences {
   aiReplyNotifications: boolean
 }
 
+/** 用户可选择的应用主题来源。 */
+export type DesktopThemeChoice = 'auto' | 'light' | 'dark'
+
+/** 主进程解析后的当前外观状态。 */
+export interface DesktopAppearanceState {
+  /** 用户选择的主题来源。 */
+  choice: DesktopThemeChoice
+  /** 由系统或用户选择解析出的实际配色。 */
+  resolved: 'light' | 'dark'
+}
+
+/** 由真实用户偏好接口返回、可同步至所有 renderer 的显示设置。 */
+export interface DesktopRendererPreferences {
+  /** 主题来源。 */
+  theme: DesktopThemeChoice
+  /** 字号档位。 */
+  fontSize: 'small' | 'medium' | 'large'
+  /** 内容密度。 */
+  density: 'compact' | 'standard' | 'loose'
+  /** 消息时间格式。 */
+  timeFormat: '24h' | '12h'
+  /** 消息日期格式。 */
+  dateFormat: 'ymd' | 'mdy' | 'dmy'
+  /** 界面语言。 */
+  language: string
+}
+
 /** Desktop 偏好的安全默认值。 */
 export const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = Object.freeze({
   closeToTray: true,
@@ -87,6 +114,11 @@ export type DesktopOAuthResult =
 export const IPC = {
   auth: { get: 'auth:get', set: 'auth:set', remove: 'auth:remove' },
   prefs: { get: 'prefs:get', update: 'prefs:update' },
+  appearance: {
+    get: 'appearance:get',
+    apply: 'appearance:apply',
+    syncPreferences: 'appearance:sync-preferences',
+  },
   runtime: { getConfig: 'runtime:get-config' },
   dialog: {
     openFiles: 'dialog:open-files',
@@ -101,6 +133,9 @@ export const IPC = {
     openSettings: 'window:open-settings',
     openAbout: 'window:open-about',
     openArtifact: 'window:open-artifact',
+    minimize: 'window:minimize',
+    toggleMaximize: 'window:toggle-maximize',
+    close: 'window:close',
   },
   system: {
     getInfo: 'system:get-info',
@@ -111,6 +146,8 @@ export const IPC = {
   events: {
     authChanged: 'event:auth-changed',
     prefsChanged: 'event:prefs-changed',
+    appearanceChanged: 'event:appearance-changed',
+    displayPreferencesChanged: 'event:display-preferences-changed',
     deepLink: 'event:deep-link',
     oauthResult: 'event:oauth-result',
     menuCommand: 'event:menu-command',

@@ -7,6 +7,7 @@ import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './guards'
 import { setupIpc } from './index'
 import type { DesktopSystemService } from '../system/desktop-system'
+import type { DesktopAppearanceService } from '../system/desktop-appearance'
 
 type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -44,6 +45,14 @@ function setupTestIpc(): {
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
   shell: { openExternal: ReturnType<typeof vi.fn> }
+  currentWindow: {
+    close: ReturnType<typeof vi.fn>
+    isDestroyed: ReturnType<typeof vi.fn>
+    isMaximized: ReturnType<typeof vi.fn>
+    maximize: ReturnType<typeof vi.fn>
+    minimize: ReturnType<typeof vi.fn>
+    unmaximize: ReturnType<typeof vi.fn>
+  }
   windows: {
     openLogin: ReturnType<typeof vi.fn>
     openRegister: ReturnType<typeof vi.fn>
@@ -125,6 +134,14 @@ function setupTestIpc(): {
     openOAuth: vi.fn(),
     closeOAuth: vi.fn(),
   }
+  const currentWindow = {
+    close: vi.fn(),
+    isDestroyed: vi.fn(() => false),
+    isMaximized: vi.fn(() => false),
+    maximize: vi.fn(),
+    minimize: vi.fn(),
+    unmaximize: vi.fn(),
+  }
   const runtimeConfig: AppRuntimeConfig = Object.freeze({
     apiBaseUrl: 'https://api.example.com/api/v1',
     webBaseUrl: 'https://yuanai.example.com',
@@ -135,6 +152,10 @@ function setupTestIpc(): {
     setAutoLaunch: vi.fn(),
     setGlobalShortcut: vi.fn(),
   } as unknown as DesktopSystemService
+  const appearanceService = {
+    apply: vi.fn().mockReturnValue({ choice: 'auto', resolved: 'light' }),
+    get: vi.fn().mockReturnValue({ choice: 'auto', resolved: 'light' }),
+  } as unknown as DesktopAppearanceService
 
   const shell = { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }
 
@@ -147,10 +168,11 @@ function setupTestIpc(): {
     guard,
     trustedWebContents,
     authStorage,
+    appearanceService,
     clipboard,
     desktopCapturer,
     dialog,
-    getWindow: vi.fn().mockReturnValue(null),
+    getWindow: vi.fn().mockReturnValue(currentWindow),
     onSessionChanged,
     preferencesStorage,
     runtimeConfig,
@@ -172,6 +194,7 @@ function setupTestIpc(): {
     onSessionChanged,
     systemService,
     shell,
+    currentWindow,
     windows,
   }
 }
@@ -201,6 +224,9 @@ describe('secure IPC handlers', () => {
         IPC.auth.get,
         IPC.auth.remove,
         IPC.auth.set,
+        IPC.appearance.apply,
+        IPC.appearance.get,
+        IPC.appearance.syncPreferences,
         IPC.clipboard.writeText,
         IPC.dialog.listScreenSources,
         IPC.dialog.openFiles,
@@ -218,7 +244,49 @@ describe('secure IPC handlers', () => {
         IPC.window.openLogin,
         IPC.window.openRegister,
         IPC.window.openSettings,
+        IPC.window.close,
+        IPC.window.minimize,
+        IPC.window.toggleMaximize,
       ].sort()
+    )
+  })
+
+  it('broadcasts only a complete validated display preference response', async () => {
+    const { handlers, sender } = setupTestIpc()
+    const preferences = {
+      theme: 'dark' as const,
+      fontSize: 'large' as const,
+      density: 'loose' as const,
+      timeFormat: '12h' as const,
+      dateFormat: 'mdy' as const,
+      language: 'zh-CN',
+    }
+
+    await expect(
+      getHandler(handlers, IPC.appearance.syncPreferences)(createEvent(sender), preferences)
+    ).resolves.toBeUndefined()
+    expect(sender.send).toHaveBeenCalledWith(IPC.events.displayPreferencesChanged, preferences)
+    await expect(
+      getHandler(handlers, IPC.appearance.syncPreferences)(createEvent(sender), { theme: 'dark' })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+  })
+
+  it('controls only the trusted sender window through fixed title-bar actions', async () => {
+    const { currentWindow, handlers, sender } = setupTestIpc()
+    const event = createEvent(sender)
+
+    await expect(getHandler(handlers, IPC.window.minimize)(event)).resolves.toBeUndefined()
+    await expect(getHandler(handlers, IPC.window.toggleMaximize)(event)).resolves.toBe(true)
+    currentWindow.isMaximized.mockReturnValueOnce(true)
+    await expect(getHandler(handlers, IPC.window.toggleMaximize)(event)).resolves.toBe(false)
+    await expect(getHandler(handlers, IPC.window.close)(event)).resolves.toBeUndefined()
+
+    expect(currentWindow.minimize).toHaveBeenCalledOnce()
+    expect(currentWindow.maximize).toHaveBeenCalledOnce()
+    expect(currentWindow.unmaximize).toHaveBeenCalledOnce()
+    expect(currentWindow.close).toHaveBeenCalledOnce()
+    await expect(getHandler(handlers, IPC.window.close)(event, 'unexpected')).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
     )
   })
 
@@ -255,7 +323,7 @@ describe('secure IPC handlers', () => {
   })
 
   it('opens native files only for trusted callers and returns path-free selected-file URLs', async () => {
-    const { dialog, handlers, selectedFiles, sender } = setupTestIpc()
+    const { currentWindow, dialog, handlers, selectedFiles, sender } = setupTestIpc()
     const handler = getHandler(handlers, IPC.dialog.openFiles)
 
     await expect(handler(createEvent(sender))).resolves.toEqual([
@@ -266,6 +334,7 @@ describe('secure IPC handlers', () => {
     ])
 
     expect(dialog.showOpenDialog).toHaveBeenCalledWith(
+      currentWindow,
       expect.objectContaining({ properties: ['openFile', 'multiSelections'] })
     )
     expect(selectedFiles.register).toHaveBeenCalledWith(['/tmp/desktop-notes.txt'])

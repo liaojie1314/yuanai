@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent } from 'electron'
+import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron'
 
 import { IPC } from '../../shared/ipc-contract'
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
@@ -26,6 +26,20 @@ export interface NamedWindowController {
   openArtifact(payload: DesktopArtifactPayload): void
 }
 
+/** 可信 renderer 当前所属原生窗口的有限控制能力。 */
+export interface RendererWindowControls {
+  /** 最小化当前窗口。 */
+  minimize(): void
+  /** 判断当前窗口是否已最大化。 */
+  isMaximized(): boolean
+  /** 最大化当前窗口。 */
+  maximize(): void
+  /** 退出最大化状态。 */
+  unmaximize(): void
+  /** 关闭当前窗口。 */
+  close(): void
+}
+
 function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPayload {
   if (!value || typeof value !== 'object') return false
   const payload = value as Record<string, unknown>
@@ -47,8 +61,15 @@ function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPaylo
 export function registerWindowIpcHandlers(
   ipcMain: IpcMainRegistrar,
   guard: IpcInvocationGuard,
-  windows: NamedWindowController
+  windows: NamedWindowController,
+  getWindow: (webContents: WebContents) => BrowserWindow | null
 ): void {
+  function getCurrentWindow(event: IpcMainInvokeEvent): RendererWindowControls {
+    const window = getWindow(event.sender)
+    if (!window || window.isDestroyed()) throw new Error('IPC_WINDOW_UNAVAILABLE')
+    return window
+  }
+
   ipcMain.handle(
     IPC.window.openLogin,
     async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<void> => {
@@ -98,6 +119,36 @@ export function registerWindowIpcHandlers(
         throw new Error('IPC_PAYLOAD_INVALID')
       }
       windows.openArtifact(payload)
+    }
+  )
+  ipcMain.handle(
+    IPC.window.minimize,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<void> => {
+      guard.assertTrusted(event)
+      assertNoIpcPayload(args)
+      getCurrentWindow(event).minimize()
+    }
+  )
+  ipcMain.handle(
+    IPC.window.toggleMaximize,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<boolean> => {
+      guard.assertTrusted(event)
+      assertNoIpcPayload(args)
+      const window = getCurrentWindow(event)
+      if (window.isMaximized()) {
+        window.unmaximize()
+        return false
+      }
+      window.maximize()
+      return true
+    }
+  )
+  ipcMain.handle(
+    IPC.window.close,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<void> => {
+      guard.assertTrusted(event)
+      assertNoIpcPayload(args)
+      getCurrentWindow(event).close()
     }
   )
 }

@@ -59,11 +59,11 @@ import {
   useShareLink,
   useStream,
   useUpdateConversation,
+  useUpdateMyPreferences,
   TEMPORARY_CONV_ID,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
 import { buildMessagePairs, clampVersionIdx } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
@@ -110,8 +110,6 @@ const SHARE_EXPIRY_OPTIONS = [
 ] as const
 const LIKE_FEEDBACK_CATEGORIES = ['有帮助', '解释清晰', '创意出色', '回答详细', '思路新颖']
 const DISLIKE_FEEDBACK_CATEGORIES = ['信息有误', '答非所问', '内容冗余', '语言不自然', '缺乏细节']
-const USER_PREFERENCES_CHANNEL = 'yuanai-user-preferences'
-
 const SUGGESTIONS = [
   {
     description: '帮我写一个关于时间旅行的科幻短篇',
@@ -155,22 +153,6 @@ interface ComposerAttachment {
   previewUrl?: string
   progress: number
   status: 'ready' | 'uploading' | 'done' | 'error'
-}
-
-interface UserPreferenceSignal {
-  dateFmt?: DateFmt
-  timeFmt?: TimeFmt
-  theme?: 'light' | 'dark'
-}
-
-function isUserPreferenceSignal(value: unknown): value is UserPreferenceSignal {
-  if (typeof value !== 'object' || value === null) return false
-  const candidate = value as Record<string, unknown>
-  const validTime = candidate.timeFmt === '24h' || candidate.timeFmt === '12h'
-  const validDate =
-    candidate.dateFmt === 'ymd' || candidate.dateFmt === 'dmy' || candidate.dateFmt === 'mdy'
-  const validTheme = candidate.theme === 'light' || candidate.theme === 'dark'
-  return validTime || validDate || validTheme
 }
 
 function createAttachmentPreviewUrl(file: File): string | null {
@@ -910,13 +892,13 @@ export function App(): ReactElement {
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
   const stream = useStream()
+  const updatePreferences = useUpdateMyPreferences()
   const user = useAuthStore((state) => state.user)
   const isLoggedIn = user !== null
   const timeFmt = usePrefsStore((state) => state.timeFmt)
   const dateFmt = usePrefsStore((state) => state.dateFmt)
+  const theme = usePrefsStore((state) => state.theme)
   const setTheme = usePrefsStore((state) => state.setTheme)
-  const setTimeFmt = usePrefsStore((state) => state.setTimeFmt)
-  const setDateFmt = usePrefsStore((state) => state.setDateFmt)
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isTemporaryConversation, setIsTemporaryConversation] = useState(false)
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
@@ -971,6 +953,14 @@ export function App(): ReactElement {
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const composerInputRef = useRef<HTMLTextAreaElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setIsDarkTheme(document.documentElement.dataset.theme === 'dark')
+    })
+    observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
 
   const conversations = isLoggedIn
     ? (conversationsQuery.data ?? EMPTY_CONVERSATIONS)
@@ -1104,25 +1094,6 @@ export function App(): ReactElement {
   }, [availableModels, selectedModelId])
 
   useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return
-    const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
-    const handlePreferenceChange = (event: MessageEvent<unknown>): void => {
-      if (!isUserPreferenceSignal(event.data)) return
-      if (event.data.timeFmt) setTimeFmt(event.data.timeFmt)
-      if (event.data.dateFmt) setDateFmt(event.data.dateFmt)
-      if (event.data.theme) {
-        document.documentElement.setAttribute('data-theme', event.data.theme)
-        setIsDarkTheme(event.data.theme === 'dark')
-      }
-    }
-    channel.addEventListener('message', handlePreferenceChange)
-    return () => {
-      channel.removeEventListener('message', handlePreferenceChange)
-      channel.close()
-    }
-  }, [setDateFmt, setTimeFmt])
-
-  useEffect(() => {
     setVersionIndexes({})
     setFeedbackDialog(null)
     setFeedbackCategory('')
@@ -1156,8 +1127,11 @@ export function App(): ReactElement {
   useEffect(() => {
     const input = composerInputRef.current
     if (!input) return
+    const maximumHeight = 200
     input.style.height = 'auto'
-    input.style.height = `${Math.min(Math.max(input.scrollHeight, 36), 200)}px`
+    const contentHeight = input.scrollHeight
+    input.style.height = `${Math.min(Math.max(contentHeight, 40), maximumHeight)}px`
+    input.style.overflowY = contentHeight > maximumHeight ? 'auto' : 'hidden'
   }, [draft])
 
   function handleQuickPrompt(prompt: string): void {
@@ -1344,15 +1318,25 @@ export function App(): ReactElement {
     }
   }
 
-  function handleToggleTheme(): void {
+  async function handleToggleTheme(): Promise<void> {
+    const previousTheme = theme
+    const previousResolved = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
     const nextTheme = isDarkTheme ? 'light' : 'dark'
     document.documentElement.setAttribute('data-theme', nextTheme)
     setTheme(nextTheme)
     setIsDarkTheme(nextTheme === 'dark')
-    if (typeof BroadcastChannel !== 'undefined') {
-      const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
-      channel.postMessage({ theme: nextTheme })
-      channel.close()
+    try {
+      await window.yuanai.appearance.apply(nextTheme)
+      if (isLoggedIn) {
+        const saved = await updatePreferences.mutateAsync({ theme: nextTheme })
+        void window.yuanai.appearance.syncPreferences(saved).catch(() => undefined)
+      }
+    } catch (error: unknown) {
+      setTheme(previousTheme)
+      document.documentElement.setAttribute('data-theme', previousResolved)
+      setIsDarkTheme(previousResolved === 'dark')
+      void window.yuanai.appearance.apply(previousTheme).catch(() => undefined)
+      setActionError(getErrorMessage(error, '主题设置保存失败'))
     }
   }
 
@@ -1883,7 +1867,7 @@ export function App(): ReactElement {
                 role="menuitem"
                 aria-label="切换深色模式"
                 aria-pressed={isDarkTheme}
-                onClick={handleToggleTheme}
+                onClick={() => void handleToggleTheme()}
               >
                 <span>深色模式</span>
                 <span

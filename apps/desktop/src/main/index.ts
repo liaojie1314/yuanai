@@ -7,6 +7,7 @@ import {
   globalShortcut,
   ipcMain,
   Menu,
+  nativeTheme,
   protocol,
   shell,
 } from 'electron'
@@ -25,6 +26,7 @@ import { createSelectedFileRegistry, registerSelectedFileScheme } from './protoc
 import { IPC } from '../shared/ipc-contract'
 import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
 import { DesktopSystemService } from './system/desktop-system'
+import { DesktopAppearanceService } from './system/desktop-appearance'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -41,6 +43,7 @@ const trustedWebContents = createTrustedWebContentsRegistry()
 const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined
 let desktopSystem: DesktopSystemService | undefined
+let desktopAppearance: DesktopAppearanceService | undefined
 
 function handleDeepLink(value: string): void {
   const deepLink = parseDeepLink(value)
@@ -92,6 +95,7 @@ app.whenReady().then(() => {
       const window = new BrowserWindow(
         createWindowOptions(key, join(__dirname, '../preload/index.js'), process.platform)
       )
+      desktopAppearance?.applyToWindow(window)
       trustedWebContents.add(window.webContents)
       secureRenderer(window.webContents, trustedWebContents, runtimeConfig, Boolean(rendererUrl))
       window.once('ready-to-show', () => window.show())
@@ -106,6 +110,15 @@ app.whenReady().then(() => {
     platform: process.platform,
     preferencesStorage,
   })
+  desktopAppearance = new DesktopAppearanceService({
+    nativeTheme,
+    getWindows: () => BrowserWindow.getAllWindows(),
+    onChanged: (state) =>
+      trustedWebContents.forEach((webContents) =>
+        webContents.send(IPC.events.appearanceChanged, state)
+      ),
+  })
+  desktopAppearance.start()
   setupIpc({
     ipcMain,
     guard: createIpcInvocationGuard({
@@ -134,6 +147,7 @@ app.whenReady().then(() => {
     preferencesStorage,
     runtimeConfig,
     selectedFiles,
+    appearanceService: desktopAppearance,
     shell,
     systemService: desktopSystem,
     windows: {
@@ -160,6 +174,7 @@ app.whenReady().then(() => {
   })
   app.once('before-quit', () => {
     desktopSystem?.dispose()
+    desktopAppearance?.dispose()
     unregisterAppScheme()
     unregisterSelectedFileScheme()
   })

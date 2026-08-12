@@ -49,6 +49,7 @@ export function createWindowOptions(
     ...WINDOW_SPECS[key],
     show: false,
     ...(platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
+    ...(platform === 'linux' ? { frame: false } : {}),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

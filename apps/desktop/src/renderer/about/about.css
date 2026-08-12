@@ -12,6 +12,9 @@
 .desktop-about .settings-section__heading {
   display: none;
 }
+:root[data-theme='dark'] .desktop-about {
+  background: #111827;
+}
 @media (max-width: 520px) {
   .desktop-about {
     padding: 18px;

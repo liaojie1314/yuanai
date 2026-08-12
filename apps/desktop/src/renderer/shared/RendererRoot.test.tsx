@@ -1,4 +1,5 @@
 import { cleanup, render, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const synchronizeDesktopAuthState = vi.hoisted(() =>
@@ -7,6 +8,9 @@ const synchronizeDesktopAuthState = vi.hoisted(() =>
 const onAuthChanged = vi.hoisted(() => vi.fn())
 
 vi.mock('./auth-client', () => ({ synchronizeDesktopAuthState }))
+vi.mock('./AppearanceProvider', () => ({
+  AppearanceProvider: ({ children }: { children: ReactNode }) => children,
+}))
 
 import { RendererRoot } from './RendererRoot'
 

@@ -16,8 +16,6 @@ import { DataPreview } from './DataPreview'
 import './artifact.css'
 
 const CONSOLE_MAX_ENTRIES = 200
-const USER_PREFERENCES_CHANNEL = 'yuanai-user-preferences'
-
 type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 
 interface ConsoleEntry {
@@ -71,6 +69,16 @@ export function App(): ReactElement {
   )
 
   useEffect(() => {
+    const synchronizeTheme = (): void => {
+      setIsDarkTheme(document.documentElement.dataset.theme === 'dark')
+    }
+    synchronizeTheme()
+    const observer = new MutationObserver(synchronizeTheme)
+    observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
+    return () => observer.disconnect()
+  }, [])
+
+  useEffect(() => {
     const handleMessage = (event: MessageEvent<unknown>): void => {
       const entry = parseConsoleEntry(event.data)
       if (!entry) return
@@ -82,23 +90,6 @@ export function App(): ReactElement {
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
-
-  useEffect(() => {
-    if (typeof BroadcastChannel === 'undefined') return
-    const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
-    const handleTheme = (event: MessageEvent<unknown>): void => {
-      if (typeof event.data !== 'object' || event.data === null) return
-      const theme = (event.data as Record<string, unknown>).theme
-      if (theme !== 'light' && theme !== 'dark') return
-      applyTheme(theme)
-      setIsDarkTheme(theme === 'dark')
-    }
-    channel.addEventListener('message', handleTheme)
-    return () => {
-      channel.removeEventListener('message', handleTheme)
-      channel.close()
-    }
   }, [])
 
   const srcDoc = useMemo(() => {

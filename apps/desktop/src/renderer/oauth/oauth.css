@@ -86,3 +86,17 @@ button {
     transform: rotate(360deg);
   }
 }
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  color: #e2e8f0;
+  background: #111827;
+}
+
+:root[data-theme='dark'] .desktop-oauth h1 {
+  color: #f8fafc;
+}
+
+:root[data-theme='dark'] .desktop-oauth p {
+  color: #a9bad1;
+}

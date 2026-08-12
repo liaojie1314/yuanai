@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -98,6 +98,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+  vi.useRealTimers()
 })
 
 describe('desktop settings', () => {
@@ -133,5 +134,21 @@ describe('desktop settings', () => {
     await waitFor(() => {
       expect(hooks.updateMe).toHaveBeenCalledWith({ bio: '', username: 'desktop-user' })
     })
+  })
+
+  it('shows a save notification without taking content space and dismisses it automatically', async () => {
+    vi.useFakeTimers()
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '编辑昵称' }))
+    const username = screen.getByRole('textbox', { name: '昵称' })
+    await user.clear(username)
+    await user.type(username, 'desktop-user')
+    await user.click(screen.getByRole('button', { name: '保存' }))
+
+    expect(await screen.findByText('资料已保存')).toHaveClass('settings-notice')
+    act(() => vi.advanceTimersByTime(3_000))
+    expect(screen.queryByText('资料已保存')).not.toBeInTheDocument()
   })
 })

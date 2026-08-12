@@ -2,11 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 import type {
   DesktopAppInfo,
+  DesktopAppearanceState,
   DesktopArtifactPayload,
+  DesktopRendererPreferences,
   DesktopOAuthProvider,
   DesktopOAuthResult,
   DesktopPreferences,
   DesktopSelectedFile,
+  DesktopThemeChoice,
   DesktopScreenSource,
   ExternalLinkId,
   ShortcutStatus,
@@ -16,6 +19,8 @@ import type { AppRuntimeConfig } from '../shared/runtime-config'
 
 /** Renderer 可调用的最小安全 Electron API。 */
 export interface YuanaiApi {
+  /** 当前运行的桌面平台。 */
+  platform: NodeJS.Platform
   auth: {
     get: () => Promise<string | null>
     set: (value: string) => Promise<void>
@@ -24,6 +29,11 @@ export interface YuanaiApi {
   prefs: {
     get: () => Promise<DesktopPreferences>
     update: (value: Partial<DesktopPreferences>) => Promise<DesktopPreferences>
+  }
+  appearance: {
+    get: () => Promise<DesktopAppearanceState>
+    apply: (choice: DesktopThemeChoice) => Promise<DesktopAppearanceState>
+    syncPreferences: (preferences: DesktopRendererPreferences) => Promise<void>
   }
   runtime: {
     getConfig: () => Promise<AppRuntimeConfig>
@@ -42,6 +52,9 @@ export interface YuanaiApi {
     openSettings: () => Promise<void>
     openAbout: () => Promise<void>
     openArtifact: (payload: DesktopArtifactPayload) => Promise<void>
+    minimize: () => Promise<void>
+    toggleMaximize: () => Promise<boolean>
+    close: () => Promise<void>
   }
   system: {
     getInfo: () => Promise<DesktopAppInfo>
@@ -58,6 +71,10 @@ export interface YuanaiApi {
     onAuthChanged: (listener: (hasSession: boolean) => void) => () => void
     onOAuthResult: (listener: (result: DesktopOAuthResult) => void) => () => void
     onArtifactInit: (listener: (payload: DesktopArtifactPayload) => void) => () => void
+    onAppearanceChanged: (listener: (state: DesktopAppearanceState) => void) => () => void
+    onDisplayPreferencesChanged: (
+      listener: (preferences: DesktopRendererPreferences) => void
+    ) => () => void
   }
 }
 
@@ -84,6 +101,7 @@ ipcRenderer.on(IPC.events.artifactInit, (_event: unknown, payload: DesktopArtifa
 
 /** 通过 contextBridge 暴露给 renderer 的受限 API 实现。 */
 export const api: YuanaiApi = {
+  platform: process.platform,
   auth: {
     get: () => ipcRenderer.invoke(IPC.auth.get),
     set: (value) => ipcRenderer.invoke(IPC.auth.set, value),
@@ -92,6 +110,12 @@ export const api: YuanaiApi = {
   prefs: {
     get: () => ipcRenderer.invoke(IPC.prefs.get),
     update: (value) => ipcRenderer.invoke(IPC.prefs.update, value),
+  },
+  appearance: {
+    get: () => ipcRenderer.invoke(IPC.appearance.get),
+    apply: (choice) => ipcRenderer.invoke(IPC.appearance.apply, choice),
+    syncPreferences: (preferences) =>
+      ipcRenderer.invoke(IPC.appearance.syncPreferences, preferences),
   },
   runtime: {
     getConfig: () => ipcRenderer.invoke(IPC.runtime.getConfig),
@@ -110,6 +134,9 @@ export const api: YuanaiApi = {
     openSettings: () => ipcRenderer.invoke(IPC.window.openSettings),
     openAbout: () => ipcRenderer.invoke(IPC.window.openAbout),
     openArtifact: (payload) => ipcRenderer.invoke(IPC.window.openArtifact, payload),
+    minimize: () => ipcRenderer.invoke(IPC.window.minimize),
+    toggleMaximize: () => ipcRenderer.invoke(IPC.window.toggleMaximize),
+    close: () => ipcRenderer.invoke(IPC.window.close),
   },
   system: {
     getInfo: () => ipcRenderer.invoke(IPC.system.getInfo),
@@ -146,6 +173,18 @@ export const api: YuanaiApi = {
         queueMicrotask(() => listener(payload))
       }
       return () => artifactListeners.delete(listener)
+    },
+    onAppearanceChanged: (listener) => {
+      const wrappedListener = (_event: unknown, state: DesktopAppearanceState): void =>
+        listener(state)
+      ipcRenderer.on(IPC.events.appearanceChanged, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC.events.appearanceChanged, wrappedListener)
+    },
+    onDisplayPreferencesChanged: (listener) => {
+      const wrappedListener = (_event: unknown, preferences: DesktopRendererPreferences): void =>
+        listener(preferences)
+      ipcRenderer.on(IPC.events.displayPreferencesChanged, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC.events.displayPreferencesChanged, wrappedListener)
     },
   },
 }

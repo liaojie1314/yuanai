@@ -5,6 +5,7 @@ import { assertNoIpcPayload } from '../../shared/guards'
 import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { registerAuthIpcHandlers } from './auth'
 import type { AuthIpcStorage, IpcMainRegistrar } from './auth'
+import { registerAppearanceIpcHandlers } from './appearance'
 import { registerClipboardIpcHandlers } from './clipboard'
 import type { NativeClipboard } from './clipboard'
 import { registerDialogIpcHandlers } from './dialog'
@@ -20,6 +21,7 @@ import { registerWindowIpcHandlers } from './window'
 import type { NamedWindowController } from './window'
 import type { SelectedFileRegistry } from '../protocol/selected-file'
 import type { DesktopSystemService } from '../system/desktop-system'
+import type { DesktopAppearanceService } from '../system/desktop-appearance'
 
 /** 安装第一批安全 IPC 处理器所需的主进程依赖。 */
 export interface SetupIpcOptions {
@@ -49,6 +51,8 @@ export interface SetupIpcOptions {
   selectedFiles: SelectedFileRegistry
   /** 有限的系统设置服务。 */
   systemService: DesktopSystemService
+  /** 控制原生窗口外观的服务。 */
+  appearanceService: DesktopAppearanceService
   /** 系统默认浏览器调用能力。 */
   shell: ExternalShell
   /** 命名窗口的受限打开能力。 */
@@ -66,6 +70,7 @@ function copyRuntimeConfig(config: AppRuntimeConfig): AppRuntimeConfig {
 /** 安装认证、偏好和运行时配置的固定 IPC 通道。 */
 export function setupIpc(options: SetupIpcOptions): void {
   registerAuthIpcHandlers(options)
+  registerAppearanceIpcHandlers(options)
   registerClipboardIpcHandlers({
     clipboard: options.clipboard,
     guard: options.guard,
@@ -88,7 +93,7 @@ export function setupIpc(options: SetupIpcOptions): void {
   })
   registerPreferencesIpcHandlers(options)
   registerSystemIpcHandlers(options)
-  registerWindowIpcHandlers(options.ipcMain, options.guard, options.windows)
+  registerWindowIpcHandlers(options.ipcMain, options.guard, options.windows, options.getWindow)
   options.ipcMain.handle(
     IPC.runtime.getConfig,
     async (event: IpcMainInvokeEvent, ...args: unknown[]) => {

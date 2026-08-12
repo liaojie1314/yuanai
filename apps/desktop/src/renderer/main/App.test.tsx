@@ -73,6 +73,7 @@ const chat = vi.hoisted(() => ({
   },
   uploadFileSmart: vi.fn(),
   updateConversation: vi.fn(),
+  updatePreferences: vi.fn(),
 }))
 
 const auth = vi.hoisted(() => ({
@@ -90,6 +91,7 @@ const prefs = vi.hoisted(() => ({
   setDateFmt: vi.fn(),
   setTheme: vi.fn(),
   setTimeFmt: vi.fn(),
+  theme: 'light' as const,
   timeFmt: '24h' as const,
 }))
 
@@ -112,6 +114,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useRevokeShareLink: () => ({ isPending: false, mutateAsync: chat.revokeShareLink }),
   useStream: () => ({ send: chat.send, sendTemporary: chat.sendTemporary, stop: chat.stop }),
   useUpdateConversation: () => ({ isPending: false, mutateAsync: chat.updateConversation }),
+  useUpdateMyPreferences: () => ({ isPending: false, mutateAsync: chat.updatePreferences }),
   uploadFileSmart: chat.uploadFileSmart,
 }))
 
@@ -151,6 +154,12 @@ beforeEach(() => {
             webBaseUrl: 'http://localhost:3000',
             assetOrigins: [],
           }),
+      },
+      appearance: {
+        apply: vi.fn<() => Promise<{ choice: 'light'; resolved: 'light' }>>().mockResolvedValue({
+          choice: 'light',
+          resolved: 'light',
+        }),
       },
     },
   })
@@ -228,6 +237,7 @@ beforeEach(() => {
   chat.streamState.optimisticUserMsg = null
   chat.send.mockResolvedValue(undefined)
   chat.sendTemporary.mockResolvedValue(undefined)
+  chat.updatePreferences.mockResolvedValue(undefined)
   chat.uploadFileSmart.mockResolvedValue({ id: 'file-1' })
   desktop.openFiles.mockResolvedValue([])
   desktop.listScreenSources.mockResolvedValue([])
@@ -916,6 +926,8 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('menuitem', { name: '切换深色模式' }))
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
     expect(prefs.setTheme).toHaveBeenCalledWith('dark')
+    expect(window.yuanai.appearance.apply).toHaveBeenCalledWith('dark')
+    expect(chat.updatePreferences).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('menuitem', { name: '去登录' }))
     expect(window.yuanai.window.openLogin).toHaveBeenCalledOnce()
@@ -931,6 +943,19 @@ describe('desktop chat', () => {
     await user.type(input, '自动增长')
 
     expect(input).toHaveStyle({ height: '144px' })
+    expect(input).toHaveStyle({ overflowY: 'hidden' })
+  })
+
+  it('only enables composer scrolling after content exceeds its capped height', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const input = screen.getByRole('textbox', { name: '输入消息' })
+    Object.defineProperty(input, 'scrollHeight', { configurable: true, get: () => 264 })
+
+    await user.type(input, '超长输入')
+
+    expect(input).toHaveStyle({ height: '200px', overflowY: 'auto' })
   })
 
   it('keeps the Web-aligned empty state usable after collapsing the sidebar', async () => {

@@ -26,7 +26,7 @@ export function AppearanceSection({
 }: AppearanceSectionProps): ReactElement {
   function changeTheme(theme: UserPreferences['theme']): void {
     applyTheme(theme)
-    void onPreferencesChanged({ theme })
+    void onPreferencesChanged({ theme }).catch(() => undefined)
   }
 
   return (
@@ -72,7 +72,7 @@ export function AppearanceSection({
               onChange={(event) => {
                 const next = ['small', 'medium', 'large'][Number(event.target.value)] as
                   UserPreferences['fontSize'] | undefined
-                if (next) void onPreferencesChanged({ fontSize: next })
+                if (next) void onPreferencesChanged({ fontSize: next }).catch(() => undefined)
               }}
             />
             <output>
@@ -100,7 +100,7 @@ export function AppearanceSection({
                 role="radio"
                 aria-checked={preferences.density === value}
                 className={preferences.density === value ? 'is-selected' : undefined}
-                onClick={() => void onPreferencesChanged({ density: value })}
+                onClick={() => void onPreferencesChanged({ density: value }).catch(() => undefined)}
               >
                 {label}
               </button>

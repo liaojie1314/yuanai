@@ -29,6 +29,7 @@ import { ProfileSection } from './components/ProfileSection'
 import { SecuritySection } from './components/SecuritySection'
 import { SettingsDialogs, type SettingsDialogMode } from './components/SettingsDialogs'
 import { SettingsShell, type SettingsSectionId } from './components/SettingsShell'
+import { applyRendererPreferences } from '../shared/appearance'
 
 const DEFAULT_USER_PREFERENCES: UserPreferences = {
   theme: 'auto',
@@ -49,32 +50,8 @@ const DEFAULT_DESKTOP_PREFERENCES: DesktopPreferences = {
   notificationSound: true,
   aiReplyNotifications: true,
 }
-const USER_PREFERENCES_CHANNEL = 'yuanai-user-preferences'
-
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
-}
-
-function applyClientPreferences(preferences: UserPreferences): void {
-  const prefersDark =
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-  const theme = preferences.theme === 'auto' ? (prefersDark ? 'dark' : 'light') : preferences.theme
-  document.documentElement.setAttribute('data-theme', theme)
-  document.documentElement.setAttribute('data-density', preferences.density)
-  document.documentElement.style.setProperty(
-    '--desktop-font-size',
-    preferences.fontSize === 'small' ? '13px' : preferences.fontSize === 'large' ? '16px' : '14px'
-  )
-}
-
-/** 向已打开的主窗口广播会影响渲染的用户偏好。 */
-function broadcastUserPreferences(preferences: UserPreferences): void {
-  if (typeof BroadcastChannel === 'undefined') return
-  const channel = new BroadcastChannel(USER_PREFERENCES_CHANNEL)
-  const theme = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
-  channel.postMessage({ dateFmt: preferences.dateFormat, timeFmt: preferences.timeFormat, theme })
-  channel.close()
 }
 
 /** 提供七个已确认分区的桌面设置窗口。 */
@@ -108,9 +85,15 @@ export function App(): ReactElement {
   const setDateFmt = usePrefsStore((state) => state.setDateFmt)
 
   useEffect(() => {
+    if (!notice) return
+    const timeout = window.setTimeout(() => setNotice(''), 3_000)
+    return () => window.clearTimeout(timeout)
+  }, [notice])
+
+  useEffect(() => {
     if (!preferenceQuery.data) return
     setPreferences(preferenceQuery.data)
-    applyClientPreferences(preferenceQuery.data)
+    applyRendererPreferences(preferenceQuery.data)
     setTheme(preferenceQuery.data.theme)
     setFontSize(preferenceQuery.data.fontSize)
     setDensity(preferenceQuery.data.density)
@@ -146,21 +129,23 @@ export function App(): ReactElement {
     const next = { ...previous, ...patch }
     setActionError('')
     setPreferences(next)
-    applyClientPreferences(next)
+    applyRendererPreferences(next)
     try {
+      if (patch.theme) await window.yuanai.appearance.apply(patch.theme)
       const saved = await updatePreferences.mutateAsync(patch)
       setPreferences(saved)
-      applyClientPreferences(saved)
+      applyRendererPreferences(saved)
       setTheme(saved.theme)
       setFontSize(saved.fontSize)
       setDensity(saved.density)
       setTimeFmt(saved.timeFormat)
       setDateFmt(saved.dateFormat)
-      broadcastUserPreferences(saved)
+      void window.yuanai.appearance.syncPreferences(saved).catch(() => undefined)
       setNotice('偏好设置已保存')
     } catch (error: unknown) {
       setPreferences(previous)
-      applyClientPreferences(previous)
+      applyRendererPreferences(previous)
+      if (patch.theme) void window.yuanai.appearance.apply(previous.theme).catch(() => undefined)
       setActionError(getErrorMessage(error, '偏好设置保存失败'))
       throw error
     }

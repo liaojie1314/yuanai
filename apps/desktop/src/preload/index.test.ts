@@ -38,6 +38,16 @@ describe('preload API', () => {
     await api.auth.remove()
     await api.prefs.get()
     await api.prefs.update({ closeToTray: false })
+    await api.appearance.get()
+    await api.appearance.apply('dark')
+    await api.appearance.syncPreferences({
+      theme: 'dark',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: 'zh-CN',
+    })
     await api.clipboard.writeText('元AI')
     await api.dialog.openFiles()
     await api.dialog.listScreenSources()
@@ -47,6 +57,9 @@ describe('preload API', () => {
     await api.window.openSettings()
     await api.window.openAbout()
     await api.window.openArtifact({ title: '代码', lang: 'html', code: '<p>元AI</p>', mode: 'run' })
+    await api.window.minimize()
+    await api.window.toggleMaximize()
+    await api.window.close()
     await api.system.getInfo()
     await api.system.setGlobalShortcut('CommandOrControl+Alt+Y')
     await api.system.setAutoLaunch(true)
@@ -58,29 +71,42 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(3, IPC.auth.remove)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(4, IPC.prefs.get)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(5, IPC.prefs.update, { closeToTray: false })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.clipboard.writeText, '元AI')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.dialog.openFiles)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.dialog.listScreenSources)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.window.openLogin)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.window.openRegister)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.window.openForgot)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openSettings)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openAbout)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.window.openArtifact, {
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(6, IPC.appearance.get)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(7, IPC.appearance.apply, 'dark')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(8, IPC.appearance.syncPreferences, {
+      theme: 'dark',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: 'zh-CN',
+    })
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.clipboard.writeText, '元AI')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.dialog.openFiles)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.dialog.listScreenSources)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openLogin)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openRegister)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.window.openForgot)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.window.openSettings)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.window.openAbout)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.window.openArtifact, {
       title: '代码',
       lang: 'html',
       code: '<p>元AI</p>',
       mode: 'run',
     })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.window.minimize)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(19, IPC.window.toggleMaximize)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(20, IPC.window.close)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(21, IPC.system.getInfo)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
-      16,
+      22,
       IPC.system.setGlobalShortcut,
       'CommandOrControl+Alt+Y'
     )
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(19, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(23, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(24, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(25, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

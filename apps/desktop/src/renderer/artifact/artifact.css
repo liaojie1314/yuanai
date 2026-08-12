@@ -8,6 +8,8 @@ body,
 }
 
 :root {
+  --artifact-border: #dbe3f0;
+  --artifact-divider: #e6edf7;
   color: #18243f;
   background: #f5f7fb;
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -37,7 +39,7 @@ body {
   justify-content: space-between;
   gap: 16px;
   padding: 14px 18px;
-  border-bottom: 1px solid #dbe3f0;
+  border-bottom: 1px solid var(--artifact-border);
   background: #ffffff;
 }
 .artifact__header h1,
@@ -161,7 +163,7 @@ body {
 .artifact__console {
   max-height: 180px;
   min-height: 94px;
-  border-top: 1px solid #dbe3f0;
+  border-top: 1px solid var(--artifact-border);
   background: #ffffff;
 }
 
@@ -171,7 +173,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
-  border-bottom: 1px solid #e6edf7;
+  border-bottom: 1px solid var(--artifact-divider);
   color: #5b6d8d;
   font-size: 12px;
   font-weight: 600;
@@ -261,7 +263,7 @@ body {
 .artifact-data__table {
   min-width: max-content;
   border-spacing: 0;
-  border: 1px solid #dbe3f0;
+  border: 1px solid var(--artifact-border);
   border-radius: 6px;
   overflow: hidden;
   background: #ffffff;
@@ -360,14 +362,14 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 16px;
-  border-top: 1px solid #dbe3f0;
+  border-top: 1px solid var(--artifact-border);
   background: #ffffff;
 }
 .artifact__footer button {
   gap: 6px;
   min-height: 29px;
   padding: 0 10px;
-  border: 1px solid #dbe3f0;
+  border: 1px solid var(--artifact-border);
   border-radius: 5px;
   color: #5b6d8d;
   background: #ffffff;
@@ -393,6 +395,8 @@ body {
 }
 
 :root[data-theme='dark'] {
+  --artifact-border: #2a3648;
+  --artifact-divider: #2a3648;
   color: #e2e8f0;
   background: #111827;
 }
@@ -402,12 +406,11 @@ body {
 :root[data-theme='dark'] .artifact__console,
 :root[data-theme='dark'] .artifact-data__table,
 :root[data-theme='dark'] .artifact-data__table td {
-  border-color: #334155;
+  border-color: #2a3648;
   background: #1f2937;
 }
 
 :root[data-theme='dark'] .artifact__header h1,
-:root[data-theme='dark'] .artifact__footer button,
 :root[data-theme='dark'] .artifact__console > header,
 :root[data-theme='dark'] .artifact-data,
 :root[data-theme='dark'] .artifact-data__table th {
@@ -427,9 +430,30 @@ body {
 }
 
 :root[data-theme='dark'] .artifact__console > header {
-  border-color: #334155;
+  border-color: var(--artifact-divider);
 }
 
 :root[data-theme='dark'] .artifact-data__table th {
   background: #263448;
+}
+
+:root[data-theme='dark'] .artifact__actions button:hover,
+:root[data-theme='dark'] .artifact__actions button:focus-visible,
+:root[data-theme='dark'] .artifact__actions button.is-active,
+:root[data-theme='dark'] .artifact__mode {
+  color: #bfdbfe;
+  background: #1e3a5f;
+}
+
+:root[data-theme='dark'] .artifact__footer button {
+  border-color: #2f4057;
+  color: #e2e8f0;
+  background: #263448;
+}
+
+:root[data-theme='dark'] .artifact__footer button:hover,
+:root[data-theme='dark'] .artifact__footer button:focus-visible {
+  border-color: #60a5fa;
+  color: #bfdbfe;
+  background: #1e3a5f;
 }

@@ -33,6 +33,12 @@ describe('createWindowOptions', () => {
     })
   })
 
+  it('uses a renderer-owned title bar for Linux so its colors follow the application theme', () => {
+    expect(createWindowOptions('settings', '/preload/index.js', 'linux')).toMatchObject({
+      frame: false,
+    })
+  })
+
   it('uses a compact fixed size without a maximize action for login', () => {
     expect(createWindowOptions('login', '/preload/index.js', 'linux')).toMatchObject({
       width: 520,
