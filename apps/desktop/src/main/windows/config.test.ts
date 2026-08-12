@@ -9,7 +9,7 @@ describe('createWindowOptions', () => {
     expect(options).toMatchObject({
       width: 1280,
       height: 820,
-      minWidth: 1100,
+      minWidth: 1280,
       minHeight: 640,
       show: false,
       webPreferences: {
