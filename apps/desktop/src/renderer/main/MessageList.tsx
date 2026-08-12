@@ -1,11 +1,5 @@
 import { useMemo, type ReactElement, type RefObject } from 'react'
-import {
-  Virtuoso,
-  type ListProps,
-  type ScrollSeekConfiguration,
-  type ScrollSeekPlaceholderProps,
-  type VirtuosoHandle,
-} from 'react-virtuoso'
+import { Virtuoso, type ListProps, type VirtuosoHandle } from 'react-virtuoso'
 
 import { clampVersionIdx } from '@yuanai/core/utils'
 import type { MessagePair } from '@yuanai/core/utils'
@@ -30,17 +24,6 @@ interface StreamingAssistantRow {
 }
 
 type MessageListRow = PairRow | OptimisticUserRow | StreamingAssistantRow
-
-const SCROLL_SEEK_CONFIGURATION: ScrollSeekConfiguration = {
-  enter: (velocity) => Math.abs(velocity) > 100,
-  exit: (velocity) => Math.abs(velocity) < 10,
-}
-
-function ScrollSeekPlaceholder({ height }: ScrollSeekPlaceholderProps): ReactElement {
-  return (
-    <div className="desktop-chat__scroll-seek-placeholder" style={{ height }} aria-hidden="true" />
-  )
-}
 
 /** 桌面端虚拟消息列表的交互输入。 */
 export interface MessageListProps {
@@ -149,12 +132,10 @@ export function MessageList({
       atBottomThreshold={80}
       increaseViewportBy={{ top: 120, bottom: 120 }}
       overscan={{ main: 480, reverse: 480 }}
-      scrollSeekConfiguration={SCROLL_SEEK_CONFIGURATION}
       components={{
         Header: () => <div className="desktop-chat__message-list-spacer" />,
         Footer: () => <div className="desktop-chat__message-list-spacer" />,
         List: (props: ListProps) => <div {...props} className="desktop-chat__message-list" />,
-        ScrollSeekPlaceholder,
       }}
       itemContent={(_index, row) => {
         if (row.kind === 'optimistic-user') {

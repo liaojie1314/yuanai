@@ -1518,30 +1518,6 @@ textarea:focus-visible {
   animation: none;
 }
 
-.desktop-chat__scroll-seek-placeholder {
-  margin: 0 auto;
-  width: min(calc(100% - 40px), 800px);
-  min-height: 56px;
-  border-radius: 8px;
-  background: linear-gradient(
-    90deg,
-    var(--desktop-elevated) 20%,
-    var(--desktop-brand-light) 50%,
-    var(--desktop-elevated) 80%
-  );
-  background-size: 220% 100%;
-  animation: desktop-chat-scroll-seek 1.15s ease-in-out infinite;
-}
-
-@keyframes desktop-chat-scroll-seek {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -120% 0;
-  }
-}
-
 .desktop-chat__scroll-to-bottom {
   position: absolute;
   z-index: 3;
