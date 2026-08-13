@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -22,6 +22,23 @@ const hooks = vi.hoisted(() => ({
     })
   ),
   uploadAvatar: vi.fn(),
+  preferences: {
+    theme: 'auto' as const,
+    fontSize: 'medium' as const,
+    density: 'standard' as const,
+    timeFormat: '24h' as const,
+    dateFormat: 'ymd' as const,
+    language: 'zh-CN' as const,
+  },
+}))
+
+const preferencesStore = vi.hoisted(() => ({
+  replaceAll: vi.fn(),
+  setDateFmt: vi.fn(),
+  setDensity: vi.fn(),
+  setFontSize: vi.fn(),
+  setTheme: vi.fn(),
+  setTimeFmt: vi.fn(),
 }))
 
 vi.mock('@yuanai/core/hooks', () => ({
@@ -39,16 +56,7 @@ vi.mock('@yuanai/core/hooks', () => ({
     },
   }),
   useDeleteMe: () => ({ isPending: false, mutateAsync: hooks.deleteMe }),
-  useMyPreferences: () => ({
-    data: {
-      theme: 'auto',
-      fontSize: 'medium',
-      density: 'standard',
-      timeFormat: '24h',
-      dateFormat: 'ymd',
-      language: 'zh-CN',
-    },
-  }),
+  useMyPreferences: () => ({ data: hooks.preferences }),
   useMyStats: () => ({ data: { conversationCount: 2, totalTokens: 256, fileCount: 1 } }),
   useSendVerifyCode: () => ({ isPending: false, mutateAsync: hooks.sendVerifyCode }),
   useUnlinkGithub: () => ({ isPending: false, mutateAsync: hooks.unlinkGithub }),
@@ -60,14 +68,7 @@ vi.mock('@yuanai/core/hooks', () => ({
 
 vi.mock('@yuanai/core/stores', () => ({
   usePrefsStore: (selector: (state: Record<string, unknown>) => unknown) =>
-    selector({
-      replaceAll: vi.fn(),
-      setDateFmt: vi.fn(),
-      setDensity: vi.fn(),
-      setFontSize: vi.fn(),
-      setTheme: vi.fn(),
-      setTimeFmt: vi.fn(),
-    }),
+    selector(preferencesStore),
 }))
 
 import { App } from './App'
@@ -85,6 +86,10 @@ function installDesktopApi(): void {
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
+      appearance: {
+        apply: vi.fn().mockResolvedValue({ choice: 'auto', resolved: 'light' }),
+        syncPreferences: vi.fn().mockResolvedValue(undefined),
+      },
       prefs: {
         get: vi.fn().mockResolvedValue({
           closeToTray: true,
@@ -157,16 +162,17 @@ describe('desktop settings', () => {
 
   it('shows a save notification without taking content space and dismisses it automatically', async () => {
     vi.useFakeTimers()
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     renderSettings()
 
-    await user.click(screen.getByRole('button', { name: '编辑昵称' }))
+    fireEvent.click(screen.getByRole('button', { name: '编辑昵称' }))
     const username = screen.getByRole('textbox', { name: '昵称' })
-    await user.clear(username)
-    await user.type(username, 'desktop-user')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    fireEvent.change(username, { target: { value: 'desktop-user' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存' }))
 
-    expect(await screen.findByText('资料已保存')).toHaveClass('settings-notice')
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText('资料已保存')).toHaveClass('settings-notice')
     act(() => vi.advanceTimersByTime(3_000))
     expect(screen.queryByText('资料已保存')).not.toBeInTheDocument()
   })
@@ -179,7 +185,9 @@ describe('desktop settings', () => {
     await user.click(screen.getByRole('radio', { name: 'English' }))
 
     await waitFor(() => expect(hooks.updatePreferences).toHaveBeenCalledWith({ language: 'en' }))
-    expect(screen.getByRole('tab', { name: 'Profile' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Language & Region' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('tab', { name: 'Profile' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Language & Region' })).toBeInTheDocument()
+    })
   })
 })
