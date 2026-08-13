@@ -69,7 +69,7 @@ import {
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import { buildMessagePairs } from '@yuanai/core/utils'
+import { buildMessagePairs, filterChatModels } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
@@ -84,12 +84,12 @@ import '../shared/i18n'
 
 const FALLBACK_MODEL: AIModel = {
   id: 'deepseek-v4-flash',
-  name: 'DeepSeek V4 Flash',
+  name: 'DeepSeek V4 Flash-0731',
   provider: 'deepseek',
-  description: '快速响应，高性价比',
+  description: '纯文本聊天，快速响应，高性价比',
   supportsVision: false,
   supportsFiles: false,
-  contextLength: 64000,
+  contextLength: 1_000_000,
   isDefault: true,
 }
 
@@ -97,11 +97,21 @@ const DEFAULT_MODELS: AIModel[] = [
   FALLBACK_MODEL,
   {
     id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro',
+    name: 'DeepSeek V4 Pro-0813',
     provider: 'deepseek',
-    description: '中文理解强，旗舰推理',
+    description: '纯文本聊天，中文理解强，旗舰推理',
     supportsVision: false,
     supportsFiles: false,
+    contextLength: 1_000_000,
+    isDefault: false,
+  },
+  {
+    id: 'agnes-2.5-flash',
+    name: 'Agnes 2.5 Flash',
+    provider: 'agnes',
+    description: '支持推理、工具调用、多轮对话和图像理解',
+    supportsVision: true,
+    supportsFiles: true,
     contextLength: 128000,
     isDefault: false,
   },
@@ -119,24 +129,28 @@ const DISLIKE_FEEDBACK_CATEGORIES = ['信息有误', '答非所问', '内容冗�
 const SUGGESTIONS = [
   {
     description: '帮我写一个关于时间旅行的科幻短篇',
+    enablesWebSearch: false,
     icon: Sparkles,
     prompt: '帮我写一个关于时间旅行的科幻短篇故事',
     title: '创意写作',
   },
   {
     description: '帮我排查这段代码为什么报 TypeError',
+    enablesWebSearch: false,
     icon: Code2,
     prompt: '帮我排查这段代码为什么报 TypeError：',
     title: '代码调试',
   },
   {
     description: '搜索今天最新的 AI 行业动态',
+    enablesWebSearch: true,
     icon: Globe2,
     prompt: '搜索今天最新的 AI 行业动态',
     title: '联网搜索',
   },
   {
     description: '用简单的方式解释量子纠缠是什么',
+    enablesWebSearch: false,
     icon: Calculator,
     prompt: '用简单方式解释量子纠缠是什么',
     title: '学习辅导',
@@ -144,12 +158,17 @@ const SUGGESTIONS = [
 ] as const
 
 const CAPABILITIES = [
-  { icon: Globe2, label: '联网搜索', prompt: '联网搜索最新 AI 行业动态' },
-  { icon: Code2, label: '代码生成', prompt: '帮我写一段' },
-  { icon: Image, label: '图片理解', prompt: '帮我分析这张图片中的内容' },
-  { icon: FileText, label: '文件分析', prompt: '帮我总结这份文件的要点' },
-  { icon: Calculator, label: '数学推导', prompt: '解一道数学题：' },
-  { icon: Languages, label: '多语种翻译', prompt: '把下面内容翻译成地道英文：' },
+  { enablesWebSearch: true, icon: Globe2, label: '联网搜索', prompt: '联网搜索最新 AI 行业动态' },
+  { enablesWebSearch: false, icon: Code2, label: '代码生成', prompt: '帮我写一段' },
+  { enablesWebSearch: false, icon: Image, label: '图片理解', prompt: '帮我分析这张图片中的内容' },
+  { enablesWebSearch: false, icon: FileText, label: '文件分析', prompt: '帮我总结这份文件的要点' },
+  { enablesWebSearch: false, icon: Calculator, label: '数学推导', prompt: '解一道数学题：' },
+  {
+    enablesWebSearch: false,
+    icon: Languages,
+    label: '多语种翻译',
+    prompt: '把下面内容翻译成地道英文：',
+  },
 ] as const
 
 interface ComposerAttachment {
@@ -229,12 +248,14 @@ function getModelInitial(model: AIModel): string {
 }
 
 function formatContextLength(contextLength: number): string {
+  if (contextLength >= 1_000_000) return `${Math.round(contextLength / 1_000_000)}M`
   return contextLength >= 1000 ? `${Math.round(contextLength / 1000)}K` : String(contextLength)
 }
 
 function formatModelProvider(provider: string): string {
   if (provider.toLocaleLowerCase() === 'deepseek') return 'DeepSeek'
   if (provider.toLocaleLowerCase() === 'openai') return 'OpenAI'
+  if (provider.toLocaleLowerCase() === 'agnes') return 'Agnes AI'
   return provider
 }
 
@@ -979,7 +1000,10 @@ export function App(): ReactElement {
   const conversations = isLoggedIn
     ? (conversationsQuery.data ?? EMPTY_CONVERSATIONS)
     : EMPTY_CONVERSATIONS
-  const availableModels = modelsQuery.data?.length ? modelsQuery.data : DEFAULT_MODELS
+  const availableModels = useMemo(() => {
+    const chatModels = filterChatModels(modelsQuery.data ?? [])
+    return chatModels.length > 0 ? chatModels : DEFAULT_MODELS
+  }, [modelsQuery.data])
   const modelGroups = useMemo(() => groupModelsByProvider(availableModels), [availableModels])
   const selectedModel =
     availableModels.find((model) => model.id === selectedModelId) ??
@@ -1174,8 +1198,9 @@ export function App(): ReactElement {
     input.style.overflowY = contentHeight > maximumHeight ? 'auto' : 'hidden'
   }, [draft])
 
-  function handleQuickPrompt(prompt: string): void {
+  function handleQuickPrompt(prompt: string, enablesWebSearch = false): void {
     if (!isLoggedIn) return
+    if (enablesWebSearch) setIsWebSearchEnabled(true)
     setDraft(prompt)
     window.setTimeout(() => {
       const input = composerInputRef.current
@@ -2191,13 +2216,13 @@ export function App(): ReactElement {
                 className="desktop-chat__capabilities"
                 aria-label={t('desktop.chat.capabilities')}
               >
-                {CAPABILITIES.map(({ icon: Icon, label, prompt }) => (
+                {CAPABILITIES.map(({ enablesWebSearch, icon: Icon, label, prompt }) => (
                   <button
                     key={label}
                     type="button"
                     aria-label={`快捷提示：${label}`}
                     disabled={!isLoggedIn}
-                    onClick={() => handleQuickPrompt(prompt)}
+                    onClick={() => handleQuickPrompt(prompt, enablesWebSearch)}
                   >
                     <Icon size={14} aria-hidden="true" />
                     {label}
@@ -2205,13 +2230,13 @@ export function App(): ReactElement {
                 ))}
               </div>
               <div className="desktop-chat__suggestions">
-                {SUGGESTIONS.map(({ description, icon: Icon, prompt, title }) => (
+                {SUGGESTIONS.map(({ description, enablesWebSearch, icon: Icon, prompt, title }) => (
                   <button
                     key={title}
                     type="button"
                     aria-label={title}
                     disabled={!isLoggedIn}
-                    onClick={() => handleQuickPrompt(prompt)}
+                    onClick={() => handleQuickPrompt(prompt, enablesWebSearch)}
                   >
                     <Icon size={17} aria-hidden="true" />
                     <span>

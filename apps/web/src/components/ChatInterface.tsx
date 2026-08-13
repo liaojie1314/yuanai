@@ -29,11 +29,14 @@ import {
   useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
-  useUpdateConversation,
-  useMessages,
   useLogout,
+  useMessages,
+  useModels,
+  useUpdateConversation,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
+import { filterChatModels } from '@yuanai/core/utils'
+import type { AIModel } from '@yuanai/types'
 import type { MockMessage, MockConversation } from '@yuanai/core/stores'
 import {
   SquarePen,
@@ -112,25 +115,74 @@ interface AttachFile {
 const MODELS: Model[] = [
   {
     id: 'deepseek-v4-flash',
-    name: 'DeepSeek V4 Flash',
-    desc: '快速响应，高性价比',
+    name: 'DeepSeek V4 Flash-0731',
+    desc: '纯文本聊天，快速响应，高性价比',
     provider: 'DeepSeek',
-    ctx: '64K',
+    ctx: '1M',
     color: '#3B82F6',
     letter: 'D',
     gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)',
   },
   {
     id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro',
-    desc: '中文理解强，旗舰推理',
+    name: 'DeepSeek V4 Pro-0813',
+    desc: '纯文本聊天，中文理解强，旗舰推理',
     provider: 'DeepSeek',
-    ctx: '128K',
+    ctx: '1M',
     color: '#1D4ED8',
     letter: 'D',
     gradient: 'linear-gradient(135deg,#1e3a8a,#1D4ED8)',
   },
+  {
+    id: 'agnes-2.5-flash',
+    name: 'Agnes 2.5 Flash',
+    desc: '支持推理、工具调用、多轮对话和图像理解',
+    provider: 'Agnes AI',
+    ctx: '128K',
+    color: '#E04F16',
+    letter: 'A',
+    gradient: 'linear-gradient(135deg,#C43F0B,#F27328)',
+  },
 ]
+
+const MODEL_PRESENTATION: Record<string, { color: string; gradient: string }> = {
+  agnes: { color: '#E04F16', gradient: 'linear-gradient(135deg,#C43F0B,#F27328)' },
+  anthropic: { color: '#D97706', gradient: 'linear-gradient(135deg,#B45309,#F59E0B)' },
+  deepseek: { color: '#3B82F6', gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)' },
+  openai: { color: '#10A37F', gradient: 'linear-gradient(135deg,#087A5C,#10A37F)' },
+  qwen: { color: '#8B5CF6', gradient: 'linear-gradient(135deg,#6D28D9,#A78BFA)' },
+}
+
+function formatModelProvider(provider: string): string {
+  if (provider.toLocaleLowerCase() === 'agnes') return 'Agnes AI'
+  if (provider.toLocaleLowerCase() === 'deepseek') return 'DeepSeek'
+  if (provider.toLocaleLowerCase() === 'openai') return 'OpenAI'
+  if (provider.toLocaleLowerCase() === 'anthropic') return 'Anthropic'
+  return provider
+}
+
+function formatContextLength(contextLength: number): string {
+  if (contextLength >= 1_000_000) return `${Math.round(contextLength / 1_000_000)}M`
+  return contextLength >= 1_000 ? `${Math.round(contextLength / 1_000)}K` : String(contextLength)
+}
+
+function toModelOption(model: AIModel): Model {
+  const presentation = MODEL_PRESENTATION[model.provider.toLocaleLowerCase()] ?? {
+    color: '#64748B',
+    gradient: 'linear-gradient(135deg,#475569,#94A3B8)',
+  }
+
+  return {
+    id: model.id,
+    name: model.name,
+    desc: model.description,
+    provider: formatModelProvider(model.provider),
+    ctx: formatContextLength(model.contextLength),
+    color: presentation.color,
+    letter: model.name.slice(0, 1).toLocaleUpperCase(),
+    gradient: presentation.gradient,
+  }
+}
 
 const LIKE_CATEGORIES = ['有帮助', '解释清晰', '创意出色', '回答详细', '思路新颖']
 const DISLIKE_CATEGORIES = ['信息有误', '答非所问', '内容冗余', '语言不自然', '缺乏细节']
@@ -216,6 +268,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const { mutate: deleteConv } = useDeleteConversation()
   const { mutate: deleteConvs } = useDeleteConversations()
   const { mutate: updateConv } = useUpdateConversation()
+  const modelsQuery = useModels()
+  const chatModels = useMemo(() => {
+    const models = filterChatModels(modelsQuery.data ?? []).map(toModelOption)
+    return models.length > 0 ? models : MODELS
+  }, [modelsQuery.data])
 
   const stream = useStream()
 
@@ -363,10 +420,20 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   useEffect(() => {
     const saved = sessionStorage.getItem('yuanai-active-model')
     if (saved) {
-      const found = MODELS.find((m) => m.id === saved)
+      const found = chatModels.find((m) => m.id === saved)
       if (found) setActiveModel(found)
     }
-  }, [])
+  }, [chatModels])
+
+  useEffect(() => {
+    const matchingModel = chatModels.find((model) => model.id === activeModel.id)
+    if (matchingModel) {
+      if (matchingModel !== activeModel) setActiveModel(matchingModel)
+      return
+    }
+    const defaultModel = chatModels[0]
+    if (defaultModel) setActiveModel(defaultModel)
+  }, [activeModel, chatModels])
 
   useEffect(() => {
     const MIN = 200,
@@ -430,13 +497,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     if (!activeConv) return
     const apiConv = apiConversations.find((c) => c.id === activeConv)
     if (apiConv?.model) {
-      const model = MODELS.find((m) => m.id === apiConv.model)
+      const model = chatModels.find((m) => m.id === apiConv.model)
       if (model) {
         setActiveModel(model)
         sessionStorage.setItem('yuanai-active-model', model.id)
       }
     }
-  }, [activeConv, apiConversations])
+  }, [activeConv, apiConversations, chatModels])
 
   const closeAllPanels = (): void => {
     setModelDropOpen(false)
@@ -949,7 +1016,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,.pdf,.doc,.docx,.txt"
         style={{ display: 'none' }}
         onChange={onFileChange}
       />
@@ -1307,7 +1373,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               <button
                 className="ch-cap"
                 disabled={!isLoggedIn}
-                onClick={() => fill('联网搜索最新 AI 行业动态')}
+                onClick={() => fillWebSearchPrompt('联网搜索最新 AI 行业动态')}
               >
                 <Globe size={14} /> 联网搜索
               </button>
@@ -1350,7 +1416,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   className="ch-sg-card"
                   style={{ animationDelay: `${i * 60}ms` }}
                   disabled={!isLoggedIn}
-                  onClick={() => fill(card.prompt)}
+                  onClick={() =>
+                    card.title === '联网搜索' ? fillWebSearchPrompt(card.prompt) : fill(card.prompt)
+                  }
                 >
                   <div className="ch-sg-head">
                     <span className="ch-sg-icon">
@@ -1503,6 +1571,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 className={`ch-in-btn ${webSearch ? 'on' : ''}`}
                 title="联网搜索"
                 disabled={!isLoggedIn}
+                aria-pressed={webSearch}
                 onClick={() => setWebSearch((w) => !w)}
               >
                 <Globe size={18} />
@@ -1586,8 +1655,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             })(),
           }}
         >
-          {['DeepSeek'].map((provider) => {
-            const models = MODELS.filter((m) => m.provider === provider)
+          {[...new Set(chatModels.map((model) => model.provider))].map((provider) => {
+            const models = chatModels.filter((m) => m.provider === provider)
             if (!models.length) return null
             return (
               <div key={provider} className="ch-mdrop-grp">

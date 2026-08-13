@@ -25,6 +25,7 @@ interface ModelSelectorSheetProps {
 
 /** provider → 头像底色（与 web MODELS 的配色语义对齐；未知 provider 用品牌色） */
 const PROVIDER_COLORS: Record<string, string> = {
+  agnes: '#E04F16',
   deepseek: '#3B82F6',
   openai: '#10A37F',
   anthropic: '#D97706',

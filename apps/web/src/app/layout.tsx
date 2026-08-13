@@ -10,7 +10,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: '元AI — 智能对话助手',
-  description: '多端 AI 聊天应用，支持 GPT-4o、Claude、DeepSeek 等多种模型',
+  description: '多端 AI 聊天应用，支持 DeepSeek 与 Agnes 等多种模型',
 }
 
 export default async function RootLayout({

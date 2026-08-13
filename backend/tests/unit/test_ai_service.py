@@ -13,7 +13,7 @@
 
 import os
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -25,9 +25,9 @@ from app.services.ai_service import (  # noqa: E402
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
     _get_client,
+    get_available_models,
     stream_chat,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -102,6 +102,31 @@ def test_all_models_have_required_fields() -> None:
 def test_provider_config_covers_all_models() -> None:
     for model in AVAILABLE_MODELS:
         assert model["id"] in PROVIDER_CONFIG, f"{model['id']} not in PROVIDER_CONFIG"
+
+
+def test_public_catalog_only_offers_current_models(monkeypatch: pytest.MonkeyPatch) -> None:
+    """弃用模型仅保留流式兼容路由，不能再从公开模型目录选择。"""
+    monkeypatch.setitem(ai_svc.API_KEYS, "deepseek", "test-deepseek-key")
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-agnes-key")
+
+    models = get_available_models()
+
+    assert [model["id"] for model in models] == [
+        "deepseek-v4-flash",
+        "deepseek-v4-pro",
+        "agnes-2.5-flash",
+        "agnes-image-2.1-flash",
+        "agnes-video-v2.0",
+    ]
+    assert all(
+        model["id"] not in {"gpt-4o", "claude-3-5-sonnet-20241022"} for model in models
+    )
+    assert models[0]["is_default"] is True
+
+
+def test_legacy_chat_routes_remain_available_for_existing_conversations() -> None:
+    assert "gpt-4o" in PROVIDER_CONFIG
+    assert "claude-3-5-sonnet-20241022" in PROVIDER_CONFIG
 
 
 def test_agnes_models_are_registered_without_embedded_credentials() -> None:
@@ -258,7 +283,7 @@ async def test_stream_chat_deepseek_extra_body_enable_thinking() -> None:
 
 
 async def test_stream_chat_deepseek_extra_body_disable_thinking() -> None:
-    """enable_thinking=False 时 DeepSeek 请求应携带 extra_body={"thinking": {"type": "disabled"}}。"""
+    """enable_thinking=False 时 DeepSeek 请求应携带禁用思考的 extra_body。"""
     mock_client = _build_mock_client(["ok"])
 
     with patch("app.services.ai_service._get_client", return_value=mock_client):
@@ -307,7 +332,9 @@ async def test_stream_chat_propagates_stream_error() -> None:
     with patch("app.services.ai_service._get_client", return_value=mock_client):
         collected: list[tuple[str, str]] = []
         with pytest.raises(RuntimeError, match="Stream interrupted"):
-            async for event_type, token in stream_chat("gpt-4o", [{"role": "user", "content": "hi"}]):
+            async for event_type, token in stream_chat(
+                "gpt-4o", [{"role": "user", "content": "hi"}]
+            ):
                 collected.append((event_type, token))
 
     assert collected == [("content", "first")]  # 第一个 token 已 yield，之后报错

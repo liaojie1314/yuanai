@@ -80,6 +80,26 @@ test.describe('Chat interface', () => {
     await expect(page.locator('.ch-empty-state')).toBeVisible()
   })
 
+  test('opens only current chat models and enables web search from its quick shortcut', async ({
+    page,
+  }) => {
+    const composerSearch = page.locator('button[title="联网搜索"]')
+    await composerSearch.click()
+    await expect(composerSearch).toHaveAttribute('aria-pressed', 'false')
+
+    await page.locator('.ch-cap').filter({ hasText: '联网搜索' }).click()
+    await expect(composerSearch).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.locator('.ch-input-ta')).toHaveValue('联网搜索最新 AI 行业动态')
+
+    await page.locator('.ch-model-btn').click()
+    const modelMenu = page.locator('.ch-mdrop.open')
+    await expect(modelMenu).toContainText('DeepSeek V4 Flash-0731')
+    await expect(modelMenu).toContainText('DeepSeek V4 Pro-0813')
+    await expect(modelMenu).toContainText('Agnes 2.5 Flash')
+    await expect(modelMenu).not.toContainText('GPT-4o')
+    await expect(modelMenu).not.toContainText('Claude 3.5 Sonnet')
+  })
+
   // ── Loading messages ─────────────────────────────────────────
 
   test('loads existing messages when clicking a conversation', async ({ page }) => {

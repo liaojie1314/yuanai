@@ -310,17 +310,22 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
-  it('uses both Web fallback models until the authenticated model list is available', async () => {
+  it('uses all chat-model fallbacks and excludes media-only models until the API is available', async () => {
     const user = userEvent.setup()
     chat.models = []
     render(<App />)
 
-    expect(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' })
+    ).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash' }))
+    await user.click(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' }))
 
-    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Flash' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Pro' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Flash-0731' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Pro-0813' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '选择 Agnes 2.5 Flash' })).toBeInTheDocument()
+    expect(screen.queryByText('Agnes Image 2.1 Flash')).not.toBeInTheDocument()
+    expect(screen.queryByText('Agnes Video V2.0')).not.toBeInTheDocument()
   })
 
   it('shows the welcome state instead of a false streaming response when no conversation is active', () => {
@@ -715,6 +720,28 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '快捷提示：文件分析' }))
 
     expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('帮我总结这份文件的要点')
+  })
+
+  it('enables web search when a web-search quick prompt is selected', async () => {
+    const user = userEvent.setup()
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    const composerWebSearch = screen
+      .getAllByRole('button', { name: '联网搜索' })
+      .find((button) => button.hasAttribute('aria-pressed'))
+    if (!composerWebSearch) throw new Error('未找到输入框工具栏的联网搜索按钮')
+
+    await user.click(composerWebSearch)
+    expect(composerWebSearch).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(screen.getByRole('button', { name: '快捷提示：联网搜索' }))
+
+    expect(composerWebSearch).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue(
+      '联网搜索最新 AI 行业动态'
+    )
   })
 
   it('does not fill quick prompts while signed out', async () => {

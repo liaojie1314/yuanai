@@ -31,7 +31,7 @@ function buildSse(responseText: string, convId: string): string {
   const start = JSON.stringify({
     user_message_id: `u-${convId}-${Date.now()}`,
     assistant_message_id: `a-${convId}-${Date.now()}`,
-    model: 'gpt-4o',
+    model: 'deepseek-v4-flash',
   })
   const deltas = [...responseText]
     .map((t) => `event: content_delta\ndata: ${JSON.stringify({ token: t })}\n\n`)
@@ -64,7 +64,7 @@ function makeInitialConvs(): ConvRecord[] {
     {
       id: 'conv-001',
       title: 'React 组件性能优化',
-      model: 'gpt-4o',
+      model: 'deepseek-v4-flash',
       isPinned: true,
       lastMessageAt: new Date(Date.now() - 3_600_000).toISOString(),
       createdAt: new Date(Date.now() - 3_600_000).toISOString(),
@@ -72,7 +72,7 @@ function makeInitialConvs(): ConvRecord[] {
     {
       id: 'conv-002',
       title: '解释量子纠缠的原理',
-      model: 'gpt-4o',
+      model: 'deepseek-v4-flash',
       isPinned: false,
       lastMessageAt: new Date(Date.now() - 7_200_000).toISOString(),
       createdAt: new Date(Date.now() - 7_200_000).toISOString(),
@@ -80,7 +80,7 @@ function makeInitialConvs(): ConvRecord[] {
     {
       id: 'conv-003',
       title: 'TypeScript 泛型使用技巧',
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'deepseek-v4-pro',
       isPinned: false,
       lastMessageAt: new Date(Date.now() - 86_400_000 - 3_600_000).toISOString(),
       createdAt: new Date(Date.now() - 86_400_000 - 3_600_000).toISOString(),
@@ -109,7 +109,7 @@ function makeInitialMsgs(): Record<string, MsgRecord[]> {
       {
         id: 'msg-001-2',
         role: 'assistant',
-        model: 'gpt-4o',
+        model: 'deepseek-v4-flash',
         tokensUsed: 150,
         content:
           '针对这种场景，核心优化路径是三件事：\n\n**阻断不必要的渲染触发** → 缓存昂贵计算 → 稳定函数引用。\n\n对应 React 的三个 API：\n\n- `React.memo` 对子组件做浅比较\n- `useMemo` 缓存派生数据\n- `useCallback` 稳定回调引用',
@@ -128,7 +128,7 @@ function makeInitialMsgs(): Record<string, MsgRecord[]> {
       {
         id: 'msg-002-2',
         role: 'assistant',
-        model: 'gpt-4o',
+        model: 'deepseek-v4-flash',
         tokensUsed: 100,
         content: '量子纠缠是量子力学中最神秘的现象之一。',
         files: [],
@@ -285,7 +285,7 @@ export async function setupApiMocks(page: Page): Promise<{
       {
         id: aiMsgId,
         role: 'assistant',
-        model: 'gpt-4o',
+        model: 'deepseek-v4-flash',
         tokensUsed: MOCK_RESPONSE.length,
         content: MOCK_RESPONSE,
         files: [],
@@ -309,14 +309,34 @@ export async function setupApiMocks(page: Page): Promise<{
       body: JSON.stringify({
         models: [
           {
-            id: 'gpt-4o',
-            name: 'GPT-4o',
-            provider: 'openai',
-            description: 'OpenAI 最强多模态模型',
-            supportsVision: true,
-            supportsFiles: true,
-            contextLength: 128000,
-            isDefault: true,
+            id: 'deepseek-v4-flash',
+            name: 'DeepSeek V4 Flash-0731',
+            provider: 'deepseek',
+            description: '纯文本聊天，快速响应，高性价比',
+            supports_vision: false,
+            supports_files: false,
+            context_length: 1000000,
+            is_default: true,
+          },
+          {
+            id: 'deepseek-v4-pro',
+            name: 'DeepSeek V4 Pro-0813',
+            provider: 'deepseek',
+            description: '纯文本聊天，中文理解强，旗舰推理',
+            supports_vision: false,
+            supports_files: false,
+            context_length: 1000000,
+            is_default: false,
+          },
+          {
+            id: 'agnes-2.5-flash',
+            name: 'Agnes 2.5 Flash',
+            provider: 'agnes',
+            description: '支持推理、工具调用、多轮对话和图像理解',
+            supports_vision: true,
+            supports_files: true,
+            context_length: 128000,
+            is_default: false,
           },
         ],
       }),

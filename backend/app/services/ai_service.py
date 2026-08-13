@@ -1,6 +1,8 @@
 from collections.abc import AsyncGenerator
+from typing import cast
 
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from app.core.config import settings
 
@@ -60,26 +62,6 @@ API_KEYS: dict[str, str] = {
 
 AVAILABLE_MODELS = [
     {
-        "id": "gpt-4o",
-        "name": "GPT-4o",
-        "provider": "openai",
-        "description": "OpenAI 最强多模态模型",
-        "supports_vision": True,
-        "supports_files": True,
-        "context_length": 128000,
-        "is_default": True,
-    },
-    {
-        "id": "claude-3-5-sonnet-20241022",
-        "name": "Claude 3.5 Sonnet",
-        "provider": "anthropic",
-        "description": "Anthropic 旗舰推理模型",
-        "supports_vision": True,
-        "supports_files": True,
-        "context_length": 200000,
-        "is_default": False,
-    },
-    {
         "id": "deepseek-v4-flash",
         "name": "DeepSeek V4 Flash-0731",
         "provider": "deepseek",
@@ -92,7 +74,7 @@ AVAILABLE_MODELS = [
             "input_uncached_cny_per_million": 1.0,
             "output_cny_per_million": 2.0,
         },
-        "is_default": False,
+        "is_default": True,
     },
     {
         "id": "deepseek-v4-pro",
@@ -216,14 +198,22 @@ async def stream_chat(
             }
         }
 
-    stream = await client.chat.completions.create(
-        model=model,
-        messages=messages,  # type: ignore[arg-type]
-        stream=True,
-        **({"extra_body": extra_body} if extra_body is not None else {}),
-    )
+    provider_messages = cast(list[ChatCompletionMessageParam], messages)
+    if extra_body is None:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=provider_messages,
+            stream=True,
+        )
+    else:
+        stream = await client.chat.completions.create(
+            model=model,
+            messages=provider_messages,
+            stream=True,
+            extra_body=extra_body,
+        )
 
-    async for chunk in stream:  # type: ignore[union-attr]
+    async for chunk in stream:
         delta = chunk.choices[0].delta if chunk.choices else None
         if delta:
             # 思考/推理 token（DeepSeek-R1 / Qwen-thinking 等扩展字段）
