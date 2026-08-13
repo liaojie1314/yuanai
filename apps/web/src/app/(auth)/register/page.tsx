@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { User, Loader2, CheckCircle, XCircle, Mail, Lock, Shield } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
 import StrengthBar from '@/components/auth/StrengthBar'
+import { useToast } from '@/hooks/useToast'
 import { useTranslations } from '@/i18n/client'
 import { useRegister, useSendVerifyCode } from '@yuanai/core/hooks'
 
@@ -19,6 +20,7 @@ export default function RegisterPage(): JSX.Element {
   const router = useRouter()
   const registerMutation = useRegister()
   const sendCodeMutation = useSendVerifyCode()
+  const toast = useToast()
 
   const [username, setUsername] = useState('')
   const [checkStatus, setCheckStatus] = useState<CheckStatus>('idle')
@@ -35,7 +37,6 @@ export default function RegisterPage(): JSX.Element {
   const otpRefs = useRef<(HTMLInputElement | null)[]>([])
   /** 距离下次可发送验证码剩余秒数；0 表示可发送 */
   const [resendIn, setResendIn] = useState(0)
-  const [codeSentTip, setCodeSentTip] = useState('')
 
   const [pwd, setPwd] = useState('')
   const [pwdErr, setPwdErr] = useState('')
@@ -47,8 +48,6 @@ export default function RegisterPage(): JSX.Element {
   const [termsErr, setTermsErr] = useState(false)
   const [termsShake, setTermsShake] = useState(false)
 
-  const [apiErr, setApiErr] = useState('')
-
   // 60s 倒计时；resendIn 归零时清理 interval
   useEffect(() => {
     if (resendIn <= 0) return
@@ -59,9 +58,7 @@ export default function RegisterPage(): JSX.Element {
   }, [resendIn])
 
   const handleSendCode = async (): Promise<void> => {
-    setApiErr('')
     setCodeErr('')
-    setCodeSentTip('')
     if (!EMAIL_RE.test(email.trim())) {
       setEmailErr(t('errors.invalidEmail'))
       return
@@ -69,7 +66,7 @@ export default function RegisterPage(): JSX.Element {
     try {
       await sendCodeMutation.mutateAsync({ email: email.trim(), scene: 'register' })
       setResendIn(60)
-      setCodeSentTip('验证码已发送，请查收邮箱')
+      toast.success('验证码已发送，请查收邮箱')
       // 发送成功后光标聚焦到第一个 OTP 格子
       requestAnimationFrame(() => otpRefs.current[0]?.focus())
     } catch (err) {
@@ -80,9 +77,9 @@ export default function RegisterPage(): JSX.Element {
         setEmailErr('该邮箱已被注册，请直接登录')
       } else if (detail?.code === 'VERIFY_CODE_THROTTLED') {
         setResendIn(60)
-        setCodeSentTip(detail.message ?? '请求过于频繁，请稍后再试')
+        toast.warning(detail.message ?? '请求过于频繁，请稍后再试')
       } else {
-        setApiErr(detail?.message ?? '验证码发送失败，请稍后再试')
+        toast.error(detail?.message ?? '验证码发送失败，请稍后再试')
       }
     }
   }
@@ -132,7 +129,6 @@ export default function RegisterPage(): JSX.Element {
 
   const handleSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault()
-    setApiErr('')
     let ok = true
     if (!username.trim() || username.length < 2) {
       setUnameErr(t('errors.usernameRequired'))
@@ -181,9 +177,9 @@ export default function RegisterPage(): JSX.Element {
         setOtpShake(true)
         setTimeout(() => setOtpShake(false), 350)
       } else if (detail?.code === 'EMAIL_OR_USERNAME_EXISTS') {
-        setApiErr('邮箱或用户名已被注册，请换一个试试')
+        toast.error('邮箱或用户名已被注册，请换一个试试')
       } else {
-        setApiErr(detail?.message ?? '注册失败，请稍后重试')
+        toast.error(detail?.message ?? '注册失败，请稍后重试')
       }
     }
   }
@@ -217,12 +213,6 @@ export default function RegisterPage(): JSX.Element {
             }}
             noValidate
           >
-            {apiErr && (
-              <p className="ferr on" style={{ marginBottom: '12px' }}>
-                {apiErr}
-              </p>
-            )}
-
             <div className="fg">
               <label className="fl" htmlFor="uname">
                 {t('username')}
@@ -316,15 +306,7 @@ export default function RegisterPage(): JSX.Element {
                   />
                 ))}
               </div>
-              {codeErr ? (
-                <p className="ferr on">{codeErr}</p>
-              ) : codeSentTip ? (
-                <p className="ferr on" style={{ color: '#10b981' }}>
-                  {codeSentTip}
-                </p>
-              ) : (
-                <p className="ferr">&nbsp;</p>
-              )}
+              {codeErr ? <p className="ferr on">{codeErr}</p> : <p className="ferr">&nbsp;</p>}
             </div>
 
             <div className="fg">
