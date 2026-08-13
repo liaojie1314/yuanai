@@ -242,24 +242,42 @@ pnpm dev           # 启动 Expo Dev Server（显示 QR 码）
 
 ## 启动桌面端（Electron）
 
-```bash
-# 方式一：从根目录启动
-pnpm dev --filter @yuanai/desktop
-
-# 方式二：进入目录单独启动
-cd apps/desktop
-pnpm dev
-```
-
-Electron 窗口将自动弹出。
-
-**打包桌面应用**：
+桌面端使用真实 API，不走 Web 的 MSW Mock。先启动“基础设施”和“后端”，再设置
+桌面端 API 基地址并启动 Electron：
 
 ```bash
-cd apps/desktop
-pnpm build    # 编译 TypeScript + Vite
-pnpm package  # 生成安装包（electron-builder）
+# macOS / Linux：从根目录启动
+YUANAI_API_URL=http://localhost:8000/api/v1 pnpm --filter @yuanai/desktop dev
+
+# Windows PowerShell
+$env:YUANAI_API_URL = 'http://localhost:8000/api/v1'
+pnpm --filter @yuanai/desktop dev
 ```
+
+Electron 会自动打开登录窗口或恢复安全存储中的会话。`YUANAI_WEB_URL` 可选，
+默认 `http://localhost:3000`，用于分享链接等 Web 跳转；`YUANAI_ASSET_ORIGINS`
+可为非默认静态资源域名提供逗号分隔的白名单。
+
+**验证与打包桌面应用**：
+
+```bash
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop preview
+
+# electron-builder 平台打包
+pnpm --filter @yuanai/desktop build:unpack
+pnpm --filter @yuanai/desktop package:linux
+pnpm --filter @yuanai/desktop package:win
+pnpm --filter @yuanai/desktop package:mac
+```
+
+桌面端包含主聊天、认证、设置、关于、Artifact 和 OAuth renderer；托盘、原生
+通知、开机自启与全局快捷键由主进程提供。平台安装包须在对应操作系统完成安装
+验收；当前没有已发布的签名安装包或生产自动更新源。
 
 ---
 
@@ -299,6 +317,7 @@ pnpm test:unit
 pnpm test:unit --filter @yuanai/core    # 仅 core 包
 pnpm test:unit --filter @yuanai/ui      # 仅 ui 包
 pnpm test:unit --filter @yuanai/web     # 仅 Web app
+pnpm --filter @yuanai/desktop test:unit # 仅 Desktop app
 ```
 
 ### 监听模式（开发中使用）
@@ -483,6 +502,9 @@ uv run ruff check app                 # 后端 lint
 # ── 前端（根目录执行）────────────────────────────
 pnpm dev                              # 启动所有 app
 pnpm dev --filter @yuanai/web         # 仅启动 Web (port 3000)
+pnpm --filter @yuanai/desktop dev     # 启动 Electron Desktop
+pnpm --filter @yuanai/desktop preview # 预览 Desktop 生产构建
+pnpm --filter @yuanai/desktop package:linux # Linux electron-builder 打包
 pnpm build                            # 全量构建
 pnpm lint                             # ESLint 检查
 pnpm typecheck                        # TypeScript 类型检查

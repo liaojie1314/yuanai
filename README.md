@@ -8,7 +8,7 @@
 | ----------- | ------------------------------------------------ |
 | Web         | Next.js 15 + shadcn/ui + Tailwind v4             |
 | Mobile      | Expo (React Native) + NativeWind                 |
-| Desktop     | Electron 33                                      |
+| Desktop     | Electron 33 + electron-vite + React 19           |
 | 状态 / 请求 | Zustand 5 + TanStack Query v5                    |
 | 后端        | FastAPI 0.115 + SQLAlchemy 2 (async)             |
 | 数据库      | PostgreSQL 16 + Redis 7                          |
@@ -54,6 +54,23 @@ pnpm dev:real
 
 详见 [开发运行指南](docs/dev-guide.md)。
 
+### 桌面端开发与预览
+
+桌面端复用真实后端 API；先按“全栈模式”启动基础设施和 FastAPI，再启动 Electron：
+
+```bash
+YUANAI_API_URL=http://localhost:8000/api/v1 pnpm --filter @yuanai/desktop dev
+```
+
+生产构建后的本地预览使用：
+
+```bash
+pnpm --filter @yuanai/desktop preview
+```
+
+详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
+[运行指南](RUNNING.md#启动桌面端electron)。
+
 ## 配置 AI 大模型
 
 编辑 `backend/.env`，填写需要使用的模型的 API Key（留空的模型不会出现在前端）：
@@ -78,26 +95,30 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 ## 常用命令
 
-| 命令             | 说明                               |
-| ---------------- | ---------------------------------- |
-| `pnpm setup`     | 首次初始化（安装依赖 + 复制 .env） |
-| `pnpm dev:mock`  | 纯前端 Mock 模式（无需后端）       |
-| `pnpm dev:real`  | 一键全栈启动（真实 AI 接口）       |
-| `pnpm build`     | 构建全部应用                       |
-| `pnpm lint`      | ESLint 检查                        |
-| `pnpm typecheck` | TypeScript 类型检查                |
-| `pnpm test:unit` | 运行单元测试                       |
+| 命令                                    | 说明                               |
+| --------------------------------------- | ---------------------------------- |
+| `pnpm setup`                            | 首次初始化（安装依赖 + 复制 .env） |
+| `pnpm dev:mock`                         | 纯前端 Mock 模式（无需后端）       |
+| `pnpm dev:real`                         | 一键全栈启动（真实 AI 接口）       |
+| `pnpm build`                            | 构建全部应用                       |
+| `pnpm lint`                             | ESLint 检查                        |
+| `pnpm typecheck`                        | TypeScript 类型检查                |
+| `pnpm test:unit`                        | 运行单元测试                       |
+| `pnpm --filter @yuanai/desktop dev`     | 启动 Electron 开发窗口             |
+| `pnpm --filter @yuanai/desktop preview` | 预览生产构建的 Electron 应用       |
 
 ## 文档
 
-| 文档                                      | 说明                        |
-| ----------------------------------------- | --------------------------- |
-| [开发运行指南](docs/dev-guide.md)         | Mock / 全栈模式详细启动步骤 |
-| [AI 大模型接入指南](docs/ai-providers.md) | API Key 配置与新增模型      |
-| [架构设计](docs/architecture.md)          | 系统架构与数据流            |
-| [API 设计](docs/api-design.md)            | 后端接口规范                |
-| [UI 规范](docs/ui-spec.md)                | 设计系统与组件规范          |
-| [RUNNING.md](RUNNING.md)                  | 完整的从零部署参考手册      |
+| 文档                                               | 说明                        |
+| -------------------------------------------------- | --------------------------- |
+| [开发运行指南](docs/dev-guide.md)                  | Mock / 全栈模式详细启动步骤 |
+| [AI 大模型接入指南](docs/ai-providers.md)          | API Key 配置与新增模型      |
+| [架构设计](docs/architecture.md)                   | 系统架构与数据流            |
+| [API 设计](docs/api-design.md)                     | 后端接口规范                |
+| [UI 规范](docs/ui-spec.md)                         | 设计系统与组件规范          |
+| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md) | 桌面端实施状态与验收边界    |
+| [桌面端说明](apps/desktop/README.md)               | Electron 启动、测试与打包   |
+| [RUNNING.md](RUNNING.md)                           | 完整的从零部署参考手册      |
 
 ## 目录结构
 

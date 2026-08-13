@@ -588,18 +588,18 @@ data: [DONE]
 
 ---
 
-## 十三、当前阶段状态（截至 2026-07-02）
+## 十三、当前阶段状态（截至 2026-08-13）
 
-| Phase      | 状态    | 说明                                                    |
-| ---------- | ------- | ------------------------------------------------------- |
-| 0 — 脚手架 | ✅ 完成 | Monorepo 初始化，Turborepo + pnpm                       |
-| 1 — 后端   | ✅ 完成 | FastAPI 骨架，Auth + Chat + SSE 接口已实现              |
-| 2 — Web 端 | ✅ 完成 | Next.js UI 完整（Mock 模式），已推送 `origin/dev`       |
-| 3 — 移动端 | 🔲 待做 | Expo React Native，详见 `docs/phases/phase-3-mobile.md` |
-| 4 — 桌面端 | 🔲 待做 | Electron，详见 `docs/phases/phase-4-desktop.md`         |
+| Phase      | 状态      | 说明                                                |
+| ---------- | --------- | --------------------------------------------------- |
+| 0 — 脚手架 | ✅ 完成   | Monorepo 初始化，Turborepo + pnpm                   |
+| 1 — 后端   | ✅ 完成   | FastAPI 骨架，Auth + Chat + SSE 接口已实现          |
+| 2 — Web 端 | ✅ 完成   | Next.js UI 完整（Mock 模式），已推送 `origin/dev`   |
+| 3 — 移动端 | ✅ 已实现 | Expo React Native；发布验收按 Phase 3 文档执行      |
+| 4 — 桌面端 | ✅ 已实现 | Electron 多窗口客户端已合入 `dev`；发布验收尚未完成 |
 
-**下一优先级：** 前后端联调（Phase 2 mock 替换为真实 API 调用）或 Phase 3 移动端开发。  
-联调前提：后端集成测试全部通过。
+**下一优先级：** 桌面端 Windows/macOS/Linux 安装包、签名和自动更新发布验收；
+后续产品能力按 Phase 5 及之后文档推进。
 
 ---
 
@@ -632,6 +632,8 @@ data: [DONE]
 - 桌面图标以 `apps/mobile/assets/icon.png` 为源生成 `.ico`、`.icns`、Linux PNG 与平台托盘资源。
 - Compose 镜像同时固定完整版本标签与多架构 digest，确保版本清晰且内容不可漂移。
 - 执行计划时每完成一个独立功能，必须先通过对应测试并创建本地 commit，然后直接继续下一功能；仅在遇到需要用户决策或无法自行解决的阻塞时暂停。
+- Phase 4 已于 2026-08-13 合入 `dev`。Ubuntu 开发环境已覆盖真实 API、托盘与生产
+  预览；Windows/macOS 原生安装、签名、更新源和跨平台验收仍不能宣称完成。
 
 ---
 

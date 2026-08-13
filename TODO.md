@@ -1,5 +1,15 @@
 # TODO — 未完成 / 待办
 
+## Desktop 发布验收
+
+- [ ] 在 Windows、macOS 和 Ubuntu 上分别运行 `package:win`、`package:mac`、
+      `package:linux` 并安装验证：认证、真实聊天、系统托盘、全局快捷键、深链接和
+      Artifact 预览均应正常。
+- [ ] 配置 Windows 代码签名、macOS notarization 与 GitHub Releases 更新源；用已发布
+      的旧版本验证下载、重启安装和失败回退流程。
+- [ ] 语音转写和桌面语音输入按已确认的 Phase 4 范围暂缓，待 Web 后端接口交付后再
+      作为独立功能实施。
+
 ## Web
 
 - [x] **设置 → 外观与主题**：字号档位驱动到聊天区/输入框/侧栏/设置面板（`--user-font-size` + `!important` 覆盖组件内联 px，档位 12/16/20 px），密度三档差距明显（`--density-gap` 6/20/40 等一整组变量）。相关 CSS 变量集中在 `apps/web/src/app/globals.css`。

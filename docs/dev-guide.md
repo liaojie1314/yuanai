@@ -78,6 +78,33 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1" > apps/web/.env.local
 pnpm --filter @yuanai/web dev
 ```
 
+### 启动桌面端
+
+桌面端不使用浏览器 MSW；它通过 Electron 主进程读取经过校验的运行时配置并请求
+真实 FastAPI。保持上述基础设施与后端运行，在另一个终端执行：
+
+```bash
+# macOS / Linux
+YUANAI_API_URL=http://localhost:8000/api/v1 pnpm --filter @yuanai/desktop dev
+
+# Windows PowerShell
+$env:YUANAI_API_URL = 'http://localhost:8000/api/v1'
+pnpm --filter @yuanai/desktop dev
+```
+
+桌面端默认 API 地址已是 `http://localhost:8000/api/v1`，显式设置有助于区分本地、
+测试和生产环境。`YUANAI_WEB_URL` 默认 `http://localhost:3000`；只有在使用其他
+Web 域名生成分享链接时才需要修改。非回环 API 或 Web 地址必须使用 HTTPS。
+
+生产资源验证与针对性测试：
+
+```bash
+pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop preview
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+```
+
 ### 访问地址
 
 | 服务               | 地址                                                                      |
@@ -235,6 +262,20 @@ pnpm test:unit
 # 全部测试（从根目录）
 pnpm test
 ```
+
+### 桌面端打包
+
+桌面安装包只能通过 `apps/desktop/package.json` 脚本生成：
+
+```bash
+pnpm --filter @yuanai/desktop build:unpack
+pnpm --filter @yuanai/desktop package:linux
+pnpm --filter @yuanai/desktop package:win
+pnpm --filter @yuanai/desktop package:mac
+```
+
+打包结果须在目标操作系统安装验证。当前尚未配置签名证书、生产自动更新源或已发布
+的安装包；这些不是本地开发启动的前置条件。
 
 ---
 

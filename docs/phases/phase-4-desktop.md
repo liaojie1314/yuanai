@@ -1,7 +1,7 @@
 # Phase 4 — 桌面端开发（Electron）
 
 **前置条件**：Phase 0 完成，Phase 1 完成（后端），Phase 2 完成（web 端 + `packages/core`、`packages/ui`、`packages/types`）
-**分支**：`feat/phase-4-desktop`
+**实施分支**：`feature/phase-4-desktop`（已于 2026-08-13 快进合入 `dev`）
 **执行范围**：`apps/desktop/`；同时对 `packages/core`、`packages/types` 做**最小侵入式**改动；`backend/` 补 OAuth desktop 回调 URI 与语音转写接口
 **测试目标**：Windows、Linux（Ubuntu）为用户主测平台；macOS 通过 CI + 逻辑保证适配无回归
 
@@ -14,6 +14,31 @@
 3. 交付桌面原生体验：多窗口、系统托盘、全局快捷键、原生菜单栏、深链接、自动更新、开机自启
 4. 打包为 Windows（NSIS + Portable + MSI）、macOS（DMG + ZIP）、Linux（AppImage + deb + rpm）
 5. 令牌通过 Electron `safeStorage` 加密存盘，替代 web 端 localStorage 明文方案
+
+## 实施状态（2026-08-13）
+
+Phase 4 的实现已合入 `dev`，实现分支最后一个功能提交为 `09f7dec`。实际目录采用桌面薄壳方案：
+`apps/desktop` 实现 Electron 主进程、preload 和多 renderer UI，复用
+`@yuanai/core` 的 API、认证、会话和 SSE 能力，不跨端直接导入 Next.js 组件。
+
+已完成并在 Ubuntu 开发环境验证：
+
+- 六个 renderer 入口及独立认证窗口：主聊天、登录/注册/忘记密码、设置、关于、
+  Artifact 与 OAuth。
+- 真实后端认证、桌面 OAuth code exchange、会话 CRUD、流式聊天、临时对话、
+  分享、文件/截图附件和消息操作。
+- 代码高亮、Markdown/数学公式、JSON/CSV 数据预览、代码运行预览和单一 Artifact
+  窗口；长会话虚拟列表与滚动期间高亮降级。
+- 用户显示偏好同步、主题和原生标题栏适配；关闭到托盘、托盘菜单、全局快捷键、
+  开机自启和 AI 回复原生通知。
+- 安全 IPC、`safeStorage` 会话保存、`yuanai-app://` 打包资源协议和受控
+  `yuanai-file://` 本地文件协议。
+
+已经通过桌面单元与集成测试、类型检查、lint、生产构建和 `preview` 启动验证。真实
+聊天、认证和托盘已在 Ubuntu 本地环境人工验证。Windows/macOS 原生安装、代码签名、
+生产自动更新源和三平台打包验收仍是发布前工作；语音转写按已确认范围暂缓。
+
+当前命令、环境变量和打包边界以 [桌面端说明](../../apps/desktop/README.md) 为准。
 
 ---
 

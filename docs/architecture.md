@@ -65,7 +65,7 @@ packages/ui/             → Web + Desktop 共享组件 (shadcn/ui base)
 
 apps/web/                → Next.js 专用 (SSR, 路由, SEO)
 apps/mobile/             → Expo 专用 (导航, 原生 API, 权限)
-apps/desktop/            → Electron 专用 (主进程, 系统托盘, 文件系统)
+apps/desktop/            → Electron 专用（主进程、多窗口 renderer、托盘、安全存储）
 ```
 
 ### 状态管理架构
@@ -238,21 +238,32 @@ files
       → 验证 refresh_token (Redis) → 返回新 access_token
 
 前端持久化:
-  Web/Desktop: localStorage (access) + httpOnly cookie (refresh)
+  Web: localStorage / cookie（按 Web 端认证策略）
+  Desktop: Electron safeStorage 加密后的会话文件，经受限 IPC 读写
   Mobile: SecureStore (Expo)
 ```
 
 ## 平台适配策略
 
-| 特性     | Web                           | Mobile                            | Desktop               |
-| -------- | ----------------------------- | --------------------------------- | --------------------- |
-| 导航     | Next.js App Router            | Expo Router                       | Electron 单页         |
-| 侧边栏   | 固定展开 (宽屏) / 抽屉 (窄屏) | 底部 Tab                          | 固定侧边栏            |
-| 输入框   | 底部固定，Enter 发送          | 底部安全区，软键盘适配            | 底部固定，Enter 发送  |
-| 文件上传 | input[type=file]              | Expo ImagePicker / DocumentPicker | Electron dialog       |
-| 主题存储 | localStorage                  | AsyncStorage                      | electron-store        |
-| 通知     | Web Notification API          | Expo Notifications                | Electron Notification |
-| 深色模式 | prefers-color-scheme          | Appearance API                    | 系统颜色方案          |
+| 特性     | Web                           | Mobile                            | Desktop                              |
+| -------- | ----------------------------- | --------------------------------- | ------------------------------------ |
+| 导航     | Next.js App Router            | Expo Router                       | Electron 多窗口 + 各窗口 Hash Router |
+| 侧边栏   | 固定展开 (宽屏) / 抽屉 (窄屏) | 底部 Tab                          | 固定侧边栏                           |
+| 输入框   | 底部固定，Enter 发送          | 底部安全区，软键盘适配            | 底部固定，Enter 发送                 |
+| 文件上传 | input[type=file]              | Expo ImagePicker / DocumentPicker | Electron dialog                      |
+| 主题存储 | localStorage                  | AsyncStorage                      | 服务端显示偏好同步 + 主进程本地偏好  |
+| 通知     | Web Notification API          | Expo Notifications                | Electron Notification                |
+| 深色模式 | prefers-color-scheme          | Appearance API                    | 系统颜色方案                         |
+
+### Desktop 进程边界
+
+桌面端通过 Electron 33 的多 renderer 入口运行：主聊天、认证（登录/注册/忘记密码）、
+设置、关于、Artifact 和 OAuth。主进程统一管理窗口、托盘、全局快捷键、原生通知、
+开机自启和受控本地文件访问；preload 仅暴露 `window.yuanai` 白名单 IPC。
+
+认证会话使用 `safeStorage` 加密，运行时 API/Web/静态资源地址由主进程校验后再交给
+renderer。自定义 `yuanai-app://` 用于打包 renderer，`yuanai-file://` 只读取由原生
+选择器一次性授权的文件，避免在页面中暴露本机绝对路径。
 
 ## 构建产物
 
