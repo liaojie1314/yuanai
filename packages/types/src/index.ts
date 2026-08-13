@@ -223,6 +223,14 @@ export interface AIModel {
   contextLength: number
   /** 是否为新用户的默认选中模型 */
   isDefault: boolean
+  /** 模型用途；默认 chat，媒体模型由专用任务 API 调用。 */
+  capability?: 'chat' | 'image_generation' | 'video_generation'
+  /** 官方公布的价格，单位为每百万 token 的人民币元。 */
+  pricing?: {
+    inputCachedCnyPerMillion?: number
+    inputUncachedCnyPerMillion?: number
+    outputCnyPerMillion?: number
+  }
 }
 
 // ============ API 响应 ============

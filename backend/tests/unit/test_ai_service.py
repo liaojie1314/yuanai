@@ -104,6 +104,20 @@ def test_provider_config_covers_all_models() -> None:
         assert model["id"] in PROVIDER_CONFIG, f"{model['id']} not in PROVIDER_CONFIG"
 
 
+def test_agnes_models_are_registered_without_embedded_credentials() -> None:
+    assert PROVIDER_CONFIG["agnes-2.5-flash"]["base_url"] == "https://apihub.agnes-ai.com/v1"
+    assert any(m["id"] == "agnes-image-2.1-flash" for m in AVAILABLE_MODELS)
+    assert any(m["id"] == "agnes-video-v2.0" for m in AVAILABLE_MODELS)
+
+
+def test_deepseek_v4_official_metadata() -> None:
+    flash = next(m for m in AVAILABLE_MODELS if m["id"] == "deepseek-v4-flash")
+    pro = next(m for m in AVAILABLE_MODELS if m["id"] == "deepseek-v4-pro")
+    assert flash["context_length"] == pro["context_length"] == 1_000_000
+    assert flash["pricing"]["output_cny_per_million"] == 2.0  # type: ignore[index]
+    assert pro["pricing"]["output_cny_per_million"] == 6.0  # type: ignore[index]
+
+
 # ---------------------------------------------------------------------------
 # _get_client 单例测试
 # ---------------------------------------------------------------------------

@@ -29,6 +29,21 @@ PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     },
     "deepseek-v4-flash": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
     "deepseek-v4-pro": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
+    "agnes-2.5-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "chat",
+    },
+    "agnes-image-2.1-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "image",
+    },
+    "agnes-video-v2.0": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "video",
+    },
     "qwen-plus": {
         "provider": "qwen",
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -39,6 +54,7 @@ API_KEYS: dict[str, str] = {
     "openai": settings.openai_api_key,
     "anthropic": settings.anthropic_api_key,
     "deepseek": settings.deepseek_api_key,
+    "agnes": settings.agnes_api_key,
     "qwen": "",  # 通过 DASHSCOPE_API_KEY 环境变量
 }
 
@@ -65,23 +81,65 @@ AVAILABLE_MODELS = [
     },
     {
         "id": "deepseek-v4-flash",
-        "name": "DeepSeek V4 Flash",
+        "name": "DeepSeek V4 Flash-0731",
         "provider": "deepseek",
         "description": "快速响应，高性价比",
         "supports_vision": False,
         "supports_files": False,
-        "context_length": 64000,
+        "context_length": 1000000,
+        "pricing": {
+            "input_cached_cny_per_million": 0.02,
+            "input_uncached_cny_per_million": 1.0,
+            "output_cny_per_million": 2.0,
+        },
         "is_default": False,
     },
     {
         "id": "deepseek-v4-pro",
-        "name": "DeepSeek V4 Pro",
+        "name": "DeepSeek V4 Pro-0813",
         "provider": "deepseek",
         "description": "中文理解强，旗舰推理",
         "supports_vision": False,
         "supports_files": False,
+        "context_length": 1000000,
+        "pricing": {
+            "input_cached_cny_per_million": 0.025,
+            "input_uncached_cny_per_million": 3.0,
+            "output_cny_per_million": 6.0,
+        },
+        "is_default": False,
+    },
+    {
+        "id": "agnes-2.5-flash",
+        "name": "Agnes 2.5 Flash",
+        "provider": "agnes",
+        "description": "支持推理、工具调用、多轮对话和图像理解",
+        "supports_vision": True,
+        "supports_files": True,
         "context_length": 128000,
         "is_default": False,
+    },
+    {
+        "id": "agnes-image-2.1-flash",
+        "name": "Agnes Image 2.1 Flash",
+        "provider": "agnes",
+        "description": "文本生成图片与图片编辑",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "image_generation",
+    },
+    {
+        "id": "agnes-video-v2.0",
+        "name": "Agnes Video V2.0",
+        "provider": "agnes",
+        "description": "异步文本生成视频与图生视频",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "video_generation",
     },
 ]
 
@@ -142,6 +200,8 @@ async def stream_chat(
     config = PROVIDER_CONFIG.get(model)
     if not config:
         raise ValueError(f"Unsupported model: {model}")
+    if config.get("kind", "chat") != "chat":
+        raise ValueError(f"Model {model} is not a chat model")
 
     client = _get_client(config["provider"], config["base_url"])
 

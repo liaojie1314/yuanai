@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     deepseek_api_key: str = ""
+    # Agnes AI key，使用 AGNES_API_KEY 环境变量注入，不提交到仓库
+    agnes_api_key: str = ""
 
     # ── Email / SMTP (用于发送邮箱验证码) ─────────────────────────────
     # QQ 邮箱：smtp.qq.com / 465 (SSL) 或 587 (STARTTLS)

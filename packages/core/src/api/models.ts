@@ -14,9 +14,28 @@ interface RawModel {
   supports_files: boolean
   context_length: number
   is_default: boolean
+  capability?: 'chat' | 'image_generation' | 'video_generation'
+  pricing?: {
+    input_cached_cny_per_million?: number
+    input_uncached_cny_per_million?: number
+    output_cny_per_million?: number
+  }
 }
 
 function toAIModel(raw: RawModel): AIModel {
+  const pricing = raw.pricing
+    ? {
+        ...(typeof raw.pricing.input_cached_cny_per_million === 'number'
+          ? { inputCachedCnyPerMillion: raw.pricing.input_cached_cny_per_million }
+          : {}),
+        ...(typeof raw.pricing.input_uncached_cny_per_million === 'number'
+          ? { inputUncachedCnyPerMillion: raw.pricing.input_uncached_cny_per_million }
+          : {}),
+        ...(typeof raw.pricing.output_cny_per_million === 'number'
+          ? { outputCnyPerMillion: raw.pricing.output_cny_per_million }
+          : {}),
+      }
+    : {}
   return {
     id: raw.id,
     name: raw.name,
@@ -26,6 +45,8 @@ function toAIModel(raw: RawModel): AIModel {
     supportsFiles: raw.supports_files,
     contextLength: raw.context_length,
     isDefault: raw.is_default,
+    ...(raw.capability ? { capability: raw.capability } : {}),
+    ...(Object.keys(pricing).length > 0 ? { pricing } : {}),
   }
 }
 
