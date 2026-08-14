@@ -10,13 +10,27 @@
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  WIN, log, ok, warn, err, step, banner, prompt,
-  run, hasCmd, bg, killProc,
-  waitPort, waitHttp,
-  existsSync, copyFileSync, patchEnvFile,
+  WIN,
+  log,
+  ok,
+  warn,
+  err,
+  step,
+  banner,
+  prompt,
+  run,
+  hasCmd,
+  bg,
+  killProc,
+  freePort,
+  waitPort,
+  waitHttp,
+  existsSync,
+  copyFileSync,
+  patchEnvFile,
 } from './_utils.mjs'
 
-const ROOT    = join(dirname(fileURLToPath(import.meta.url)), '..')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BACKEND = join(ROOT, 'backend')
 const WEB_ENV = join(ROOT, 'apps', 'web', '.env.local')
 
@@ -27,7 +41,7 @@ function cleanup() {
   for (const p of procs) killProc(p)
 }
 process.on('exit', cleanup)
-process.on('SIGINT',  () => process.exit(0))
+process.on('SIGINT', () => process.exit(0))
 process.on('SIGTERM', () => process.exit(0))
 // Windows: Ctrl+C 通过 SIGINT 事件传达，Node.js 已处理
 if (WIN) process.on('SIGHUP', () => process.exit(0))
@@ -36,9 +50,13 @@ if (WIN) process.on('SIGHUP', () => process.exit(0))
 step('【1/6】检查先决条件')
 // ════════════════════════════════════════════════════════════════════════
 
-hasCmd('docker') || err('未找到 docker，请先安装 Docker Desktop → https://docs.docker.com/get-docker/')
-hasCmd('uv')     || err('未找到 uv，请先安装 → curl -LsSf https://astral.sh/uv/install.sh | sh\n       Windows: winget install --id=astral-sh.uv')
-hasCmd('pnpm')   || err('未找到 pnpm，请先安装 → npm install -g pnpm')
+hasCmd('docker') ||
+  err('未找到 docker，请先安装 Docker Desktop → https://docs.docker.com/get-docker/')
+hasCmd('uv') ||
+  err(
+    '未找到 uv，请先安装 → curl -LsSf https://astral.sh/uv/install.sh | sh\n       Windows: winget install --id=astral-sh.uv'
+  )
+hasCmd('pnpm') || err('未找到 pnpm，请先安装 → npm install -g pnpm')
 
 // 检查 Docker 守护进程是否在运行
 run('docker', ['info'], { silent: true, ignoreError: true }) ||
@@ -71,7 +89,7 @@ ${'\x1b[0m'}`)
 
 // 强制切换为真实接口模式（移除 MOCK 标记，写入 API URL）
 patchEnvFile(WEB_ENV, {
-  NEXT_PUBLIC_MOCK:    null,                              // 删除，避免与真实模式冲突
+  NEXT_PUBLIC_MOCK: null, // 删除，避免与真实模式冲突
   NEXT_PUBLIC_API_URL: 'http://localhost:8000/api/v1',
 })
 ok('前端已配置为真实接口模式')
@@ -104,12 +122,11 @@ ok('数据库迁移完成')
 step('【5/6】启动后端')
 // ════════════════════════════════════════════════════════════════════════
 
+await freePort(8000, 'FastAPI 开发服务器')
 log('启动 FastAPI (http://localhost:8000)...')
-const backend = bg(
-  'uv',
-  ['run', 'uvicorn', 'app.main:app', '--reload', '--port', '8000'],
-  { cwd: BACKEND }
-)
+const backend = bg('uv', ['run', 'uvicorn', 'app.main:app', '--reload', '--port', '8000'], {
+  cwd: BACKEND,
+})
 procs.push(backend)
 
 backend.on('exit', (code) => {
@@ -131,6 +148,7 @@ try {
 step('【6/6】启动前端')
 // ════════════════════════════════════════════════════════════════════════
 
+await freePort(3000, 'Web 开发服务器')
 // 安装前端依赖（首次或依赖更新后）
 if (!existsSync(join(ROOT, 'node_modules'))) {
   log('安装前端依赖（首次运行）...')
@@ -153,4 +171,4 @@ const frontend = bg('pnpm', ['--filter', '@yuanai/web', 'dev'], { cwd: ROOT })
 procs.push(frontend)
 
 // 等待前端进程退出（正常退出或 Ctrl+C 触发 cleanup）
-await new Promise(resolve => frontend.on('exit', resolve))
+await new Promise((resolve) => frontend.on('exit', resolve))
