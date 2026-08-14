@@ -60,6 +60,14 @@ API_KEYS: dict[str, str] = {
     "qwen": "",  # 通过 DASHSCOPE_API_KEY 环境变量
 }
 
+
+class ModelVisionUnsupportedError(ValueError):
+    """模型接收到视觉输入但其公开能力声明不支持图片识别时抛出。"""
+
+    def __init__(self) -> None:
+        super().__init__("当前模型不支持图片识别，请切换至支持视觉的模型后发送")
+
+
 AVAILABLE_MODELS = [
     {
         "id": "deepseek-v4-flash",
@@ -155,6 +163,24 @@ def _get_client(provider: str, base_url: str) -> AsyncOpenAI:
     return _AI_CLIENTS[provider]
 
 
+def _has_image_input(messages: list[dict[str, object]]) -> bool:
+    """判断 OpenAI 格式消息是否包含 ``image_url`` 视觉块。"""
+    for message in messages:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "image_url":
+                return True
+    return False
+
+
+def _model_supports_vision(model: str) -> bool:
+    """从公开模型目录读取视觉能力；历史兼容模型缺少元数据时保持原有行为。"""
+    metadata = next((item for item in AVAILABLE_MODELS if item["id"] == model), None)
+    return metadata is None or bool(metadata["supports_vision"])
+
+
 async def stream_chat(
     model: str,
     messages: list[dict[str, object]],
@@ -184,6 +210,8 @@ async def stream_chat(
         raise ValueError(f"Unsupported model: {model}")
     if config.get("kind", "chat") != "chat":
         raise ValueError(f"Model {model} is not a chat model")
+    if _has_image_input(messages) and not _model_supports_vision(model):
+        raise ModelVisionUnsupportedError()
 
     client = _get_client(config["provider"], config["base_url"])
 

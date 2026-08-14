@@ -13,8 +13,10 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from urllib.parse import quote
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 from sqlalchemy import select
@@ -23,6 +25,7 @@ from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.models.file import File
 from app.models.upload_session import FileUploadSession
+from app.services.file_extract_service import extract_preview
 from app.services.storage_service import storage
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -145,6 +148,53 @@ async def check_hash(
             404, {"code": "FILE_NOT_FOUND", "message": "未找到匹配的文件"}
         )
     return _build_file_response(file)
+
+
+@router.get("/{file_id}/preview")
+async def preview_file(file_id: uuid.UUID, current_user: CurrentUser, db: DB) -> JSONResponse:
+    """返回支持文件的受限预览数据；不支持的文件仍可通过原 URL 下载。"""
+    result = await db.execute(
+        select(File).where(File.id == file_id, File.user_id == current_user.id)
+    )
+    file = result.scalar_one_or_none()
+    if file is None:
+        raise HTTPException(404, {"code": "FILE_NOT_FOUND", "message": "文件不存在"})
+    preview = extract_preview(await storage.get_object(file.s3_key), file.mime_type, file.filename)
+    payload: dict[str, object] = {
+        "id": str(file.id),
+        "filename": file.filename,
+        "mimeType": file.mime_type,
+        "url": storage.get_url(file.s3_key),
+        "kind": preview.kind,
+        "supported": preview.supported,
+    }
+    if preview.text is not None:
+        payload["text"] = preview.text
+    if preview.rows is not None:
+        payload["rows"] = preview.rows
+    return JSONResponse(payload)
+
+
+@router.get("/{file_id}/download")
+async def download_file(file_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Response:
+    """以附件响应返回原始文件，避免跨源对象 URL 在 Firefox 中忽略 download 属性。"""
+    result = await db.execute(
+        select(File).where(File.id == file_id, File.user_id == current_user.id)
+    )
+    file = result.scalar_one_or_none()
+    if file is None:
+        raise HTTPException(404, {"code": "FILE_NOT_FOUND", "message": "文件不存在"})
+
+    content = await storage.get_object(file.s3_key)
+    filename = quote(file.filename)
+    return Response(
+        content=content,
+        media_type=file.mime_type,
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename}",
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/upload", response_model=FileResponse, status_code=201)
@@ -271,7 +321,7 @@ async def upload_chunk(
     chunk: UploadFile,
     current_user: CurrentUser,
     db: DB,
-) -> dict:
+) -> dict[str, object]:
     """上传单个分片 — body 直接转发到 ``s3.upload_part``，仅在内存中短暂持有。"""
     session = await _load_session(session_id, current_user, db)
     if session.status != "pending":
@@ -303,13 +353,13 @@ async def upload_chunk(
 
     # 幂等：若客户端重传同一个分片，覆盖既有 ETag 记录
     uploaded: list[int] = list(session.uploaded_chunks or [])
-    parts: list[dict] = list(session.s3_parts or [])
-    parts = [p for p in parts if int(p["PartNumber"]) != part_number]
+    parts: list[dict[str, object]] = list(session.s3_parts or [])
+    parts = [p for p in parts if int(str(p["PartNumber"])) != part_number]
     parts.append({"PartNumber": part_number, "ETag": etag})
     if chunk_index not in uploaded:
         uploaded.append(chunk_index)
     session.uploaded_chunks = sorted(uploaded)
-    session.s3_parts = sorted(parts, key=lambda p: int(p["PartNumber"]))
+    session.s3_parts = sorted(parts, key=lambda p: int(str(p["PartNumber"])))
     await db.commit()
     return {"uploaded": session.uploaded_chunks, "chunkIndex": chunk_index}
 

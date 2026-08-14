@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -12,6 +13,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
@@ -25,8 +27,10 @@ from app.schemas.chat import (
     TemporaryChatRequest,
     UpdateConversationRequest,
 )
-from app.services.ai_service import stream_chat
+from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
+from app.services.file_extract_service import extract_preview, preview_context
 from app.services.push_service import send_to_user
+from app.services.storage_service import storage
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +96,7 @@ async def delete_all_conversations(current_user: CurrentUser, db: DB) -> dict[st
     """一次性删除当前用户的所有会话（含消息，通过 ondelete=CASCADE 级联）。"""
     result = await db.execute(delete(Conversation).where(Conversation.user_id == current_user.id))
     await db.commit()
-    return {"deleted": int(result.rowcount or 0)}
+    return {"deleted": int(result.rowcount or 0)}  # type: ignore[attr-defined]
 
 
 @router.get("/conversations/{conv_id}/messages")
@@ -225,15 +229,56 @@ async def stream_chat_endpoint(
     )
     history = history_result.scalars().all()
 
-    # 构造 OpenAI 格式消息列表；最新一条若有图片附件则转为多模态格式
-    openai_messages: list[dict] = []
+    files_by_message_id: dict[uuid.UUID, list[File]] = {}
+    if history:
+        history_file_result = await db.execute(
+            select(MessageFile, File)
+            .join(File, File.id == MessageFile.file_id)
+            .where(MessageFile.message_id.in_([message.id for message in history]))
+            .order_by(MessageFile.message_id, MessageFile.sort_order)
+        )
+        for message_file, file in history_file_result.all():
+            files_by_message_id.setdefault(message_file.message_id, []).append(file)
+
+    # 构造 OpenAI 格式消息列表；每条带附件的历史用户消息均保留文件上下文。
+    openai_messages: list[dict[str, object]] = []
     for m in history:
-        if m.id == user_msg.id and attached_files:
-            # 带附件的用户消息：组装 content 数组（视觉模型格式）
-            content_parts: list[dict] = [{"type": "text", "text": m.content}]
-            for af in attached_files:
+        message_files = files_by_message_id.get(m.id, [])
+        if message_files:
+            # 带附件的用户消息：组装内容数组，避免后续追问丢失文件上下文。
+            content_parts: list[dict[str, object]] = [{"type": "text", "text": m.content}]
+            for af in message_files:
                 if af.mime_type.startswith("image/"):
-                    content_parts.append({"type": "image_url", "image_url": {"url": af.s3_key}})
+                    image_data = await storage.get_object(af.s3_key)
+                    if len(image_data) <= settings.ai_inline_image_max_bytes:
+                        encoded = base64.b64encode(image_data).decode("ascii")
+                        content_parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{af.mime_type};base64,{encoded}",
+                                },
+                            }
+                        )
+                    else:
+                        content_parts.append(
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"\n[{af.filename}] 图片已上传，但超过 "
+                                    "视觉识别大小限制，无法发送给当前模型。"
+                                ),
+                            }
+                        )
+                else:
+                    extracted = extract_preview(
+                        await storage.get_object(af.s3_key), af.mime_type, af.filename
+                    )
+                    context = preview_context(extracted)
+                    if context:
+                        content_parts.append(
+                            {"type": "text", "text": f"\n[{af.filename}]\n{context}"}
+                        )
             openai_messages.append({"role": m.role.value, "content": content_parts})
         else:
             openai_messages.append({"role": m.role.value, "content": m.content})
@@ -268,7 +313,7 @@ async def stream_temporary_chat(
     - 会话结束即遗忘，不出现在会话列表和用户统计中
     """
     # 转换为 OpenAI 消息格式；限长防滥用（前端也会做，但服务端兜底）
-    openai_messages: list[dict[str, str]] = [
+    openai_messages: list[dict[str, object]] = [
         {"role": m.role, "content": m.content} for m in req.messages[-50:]
     ]
     return StreamingResponse(
@@ -279,7 +324,7 @@ async def stream_temporary_chat(
 
 
 async def _generate_temp_sse(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, object]],
     model: str,
     *,
     enable_thinking: bool = False,
@@ -292,7 +337,7 @@ async def _generate_temp_sse(
     thinking_duration_ms: int | None = None
     try:
         async for event_type, token in stream_chat(
-            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+            model, messages, enable_thinking=enable_thinking
         ):
             if event_type == "thinking":
                 if thinking_start_at is None:
@@ -309,6 +354,9 @@ async def _generate_temp_sse(
         if thinking_duration_ms is not None:
             end_payload["thinking_duration_ms"] = thinking_duration_ms
         yield f"event: message_end\ndata: {json.dumps(end_payload)}\n\n"
+    except ModelVisionUnsupportedError as e:
+        payload = json.dumps({"code": "MODEL_VISION_UNSUPPORTED", "message": str(e)})
+        yield f"event: error\ndata: {payload}\n\n"
     except Exception as e:
         yield (f"event: error\ndata: {json.dumps({'code': 'STREAM_ERROR', 'message': str(e)})}\n\n")
 
@@ -343,7 +391,7 @@ async def _persist_partial(
 
 
 async def _generate_sse(
-    messages: list[dict[str, str]],
+    messages: list[dict[str, object]],
     model: str,
     assistant_msg_id: uuid.UUID,
     user_msg_id: uuid.UUID,
@@ -369,7 +417,7 @@ async def _generate_sse(
     thinking_duration_ms: int | None = None
     try:
         async for event_type, token in stream_chat(
-            model, messages, enable_thinking=enable_thinking  # type: ignore[arg-type]
+            model, messages, enable_thinking=enable_thinking
         ):
             if event_type == "thinking":
                 if thinking_start_at is None:
@@ -434,6 +482,9 @@ async def _generate_sse(
                 )
             )
         raise
+    except ModelVisionUnsupportedError as e:
+        payload = json.dumps({"code": "MODEL_VISION_UNSUPPORTED", "message": str(e)})
+        yield f"event: error\ndata: {payload}\n\n"
     except Exception as e:
         logger.exception("stream_chat failed for assistant_msg=%s", assistant_msg_id)
         # 与 CancelledError 分支一致：把已收到的部分内容落库，避免 DB 里留一条空 assistant

@@ -7,10 +7,20 @@ beforeEach(() => {
 
 describe('chat.store — 流式状态 reducer', () => {
   it('startStreaming 记录会话 ID 与乐观用户消息', () => {
-    useChatStore.getState().startStreaming('c1', 'hi')
+    const files = [
+      {
+        id: 'file-1',
+        filename: 'design.png',
+        mimeType: 'image/png',
+        sizeBytes: 12,
+        url: 'blob:design',
+      },
+    ]
+    useChatStore.getState().startStreaming('c1', 'hi', files)
     const s = useChatStore.getState()
     expect(s.streamingConvId).toBe('c1')
     expect(s.optimisticUserMsg).toBe('hi')
+    expect(s.optimisticFiles).toEqual(files)
     expect(s.streamingContent).toBe('')
   })
 
@@ -107,5 +117,6 @@ describe('chat.store — 流式状态 reducer', () => {
     expect(s.streamingThink).toBe('')
     expect(s.streamingToolCalls).toEqual([])
     expect(s.optimisticUserMsg).toBeNull()
+    expect(s.optimisticFiles).toEqual([])
   })
 })

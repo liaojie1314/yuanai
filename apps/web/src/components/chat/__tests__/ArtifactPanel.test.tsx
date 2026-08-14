@@ -1,7 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import { ArtifactPanel } from '../ArtifactPanel'
 import { useArtifactStore } from '@yuanai/core/stores'
+
+const filePreview = vi.hoisted(() => ({
+  value: null as {
+    kind: 'image' | 'pdf' | 'text' | 'table' | 'unsupported'
+    url: string
+    mimeType: string
+    text?: string
+    rows?: string[][]
+  } | null,
+}))
+
+vi.mock('@yuanai/core/hooks', () => ({
+  useFilePreview: () => ({ data: filePreview.value, isError: false, isLoading: false }),
+}))
 
 Object.defineProperty(navigator, 'clipboard', {
   value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -11,6 +25,7 @@ Object.defineProperty(navigator, 'clipboard', {
 
 beforeEach(() => {
   useArtifactStore.getState().close()
+  filePreview.value = null
 })
 
 describe('ArtifactPanel', () => {
@@ -48,14 +63,16 @@ describe('ArtifactPanel', () => {
     useArtifactStore.getState().openRun({ title: 't', lang: 'html', code: '<p>x</p>' })
     render(<ArtifactPanel />)
     fireEvent.click(screen.getByRole('button', { name: '查看源码' }))
-    expect(useArtifactStore.getState().payload?.mode).toBe('view')
+    const payload = useArtifactStore.getState().payload
+    expect(payload?.kind === 'code' ? payload.mode : undefined).toBe('view')
   })
 
   it('view 模式下的"运行代码"按钮切到 run 模式（仅可运行语言）', () => {
     useArtifactStore.getState().openView({ title: 't', lang: 'css', code: 'body{color:red}' })
     render(<ArtifactPanel />)
     fireEvent.click(screen.getByRole('button', { name: '运行代码' }))
-    expect(useArtifactStore.getState().payload?.mode).toBe('run')
+    const payload = useArtifactStore.getState().payload
+    expect(payload?.kind === 'code' ? payload.mode : undefined).toBe('run')
   })
 
   it('view 模式下不可运行语言隐藏运行按钮', () => {
@@ -79,5 +96,95 @@ describe('ArtifactPanel', () => {
     expect(panel).not.toBeNull()
     expect(panel?.getAttribute('aria-hidden')).toBe('true')
     expect(screen.getByText('html')).toBeInTheDocument()
+  })
+
+  it('在同一右侧 Artifact 面板中预览图片附件', () => {
+    filePreview.value = {
+      kind: 'image',
+      url: 'https://cdn.example.com/files/design.png',
+      mimeType: 'image/png',
+    }
+    useArtifactStore.getState().openFilePreview({
+      fileId: 'file-1',
+      title: 'design.png',
+      mimeType: 'image/png',
+      url: 'https://cdn.example.com/files/design.png',
+    })
+    render(<ArtifactPanel />)
+    expect(screen.getByRole('complementary', { name: '文件预览面板' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'design.png' })).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/files/design.png'
+    )
+  })
+
+  it('图片可以放大，并能在同一条消息的附件之间切换', () => {
+    filePreview.value = {
+      kind: 'image',
+      url: 'https://cdn.example.com/files/one.png',
+      mimeType: 'image/png',
+    }
+    const files = [
+      {
+        id: 'file-1',
+        filename: 'one.png',
+        mimeType: 'image/png',
+        sizeBytes: 1,
+        url: 'https://cdn.example.com/files/one.png',
+      },
+      {
+        id: 'file-2',
+        filename: 'two.png',
+        mimeType: 'image/png',
+        sizeBytes: 1,
+        url: 'https://cdn.example.com/files/two.png',
+      },
+    ]
+    useArtifactStore.getState().openFilePreview({
+      fileId: 'file-1',
+      title: 'one.png',
+      mimeType: 'image/png',
+      url: files[0]?.url ?? '',
+      files,
+      index: 0,
+    })
+    render(<ArtifactPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: '放大 one.png' }))
+    const lightbox = screen.getByRole('dialog', { name: '放大预览 one.png' })
+    expect(lightbox).toBeInTheDocument()
+    const viewport = lightbox.querySelector('.ch-ap-lightbox-viewport')
+    if (!viewport) throw new Error('expected lightbox viewport')
+    expect(within(lightbox).getByRole('button', { name: '缩小图片' })).toBeEnabled()
+    fireEvent.wheel(viewport, { deltaY: -100 })
+    expect(within(lightbox).getByRole('img', { name: 'one.png' })).toHaveStyle({
+      transform: 'scale(1.25)',
+    })
+    fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
+    fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
+    expect(within(lightbox).getByRole('img', { name: 'one.png' })).toHaveStyle({
+      transform: 'scale(0.75)',
+    })
+    fireEvent.click(within(lightbox).getByRole('button', { name: '下一个图片' }))
+    expect(useArtifactStore.getState().payload).toMatchObject({
+      fileId: 'file-2',
+      index: 1,
+    })
+  })
+
+  it('使用受限 iframe 预览 PDF 附件', () => {
+    filePreview.value = {
+      kind: 'pdf',
+      url: 'https://cdn.example.com/files/requirements.pdf',
+      mimeType: 'application/pdf',
+    }
+    useArtifactStore.getState().openFilePreview({
+      fileId: 'file-2',
+      title: 'requirements.pdf',
+      mimeType: 'application/pdf',
+      url: 'https://cdn.example.com/files/requirements.pdf',
+    })
+    render(<ArtifactPanel />)
+    expect(screen.getByTitle('预览 requirements.pdf')).toHaveAttribute('sandbox', 'allow-downloads')
   })
 })

@@ -8,7 +8,7 @@ import {
   isDataPreviewLang,
   isRunnableLang,
 } from '@yuanai/core/utils'
-import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
+import type { DesktopArtifactPayload, DesktopCodeArtifactPayload } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { CodeHighlight } from '../shared/CodeHighlight'
 import '../shared/i18n'
@@ -48,6 +48,12 @@ function applyTheme(theme: 'light' | 'dark'): void {
   document.documentElement.setAttribute('data-theme', theme)
 }
 
+function isFilePreviewPayload(
+  payload: DesktopArtifactPayload
+): payload is Extract<DesktopArtifactPayload, { kind: 'file-preview' }> {
+  return payload.kind === 'file-preview'
+}
+
 /** 独立 Artifact 窗口，在同一窗口内切换源码展示和隔离运行预览。 */
 export function App(): ReactElement {
   const { t } = useTranslation()
@@ -63,7 +69,11 @@ export function App(): ReactElement {
         setPayload(nextPayload)
         setCopied(false)
         setConsoleEntries([])
-        setIsConsoleOpen(nextPayload.mode === 'run' && isJavascriptLang(nextPayload.lang))
+        setIsConsoleOpen(
+          !isFilePreviewPayload(nextPayload) &&
+            nextPayload.mode === 'run' &&
+            isJavascriptLang(nextPayload.lang)
+        )
         const theme = nextPayload.theme ?? 'light'
         applyTheme(theme)
         setIsDarkTheme(theme === 'dark')
@@ -96,20 +106,49 @@ export function App(): ReactElement {
   }, [])
 
   const srcDoc = useMemo(() => {
-    if (!payload || payload.mode !== 'run' || !isRunnableLang(payload.lang)) return ''
+    if (!payload || isFilePreviewPayload(payload)) return ''
+    if (payload.mode !== 'run' || !isRunnableLang(payload.lang)) return ''
     return buildRunSrcDoc(payload.lang, payload.code, { dark: isDarkTheme })
   }, [isDarkTheme, payload])
 
   if (!payload) return <main className="artifact__empty">{t('desktop.artifact.preparing')}</main>
 
   const shown = payload
-  const runnable = isRunnableLang(shown.lang)
-  const dataPreview = isDataPreviewLang(shown.lang)
+  if (isFilePreviewPayload(shown)) {
+    const isPdf = shown.mimeType === 'application/pdf'
+    return (
+      <main className="artifact" aria-label={`文件预览 ${shown.title}`} tabIndex={-1}>
+        <header className="artifact__header">
+          <div>
+            <h1>{shown.title}</h1>
+            <p>{isPdf ? 'PDF' : shown.mimeType}</p>
+          </div>
+          <span className="artifact__mode">文件预览</span>
+        </header>
+        <section className="artifact__content artifact__content--file">
+          {isPdf ? (
+            <iframe
+              className="artifact__file-frame"
+              sandbox="allow-downloads"
+              src={shown.sourceUrl}
+              title={`预览 ${shown.title}`}
+            />
+          ) : (
+            <img className="artifact__file-image" src={shown.sourceUrl} alt={shown.title} />
+          )}
+        </section>
+      </main>
+    )
+  }
+
+  const codeArtifact: DesktopCodeArtifactPayload = shown
+  const runnable = isRunnableLang(codeArtifact.lang)
+  const dataPreview = isDataPreviewLang(codeArtifact.lang)
   const previewable = runnable || dataPreview
 
-  function switchMode(mode: DesktopArtifactPayload['mode']): void {
+  function switchMode(mode: DesktopCodeArtifactPayload['mode']): void {
     setPayload((current) => {
-      if (!current) return current
+      if (!current || isFilePreviewPayload(current)) return current
       setConsoleEntries([])
       setIsConsoleOpen(mode === 'run' && isJavascriptLang(current.lang))
       return { ...current, mode }
@@ -117,7 +156,7 @@ export function App(): ReactElement {
   }
 
   function handleCopy(): void {
-    void copyText(shown.code).then((didCopy) => {
+    void copyText(codeArtifact.code).then((didCopy) => {
       if (!didCopy) return
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
@@ -128,11 +167,11 @@ export function App(): ReactElement {
     <main className="artifact" aria-label="Artifact 预览" tabIndex={-1}>
       <header className="artifact__header">
         <div>
-          <h1>{shown.title}</h1>
-          <p>{shown.lang || 'Code'}</p>
+          <h1>{codeArtifact.title}</h1>
+          <p>{codeArtifact.lang || 'Code'}</p>
         </div>
         <div className="artifact__actions">
-          {shown.mode === 'view' && previewable ? (
+          {codeArtifact.mode === 'view' && previewable ? (
             <button
               type="button"
               aria-label={
@@ -146,7 +185,7 @@ export function App(): ReactElement {
               <Play size={16} aria-hidden="true" />
             </button>
           ) : null}
-          {shown.mode === 'run' ? (
+          {codeArtifact.mode === 'run' ? (
             <button
               type="button"
               aria-label={t('desktop.artifact.viewSource')}
@@ -156,7 +195,7 @@ export function App(): ReactElement {
               <Eye size={16} aria-hidden="true" />
             </button>
           ) : null}
-          {shown.mode === 'run' && runnable ? (
+          {codeArtifact.mode === 'run' && runnable ? (
             <button
               type="button"
               className={isConsoleOpen ? 'is-active' : undefined}
@@ -168,7 +207,7 @@ export function App(): ReactElement {
             </button>
           ) : null}
           <span className="artifact__mode">
-            {shown.mode === 'run'
+            {codeArtifact.mode === 'run'
               ? dataPreview
                 ? t('desktop.artifact.dataPreview')
                 : t('desktop.artifact.runPreview')
@@ -178,20 +217,20 @@ export function App(): ReactElement {
       </header>
       <section
         className={
-          shown.mode === 'run' && runnable
+          codeArtifact.mode === 'run' && runnable
             ? 'artifact__content artifact__content--run'
             : 'artifact__content'
         }
       >
-        {shown.mode === 'run' && dataPreview ? (
-          <DataPreview lang={shown.lang} code={shown.code} />
-        ) : shown.mode === 'run' ? (
+        {codeArtifact.mode === 'run' && dataPreview ? (
+          <DataPreview lang={codeArtifact.lang} code={codeArtifact.code} />
+        ) : codeArtifact.mode === 'run' ? (
           <>
             <iframe
               className="artifact__frame"
               sandbox="allow-scripts allow-forms"
               srcDoc={srcDoc}
-              title={`${shown.title} ${t('desktop.artifact.preview')}`}
+              title={`${codeArtifact.title} ${t('desktop.artifact.preview')}`}
             />
             {isConsoleOpen ? (
               <aside className="artifact__console" aria-label={t('desktop.artifact.output')}>
@@ -223,8 +262,8 @@ export function App(): ReactElement {
           </>
         ) : (
           <CodeHighlight
-            lang={shown.lang}
-            code={shown.code}
+            lang={codeArtifact.lang}
+            code={codeArtifact.code}
             className="artifact__code"
             padding="16px"
             fontSize="13px"
@@ -238,8 +277,8 @@ export function App(): ReactElement {
           {copied ? t('common.copied') : t('desktop.artifact.copyCode')}
         </button>
         <span>
-          {shown.lang || 'Code'} ·{' '}
-          {t('desktop.artifact.lines', { count: shown.code.split('\n').length })}
+          {codeArtifact.lang || 'Code'} ·{' '}
+          {t('desktop.artifact.lines', { count: codeArtifact.code.split('\n').length })}
         </span>
       </footer>
     </main>

@@ -3,7 +3,9 @@
 import { memo, useEffect, useRef, useState, type JSX } from 'react'
 import { Copy, Check, Pencil } from 'lucide-react'
 import type { MockMessage } from '@yuanai/core/stores'
+import type { MessageFile } from '@yuanai/types'
 import { getMsgText, formatMsgTime } from './utils'
+import { FilePreviewCard } from './FilePreviewCard'
 
 export interface UserMessageProps {
   msg: MockMessage
@@ -13,6 +15,7 @@ export interface UserMessageProps {
   onStartEdit: () => void
   onSubmitEdit: (text: string) => void
   onCancelEdit: () => void
+  onPreviewFile: (file: MessageFile, files?: readonly MessageFile[] | undefined) => void
 }
 
 /**
@@ -31,6 +34,7 @@ function UserMessageBase({
   onStartEdit,
   onSubmitEdit,
   onCancelEdit,
+  onPreviewFile,
 }: UserMessageProps): JSX.Element {
   const text = getMsgText(msg)
   const editRef = useRef<HTMLTextAreaElement>(null)
@@ -106,6 +110,18 @@ function UserMessageBase({
   return (
     <div className="ch-msg ch-msg-user">
       <div className="ch-msg-body">
+        {msg.files?.length ? (
+          <div className="ch-msg-files">
+            {msg.files.map((file) => (
+              <FilePreviewCard
+                key={file.id}
+                file={file}
+                files={msg.files}
+                onPreview={onPreviewFile}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="ch-msg-bubble">{text}</div>
         <div className="ch-msg-acts">
           <span className="ch-msg-ts">{formatMsgTime(msg.createdAt, timeFmt, dateFmt)}</span>
@@ -133,6 +149,7 @@ export const UserMessage = memo(UserMessageBase, (prev, next) => {
     prev.msg === next.msg &&
     prev.editing === next.editing &&
     prev.timeFmt === next.timeFmt &&
-    prev.dateFmt === next.dateFmt
+    prev.dateFmt === next.dateFmt &&
+    prev.onPreviewFile === next.onPreviewFile
   )
 }) as unknown as (props: UserMessageProps) => JSX.Element

@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron'
 import { IPC } from '../../shared/ipc-contract'
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { assertNoIpcPayload } from '../../shared/guards'
+import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import type { IpcMainRegistrar } from './auth'
 import type { IpcInvocationGuard } from './guards'
 
@@ -40,20 +41,54 @@ export interface RendererWindowControls {
   close(): void
 }
 
-function isDesktopArtifactPayload(value: unknown): value is DesktopArtifactPayload {
+function isDesktopCodeArtifactPayload(value: Record<string, unknown>): boolean {
+  const theme = value.theme
+  return (
+    (value.kind === undefined || value.kind === 'code') &&
+    typeof value.title === 'string' &&
+    value.title.length > 0 &&
+    value.title.length <= 200 &&
+    typeof value.lang === 'string' &&
+    value.lang.length <= 80 &&
+    typeof value.code === 'string' &&
+    value.code.length <= 2 * 1024 * 1024 &&
+    (value.mode === 'view' || value.mode === 'run') &&
+    (theme === undefined || theme === 'light' || theme === 'dark')
+  )
+}
+
+function isAllowedPreviewUrl(value: unknown, runtimeConfig: AppRuntimeConfig): boolean {
+  if (typeof value !== 'string' || value.length > 2048) return false
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
+    if (url.username || url.password || url.search || url.hash) return false
+    const allowedOrigins = new Set([
+      new URL(runtimeConfig.apiBaseUrl).origin,
+      ...runtimeConfig.assetOrigins,
+    ])
+    return allowedOrigins.has(url.origin)
+  } catch {
+    return false
+  }
+}
+
+function isDesktopArtifactPayload(
+  value: unknown,
+  runtimeConfig: AppRuntimeConfig
+): value is DesktopArtifactPayload {
   if (!value || typeof value !== 'object') return false
   const payload = value as Record<string, unknown>
-  const theme = payload.theme
+  if (isDesktopCodeArtifactPayload(payload)) return true
   return (
+    payload.kind === 'file-preview' &&
     typeof payload.title === 'string' &&
     payload.title.length > 0 &&
     payload.title.length <= 200 &&
-    typeof payload.lang === 'string' &&
-    payload.lang.length <= 80 &&
-    typeof payload.code === 'string' &&
-    payload.code.length <= 2 * 1024 * 1024 &&
-    (payload.mode === 'view' || payload.mode === 'run') &&
-    (theme === undefined || theme === 'light' || theme === 'dark')
+    typeof payload.mimeType === 'string' &&
+    (payload.mimeType.startsWith('image/') || payload.mimeType === 'application/pdf') &&
+    isAllowedPreviewUrl(payload.sourceUrl, runtimeConfig) &&
+    (payload.theme === undefined || payload.theme === 'light' || payload.theme === 'dark')
   )
 }
 
@@ -62,7 +97,8 @@ export function registerWindowIpcHandlers(
   ipcMain: IpcMainRegistrar,
   guard: IpcInvocationGuard,
   windows: NamedWindowController,
-  getWindow: (webContents: WebContents) => BrowserWindow | null
+  getWindow: (webContents: WebContents) => BrowserWindow | null,
+  runtimeConfig: AppRuntimeConfig
 ): void {
   function getCurrentWindow(event: IpcMainInvokeEvent): RendererWindowControls {
     const window = getWindow(event.sender)
@@ -115,7 +151,7 @@ export function registerWindowIpcHandlers(
     async (event: IpcMainInvokeEvent, ...args: unknown[]): Promise<void> => {
       guard.assertTrusted(event)
       const [payload] = args
-      if (args.length !== 1 || !isDesktopArtifactPayload(payload)) {
+      if (args.length !== 1 || !isDesktopArtifactPayload(payload, runtimeConfig)) {
         throw new Error('IPC_PAYLOAD_INVALID')
       }
       windows.openArtifact(payload)

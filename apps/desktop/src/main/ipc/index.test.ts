@@ -336,6 +336,26 @@ describe('secure IPC handlers', () => {
     ).rejects.toThrow('IPC_PAYLOAD_INVALID')
   })
 
+  it('opens file previews only from configured asset origins', async () => {
+    const { handlers, sender, windows } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.window.openArtifact)
+    const payload = {
+      kind: 'file-preview' as const,
+      title: '需求.pdf',
+      sourceUrl: 'https://cdn.example.com/files/spec.pdf',
+      mimeType: 'application/pdf',
+    }
+
+    await expect(handler(createEvent(sender), payload)).resolves.toBeUndefined()
+    expect(windows.openArtifact).toHaveBeenCalledWith(payload)
+    await expect(
+      handler(createEvent(sender), { ...payload, sourceUrl: 'https://untrusted.example/spec.pdf' })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+    await expect(
+      handler(createEvent(sender), { ...payload, sourceUrl: 'file:///tmp/spec.pdf' })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+  })
+
   it('opens native files only for trusted callers and returns path-free selected-file URLs', async () => {
     const { currentWindow, dialog, handlers, selectedFiles, sender } = setupTestIpc()
     const handler = getHandler(handlers, IPC.dialog.openFiles)

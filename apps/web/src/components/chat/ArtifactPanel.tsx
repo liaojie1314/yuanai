@@ -1,17 +1,26 @@
 'use client'
 
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useState, type JSX, type WheelEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Copy,
   Check,
+  ChevronLeft,
+  ChevronRight,
   X,
   Play,
   Eye,
   Maximize2,
   Minimize2,
+  RotateCcw,
   Terminal,
   Pencil,
   Table2,
+  FileText,
+  Image as ImageIcon,
+  Download,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 import CodeMirror, { type Extension } from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
@@ -19,12 +28,26 @@ import { html as cmHtml } from '@codemirror/lang-html'
 import { css as cmCss } from '@codemirror/lang-css'
 import { json as cmJson } from '@codemirror/lang-json'
 import { markdown as cmMarkdown } from '@codemirror/lang-markdown'
-import { useArtifactStore, type ArtifactPayload } from '@yuanai/core/stores'
+import { useFilePreview } from '@yuanai/core/hooks'
+import {
+  useArtifactStore,
+  type ArtifactPayload,
+  type CodeArtifactPayload,
+  type FileArtifactPayload,
+} from '@yuanai/core/stores'
+import type { MessageFile } from '@yuanai/types'
+import { downloadSourceFile } from '@/lib/fileDownload'
 import { buildRunSrcDoc, isRunnableLang, isDataPreviewLang, isDark } from './utils'
 import { CodeHighlight } from './CodeHighlight'
 import { ARTIFACT_MSG_SOURCE } from '@yuanai/core'
 
-const EMPTY_PAYLOAD: ArtifactPayload = { title: '', lang: '', code: '', mode: 'view' }
+const EMPTY_PAYLOAD: CodeArtifactPayload = {
+  kind: 'code',
+  title: '',
+  lang: '',
+  code: '',
+  mode: 'view',
+}
 
 /** 控制台面板最多保留的消息条数，超出则丢弃最旧的 */
 const CONSOLE_MAX = 200
@@ -36,6 +59,299 @@ type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 interface ConsoleEntry {
   level: ConsoleLevel
   text: string
+}
+
+/** 在现有 Artifact 工作区中展示一个已上传文件的后端受限预览。 */
+function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX.Element {
+  const { data, isError, isLoading } = useFilePreview(payload.fileId)
+  const close = useArtifactStore((state) => state.close)
+  const openFilePreview = useArtifactStore((state) => state.openFilePreview)
+  const [zoomed, setZoomed] = useState(false)
+  const [zoomScale, setZoomScale] = useState(1)
+  const fallbackFile = useMemo<MessageFile>(
+    () => ({
+      id: payload.fileId,
+      filename: payload.title,
+      mimeType: payload.mimeType,
+      sizeBytes: 0,
+      url: payload.url,
+    }),
+    [payload.fileId, payload.mimeType, payload.title, payload.url]
+  )
+  const previewFiles = useMemo<readonly MessageFile[]>(
+    () => (payload.files && payload.files.length > 0 ? payload.files : [fallbackFile]),
+    [fallbackFile, payload.files]
+  )
+  const currentIndex = Math.min(
+    Math.max(payload.index ?? previewFiles.findIndex((file) => file.id === payload.fileId), 0),
+    previewFiles.length - 1
+  )
+  const currentFile = previewFiles[currentIndex] ?? fallbackFile
+  const kind = data?.kind ?? 'unsupported'
+  const icon = kind === 'image' ? <ImageIcon size={15} /> : <FileText size={15} />
+  const imageIndexes = useMemo(
+    () =>
+      previewFiles.reduce<number[]>((indexes, file, index) => {
+        if (file.mimeType.startsWith('image/')) indexes.push(index)
+        return indexes
+      }, []),
+    [previewFiles]
+  )
+  const currentImagePosition = imageIndexes.indexOf(currentIndex)
+
+  const selectFile = (index: number): void => {
+    const next = previewFiles[index]
+    if (!next) return
+    setZoomed(false)
+    setZoomScale(1)
+    openFilePreview({
+      fileId: next.id,
+      title: next.filename,
+      mimeType: next.mimeType,
+      url: next.url,
+      files: previewFiles,
+      index,
+    })
+  }
+
+  const moveFile = (delta: number): void => {
+    const nextIndex = currentIndex + delta
+    if (nextIndex < 0 || nextIndex >= previewFiles.length) return
+    selectFile(nextIndex)
+  }
+
+  const moveImage = (delta: number): void => {
+    const nextPosition = currentImagePosition + delta
+    const nextIndex = imageIndexes[nextPosition]
+    if (nextIndex === undefined) return
+    selectFile(nextIndex)
+    setZoomed(true)
+  }
+
+  const changeZoom = (delta: number): void => {
+    setZoomScale((current) =>
+      Math.min(4, Math.max(0.25, Math.round((current + delta) * 100) / 100))
+    )
+  }
+
+  const handleLightboxWheel = (event: WheelEvent<HTMLDivElement>): void => {
+    event.preventDefault()
+    changeZoom(event.deltaY < 0 ? 0.25 : -0.25)
+  }
+
+  const closeLightbox = (): void => {
+    setZoomed(false)
+    setZoomScale(1)
+  }
+
+  const lightbox =
+    zoomed && data?.kind === 'image'
+      ? createPortal(
+          <div
+            className="ch-ap-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`放大预览 ${currentFile.filename}`}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) closeLightbox()
+            }}
+          >
+            <button
+              type="button"
+              className="ch-ap-lightbox-close"
+              onClick={closeLightbox}
+              aria-label="关闭放大预览"
+              title="关闭放大预览"
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+            <div className="ch-ap-lightbox-tools" aria-label="图片缩放">
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => changeZoom(-0.25)}
+                disabled={zoomScale <= 0.25}
+                aria-label="缩小图片"
+                title="缩小图片"
+              >
+                <ZoomOut size={17} aria-hidden="true" />
+              </button>
+              <span aria-live="polite">{Math.round(zoomScale * 100)}%</span>
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => changeZoom(0.25)}
+                disabled={zoomScale >= 4}
+                aria-label="放大图片"
+                title="放大图片"
+              >
+                <ZoomIn size={17} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => setZoomScale(1)}
+                disabled={zoomScale === 1}
+                aria-label="重置图片缩放"
+                title="重置图片缩放"
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+              </button>
+            </div>
+            {imageIndexes.length > 1 && currentImagePosition > 0 ? (
+              <button
+                type="button"
+                className="ch-ap-lightbox-nav ch-ap-lightbox-nav--prev"
+                onClick={() => moveImage(-1)}
+                aria-label="上一个图片"
+                title="上一个图片"
+              >
+                <ChevronLeft size={26} aria-hidden="true" />
+              </button>
+            ) : null}
+            <div className="ch-ap-lightbox-viewport" onWheel={handleLightboxWheel}>
+              <img
+                className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
+                src={data.url}
+                alt={currentFile.filename}
+                style={{ transform: `scale(${zoomScale})` }}
+                onClick={(event) => event.stopPropagation()}
+              />
+            </div>
+            {imageIndexes.length > 1 && currentImagePosition < imageIndexes.length - 1 ? (
+              <button
+                type="button"
+                className="ch-ap-lightbox-nav ch-ap-lightbox-nav--next"
+                onClick={() => moveImage(1)}
+                aria-label="下一个图片"
+                title="下一个图片"
+              >
+                <ChevronRight size={26} aria-hidden="true" />
+              </button>
+            ) : null}
+          </div>,
+          document.body
+        )
+      : null
+
+  return (
+    <>
+      <div className="ch-ap-head">
+        <span className="ch-ap-lang">文件</span>
+        <span className="ch-ap-title" title={currentFile.filename}>
+          {currentFile.filename}
+        </span>
+        {previewFiles.length > 1 ? (
+          <div className="ch-ap-file-nav" aria-label="附件切换">
+            <button
+              className="ch-ib"
+              type="button"
+              onClick={() => moveFile(-1)}
+              disabled={currentIndex === 0}
+              title="上一个附件"
+              aria-label="上一个附件"
+            >
+              <ChevronLeft size={16} aria-hidden="true" />
+            </button>
+            <span className="ch-ap-file-count" aria-live="polite">
+              {currentIndex + 1} / {previewFiles.length}
+            </span>
+            <button
+              className="ch-ib"
+              type="button"
+              onClick={() => moveFile(1)}
+              disabled={currentIndex === previewFiles.length - 1}
+              title="下一个附件"
+              aria-label="下一个附件"
+            >
+              <ChevronRight size={16} aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+        <button
+          className="ch-ib"
+          type="button"
+          onClick={close}
+          title="关闭面板"
+          aria-label="关闭面板"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <section className="ch-ap-body ch-ap-file" aria-live="polite">
+        {isLoading ? <div className="ch-ap-file-state">正在加载预览...</div> : null}
+        {isError ? <div className="ch-ap-file-state">预览加载失败，可下载原文件查看。</div> : null}
+        {!isLoading && !isError && data?.kind === 'image' ? (
+          <button
+            className="ch-ap-file-image-trigger"
+            type="button"
+            onClick={() => {
+              setZoomScale(1)
+              setZoomed(true)
+            }}
+            aria-label={`放大 ${currentFile.filename}`}
+            title="放大图片"
+          >
+            <img className="ch-ap-file-image" src={data.url} alt={currentFile.filename} />
+            <span className="ch-ap-file-image-hint" aria-hidden="true">
+              <Maximize2 size={18} />
+              放大
+            </span>
+          </button>
+        ) : null}
+        {!isLoading && !isError && data?.kind === 'pdf' ? (
+          <iframe
+            className="ch-ap-file-pdf"
+            src={data.url}
+            title={`预览 ${currentFile.filename}`}
+            sandbox="allow-downloads"
+          />
+        ) : null}
+        {!isLoading && !isError && data?.kind === 'text' ? (
+          <pre className="ch-ap-file-text">{data.text ?? ''}</pre>
+        ) : null}
+        {!isLoading && !isError && data?.kind === 'table' ? (
+          <div className="ch-ap-file-table-wrap">
+            <div className="ch-ap-file-table-label">
+              {icon}
+              <span>{currentFile.filename}</span>
+            </div>
+            <table className="ch-ap-file-table">
+              <tbody>
+                {data.rows?.slice(0, 100).map((row, rowIndex) => (
+                  <tr key={`${payload.fileId}-${rowIndex}`}>
+                    {row.map((cell, columnIndex) =>
+                      rowIndex === 0 ? (
+                        <th key={`${payload.fileId}-${rowIndex}-${columnIndex}`}>{cell}</th>
+                      ) : (
+                        <td key={`${payload.fileId}-${rowIndex}-${columnIndex}`}>{cell}</td>
+                      )
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+        {!isLoading && !isError && kind === 'unsupported' ? (
+          <div className="ch-ap-file-state">此文件类型不支持内置预览，可下载原文件查看。</div>
+        ) : null}
+      </section>
+      <footer className="ch-ap-footer">
+        <span className="ch-ap-finfo">{data?.mimeType ?? currentFile.mimeType}</span>
+        <button
+          type="button"
+          className="ch-ap-copy-btn"
+          onClick={() => {
+            void downloadSourceFile(currentFile.id, currentFile.filename)
+          }}
+        >
+          <Download size={13} aria-hidden="true" /> 下载原文件
+        </button>
+      </footer>
+      {lightbox}
+    </>
+  )
 }
 
 /**
@@ -262,18 +578,19 @@ export function ArtifactPanel(): JSX.Element {
   useEffect(() => {
     if (payload) {
       setShown(payload)
-      setEditedCode(payload.code)
+      setEditedCode(payload.kind === 'code' ? payload.code : '')
       setEditing(false)
     }
   }, [payload])
 
-  const isData = isDataPreviewLang(shown.lang)
-  const runnable = isRunnableLang(shown.lang)
+  const codeShown = shown.kind === 'code' ? shown : EMPTY_PAYLOAD
+  const isData = isDataPreviewLang(codeShown.lang)
+  const runnable = isRunnableLang(codeShown.lang)
 
   const srcdoc = useMemo(() => {
-    if (shown.mode !== 'run' || isData) return ''
-    return buildRunSrcDoc(shown.lang, shown.code)
-  }, [shown, isData])
+    if (codeShown.mode !== 'run' || isData) return ''
+    return buildRunSrcDoc(codeShown.lang, codeShown.code)
+  }, [codeShown, isData])
 
   // 每次运行（srcdoc 变化）都清空控制台，避免上一次运行的日志串档
   useEffect(() => {
@@ -294,7 +611,7 @@ export function ArtifactPanel(): JSX.Element {
     return () => window.removeEventListener('message', onMessage)
   }, [])
 
-  const currentCode = editing ? editedCode : shown.code
+  const currentCode = editing ? editedCode : codeShown.code
   const lineCount = currentCode.split('\n').length
 
   const copy = async (): Promise<void> => {
@@ -309,6 +626,19 @@ export function ArtifactPanel(): JSX.Element {
 
   const errorCount = consoleMsgs.filter((m) => m.level === 'error').length
 
+  if (shown.kind === 'file') {
+    return (
+      <div
+        className="ch-artifact-panel"
+        role="complementary"
+        aria-label="文件预览面板"
+        aria-hidden={!open}
+      >
+        <FileArtifactPreview payload={shown} />
+      </div>
+    )
+  }
+
   return (
     <div
       className={`ch-artifact-panel${fullscreen ? 'ch-ap-fullscreen' : ''}`}
@@ -317,42 +647,48 @@ export function ArtifactPanel(): JSX.Element {
       aria-hidden={!open}
     >
       <div className="ch-ap-head">
-        <span className="ch-ap-lang">{shown.lang}</span>
-        <span className="ch-ap-title" title={shown.title}>
-          {shown.title}
+        <span className="ch-ap-lang">{codeShown.lang}</span>
+        <span className="ch-ap-title" title={codeShown.title}>
+          {codeShown.title}
         </span>
         <div className="ch-ap-head-acts">
-          {runnable && shown.mode === 'view' && (
+          {runnable && codeShown.mode === 'view' && (
             <button
               className="ch-ib"
-              onClick={() => openRun({ title: shown.title, lang: shown.lang, code: currentCode })}
+              onClick={() =>
+                openRun({ title: codeShown.title, lang: codeShown.lang, code: currentCode })
+              }
               title="运行代码"
               aria-label="运行代码"
             >
               <Play size={16} />
             </button>
           )}
-          {isData && shown.mode === 'view' && (
+          {isData && codeShown.mode === 'view' && (
             <button
               className="ch-ib"
-              onClick={() => openRun({ title: shown.title, lang: shown.lang, code: currentCode })}
+              onClick={() =>
+                openRun({ title: codeShown.title, lang: codeShown.lang, code: currentCode })
+              }
               title="数据预览"
               aria-label="数据预览"
             >
               <Table2 size={16} />
             </button>
           )}
-          {shown.mode === 'run' && (
+          {codeShown.mode === 'run' && (
             <button
               className="ch-ib"
-              onClick={() => openView({ title: shown.title, lang: shown.lang, code: shown.code })}
+              onClick={() =>
+                openView({ title: codeShown.title, lang: codeShown.lang, code: codeShown.code })
+              }
               title="查看源码"
               aria-label="查看源码"
             >
               <Eye size={16} />
             </button>
           )}
-          {shown.mode === 'view' && (
+          {codeShown.mode === 'view' && (
             <button
               className={`ch-ib${editing ? 'active' : ''}`}
               onClick={() => setEditing((v) => !v)}
@@ -365,7 +701,9 @@ export function ArtifactPanel(): JSX.Element {
           {editing && runnable && (
             <button
               className="ch-ib"
-              onClick={() => openRun({ title: shown.title, lang: shown.lang, code: editedCode })}
+              onClick={() =>
+                openRun({ title: codeShown.title, lang: codeShown.lang, code: editedCode })
+              }
               title="重新运行"
               aria-label="重新运行"
             >
@@ -394,21 +732,26 @@ export function ArtifactPanel(): JSX.Element {
         </div>
       </div>
       <div className="ch-ap-body">
-        {shown.mode === 'view' ? (
+        {codeShown.mode === 'view' ? (
           editing ? (
             <CodeMirror
               className="ch-ap-cm"
               value={editedCode}
-              extensions={langExtensions(shown.lang)}
+              extensions={langExtensions(codeShown.lang)}
               theme={dark ? 'dark' : 'light'}
               onChange={(v: string) => setEditedCode(v)}
               height="100%"
             />
           ) : (
-            <CodeHighlight lang={shown.lang} code={shown.code} fontSize="12px" lineHeight={1.6} />
+            <CodeHighlight
+              lang={codeShown.lang}
+              code={codeShown.code}
+              fontSize="12px"
+              lineHeight={1.6}
+            />
           )
         ) : isData ? (
-          <DataPreview lang={shown.lang} code={shown.code} />
+          <DataPreview lang={codeShown.lang} code={codeShown.code} />
         ) : (
           <iframe
             key={srcdoc}
@@ -456,7 +799,7 @@ export function ArtifactPanel(): JSX.Element {
           {copied ? <Check size={13} /> : <Copy size={13} />} {copied ? '已复制' : '复制代码'}
         </button>
         <span className="ch-ap-finfo">
-          {shown.lang} · {lineCount} 行
+          {codeShown.lang} · {lineCount} 行
         </span>
       </div>
     </div>

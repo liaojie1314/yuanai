@@ -1720,8 +1720,15 @@ export function App(): ReactElement {
     const content = draft.trim()
     if (!isLoggedIn || !content || isStreaming || isUploadingAttachments) return
     setActionError('')
+    if (
+      attachments.some((attachment) => attachment.file.type.startsWith('image/')) &&
+      !selectedModel.supportsVision
+    ) {
+      setActionError('当前模型不支持图片识别，请切换至支持视觉的模型后发送')
+      return
+    }
     if (attachments.length > 0 && !selectedModel.supportsFiles) {
-      setActionError('当前模型不支持附件，请切换至支持文件的模型后发送')
+      setActionError('当前模型不支持文件识别，请切换至支持文件的模型后发送')
       return
     }
     if (isTemporaryConversation) {

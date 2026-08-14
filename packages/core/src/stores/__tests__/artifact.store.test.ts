@@ -16,13 +16,27 @@ describe('artifact.store', () => {
     useArtifactStore.getState().openView({ title: '示例', lang: 'html', code: '<p/>' })
     const s = useArtifactStore.getState()
     expect(s.open).toBe(true)
-    expect(s.payload?.mode).toBe('view')
+    expect(s.payload?.kind).toBe('code')
+    expect(s.payload?.kind === 'code' ? s.payload.mode : undefined).toBe('view')
     expect(s.payload?.title).toBe('示例')
   })
 
   it('openRun 设置 run 模式', () => {
     useArtifactStore.getState().openRun({ title: 'x', lang: 'js', code: 'a=1' })
-    expect(useArtifactStore.getState().payload?.mode).toBe('run')
+    const payload = useArtifactStore.getState().payload
+    expect(payload?.kind === 'code' ? payload.mode : undefined).toBe('run')
+  })
+
+  it('openFilePreview 记录文件载荷', () => {
+    useArtifactStore.getState().openFilePreview({
+      fileId: 'file-1',
+      title: 'notes.txt',
+      mimeType: 'text/plain',
+      url: 'https://files.example.com/notes.txt',
+    })
+    const payload = useArtifactStore.getState().payload
+    expect(payload?.kind).toBe('file')
+    expect(payload?.kind === 'file' ? payload.fileId : undefined).toBe('file-1')
   })
 
   it('close 清空 payload', () => {

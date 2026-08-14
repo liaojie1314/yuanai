@@ -3,6 +3,7 @@ import { Check, Code2, Copy, Play, X } from 'lucide-react-native'
 import { useEffect, useMemo, useState } from 'react'
 import {
   Modal,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -74,25 +75,36 @@ export function ArtifactSurface(): React.JSX.Element | null {
   const [copied, setCopied] = useState(false)
   const [tab, setTab] = useState<'code' | 'preview'>('code')
   const [logs, setLogs] = useState<ConsoleLine[]>([])
+  const codePayload = payload?.kind === 'code' ? payload : null
 
-  const runnable = payload ? isRunnableLang(payload.lang) : false
-  const isData = payload ? isDataPreviewLang(payload.lang) : false
+  const runnable = codePayload ? isRunnableLang(codePayload.lang) : false
+  const isData = codePayload ? isDataPreviewLang(codePayload.lang) : false
   const dark = theme.colorScheme === 'dark'
   const srcDoc = useMemo(
-    () => (payload && runnable ? buildRunSrcDoc(payload.lang, payload.code, { dark }) : ''),
-    [payload, runnable, dark]
+    () =>
+      codePayload && runnable ? buildRunSrcDoc(codePayload.lang, codePayload.code, { dark }) : '',
+    [codePayload, runnable, dark]
   )
   const showPreview = (runnable || isData) && tab === 'preview'
 
   // openRun 载荷（mode=run）默认落在预览 tab；view 默认代码 tab
   useEffect(() => {
-    if (open) setTab(payload?.mode === 'run' && (runnable || isData) ? 'preview' : 'code')
+    if (open) setTab(codePayload?.mode === 'run' && (runnable || isData) ? 'preview' : 'code')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, payload?.mode])
+  }, [open, codePayload?.mode])
+
+  // 文件卡片在消息里直接交由操作系统的图片/文档查看器打开。该分支是对共享 store
+  // 的防御性处理，正常文件预览不会占用代码 Artifact 面板。
+  useEffect(() => {
+    if (!open || payload?.kind !== 'file') return
+    void Linking.openURL(payload.url)
+      .catch(() => undefined)
+      .finally(close)
+  }, [close, open, payload])
 
   const onCopy = async (): Promise<void> => {
-    if (!payload) return
-    await Clipboard.setStringAsync(payload.code)
+    if (!codePayload) return
+    await Clipboard.setStringAsync(codePayload.code)
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -117,7 +129,7 @@ export function ArtifactSurface(): React.JSX.Element | null {
     }
   }
 
-  if (!open || !payload) return null
+  if (!open || !codePayload) return null
 
   return (
     <Modal
@@ -143,9 +155,9 @@ export function ArtifactSurface(): React.JSX.Element | null {
         >
           <View style={styles.titleWrap}>
             <Text style={[styles.title, { color: theme.text.primary }]} numberOfLines={1}>
-              {payload.title || 'Artifact'}
+              {codePayload.title || 'Artifact'}
             </Text>
-            <Text style={[styles.lang, { color: theme.text.muted }]}>{payload.lang}</Text>
+            <Text style={[styles.lang, { color: theme.text.muted }]}>{codePayload.lang}</Text>
           </View>
           {runnable || isData ? (
             <View style={[styles.tabs, { borderColor: theme.border.default }]}>
@@ -218,7 +230,7 @@ export function ArtifactSurface(): React.JSX.Element | null {
         </View>
 
         {showPreview && isData ? (
-          <ArtifactDataPreview lang={payload.lang} code={payload.code} />
+          <ArtifactDataPreview lang={codePayload.lang} code={codePayload.code} />
         ) : showPreview ? (
           <View style={styles.previewWrap}>
             <WebView
@@ -263,8 +275,8 @@ export function ArtifactSurface(): React.JSX.Element | null {
           >
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <HighlightedCode
-                code={payload.code}
-                language={payload.lang}
+                code={codePayload.code}
+                language={codePayload.lang}
                 maxLines={PANEL_HIGHLIGHT_MAX_LINES}
               />
             </ScrollView>

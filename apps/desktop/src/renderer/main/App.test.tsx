@@ -887,7 +887,38 @@ describe('desktop chat', () => {
       'src',
       'http://127.0.0.1:9000/yuanai-files/yuanai-login-before.png'
     )
-    expect(image.parentElement).toHaveClass('desktop-chat__file--image')
+    expect(image.closest('li')).toHaveClass('desktop-chat__file--image')
+  })
+
+  it('opens image attachments in the dedicated Artifact preview window', async () => {
+    const user = userEvent.setup()
+    chat.messages = [
+      {
+        id: 'message-user-image-1',
+        role: 'user',
+        content: '请分析这张图片。',
+        files: [
+          {
+            id: 'image-file-1',
+            filename: 'yuanai-login-before.png',
+            mimeType: 'image/png',
+            sizeBytes: 61_574,
+            url: 'http://127.0.0.1:9000/yuanai-files/yuanai-login-before.png',
+          },
+        ],
+        createdAt: '2026-08-10T08:00:00.000Z',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '预览图片 yuanai-login-before.png' }))
+    expect(desktop.openArtifact).toHaveBeenCalledWith({
+      kind: 'file-preview',
+      mimeType: 'image/png',
+      sourceUrl: 'http://127.0.0.1:9000/yuanai-files/yuanai-login-before.png',
+      theme: 'light',
+      title: 'yuanai-login-before.png',
+    })
   })
 
   it('uses the selected conversation model for the next message', async () => {
@@ -1311,7 +1342,7 @@ describe('desktop chat', () => {
     await user.click(screen.getByRole('button', { name: '发送消息' }))
 
     expect(screen.getByRole('alert')).toHaveTextContent(
-      '当前模型不支持附件，请切换至支持文件的模型后发送'
+      '当前模型不支持图片识别，请切换至支持视觉的模型后发送'
     )
     expect(chat.send).not.toHaveBeenCalled()
   })

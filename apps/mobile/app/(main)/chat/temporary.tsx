@@ -7,7 +7,13 @@ import { Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { TABLET_MIN_WIDTH, TEMPORARY_CONV_ID, useModels, useStream } from '@yuanai/core'
+import {
+  TABLET_MIN_WIDTH,
+  TEMPORARY_CONV_ID,
+  filterChatModels,
+  useModels,
+  useStream,
+} from '@yuanai/core'
 import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import type { AIModel, Message } from '@yuanai/types'
 import { Role } from '@yuanai/types'
@@ -40,7 +46,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   const navigation = useNavigation()
   const dialog = useDialog()
 
-  const { data: models = [] } = useModels()
+  const { data: availableModels = [] } = useModels()
+  const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { sendTemporary, stop } = useStream()
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const isStreaming = streamingConvId === TEMPORARY_CONV_ID

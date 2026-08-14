@@ -36,7 +36,7 @@ import {
   uploadFileSmart,
 } from '@yuanai/core/hooks'
 import { filterChatModels } from '@yuanai/core/utils'
-import type { AIModel } from '@yuanai/types'
+import type { AIModel, MessageFile } from '@yuanai/types'
 import type { MockMessage, MockConversation } from '@yuanai/core/stores'
 import {
   SquarePen,
@@ -91,6 +91,8 @@ interface Model {
   ctx: string
   color: string
   letter: string
+  supportsFiles: boolean
+  supportsVision: boolean
   gradient?: string
 }
 
@@ -121,6 +123,8 @@ const MODELS: Model[] = [
     ctx: '1M',
     color: '#3B82F6',
     letter: 'D',
+    supportsFiles: false,
+    supportsVision: false,
     gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)',
   },
   {
@@ -131,6 +135,8 @@ const MODELS: Model[] = [
     ctx: '1M',
     color: '#1D4ED8',
     letter: 'D',
+    supportsFiles: false,
+    supportsVision: false,
     gradient: 'linear-gradient(135deg,#1e3a8a,#1D4ED8)',
   },
   {
@@ -141,6 +147,8 @@ const MODELS: Model[] = [
     ctx: '128K',
     color: '#E04F16',
     letter: 'A',
+    supportsFiles: true,
+    supportsVision: true,
     gradient: 'linear-gradient(135deg,#C43F0B,#F27328)',
   },
 ]
@@ -180,6 +188,8 @@ function toModelOption(model: AIModel): Model {
     ctx: formatContextLength(model.contextLength),
     color: presentation.color,
     letter: model.name.slice(0, 1).toLocaleUpperCase(),
+    supportsFiles: model.supportsFiles,
+    supportsVision: model.supportsVision,
     gradient: presentation.gradient,
   }
 }
@@ -241,6 +251,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const streamingConvId = useChatStore((s) => s.streamingConvId)
   const streamingContent = useChatStore((s) => s.streamingContent)
   const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
+  const optimisticFiles = useChatStore((s) => s.optimisticFiles)
 
   // ── View state ── (declared early so isThisStreaming can use activeConv)
   const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
@@ -319,6 +330,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── UI state ──
   const artifactOpen = useArtifactStore((s) => s.open)
+  const openFilePreview = useArtifactStore((s) => s.openFilePreview)
   const [webSearch, setWebSearch] = useState(true)
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
@@ -399,6 +411,25 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     outlineIdxRef.current = idx
     setOutlineActiveIdx(idx)
   }, [])
+
+  /** 将消息附件交给现有右侧 Artifact 面板预览。 */
+  const handlePreviewFile = useCallback(
+    (file: MessageFile, files?: readonly MessageFile[]): void => {
+      const previewFiles = files && files.length > 0 ? files : [file]
+      openFilePreview({
+        fileId: file.id,
+        title: file.filename,
+        mimeType: file.mimeType,
+        url: file.url,
+        files: previewFiles,
+        index: Math.max(
+          0,
+          previewFiles.findIndex((item) => item.id === file.id)
+        ),
+      })
+    },
+    [openFilePreview]
+  )
 
   // ── Refs ──
   const modelBtnRef = useRef<HTMLButtonElement>(null)
@@ -623,6 +654,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     if (!inputValue.trim() || isThisStreaming || uploading) return
 
     const text = inputValue.trim()
+    const hasImageAttachment = files.some((file) => file.type === 'image')
+    if (hasImageAttachment && !activeModel.supportsVision) {
+      toast.error('当前模型不支持图片识别，请切换至支持视觉的模型后发送')
+      return
+    }
+    if (files.length > 0 && !activeModel.supportsFiles) {
+      toast.error('当前模型不支持文件识别，请切换至支持文件的模型后发送')
+      return
+    }
 
     // ── 临时对话分支：走无状态 /chat/stream/temporary ──
     if (temporary) {
@@ -688,6 +728,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
     // 先上传附件，收集文件 ID —— 按 hash 秒传，> 10 MB 走分片
     let fileIds: string[] = []
+    let optimisticFilesForStream: MessageFile[] = []
     if (files.length > 0) {
       setUploading(true)
       try {
@@ -727,6 +768,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           })
         )
         fileIds = refs.map((r) => r.id)
+        optimisticFilesForStream = refs.map((ref, index) => {
+          const original = files[index]?.file
+          if ('url' in ref) return ref
+          return {
+            id: ref.id,
+            filename: original?.name ?? '附件',
+            mimeType: original?.type || 'application/octet-stream',
+            sizeBytes: original?.size ?? 0,
+            url: files[index]?.preview.startsWith('blob:') ? files[index].preview : '',
+          }
+        })
       } catch (err) {
         const msg = (err as { message?: string })?.message ?? '上传失败'
         setFiles((prev) =>
@@ -752,10 +804,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       content: text,
       model: activeModel.id,
       fileIds: fileIds.length > 0 ? fileIds : undefined,
+      optimisticFiles: optimisticFilesForStream.length > 0 ? optimisticFilesForStream : undefined,
       enableThinking: showThinking,
       onEnd: ({ completed }) => {
         if (completed) triggerAIReplyNotification()
       },
+      onError: (error) => toast.error(error.message),
     })
   }
 
@@ -778,6 +832,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       }, 0)
     },
     [isLoggedIn]
+  )
+
+  const fillWebSearchPrompt = useCallback(
+    (text: string): void => {
+      setWebSearch(true)
+      fill(text)
+    },
+    [fill]
   )
 
   const toBottom = (): void => {
@@ -1447,6 +1509,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 virtuosoRef={virtuosoRef}
                 pairs={pairs}
                 streamingUserMsg={isThisStreaming && optimisticUserMsg ? optimisticUserMsg : null}
+                streamingUserFiles={
+                  isThisStreaming && optimisticUserMsg && optimisticFiles.length > 0
+                    ? optimisticFiles
+                    : null
+                }
                 showStreamingAI={isThisStreaming && !regeneratingPairKey}
                 regeneratingPairKey={regeneratingPairKey}
                 streamingContent={streamingContent}
@@ -1458,6 +1525,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 onStartEdit={startEditMsg}
                 onSubmitEdit={submitEditMsg}
                 onCancelEdit={cancelEditMsg}
+                onPreviewFile={handlePreviewFile}
                 onVersionChange={handleVersionChange}
                 onRegenerate={handleRegenerate}
                 onFeedback={openFeedback}

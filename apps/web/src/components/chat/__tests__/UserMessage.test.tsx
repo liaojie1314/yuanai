@@ -18,6 +18,21 @@ function makeMsg(text = 'Hello **world**'): MockMessage {
   }
 }
 
+function renderMessage(msg: MockMessage, onPreviewFile = vi.fn()): void {
+  render(
+    <UserMessage
+      msg={msg}
+      editing={false}
+      timeFmt="24h"
+      dateFmt="ymd"
+      onStartEdit={() => {}}
+      onSubmitEdit={() => {}}
+      onCancelEdit={() => {}}
+      onPreviewFile={onPreviewFile}
+    />
+  )
+}
+
 describe('UserMessage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -33,6 +48,7 @@ describe('UserMessage', () => {
         onStartEdit={() => {}}
         onSubmitEdit={() => {}}
         onCancelEdit={() => {}}
+        onPreviewFile={() => {}}
       />
     )
     expect(screen.getByText('Hello 元AI')).toBeInTheDocument()
@@ -49,6 +65,7 @@ describe('UserMessage', () => {
         onStartEdit={() => {}}
         onSubmitEdit={() => {}}
         onCancelEdit={() => {}}
+        onPreviewFile={() => {}}
       />
     )
     await act(async () => {
@@ -71,9 +88,37 @@ describe('UserMessage', () => {
         onStartEdit={onStart}
         onSubmitEdit={() => {}}
         onCancelEdit={() => {}}
+        onPreviewFile={() => {}}
       />
     )
     fireEvent.click(screen.getByRole('button', { name: '编辑消息' }))
     expect(onStart).toHaveBeenCalledOnce()
+  })
+
+  it('图片附件展示缩略图，点击卡片交给右侧 Artifact 面板', () => {
+    const onPreviewFile = vi.fn()
+    const file = {
+      id: 'file-1',
+      filename: 'design.png',
+      mimeType: 'image/png',
+      sizeBytes: 1024,
+      url: 'https://cdn.example.com/files/design.png',
+    }
+    renderMessage(
+      {
+        ...makeMsg('请分析设计稿'),
+        files: [file],
+      },
+      onPreviewFile
+    )
+
+    expect(screen.getByRole('img', { name: 'design.png' })).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/files/design.png'
+    )
+    fireEvent.click(screen.getByRole('button', { name: '打开 design.png 的预览' }))
+
+    expect(onPreviewFile).toHaveBeenCalledWith(file, [file])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

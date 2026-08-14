@@ -93,7 +93,13 @@ export function setupIpc(options: SetupIpcOptions): void {
   })
   registerPreferencesIpcHandlers(options)
   registerSystemIpcHandlers(options)
-  registerWindowIpcHandlers(options.ipcMain, options.guard, options.windows, options.getWindow)
+  registerWindowIpcHandlers(
+    options.ipcMain,
+    options.guard,
+    options.windows,
+    options.getWindow,
+    options.runtimeConfig
+  )
   options.ipcMain.handle(
     IPC.runtime.getConfig,
     async (event: IpcMainInvokeEvent, ...args: unknown[]) => {

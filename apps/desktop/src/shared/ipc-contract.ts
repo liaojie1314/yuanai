@@ -76,7 +76,9 @@ export interface DesktopScreenSource {
 }
 
 /** 由主窗口显式提交给独立 Artifact 窗口的代码内容。 */
-export interface DesktopArtifactPayload {
+export interface DesktopCodeArtifactPayload {
+  /** 省略时兼容既有代码 Artifact IPC 调用。 */
+  kind?: 'code'
   /** Artifact 窗口标题。 */
   title: string
   /** 代码语言。 */
@@ -88,6 +90,23 @@ export interface DesktopArtifactPayload {
   /** 打开 Artifact 时主窗口已解析的配色，避免独立 renderer 的主题闪烁。 */
   theme?: 'light' | 'dark'
 }
+
+/** 由主进程校验来源后在独立窗口展示的图片或 PDF 附件。 */
+export interface DesktopFilePreviewPayload {
+  /** 用于与代码 Artifact 区分的固定判别字段。 */
+  kind: 'file-preview'
+  /** 窗口标题和无障碍名称。 */
+  title: string
+  /** 已校验来源的图片或 PDF URL。 */
+  sourceUrl: string
+  /** 当前只允许浏览器安全展示的媒体类型。 */
+  mimeType: string
+  /** 打开窗口时已解析的配色。 */
+  theme?: 'light' | 'dark'
+}
+
+/** 独立窗口的代码 Artifact 或受限文件预览输入。 */
+export type DesktopArtifactPayload = DesktopCodeArtifactPayload | DesktopFilePreviewPayload
 
 /** 全局快捷键注册结果。 */
 export interface ShortcutStatus {

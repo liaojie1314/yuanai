@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     # Agnes AI key，使用 AGNES_API_KEY 环境变量注入，不提交到仓库
     agnes_api_key: str = ""
+    # 视觉模型以内联 data URL 接收图片，避免云端模型无法访问内网对象存储 URL。
+    ai_inline_image_max_bytes: int = 10 * 1024 * 1024
 
     # ── Email / SMTP (用于发送邮箱验证码) ─────────────────────────────
     # QQ 邮箱：smtp.qq.com / 465 (SSL) 或 587 (STARTTLS)

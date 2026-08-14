@@ -62,6 +62,18 @@ export interface FileRef {
   createdAt: string
 }
 
+/** 文件预览内容，均由后端按大小上限裁剪。 */
+export interface FilePreview {
+  id: string
+  filename: string
+  mimeType: string
+  url: string
+  kind: 'image' | 'pdf' | 'text' | 'table' | 'unsupported'
+  supported: boolean
+  text?: string
+  rows?: string[][]
+}
+
 /** 用户使用统计 */
 export interface UserStats {
   conversationCount: number

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ToolCall, ToolCallStatus } from '@yuanai/types'
+import type { MessageFile, ToolCall, ToolCallStatus } from '@yuanai/types'
 
 /**
  * 会话分组类型，用于侧边栏按时间维度对话归类。
@@ -44,6 +44,8 @@ export interface MockMessage {
   /** 思考耗时（毫秒），流结束后填充 */
   thinkDurationMs?: number
   followUps?: string[]
+  /** 消息关联的已上传附件。 */
+  files?: MessageFile[]
   createdAt: number
 }
 
@@ -68,13 +70,19 @@ interface ChatStreamState {
   streamingThinkDurationMs: number
   /** 发送中用户消息的内容（乐观展示，流结束后由查询结果替换） */
   optimisticUserMsg: string | null
+  /** 发送中用户消息的附件（上传完成后立即展示，流结束后由查询结果替换） */
+  optimisticFiles: MessageFile[]
 
   /**
    * 开始流式输出：记录目标会话 ID 并保存乐观用户消息。
    * @param convId - 目标会话 ID
    * @param userContent - 用户发送的消息内容；传 null 表示跳过乐观占位（重新生成场景）
    */
-  startStreaming: (convId: string, userContent: string | null) => void
+  startStreaming: (
+    convId: string,
+    userContent: string | null,
+    files?: readonly MessageFile[]
+  ) => void
 
   /**
    * 追加一个流式 token 到累积内容。
@@ -127,8 +135,9 @@ export const useChatStore = create<ChatStreamState>()((set) => ({
   streamingThinkStartAt: null,
   streamingThinkDurationMs: 0,
   optimisticUserMsg: null,
+  optimisticFiles: [],
 
-  startStreaming: (convId, userContent) =>
+  startStreaming: (convId, userContent, files = []) =>
     set({
       streamingConvId: convId,
       streamingContent: '',
@@ -137,6 +146,7 @@ export const useChatStore = create<ChatStreamState>()((set) => ({
       streamingThinkStartAt: null,
       streamingThinkDurationMs: 0,
       optimisticUserMsg: userContent,
+      optimisticFiles: [...files],
     }),
 
   appendToken: (token) =>
@@ -188,5 +198,6 @@ export const useChatStore = create<ChatStreamState>()((set) => ({
       streamingThinkStartAt: null,
       streamingThinkDurationMs: 0,
       optimisticUserMsg: null,
+      optimisticFiles: [],
     }),
 }))

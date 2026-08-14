@@ -5,6 +5,7 @@ FastAPI HTTPException 格式：{"detail": {"code": ..., "message": ...}}
 SSE 行格式：event: <name>\ndata: <json>\n\n
 """
 
+import json
 import uuid
 from unittest.mock import patch
 
@@ -253,6 +254,140 @@ class TestStream:
         roles = [m["role"] for m in messages]
         assert "user" in roles
         assert "assistant" in roles
+
+    async def test_stream_keeps_prior_file_context_for_follow_up(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+        upload = await client.post(
+            "/api/v1/files/upload",
+            headers=auth_headers,
+            files={"file": ("facts.txt", b"yuanai file context", "text/plain")},
+        )
+        assert upload.status_code == 201
+        captured_messages: list[list[dict[str, object]]] = []
+
+        async def mock_stream(
+            _model: str, messages: list[dict[str, object]], **_kwargs: object
+        ):  # type: ignore[misc]
+            captured_messages.append(messages)
+            yield ("content", "reply")
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            requests = (("请阅读附件", [upload.json()["id"]]), ("附件里写了什么？", []))
+            for content, file_ids in requests:
+                async with client.stream(
+                    "POST",
+                    "/api/v1/chat/stream",
+                    json={
+                        "conversation_id": conv_id,
+                        "model": "gpt-4o",
+                        "message": {"content": content, "file_ids": file_ids},
+                    },
+                    headers=auth_headers,
+                ) as response:
+                    assert response.status_code == 200
+                    async for _ in response.aiter_lines():
+                        pass
+
+        prior_content = captured_messages[-1][0]["content"]
+        assert isinstance(prior_content, list)
+        assert any(
+            part.get("type") == "text" and "yuanai file context" in str(part.get("text"))
+            for part in prior_content
+            if isinstance(part, dict)
+        )
+
+    async def test_stream_embeds_image_for_vision_models(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "agnes-2.5-flash"},
+            headers=auth_headers,
+        )
+        upload = await client.post(
+            "/api/v1/files/upload",
+            headers=auth_headers,
+            files={"file": ("pixel.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        )
+        captured_messages: list[list[dict[str, object]]] = []
+
+        async def mock_stream(
+            _model: str, messages: list[dict[str, object]], **_kwargs: object
+        ):  # type: ignore[misc]
+            captured_messages.append(messages)
+            yield ("content", "image reply")
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_res.json()["id"],
+                    "model": "agnes-2.5-flash",
+                    "message": {"content": "看图", "file_ids": [upload.json()["id"]]},
+                },
+                headers=auth_headers,
+            ) as response:
+                assert response.status_code == 200
+                async for _ in response.aiter_lines():
+                    pass
+
+        content = captured_messages[0][0]["content"]
+        assert isinstance(content, list)
+        assert any(
+            part.get("type") == "image_url"
+            and str(part.get("image_url", {}).get("url", "")).startswith("data:image/png;base64,")
+            for part in content
+            if isinstance(part, dict) and isinstance(part.get("image_url"), dict)
+        )
+
+    async def test_stream_returns_user_safe_error_for_text_only_image_model(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """DeepSeek 视觉请求必须返回稳定 SSE 错误，而非 provider 的 image_url 解析错误。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "deepseek-v4-flash"},
+            headers=auth_headers,
+        )
+        upload = await client.post(
+            "/api/v1/files/upload",
+            headers=auth_headers,
+            files={"file": ("pixel.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        )
+        assert upload.status_code == 201
+
+        async with client.stream(
+            "POST",
+            "/api/v1/chat/stream",
+            json={
+                "conversation_id": conv_res.json()["id"],
+                "model": "deepseek-v4-flash",
+                "message": {"content": "看图", "file_ids": [upload.json()["id"]]},
+            },
+            headers=auth_headers,
+        ) as response:
+            assert response.status_code == 200
+            lines = [line async for line in response.aiter_lines()]
+        sse = "\n".join(lines)
+
+        assert "MODEL_VISION_UNSUPPORTED" in sse
+        error_data = next(
+            line.removeprefix("data: ")
+            for line in lines
+            if line.startswith("data: {") and "MODEL_VISION_UNSUPPORTED" in line
+        )
+        assert json.loads(error_data)["message"] == (
+            "当前模型不支持图片识别，请切换至支持视觉的模型后发送"
+        )
+        assert "unknown variant" not in sse
 
     async def test_edit_stream_reuses_user_message_and_replaces_old_answer(
         self, client: AsyncClient, auth_headers: dict[str, str]

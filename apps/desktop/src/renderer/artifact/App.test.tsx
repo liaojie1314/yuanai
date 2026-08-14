@@ -99,6 +99,32 @@ describe('Artifact window', () => {
     expect(screen.getByRole('cell', { name: '苹果' })).toBeInTheDocument()
   })
 
+  it('renders images and PDFs in the dedicated preview window', () => {
+    artifact.payload = {
+      kind: 'file-preview',
+      title: '设计稿.png',
+      sourceUrl: 'https://cdn.example.com/files/design.png',
+      mimeType: 'image/png',
+    }
+
+    const { unmount } = render(<App />)
+    expect(screen.getByRole('main', { name: '文件预览 设计稿.png' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '设计稿.png' })).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/files/design.png'
+    )
+
+    unmount()
+    artifact.payload = {
+      kind: 'file-preview',
+      title: '需求.pdf',
+      sourceUrl: 'https://cdn.example.com/files/spec.pdf',
+      mimeType: 'application/pdf',
+    }
+    render(<App />)
+    expect(screen.getByTitle('预览 需求.pdf')).toHaveAttribute('sandbox', 'allow-downloads')
+  })
+
   it('shows JavaScript console output inside the preview window', async () => {
     const user = userEvent.setup()
     artifact.payload = {

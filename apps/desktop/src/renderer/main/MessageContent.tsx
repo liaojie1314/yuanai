@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
+import { getFilePreview } from '@yuanai/core'
 import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
 import { formatMsgTime, isDataPreviewLang, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
@@ -338,22 +339,82 @@ function MarkdownContent({
   )
 }
 
-function MessageAttachment({ file }: { file: Message['files'][number] }): ReactElement {
+function MessageAttachment({
+  file,
+  onOpenArtifact,
+}: {
+  file: Message['files'][number]
+  onOpenArtifact(payload: DesktopArtifactPayload): void
+}): ReactElement {
   const [imageFailed, setImageFailed] = useState(false)
-  const isImage = file.mimeType.startsWith('image/') && !imageFailed
+  const [previewError, setPreviewError] = useState<string | null>(null)
+  const isSupportedImage = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(
+    file.mimeType
+  )
+  const isImage = isSupportedImage && !imageFailed
+
+  function openImagePreview(): void {
+    onOpenArtifact({
+      kind: 'file-preview',
+      title: file.filename,
+      sourceUrl: file.url,
+      mimeType: file.mimeType,
+    })
+  }
 
   if (isImage) {
     return (
       <li className="desktop-chat__file desktop-chat__file--image" title={file.filename}>
-        <img src={file.url} alt={file.filename} onError={() => setImageFailed(true)} />
+        <button type="button" aria-label={`预览图片 ${file.filename}`} onClick={openImagePreview}>
+          <img src={file.url} alt={file.filename} onError={() => setImageFailed(true)} />
+        </button>
+        {previewError ? <small role="status">{previewError}</small> : null}
       </li>
     )
+  }
+
+  async function openPreview(): Promise<void> {
+    try {
+      const preview = await getFilePreview(file.id)
+      if (preview.kind === 'unsupported') {
+        setPreviewError('此文件类型不支持内置预览，请下载原文件查看。')
+        return
+      }
+      if (preview.kind === 'image' || preview.kind === 'pdf') {
+        onOpenArtifact({
+          kind: 'file-preview',
+          title: preview.filename,
+          sourceUrl: preview.url,
+          mimeType: preview.kind === 'pdf' ? 'application/pdf' : preview.mimeType,
+        })
+        return
+      }
+      const code =
+        preview.kind === 'text'
+          ? (preview.text ?? '')
+          : (preview.rows ?? []).map((row) => row.join('\t')).join('\n')
+      onOpenArtifact({
+        title: file.filename,
+        lang: preview.kind === 'table' ? 'csv' : 'text',
+        code,
+        mode: 'view',
+      })
+    } catch {
+      setPreviewError('预览加载失败，请下载原文件查看。')
+    }
   }
 
   return (
     <li className="desktop-chat__file" title={file.filename}>
       <FileText size={14} aria-hidden="true" />
       <span>{file.filename}</span>
+      <button type="button" onClick={() => void openPreview()} aria-label={`预览 ${file.filename}`}>
+        预览
+      </button>
+      <a href={file.url} download aria-label={`下载 ${file.filename}`}>
+        <Download size={13} aria-hidden="true" />
+      </a>
+      {previewError ? <small role="status">{previewError}</small> : null}
     </li>
   )
 }
@@ -661,7 +722,7 @@ export function ChatMessage({
         {!isEditing && message.files.length > 0 ? (
           <ul className="desktop-chat__files" aria-label="消息附件">
             {message.files.map((file) => (
-              <MessageAttachment key={file.id} file={file} />
+              <MessageAttachment key={file.id} file={file} onOpenArtifact={onOpenArtifact} />
             ))}
           </ul>
         ) : null}

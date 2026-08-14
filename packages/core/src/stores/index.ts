@@ -10,4 +10,9 @@ export type {
   MessageRole,
   ConvGroup,
 } from './chat.store'
-export type { ArtifactMode, ArtifactPayload } from './artifact.store'
+export type {
+  ArtifactMode,
+  ArtifactPayload,
+  CodeArtifactPayload,
+  FileArtifactPayload,
+} from './artifact.store'

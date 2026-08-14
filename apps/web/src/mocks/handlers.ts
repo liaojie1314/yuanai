@@ -66,6 +66,17 @@ const mockModels = [
   },
 ]
 
+interface MockFileRecord {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  content: string
+  url: string
+}
+
+const mockFiles: Record<string, MockFileRecord> = {}
+
 // 初始会话数据（含今天、昨天、本周分组）
 const conversations: Record<
   string,
@@ -173,6 +184,76 @@ function uuid(): string {
   })
 }
 
+function buildMockFileResponse(file: MockFileRecord): {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  url: string
+  createdAt: string
+} {
+  return {
+    id: file.id,
+    filename: file.filename,
+    mimeType: file.mimeType,
+    sizeBytes: file.sizeBytes,
+    url: file.url,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function toDataUrl(file: File): Promise<string | null> {
+  if (!file.type.startsWith('image/')) return Promise.resolve(null)
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') resolve(reader.result)
+      else reject(new Error('无法读取图片'))
+    })
+    reader.addEventListener('error', () => reject(reader.error ?? new Error('无法读取图片')))
+    reader.readAsDataURL(file)
+  })
+}
+
+function mockResponseForAttachments(files: MockFileRecord[]): string | null {
+  if (!files.length) return null
+  const names = files.map((file) => `\`${file.filename}\``).join('、')
+  const textual = files
+    .filter((file) => !file.mimeType.startsWith('image/'))
+    .map((file) => `\n\n${file.filename} 的已提取内容：\n> ${file.content.slice(0, 600)}`)
+    .join('')
+  const images = files.filter((file) => file.mimeType.startsWith('image/'))
+  const imageNotice = images.length
+    ? '\n\n图片已作为视觉输入附带给模型。Mock 模式不会伪造图像理解结果；真实 API 模式会发送图片数据。'
+    : ''
+  return `我已收到附件 ${names}，并将它们作为本次回答的上下文。${textual}${imageNotice}`
+}
+
+function buildMockPreview(file: MockFileRecord): Record<string, unknown> {
+  const base = { ...buildMockFileResponse(file), supported: true }
+  if (file.mimeType.startsWith('image/')) return { ...base, kind: 'image' }
+  if (file.mimeType === 'application/pdf') return { ...base, kind: 'pdf' }
+  if (file.mimeType === 'text/csv') {
+    return {
+      ...base,
+      kind: 'table',
+      rows: file.content
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .slice(0, 100)
+        .map((row) => row.split(',')),
+    }
+  }
+  if (
+    file.mimeType.startsWith('text/') ||
+    file.mimeType === 'application/json' ||
+    file.mimeType === 'application/ld+json'
+  ) {
+    return { ...base, kind: 'text', text: file.content.slice(0, 50_000) }
+  }
+  return { ...base, kind: 'unsupported', supported: false }
+}
+
 const MOCK_RESPONSES = [
   '好的，我来帮你分析这个问题。\n\n根据你的描述，核心思路是：\n\n1. **明确目标** - 首先确定期望的输出结果\n2. **拆解步骤** - 将复杂问题分解为可执行的小步骤\n3. **验证方案** - 每个步骤都要有可验证的方式\n\n下面是一段可以在面板中运行的 HTML 示例：\n\n```html\n<h1 style="color:#3B82F6">Hello 元AI</h1>\n<p>点击右上角"运行"，可在受限 iframe 沙箱中执行。</p>\n<button onclick="alert(\'来自沙箱的问候\')">点我</button>\n```\n',
   '这是个很好的问题！让我从几个角度来分析：\n\n**技术层面**：需要考虑性能、可维护性和扩展性三个维度的平衡。\n\n**实践层面**：建议从最小可行方案开始，快速验证核心假设，再逐步迭代完善。',
@@ -245,6 +326,53 @@ export const handlers = [
     return HttpResponse.json({ ...mockUser, ...body })
   }),
 
+  // ── Files ──────────────────────────────────────────────────
+  http.post(`${BASE}/files/check-hash`, () =>
+    HttpResponse.json(
+      { detail: { code: 'FILE_NOT_FOUND', message: '文件不存在' } },
+      { status: 404 }
+    )
+  ),
+
+  http.post(`${BASE}/files/upload`, async ({ request }) => {
+    const formData = await request.formData()
+    const upload = formData.get('file')
+    if (!(upload instanceof File)) {
+      return HttpResponse.json(
+        { detail: { code: 'INVALID_FILE', message: '未收到上传文件' } },
+        { status: 400 }
+      )
+    }
+    const id = `file-${uuid()}`
+    const file: MockFileRecord = {
+      id,
+      filename: upload.name || 'upload',
+      mimeType: upload.type || 'application/octet-stream',
+      sizeBytes: upload.size,
+      content: await upload.text(),
+      url: (await toDataUrl(upload)) ?? `${BASE}/files/${id}/content`,
+    }
+    mockFiles[id] = file
+    return HttpResponse.json(buildMockFileResponse(file), { status: 201 })
+  }),
+
+  http.get(`${BASE}/files/:id/preview`, ({ params }) => {
+    const file = mockFiles[String(params['id'])]
+    if (!file) {
+      return HttpResponse.json(
+        { detail: { code: 'FILE_NOT_FOUND', message: '文件不存在' } },
+        { status: 404 }
+      )
+    }
+    return HttpResponse.json(buildMockPreview(file))
+  }),
+
+  http.get(`${BASE}/files/:id/content`, ({ params }) => {
+    const file = mockFiles[String(params['id'])]
+    if (!file) return new HttpResponse(null, { status: 404 })
+    return new HttpResponse(file.content, { headers: { 'Content-Type': file.mimeType } })
+  }),
+
   // ── Conversations ──
   http.get(`${BASE}/chat/conversations`, () =>
     HttpResponse.json({
@@ -304,13 +432,17 @@ export const handlers = [
     const body = (await request.json()) as {
       conversation_id: string
       model: string
-      message: { content: string }
+      message: { content: string; fileIds?: string[] }
     }
 
     const convId = body.conversation_id
     const userMsgId = uuid()
     const assistantMsgId = uuid()
     const now = new Date().toISOString()
+    const attachedFiles = (body.message.fileIds ?? [])
+      .map((id) => mockFiles[id])
+      .filter((file): file is MockFileRecord => file !== undefined)
+      .map(buildMockFileResponse)
 
     // 持久化用户消息
     if (!messages[convId]) messages[convId] = []
@@ -318,13 +450,17 @@ export const handlers = [
       id: userMsgId,
       role: 'user',
       content: body.message.content,
-      files: [],
+      files: attachedFiles,
       createdAt: now,
     })
 
     // 选择 mock 回复
+    const sourceFiles = (body.message.fileIds ?? [])
+      .map((id) => mockFiles[id])
+      .filter((file): file is MockFileRecord => file !== undefined)
     const idx = Math.floor(Math.random() * MOCK_RESPONSES.length)
-    const responseText = MOCK_RESPONSES[idx] ?? MOCK_RESPONSES[0] ?? ''
+    const responseText =
+      mockResponseForAttachments(sourceFiles) ?? MOCK_RESPONSES[idx] ?? MOCK_RESPONSES[0] ?? ''
     const tokens = responseText.split('')
 
     const stream = new ReadableStream({

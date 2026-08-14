@@ -7,7 +7,7 @@ import { Keyboard, StyleSheet, Pressable, Text, useWindowDimensions, View } from
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { TABLET_MIN_WIDTH, useCreateConversation, useModels } from '@yuanai/core'
+import { TABLET_MIN_WIDTH, filterChatModels, useCreateConversation, useModels } from '@yuanai/core'
 import type { AIModel } from '@yuanai/types'
 
 import { ChatInput } from '@/components/chat/ChatInput'
@@ -41,7 +41,8 @@ export default function ChatNewScreen(): React.JSX.Element {
   const dialog = useDialog()
 
   const createConv = useCreateConversation()
-  const { data: models = [] } = useModels()
+  const { data: availableModels = [] } = useModels()
+  const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const [submitting, setSubmitting] = useState(false)
   // 用户在空态屏选的模型（会话尚未创建，暂存本地；创建时作为 model 参数带出）
   const [pickedModelId, setPickedModelId] = useState<string | null>(null)

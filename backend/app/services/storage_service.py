@@ -32,6 +32,9 @@ class StorageService(Protocol):
     async def put_object(self, key: str, data: bytes, content_type: str) -> str:
         """一次性写入对象（用于小文件、头像、直传）。返回公开 URL。"""
 
+    async def get_object(self, key: str) -> bytes:
+        """读取对象内容，用于受限的文件预览和 AI 上下文提取。"""
+
     async def create_multipart(self, key: str, content_type: str) -> str:
         """创建多段上传会话，返回后端存储的 upload_id。"""
 
@@ -122,6 +125,12 @@ class S3StorageService:
             ContentType=content_type,
         )
         return self.get_url(key)
+
+    async def get_object(self, key: str) -> bytes:
+        response = await asyncio.to_thread(
+            self._client.get_object, Bucket=self.bucket, Key=key
+        )
+        return await asyncio.to_thread(response["Body"].read)
 
     async def create_multipart(self, key: str, content_type: str) -> str:
         resp = await asyncio.to_thread(
@@ -223,6 +232,12 @@ class LocalStorageService:
         async with aiofiles.open(target, "wb") as f:
             await f.write(data)
         return self.get_url(key)
+
+    async def get_object(self, key: str) -> bytes:
+        target = self._resolve_path(key)
+        async with aiofiles.open(target, "rb") as f:
+            content: bytes = await f.read()
+            return content
 
     async def create_multipart(self, key: str, content_type: str) -> str:
         upload_id = str(uuid.uuid4())

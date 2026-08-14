@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
   TABLET_MIN_WIDTH,
+  filterChatModels,
   useConversations,
   useMessages,
   useModels,
@@ -78,7 +79,8 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const dialog = useDialog()
 
   const { data: conversations = [] } = useConversations()
-  const { data: models = [] } = useModels()
+  const { data: availableModels = [] } = useModels()
+  const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { data: messages = [], isLoading } = useMessages(conversationId)
   const { send, stop } = useStream()
   const streamingConvId = useChatStore((s) => s.streamingConvId)

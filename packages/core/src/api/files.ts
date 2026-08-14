@@ -1,4 +1,5 @@
 import { apiClient } from './client.js'
+import type { FilePreview } from '@yuanai/types'
 
 /** 单个已上传文件的服务端元数据。 */
 export interface FileRef {
@@ -117,4 +118,10 @@ export async function completeUpload(sessionId: string): Promise<FileRef> {
  */
 export async function abortUpload(sessionId: string): Promise<void> {
   await apiClient.delete(`/files/upload-session/${sessionId}`)
+}
+
+/** 获取已上传文件的受限预览内容。 */
+export async function getFilePreview(fileId: string): Promise<FilePreview> {
+  const res = await apiClient.get<FilePreview>(`/files/${fileId}/preview`)
+  return res.data
 }

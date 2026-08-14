@@ -42,8 +42,9 @@ describe('CodeBlock', () => {
     fireEvent.click(screen.getByRole('button', { name: '面板查看' }))
     const state = useArtifactStore.getState()
     expect(state.open).toBe(true)
-    expect(state.payload?.mode).toBe('view')
-    expect(state.payload?.code).toBe('.c{color:red}')
+    expect(state.payload?.kind).toBe('code')
+    expect(state.payload?.kind === 'code' ? state.payload.mode : undefined).toBe('view')
+    expect(state.payload?.kind === 'code' ? state.payload.code : undefined).toBe('.c{color:red}')
     expect(state.payload?.title).toBe('示例样式')
   })
 
@@ -60,8 +61,8 @@ describe('CodeBlock', () => {
     fireEvent.click(screen.getByRole('button', { name: '运行代码' }))
     const state = useArtifactStore.getState()
     expect(state.open).toBe(true)
-    expect(state.payload?.mode).toBe('run')
-    expect(state.payload?.lang).toBe('javascript')
+    expect(state.payload?.kind === 'code' ? state.payload.mode : undefined).toBe('run')
+    expect(state.payload?.kind === 'code' ? state.payload.lang : undefined).toBe('javascript')
   })
 
   it('点击"下载"生成 Blob 并以标题+对应扩展名命名后触发下载', () => {

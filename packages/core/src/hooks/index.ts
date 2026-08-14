@@ -40,3 +40,4 @@ export {
   useUnlockSharedConversation,
 } from './useShareQueries'
 export * from './useFileUpload'
+export * from './useFilePreview'

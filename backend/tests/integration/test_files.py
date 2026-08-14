@@ -78,6 +78,40 @@ class TestDirectUpload:
         )
         assert response.status_code == 401
 
+    async def test_preview_uploaded_text_file(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        upload = await client.post(
+            "/api/v1/files/upload",
+            headers=auth_headers,
+            files={"file": ("preview.txt", io.BytesIO(b"preview content"), "text/plain")},
+        )
+        assert upload.status_code == 201
+        response = await client.get(
+            f"/api/v1/files/{upload.json()['id']}/preview", headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert response.json()["kind"] == "text"
+        assert response.json()["text"] == "preview content"
+
+    async def test_download_returns_attachment_response(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        upload = await client.post(
+            "/api/v1/files/upload",
+            headers=auth_headers,
+            files={"file": ("中文 note.txt", io.BytesIO(b"download content"), "text/plain")},
+        )
+        assert upload.status_code == 201
+
+        response = await client.get(
+            f"/api/v1/files/{upload.json()['id']}/download", headers=auth_headers
+        )
+        assert response.status_code == 200
+        assert response.content == b"download content"
+        assert response.headers["content-disposition"].startswith("attachment;")
+        assert "UTF-8%20note.txt" in response.headers["content-disposition"]
+
 
 class TestCheckHash:
     async def test_check_hash_miss(

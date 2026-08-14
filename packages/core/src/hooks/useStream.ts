@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
-import type { Message } from '@yuanai/types'
+import type { Message, MessageFile } from '@yuanai/types'
 import { Role } from '@yuanai/types'
 import { getApiBaseUrl, refreshAccessTokenForStream } from '../api/client.js'
 import { getPlatformAdapter } from '../platform/index.js'
@@ -11,6 +11,19 @@ import { useChatStore } from '../stores/chat.store.js'
 /** SSE 传输层拿不到结构化 status；用错误文本识别 401/Token 失效 */
 function isAuthError(err: Error): boolean {
   return /AUTH_TOKEN_INVALID|HTTP 401|401/.test(err.message)
+}
+
+/** 解析后端 SSE 的结构化错误，向各端保留可直接展示的中文消息。 */
+function parseSseError(data: string): Error {
+  try {
+    const payload = JSON.parse(data) as { message?: unknown }
+    if (typeof payload.message === 'string' && payload.message.trim()) {
+      return new Error(payload.message)
+    }
+  } catch {
+    // 不规范的 SSE 错误仍应以安全兜底消息结束流。
+  }
+  return new Error('消息发送失败，请稍后重试')
 }
 
 /** 临时对话的历史消息条目（不携带附件、不落库） */
@@ -57,6 +70,8 @@ export interface StreamParams {
   model: string
   /** 已上传的文件 ID 列表 */
   fileIds?: string[] | undefined
+  /** 上传完成后用于在 AI 回复开始前展示的文件引用。 */
+  optimisticFiles?: MessageFile[] | undefined
   /** 是否开启 AI 思考模式（DeepSeek 系列通过 extra_body 传递，其他模型忽略） */
   enableThinking?: boolean
   /** 为 true 时不显示乐观用户消息（重新生成场景：原用户消息已存在） */
@@ -211,6 +226,7 @@ export function useStream() {
       content,
       model,
       fileIds,
+      optimisticFiles,
       enableThinking,
       skipOptimistic,
       replaceMessageId,
@@ -227,7 +243,11 @@ export function useStream() {
             .map((message) => (message.id === replaceMessageId ? { ...message, content } : message))
         })
       }
-      startStreaming(convId, skipOptimistic || replaceMessageId ? null : content)
+      startStreaming(
+        convId,
+        skipOptimistic || replaceMessageId ? null : content,
+        skipOptimistic || replaceMessageId ? [] : optimisticFiles
+      )
       stoppedRef.current = false
       streamMetaRef.current = null
       onStart?.()
@@ -238,7 +258,9 @@ export function useStream() {
         accessToken: string | null
       ): Promise<'completed' | 'failed' | 'auth' | 'stopped'> =>
         new Promise<'completed' | 'failed' | 'auth' | 'stopped'>((resolve) => {
-          const handle = getPlatformAdapter().stream(
+          let serverError: Error | null = null
+          let handle: StreamHandle | null = null
+          handle = getPlatformAdapter().stream(
             {
               url: `${getApiBaseUrl()}/chat/stream`,
               method: 'POST',
@@ -256,6 +278,11 @@ export function useStream() {
             },
             {
               onMessage: (msg) => {
+                if (msg.event === 'error') {
+                  serverError = parseSseError(msg.data)
+                  handle?.close()
+                  return
+                }
                 // 记录本轮消息 ID：stop() 时把已收到的部分内容写回缓存要用
                 if (msg.event === 'message_start') {
                   try {
@@ -294,6 +321,12 @@ export function useStream() {
               onClose: () => {
                 // 收尾前先把缓冲中的尾部 delta 刷进 store，避免短暂丢尾
                 flushDeltas()
+                if (serverError) {
+                  finalizeStream()
+                  onError?.(serverError)
+                  resolve('failed')
+                  return
+                }
                 // 用户主动停止：close 由 stop() 触发，缓存已在 stop() 内写好，
                 // 不 refetch（后端占位行内容为空，会覆盖掉刚写入的部分内容）
                 if (stoppedRef.current) {
@@ -361,7 +394,9 @@ export function useStream() {
       let finalContent = ''
 
       await new Promise<void>((resolve) => {
-        const handle = getPlatformAdapter().stream(
+        let serverError: Error | null = null
+        let handle: StreamHandle | null = null
+        handle = getPlatformAdapter().stream(
           {
             url: `${getApiBaseUrl()}/chat/stream/temporary`,
             method: 'POST',
@@ -377,6 +412,11 @@ export function useStream() {
           },
           {
             onMessage: (msg) => {
+              if (msg.event === 'error') {
+                serverError = parseSseError(msg.data)
+                handle?.close()
+                return
+              }
               // 单独处理 content_delta 以累积 finalContent（走同一个批量缓冲）
               if (msg.event === 'content_delta') {
                 try {
@@ -415,9 +455,10 @@ export function useStream() {
                 content: finalContent,
                 think: snap.streamingThink,
                 thinkDurationMs: snap.streamingThinkDurationMs,
-                completed: !stoppedRef.current,
+                completed: !stoppedRef.current && serverError === null,
               }
               finalizeStream()
+              if (serverError) onError?.(serverError)
               onEnd?.(result)
               resolve()
             },

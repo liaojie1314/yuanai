@@ -102,6 +102,42 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(useChatStore.getState().streamingConvId).toBeNull()
   })
 
+  it('收到后端 SSE 错误时回调用户可展示的错误消息', async () => {
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, () =>
+        makeStreamResponse([
+          { event: 'message_start', data: { user_message_id: 'u', assistant_message_id: 'a' } },
+          {
+            event: 'error',
+            data: {
+              code: 'MODEL_VISION_UNSUPPORTED',
+              message: '当前模型不支持图片识别，请切换至支持视觉的模型后发送',
+            },
+          },
+        ])
+      )
+    )
+    const onEnd = vi.fn()
+    const onError = vi.fn()
+    const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
+
+    await act(async () => {
+      await result.current.send({
+        convId: 'c1',
+        content: '看图',
+        model: 'deepseek-v4-flash',
+        onEnd,
+        onError,
+      })
+    })
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: '当前模型不支持图片识别，请切换至支持视觉的模型后发送' })
+    )
+    expect(onEnd).toHaveBeenCalledWith({ completed: false })
+    expect(useChatStore.getState().streamingConvId).toBeNull()
+  })
+
   it('在 Hook 初始化后使用最新的运行时 API 地址发起流式请求', async () => {
     const runtimeBaseUrl = 'https://desktop.example/api/v1'
     let receivedRequest = false

@@ -4,6 +4,7 @@ import { useMemo, type JSX, type RefObject } from 'react'
 import { Virtuoso, type VirtuosoHandle, type ListRange } from 'react-virtuoso'
 import { useChatStore } from '@yuanai/core/stores'
 import type { MockMessage } from '@yuanai/core/stores'
+import type { MessageFile } from '@yuanai/types'
 import { UserMessage } from './UserMessage'
 import { AIMessage } from './AIMessage'
 import type { MsgPair } from './utils'
@@ -27,6 +28,7 @@ interface RowAI {
 interface RowOptimisticUser {
   kind: 'opt-user'
   content: string
+  files: readonly MessageFile[]
 }
 interface RowStreamingAI {
   kind: 'stream-ai'
@@ -39,6 +41,8 @@ export interface MessageListProps {
   pairs: MsgPair[]
   /** 流式过程中显示的乐观用户消息（未持久化） */
   streamingUserMsg: string | null
+  /** 流式过程中已上传、但尚未出现在历史消息中的附件 */
+  streamingUserFiles: readonly MessageFile[] | null
   /** 是否要额外显示一条流式 AI 消息（非重新生成场景） */
   showStreamingAI: boolean
   /** 若非空，则该 pair 内联展示流式重新生成 */
@@ -53,6 +57,8 @@ export interface MessageListProps {
   onStartEdit: (msg: MockMessage) => void
   onSubmitEdit: (msg: MockMessage, text: string) => void
   onCancelEdit: () => void
+  /** 打开右侧 Artifact 面板中的文件预览。 */
+  onPreviewFile: (file: MessageFile) => void
   onVersionChange: (pairKey: string, idx: number) => void
   onRegenerate: (pair: MsgPair) => void
   onFeedback: (msgId: string, type: 'like' | 'dislike') => void
@@ -76,6 +82,7 @@ export function MessageList({
   virtuosoRef,
   pairs,
   streamingUserMsg,
+  streamingUserFiles,
   showStreamingAI,
   regeneratingPairKey,
   streamingContent,
@@ -87,6 +94,7 @@ export function MessageList({
   onStartEdit,
   onSubmitEdit,
   onCancelEdit,
+  onPreviewFile,
   onVersionChange,
   onRegenerate,
   onFeedback,
@@ -126,10 +134,24 @@ export function MessageList({
         })
       }
     }
-    if (streamingUserMsg) list.push({ kind: 'opt-user', content: streamingUserMsg })
+    if (streamingUserMsg) {
+      list.push({
+        kind: 'opt-user',
+        content: streamingUserMsg,
+        files: streamingUserFiles ?? [],
+      })
+    }
     if (showStreamingAI) list.push({ kind: 'stream-ai', streamingContent })
     return list
-  }, [pairs, versionIdxs, regeneratingPairKey, streamingContent, streamingUserMsg, showStreamingAI])
+  }, [
+    pairs,
+    versionIdxs,
+    regeneratingPairKey,
+    streamingContent,
+    streamingUserMsg,
+    streamingUserFiles,
+    showStreamingAI,
+  ])
 
   return (
     <Virtuoso<Row>
@@ -165,6 +187,7 @@ export function MessageList({
                 onStartEdit={() => onStartEdit(row.pair.userMsg)}
                 onSubmitEdit={(text) => onSubmitEdit(row.pair.userMsg, text)}
                 onCancelEdit={onCancelEdit}
+                onPreviewFile={onPreviewFile}
               />
             </div>
           )
@@ -208,6 +231,7 @@ export function MessageList({
                   id: '__opt_user__',
                   role: 'user',
                   parts: [{ type: 'text', content: row.content }],
+                  ...(row.files.length > 0 ? { files: [...row.files] } : {}),
                   createdAt: Date.now(),
                 }}
                 editing={false}
@@ -216,6 +240,7 @@ export function MessageList({
                 onStartEdit={() => {}}
                 onSubmitEdit={() => {}}
                 onCancelEdit={() => {}}
+                onPreviewFile={onPreviewFile}
               />
             </div>
           )

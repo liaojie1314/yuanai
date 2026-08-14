@@ -24,6 +24,7 @@ import app.services.ai_service as ai_svc  # noqa: E402
 from app.services.ai_service import (  # noqa: E402
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
+    ModelVisionUnsupportedError,
     _get_client,
     get_available_models,
     stream_chat,
@@ -194,6 +195,23 @@ async def test_unsupported_model_raises() -> None:
     """不支持的 model ID 应在迭代开始时抛出 ValueError。"""
     with pytest.raises(ValueError, match="Unsupported model"):
         async for _ in stream_chat("unknown-model-xyz", []):
+            pass
+
+
+async def test_stream_chat_rejects_image_for_text_only_model() -> None:
+    """纯文本模型不得把视觉块转交给 provider，避免暴露其底层反序列化错误。"""
+    messages: list[dict[str, object]] = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "看图"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+            ],
+        }
+    ]
+
+    with pytest.raises(ModelVisionUnsupportedError, match="不支持图片识别"):
+        async for _ in stream_chat("deepseek-v4-flash", messages):
             pass
 
 
