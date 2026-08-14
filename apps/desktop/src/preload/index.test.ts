@@ -51,6 +51,10 @@ describe('preload API', () => {
     await api.clipboard.writeText('元AI')
     await api.dialog.openFiles()
     await api.dialog.listScreenSources()
+    await api.permissions.respond({
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+      granted: true,
+    })
     await api.window.openLogin()
     await api.window.openRegister()
     await api.window.openForgot()
@@ -85,33 +89,37 @@ describe('preload API', () => {
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(9, IPC.clipboard.writeText, '元AI')
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(10, IPC.dialog.openFiles)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(11, IPC.dialog.listScreenSources)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.window.openLogin)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openRegister)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.window.openForgot)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.window.openSettings)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.window.openAbout)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.window.openArtifact, {
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(12, IPC.permissions.respond, {
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+      granted: true,
+    })
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(13, IPC.window.openLogin)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(14, IPC.window.openRegister)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(15, IPC.window.openForgot)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(16, IPC.window.openSettings)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(17, IPC.window.openAbout)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.window.openArtifact, {
       title: '代码',
       lang: 'html',
       code: '<p>元AI</p>',
       mode: 'run',
     })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(18, IPC.window.minimize)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(19, IPC.window.toggleMaximize)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(20, IPC.window.close)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(21, IPC.system.getInfo)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(19, IPC.window.minimize)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(20, IPC.window.toggleMaximize)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(21, IPC.window.close)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(22, IPC.system.getInfo)
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
-      22,
+      23,
       IPC.system.setGlobalShortcut,
       'CommandOrControl+Alt+Y'
     )
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(23, IPC.system.setAutoLaunch, true)
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(24, IPC.system.notify, {
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(24, IPC.system.setAutoLaunch, true)
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(25, IPC.system.notify, {
       title: '元AI',
       body: '回复已完成',
     })
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(25, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(26, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(26, IPC.shell.openExternal, 'repository')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(27, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {
@@ -122,6 +130,18 @@ describe('preload API', () => {
 
     expect(ipcRenderer.removeListener).toHaveBeenCalledWith(
       IPC.events.authChanged,
+      expect.any(Function)
+    )
+  })
+
+  it('removes the exact media permission listener on unsubscribe', () => {
+    const listener = vi.fn()
+    const off = api.events.onMediaPermissionRequested(listener)
+
+    off()
+
+    expect(ipcRenderer.removeListener).toHaveBeenCalledWith(
+      IPC.events.mediaPermissionRequested,
       expect.any(Function)
     )
   })

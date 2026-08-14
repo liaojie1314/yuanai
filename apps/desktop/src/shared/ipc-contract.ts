@@ -130,6 +130,25 @@ export interface DesktopNotificationPayload {
   playSound: boolean
 }
 
+/** 可由受信任 renderer 请求的受限媒体设备。 */
+export type DesktopMediaPermissionType = 'audio' | 'video'
+
+/** 由主进程发给对应 renderer 的单次媒体权限确认请求。 */
+export interface DesktopMediaPermissionRequest {
+  /** 仅在当前权限请求有效期内可用于回传结果的随机标识。 */
+  requestId: string
+  /** 请求使用的受限媒体设备。 */
+  mediaType: DesktopMediaPermissionType
+}
+
+/** renderer 对单次媒体权限确认请求的明确用户决定。 */
+export interface DesktopMediaPermissionResponse {
+  /** 必须与当前 renderer 收到的待处理请求完全一致。 */
+  requestId: string
+  /** 用户是否明确允许本次会话使用对应设备。 */
+  granted: boolean
+}
+
 /** 允许由主进程打开的固定帮助链接。 */
 export type ExternalLinkId = 'documentation' | 'repository' | 'feedback' | 'privacy'
 
@@ -156,6 +175,7 @@ export const IPC = {
     listScreenSources: 'dialog:list-screen-sources',
   },
   clipboard: { writeText: 'clipboard:write-text' },
+  permissions: { respond: 'permissions:respond' },
   oauth: { start: 'oauth:start' },
   window: {
     openLogin: 'window:open-login',
@@ -186,5 +206,6 @@ export const IPC = {
     artifactInit: 'event:artifact-init',
     notificationNavigate: 'event:notification-navigate',
     updater: 'event:updater',
+    mediaPermissionRequested: 'event:media-permission-requested',
   },
 } as const

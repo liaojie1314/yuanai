@@ -997,6 +997,18 @@ textarea:focus-visible {
     0 2px 8px rgb(15 23 42 / 12%);
 }
 
+.desktop-chat__media-permission-dialog {
+  width: min(100%, 380px);
+  padding: 22px 22px 18px;
+  border: 1px solid color-mix(in srgb, var(--desktop-border) 88%, transparent);
+  border-radius: 8px;
+  color: var(--desktop-fg);
+  background: var(--desktop-surface);
+  box-shadow:
+    0 20px 50px rgb(15 23 42 / 20%),
+    0 2px 8px rgb(15 23 42 / 12%);
+}
+
 .desktop-chat__confirm-dialog-copy h2,
 .desktop-chat__confirm-dialog-copy p {
   margin: 0;
@@ -1053,6 +1065,20 @@ textarea:focus-visible {
   border-color: #b91c1c;
   color: #ffffff;
   background: #b91c1c;
+}
+
+.desktop-chat__confirm-dialog-actions .desktop-chat__media-permission-allow {
+  border-color: var(--desktop-brand);
+  color: #ffffff;
+  background: var(--desktop-brand);
+  font-weight: 600;
+}
+
+.desktop-chat__confirm-dialog-actions .desktop-chat__media-permission-allow:hover,
+.desktop-chat__confirm-dialog-actions .desktop-chat__media-permission-allow:focus-visible {
+  border-color: var(--desktop-brand-hover);
+  color: #ffffff;
+  background: var(--desktop-brand-hover);
 }
 
 .desktop-chat__confirm-dialog-actions button:disabled {
@@ -1425,6 +1451,53 @@ textarea:focus-visible {
   padding: 0 20px 10px;
   color: var(--desktop-brand-hover);
   font-size: 12.5px;
+}
+
+.desktop-chat__toast {
+  position: fixed;
+  z-index: 50;
+  top: calc(var(--desktop-titlebar-height, 0px) + 14px);
+  right: 16px;
+  display: flex;
+  width: min(360px, calc(100vw - 32px));
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px 10px 11px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgb(127 29 29 / 14%);
+  color: #b91c1c;
+  background: #fef2f2;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-chat__toast > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.desktop-chat__toast > span {
+  flex: 1 1 auto;
+}
+
+.desktop-chat__toast > button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  margin: -3px -2px -3px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+}
+
+.desktop-chat__toast > button:hover,
+.desktop-chat__toast > button:focus-visible {
+  background: rgb(185 28 28 / 10%);
 }
 
 .desktop-chat__share-dialog-actions {

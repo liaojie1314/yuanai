@@ -3,6 +3,7 @@ import type { WebContents } from 'electron'
 import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import type { TrustedWebContentsRegistry } from '../ipc/guards'
 import { buildContentSecurityPolicy } from './csp'
+import type { MediaPermissionPrompt } from './permissions'
 import { lockRendererNavigation } from './navigation'
 import { installPermissionHandler } from './permissions'
 
@@ -15,7 +16,8 @@ export function secureRenderer(
   webContents: WebContents,
   trustedWebContents: TrustedWebContentsRegistry,
   runtimeConfig: AppRuntimeConfig,
-  allowDevelopmentInlineScripts = false
+  allowDevelopmentInlineScripts = false,
+  mediaPermissionPrompt: MediaPermissionPrompt
 ): void {
   webContents.session.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -32,6 +34,6 @@ export function secureRenderer(
       },
     })
   })
-  installPermissionHandler(webContents.session, trustedWebContents)
+  installPermissionHandler(webContents.session, trustedWebContents, mediaPermissionPrompt)
   lockRendererNavigation(webContents)
 }

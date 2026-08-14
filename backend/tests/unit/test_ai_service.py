@@ -13,8 +13,9 @@
 
 import os
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
+import httpx
 import pytest
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test")
@@ -25,9 +26,12 @@ from app.services.ai_service import (  # noqa: E402
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
     ModelVisionUnsupportedError,
+    VoiceTranscriptionProviderError,
+    VoiceTranscriptionUnavailableError,
     _get_client,
     get_available_models,
     stream_chat,
+    transcribe_audio,
 )
 
 # ---------------------------------------------------------------------------
@@ -356,3 +360,99 @@ async def test_stream_chat_propagates_stream_error() -> None:
                 collected.append((event_type, token))
 
     assert collected == [("content", "first")]  # 第一个 token 已 yield，之后报错
+
+
+class _AssemblyAIResponse:
+    """用于验证 AssemblyAI HTTP 协议的最小响应替身。"""
+
+    def __init__(self, body: object) -> None:
+        self.body = body
+
+    def json(self) -> object:
+        """返回测试指定的 JSON 载荷。"""
+        return self.body
+
+    def raise_for_status(self) -> None:
+        """模拟成功的 HTTP 响应。"""
+
+
+class _AssemblyAIClient:
+    """用于断言预录制转写请求顺序的异步 HTTP 客户端替身。"""
+
+    def __init__(self) -> None:
+        self.get = AsyncMock(
+            return_value=_AssemblyAIResponse({"status": "completed", "text": "  转写文本  "})
+        )
+        self.post = AsyncMock(
+            side_effect=[
+                _AssemblyAIResponse({"upload_url": "https://cdn.assemblyai.example/audio"}),
+                _AssemblyAIResponse({"id": "transcript-1"}),
+            ]
+        )
+
+    async def __aenter__(self) -> "_AssemblyAIClient":
+        """提供异步上下文管理器入口。"""
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: object, traceback: object) -> None:
+        """提供异步上下文管理器出口。"""
+
+
+async def test_transcribe_audio_uses_assemblyai_pre_recorded_stt_and_trims_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AssemblyAI 先上传、创建任务、轮询完成，并返回清理后的文本。"""
+    client = _AssemblyAIClient()
+    monkeypatch.setattr(ai_svc.settings, "assemblyai_api_key", "test-key")
+    monkeypatch.setattr(ai_svc.settings, "voice_transcription_poll_interval_seconds", 0.0)
+
+    with patch("app.services.ai_service.httpx.AsyncClient", return_value=client):
+        result = await transcribe_audio(
+            filename="voice.webm", content=b"audio", mime_type="audio/webm"
+        )
+
+    assert result == "转写文本"
+    client.post.assert_has_awaits(
+        [
+            call("/v2/upload", content=b"audio", headers={"content-type": "audio/webm"}),
+            call(
+                "/v2/transcript",
+                json={
+                    "audio_url": "https://cdn.assemblyai.example/audio",
+                    "speech_models": ["universal-3-5-pro"],
+                },
+            ),
+        ]
+    )
+    client.get.assert_awaited_once_with("/v2/transcript/transcript-1")
+
+
+async def test_transcribe_audio_rejects_missing_assemblyai_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未配置 AssemblyAI 密钥时不得构造 HTTP 客户端。"""
+    monkeypatch.setattr(ai_svc.settings, "assemblyai_api_key", "")
+
+    with pytest.raises(VoiceTranscriptionUnavailableError):
+        await transcribe_audio(filename="voice.webm", content=b"audio", mime_type="audio/webm")
+
+
+async def test_transcribe_audio_hides_provider_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """普通 provider 故障应映射为稳定领域错误。"""
+    client = _AssemblyAIClient()
+    client.post = AsyncMock(
+        side_effect=httpx.HTTPStatusError(
+            "sensitive upstream failure",
+            request=MagicMock(),
+            response=MagicMock(),
+        )
+    )
+    monkeypatch.setattr(ai_svc.settings, "assemblyai_api_key", "test-key")
+
+    with patch("app.services.ai_service.httpx.AsyncClient", return_value=client):
+        with pytest.raises(VoiceTranscriptionProviderError) as exc_info:
+            await transcribe_audio(filename="voice.webm", content=b"audio", mime_type="audio/webm")
+
+    assert "sensitive upstream failure" not in str(exc_info.value)

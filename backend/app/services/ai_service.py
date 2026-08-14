@@ -1,6 +1,8 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import cast
 
+import httpx
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -21,6 +23,8 @@ from app.core.config import settings
 # 届时已无 running event loop，get_running_loop() 抛异常被 except 静默忽略。
 # ---------------------------------------------------------------------------
 _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
+ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
+ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
 
 PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     "gpt-4o": {"provider": "openai", "base_url": "https://api.openai.com/v1"},
@@ -66,6 +70,27 @@ class ModelVisionUnsupportedError(ValueError):
 
     def __init__(self) -> None:
         super().__init__("当前模型不支持图片识别，请切换至支持视觉的模型后发送")
+
+
+class VoiceTranscriptionUnavailableError(RuntimeError):
+    """未配置 AssemblyAI 语音转写凭据时抛出。"""
+
+    def __init__(self) -> None:
+        super().__init__("Voice transcription is unavailable")
+
+
+class VoiceTranscriptionTimeoutError(RuntimeError):
+    """AssemblyAI 调用超出受限等待时间时抛出。"""
+
+    def __init__(self) -> None:
+        super().__init__("Voice transcription timed out")
+
+
+class VoiceTranscriptionProviderError(RuntimeError):
+    """AssemblyAI provider 故障的脱敏领域错误。"""
+
+    def __init__(self) -> None:
+        super().__init__("Voice transcription provider failed")
 
 
 AVAILABLE_MODELS = [
@@ -179,6 +204,80 @@ def _model_supports_vision(model: str) -> bool:
     """从公开模型目录读取视觉能力；历史兼容模型缺少元数据时保持原有行为。"""
     metadata = next((item for item in AVAILABLE_MODELS if item["id"] == model), None)
     return metadata is None or bool(metadata["supports_vision"])
+
+
+def _require_assemblyai_string(payload: object, field: str) -> str:
+    """从 AssemblyAI 的 JSON 响应中读取非空字符串字段。"""
+    if not isinstance(payload, dict):
+        raise VoiceTranscriptionProviderError()
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise VoiceTranscriptionProviderError()
+    return value.strip()
+
+
+async def _poll_assemblyai_transcript(client: httpx.AsyncClient, transcript_id: str) -> str:
+    """轮询单个 AssemblyAI 预录制任务，直到得到完成文本或明确失败。"""
+    while True:
+        response = await client.get(f"/v2/transcript/{transcript_id}")
+        response.raise_for_status()
+        payload: object = response.json()
+        status = _require_assemblyai_string(payload, "status")
+        if status == "completed":
+            return _require_assemblyai_string(payload, "text")
+        if status == "error":
+            raise VoiceTranscriptionProviderError()
+        await asyncio.sleep(settings.voice_transcription_poll_interval_seconds)
+
+
+async def transcribe_audio(*, filename: str, content: bytes, mime_type: str) -> str:
+    """调用 AssemblyAI Pre-recorded STT 转写一段已完成校验的短音频。
+
+    Args:
+        filename: 用于 provider 识别音频容器的原始文件名。
+        content: 受限大小的完整音频字节。
+        mime_type: 已由上游服务白名单校验的 MIME 类型。
+
+    Returns:
+        去除首尾空白后的转写文本。
+
+    Raises:
+        VoiceTranscriptionUnavailableError: 未配置 AssemblyAI 凭据。
+        VoiceTranscriptionTimeoutError: provider 调用超过配置超时。
+        VoiceTranscriptionProviderError: provider 返回错误或空转写。
+    """
+    del filename
+    if not settings.assemblyai_api_key:
+        raise VoiceTranscriptionUnavailableError()
+
+    try:
+        async with asyncio.timeout(settings.voice_transcription_timeout_seconds):
+            async with httpx.AsyncClient(
+                base_url=ASSEMBLYAI_API_BASE_URL,
+                headers={"authorization": settings.assemblyai_api_key},
+                timeout=settings.voice_transcription_timeout_seconds,
+            ) as client:
+                upload_response = await client.post(
+                    "/v2/upload",
+                    content=content,
+                    headers={"content-type": mime_type},
+                )
+                upload_response.raise_for_status()
+                upload_url = _require_assemblyai_string(upload_response.json(), "upload_url")
+                create_response = await client.post(
+                    "/v2/transcript",
+                    json={
+                        "audio_url": upload_url,
+                        "speech_models": [ASSEMBLYAI_SPEECH_MODEL],
+                    },
+                )
+                create_response.raise_for_status()
+                transcript_id = _require_assemblyai_string(create_response.json(), "id")
+                return await _poll_assemblyai_transcript(client, transcript_id)
+    except TimeoutError as exc:
+        raise VoiceTranscriptionTimeoutError() from exc
+    except (httpx.HTTPError, TypeError, ValueError) as exc:
+        raise VoiceTranscriptionProviderError() from exc
 
 
 async def stream_chat(

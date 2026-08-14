@@ -103,11 +103,28 @@ const desktop = vi.hoisted(() => ({
   openFiles: vi.fn(),
   listScreenSources: vi.fn(),
   openArtifact: vi.fn(),
+  respondMediaPermission:
+    vi.fn<(response: { requestId: string; granted: boolean }) => Promise<boolean>>(),
+  mediaPermissionListener: null as
+    ((request: { requestId: string; mediaType: 'audio' | 'video' }) => void) | null,
 }))
 
 const virtuoso = vi.hoisted(() => ({
   isScrolling: null as ((scrolling: boolean) => void) | null,
   scrollToIndex: vi.fn(),
+}))
+
+const voiceInput = vi.hoisted(() => ({
+  onError: null as ((message: string) => void) | null,
+  onTranscript: null as ((text: string) => void) | null,
+  value: {
+    cancel: vi.fn(),
+    error: null as string | null,
+    isAvailable: true,
+    start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    status: 'idle' as 'idle' | 'listening' | 'recording' | 'transcribing' | 'error',
+    stop: vi.fn(),
+  },
 }))
 
 vi.mock('react-virtuoso', async () => {
@@ -179,12 +196,30 @@ vi.mock('@yuanai/core/stores', () => ({
   usePrefsStore: (selector: (state: typeof prefs) => unknown) => selector(prefs),
 }))
 
+vi.mock('./useVoiceInput', () => ({
+  useVoiceInput: ({
+    onError,
+    onTranscript,
+  }: {
+    onError?: (message: string) => void
+    onTranscript: (text: string) => void
+  }) => {
+    voiceInput.onError = onError ?? null
+    voiceInput.onTranscript = onTranscript
+    return voiceInput.value
+  },
+}))
+
 import { changeDesktopLanguage } from '../shared/i18n'
 import { App } from './App'
 
 beforeEach(() => {
   virtuoso.isScrolling = null
   virtuoso.scrollToIndex.mockReset()
+  voiceInput.onError = null
+  voiceInput.onTranscript = null
+  desktop.mediaPermissionListener = null
+  desktop.respondMediaPermission.mockResolvedValue(true)
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
@@ -217,6 +252,19 @@ beforeEach(() => {
           choice: 'light',
           resolved: 'light',
         }),
+      },
+      permissions: {
+        respond: desktop.respondMediaPermission,
+      },
+      events: {
+        onMediaPermissionRequested: (listener: typeof desktop.mediaPermissionListener) => {
+          desktop.mediaPermissionListener = listener
+          return () => {
+            if (desktop.mediaPermissionListener === listener) {
+              desktop.mediaPermissionListener = null
+            }
+          }
+        },
       },
     },
   })
@@ -1114,12 +1162,66 @@ describe('desktop chat', () => {
     expect(screen.queryByRole('menu', { name: '快捷设置' })).not.toBeInTheDocument()
   })
 
-  it('shows a disabled voice input entry until transcription is available', () => {
+  it('starts voice input and appends a transcript without sending it', async () => {
+    const user = userEvent.setup()
     render(<App />)
 
-    const voiceInput = screen.getByRole('button', { name: '语音输入' })
-    expect(voiceInput).toBeDisabled()
-    expect(voiceInput).toHaveAttribute('title', '语音输入暂未开放')
+    const voiceButton = screen.getByRole('button', { name: '语音输入' })
+    expect(voiceButton).toBeEnabled()
+    await user.click(voiceButton)
+    expect(voiceInput.value.start).toHaveBeenCalledOnce()
+
+    act(() => voiceInput.onTranscript?.('仅写入草稿'))
+
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('仅写入草稿')
+    expect(chat.send).not.toHaveBeenCalled()
+  })
+
+  it('shows voice failures in a temporary top-right toast without using the chat alert', () => {
+    vi.useFakeTimers()
+    render(<App />)
+
+    act(() => voiceInput.onError?.('未授权使用麦克风，请点击允许'))
+
+    const toast = screen.getByRole('alert')
+    expect(toast).toHaveClass('desktop-chat__toast')
+    expect(toast).toHaveTextContent('未授权使用麦克风，请点击允许')
+    expect(document.querySelector('.desktop-chat__alert')).not.toBeInTheDocument()
+
+    act(() => vi.advanceTimersByTime(4_000))
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('uses an in-app dialog to allow or reject a desktop microphone request', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    act(() => {
+      desktop.mediaPermissionListener?.({
+        requestId: '550e8400-e29b-41d4-a716-446655440000',
+        mediaType: 'audio',
+      })
+    })
+
+    expect(screen.getByRole('alertdialog', { name: '允许使用麦克风？' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '拒绝' }))
+    expect(desktop.respondMediaPermission).toHaveBeenCalledWith({
+      requestId: '550e8400-e29b-41d4-a716-446655440000',
+      granted: false,
+    })
+
+    act(() => {
+      desktop.mediaPermissionListener?.({
+        requestId: '650e8400-e29b-41d4-a716-446655440000',
+        mediaType: 'audio',
+      })
+    })
+    await user.click(screen.getByRole('button', { name: '允许' }))
+    expect(desktop.respondMediaPermission).toHaveBeenLastCalledWith({
+      requestId: '650e8400-e29b-41d4-a716-446655440000',
+      granted: true,
+    })
   })
 
   it('opens the dedicated login window from the unauthenticated sidebar account', async () => {

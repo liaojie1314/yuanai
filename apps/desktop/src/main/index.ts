@@ -22,6 +22,7 @@ import { setupIpc } from './ipc'
 import { authStorage } from './storage/auth-storage'
 import { preferencesStorage } from './storage/prefs-storage'
 import { secureRenderer } from './security'
+import { InAppMediaPermissionPrompt } from './security/in-app-permission-prompt'
 import { createWindowOptions } from './windows/config'
 import { WindowManager } from './windows/manager'
 import { createDesktopActionRegistry } from './actions/registry'
@@ -109,6 +110,7 @@ app.whenReady().then(() => {
   const unregisterAppScheme = registerAppScheme(protocol, join(__dirname, '../renderer'))
   const selectedFiles = createSelectedFileRegistry()
   const unregisterSelectedFileScheme = registerSelectedFileScheme(protocol, selectedFiles)
+  const mediaPermissionPrompt = new InAppMediaPermissionPrompt()
   windowManager = new WindowManager({
     createWindow: (key) => {
       const window = new BrowserWindow(
@@ -116,7 +118,13 @@ app.whenReady().then(() => {
       )
       desktopAppearance?.applyToWindow(window)
       trustedWebContents.add(window.webContents)
-      secureRenderer(window.webContents, trustedWebContents, runtimeConfig, Boolean(rendererUrl))
+      secureRenderer(
+        window.webContents,
+        trustedWebContents,
+        runtimeConfig,
+        Boolean(rendererUrl),
+        key === 'main' ? mediaPermissionPrompt.prompt : () => Promise.resolve(false)
+      )
       if (key === 'main') {
         installCloseToTrayBehavior({
           isQuitting: () => isQuitting,
@@ -192,6 +200,7 @@ app.whenReady().then(() => {
     preferencesStorage,
     runtimeConfig,
     selectedFiles,
+    mediaPermissionPrompt,
     appearanceService: desktopAppearance,
     shell,
     systemService: desktopSystem,
@@ -222,6 +231,7 @@ app.whenReady().then(() => {
     trayController?.dispose()
     desktopSystem?.dispose()
     desktopAppearance?.dispose()
+    mediaPermissionPrompt.dispose()
     unregisterAppScheme()
     unregisterSelectedFileScheme()
   })

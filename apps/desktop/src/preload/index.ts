@@ -4,6 +4,8 @@ import type {
   DesktopAppInfo,
   DesktopAppearanceState,
   DesktopArtifactPayload,
+  DesktopMediaPermissionRequest,
+  DesktopMediaPermissionResponse,
   DesktopRendererPreferences,
   DesktopOAuthProvider,
   DesktopOAuthResult,
@@ -46,6 +48,9 @@ export interface YuanaiApi {
   clipboard: {
     writeText: (value: string) => Promise<void>
   }
+  permissions: {
+    respond: (response: DesktopMediaPermissionResponse) => Promise<boolean>
+  }
   window: {
     openLogin: () => Promise<void>
     openRegister: () => Promise<void>
@@ -76,6 +81,9 @@ export interface YuanaiApi {
     onAppearanceChanged: (listener: (state: DesktopAppearanceState) => void) => () => void
     onDisplayPreferencesChanged: (
       listener: (preferences: DesktopRendererPreferences) => void
+    ) => () => void
+    onMediaPermissionRequested: (
+      listener: (request: DesktopMediaPermissionRequest) => void
     ) => () => void
   }
 }
@@ -128,6 +136,9 @@ export const api: YuanaiApi = {
   },
   clipboard: {
     writeText: (value) => ipcRenderer.invoke(IPC.clipboard.writeText, value),
+  },
+  permissions: {
+    respond: (response) => ipcRenderer.invoke(IPC.permissions.respond, response),
   },
   window: {
     openLogin: () => ipcRenderer.invoke(IPC.window.openLogin),
@@ -188,6 +199,12 @@ export const api: YuanaiApi = {
         listener(preferences)
       ipcRenderer.on(IPC.events.displayPreferencesChanged, wrappedListener)
       return () => ipcRenderer.removeListener(IPC.events.displayPreferencesChanged, wrappedListener)
+    },
+    onMediaPermissionRequested: (listener) => {
+      const wrappedListener = (_event: unknown, request: DesktopMediaPermissionRequest): void =>
+        listener(request)
+      ipcRenderer.on(IPC.events.mediaPermissionRequested, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC.events.mediaPermissionRequested, wrappedListener)
     },
   },
 }

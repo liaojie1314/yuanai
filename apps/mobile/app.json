@@ -88,6 +88,17 @@
           "icon": "./assets/notification-icon.png",
           "color": "#3b82f6"
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "允许元AI使用麦克风进行语音输入。",
+          "speechRecognitionPermission": "允许元AI使用语音识别将语音转换为文字。",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts"
+          ]
+        }
       ]
     ],
     "extra": {

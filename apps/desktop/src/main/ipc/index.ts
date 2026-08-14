@@ -12,6 +12,7 @@ import { registerDialogIpcHandlers } from './dialog'
 import type { NativeFileDialog } from './dialog'
 import type { NativeDesktopCapturer } from './dialog'
 import type { IpcInvocationGuard, TrustedWebContentsRegistry } from './guards'
+import { registerMediaPermissionIpcHandlers } from './media-permission'
 import { registerOAuthIpcHandlers } from './oauth'
 import { registerPreferencesIpcHandlers } from './prefs'
 import type { PreferencesIpcStorage } from './prefs'
@@ -22,6 +23,7 @@ import type { NamedWindowController } from './window'
 import type { SelectedFileRegistry } from '../protocol/selected-file'
 import type { DesktopSystemService } from '../system/desktop-system'
 import type { DesktopAppearanceService } from '../system/desktop-appearance'
+import type { InAppMediaPermissionPrompt } from '../security/in-app-permission-prompt'
 
 /** 安装第一批安全 IPC 处理器所需的主进程依赖。 */
 export interface SetupIpcOptions {
@@ -53,6 +55,8 @@ export interface SetupIpcOptions {
   systemService: DesktopSystemService
   /** 控制原生窗口外观的服务。 */
   appearanceService: DesktopAppearanceService
+  /** 管理主聊天窗口内的单次媒体授权确认。 */
+  mediaPermissionPrompt: InAppMediaPermissionPrompt
   /** 系统默认浏览器调用能力。 */
   shell: ExternalShell
   /** 命名窗口的受限打开能力。 */
@@ -83,6 +87,11 @@ export function setupIpc(options: SetupIpcOptions): void {
     guard: options.guard,
     ipcMain: options.ipcMain,
     selectedFiles: options.selectedFiles,
+  })
+  registerMediaPermissionIpcHandlers({
+    guard: options.guard,
+    ipcMain: options.ipcMain,
+    mediaPermissionPrompt: options.mediaPermissionPrompt,
   })
   registerOAuthIpcHandlers({
     ipcMain: options.ipcMain,

@@ -263,6 +263,19 @@ export interface ApiError {
   detail?: string | null
 }
 
+/** 后端成功转写一段音频后的统一响应。 */
+export interface VoiceTranscriptionResponse {
+  /** 已清理首尾空白的最终转写文本。 */
+  text: string
+  /** Provider 返回的语言标识；当前无法判断时为 null。 */
+  language: string | null
+  /** 后端通过受限媒体探测得到的音频时长，单位为秒。 */
+  durationSeconds: number
+}
+
+/** 语音输入控件的互斥生命周期状态。 */
+export type VoiceInputStatus = 'idle' | 'listening' | 'recording' | 'transcribing' | 'error'
+
 // ============ SSE 事件 ============
 
 /** SSE 流启动事件 —— 返回本轮生成的消息 ID */

@@ -1,12 +1,14 @@
 import { Globe, Mic, Paperclip, Send, Sparkles, Square } from 'lucide-react-native'
-import { useRef, useState } from 'react'
-import { Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
+import { useCallback, useRef, useState } from 'react'
+import { ActivityIndicator, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native'
 
 import { usePrefsStore } from '@yuanai/core/stores'
 
 import { AttachmentTray } from '@/components/chat/AttachmentTray'
 import { radius, spacing } from '@/theme/tokens'
 import { useDialog } from '@/components/ui/Dialog'
+import { useToast } from '@/components/ui/Toast'
+import { useVoiceInput } from '@/hooks/useVoiceInput'
 import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 import { useAttachments } from '@/hooks/useAttachments'
@@ -42,7 +44,8 @@ interface ChatInputProps {
  * - 发送时把已上传 fileId 数组透传给 onSend，然后 clear()
  * - disableAttachments=true 时（临时对话）Paperclip 弹「稍后」提示
  *
- * 非附件占位按钮说明：语音/联网/思考 的真实实现依赖额外后端能力，当前仍为占位。
+ * 语音输入优先使用设备识别；识别服务不可用时上传同一段录音到后端 Whisper，
+ * 转写结果只写入草稿，不会自动发送。
  */
 export function ChatInput({
   disabled = false,
@@ -57,6 +60,7 @@ export function ChatInput({
   const [value, setValue] = useState('')
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
+  const toast = useToast()
 
   const showThinking = usePrefsStore((s) => s.showThinking)
   const setShowThinking = usePrefsStore((s) => s.setShowThinking)
@@ -64,6 +68,23 @@ export function ChatInput({
   const { attachments, openAttachSheet, remove, clear, getFileIds, isUploading } = useAttachments(
     disabled || disableAttachments
   )
+
+  const appendVoiceTranscript = useCallback((text: string): void => {
+    setValue((previous) => {
+      const needsSpace = previous.length > 0 && !previous.endsWith(' ') && !previous.endsWith('\n')
+      return `${previous}${needsSpace ? ' ' : ''}${text}`
+    })
+  }, [])
+  const handleVoiceError = useCallback(
+    (message: string): void => {
+      toast.show(message, 3200)
+    },
+    [toast]
+  )
+  const voiceInput = useVoiceInput({
+    onTranscript: appendVoiceTranscript,
+    onError: handleVoiceError,
+  })
 
   // 发送条件：有文本或有已上传完成的附件；且不在流式中、不在禁用状态、不在上传中
   const hasReadyAttachment = attachments.some((a) => a.fileId !== null)
@@ -90,6 +111,26 @@ export function ChatInput({
     }
     void openAttachSheet()
   }
+
+  const handleVoiceInput = (): void => {
+    if (voiceInput.status === 'listening' || voiceInput.status === 'recording') {
+      voiceInput.stop()
+      return
+    }
+    if (voiceInput.status === 'transcribing') {
+      voiceInput.cancel()
+      return
+    }
+    void voiceInput.start()
+  }
+
+  const voiceButtonDisabled = disabled || streaming || isUploading || !voiceInput.isAvailable
+  const voiceButtonLabel =
+    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+      ? '停止语音输入'
+      : voiceInput.status === 'transcribing'
+        ? '取消语音转写'
+        : t('chat.voice')
 
   return (
     <View
@@ -126,12 +167,35 @@ export function ChatInput({
             />
           </Pressable>
           <Pressable
-            onPress={notReady(t('chat.voice'))}
+            onPress={handleVoiceInput}
+            disabled={voiceButtonDisabled}
             hitSlop={6}
-            style={[styles.toolBtn, { backgroundColor: theme.bg.elevated }]}
-            accessibilityLabel={t('chat.voiceSoon')}
+            style={[
+              styles.toolBtn,
+              {
+                backgroundColor:
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? theme.brand.selected
+                    : theme.bg.elevated,
+                opacity: voiceButtonDisabled ? 0.45 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={voiceButtonLabel}
+            accessibilityHint="转写结果会追加到输入框，不会自动发送"
+            accessibilityState={{
+              busy: voiceInput.status === 'transcribing',
+              disabled: voiceButtonDisabled,
+              selected: voiceInput.status === 'listening' || voiceInput.status === 'recording',
+            }}
           >
-            <Mic size={17} color={theme.text.secondary} />
+            {voiceInput.status === 'transcribing' ? (
+              <ActivityIndicator size="small" color={theme.text.secondary} />
+            ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
+              <Square size={15} color={theme.brand.selectedFg} fill={theme.brand.selectedFg} />
+            ) : (
+              <Mic size={17} color={theme.text.secondary} />
+            )}
           </Pressable>
           <Pressable
             onPress={notReady(t('chat.webSearch'))}

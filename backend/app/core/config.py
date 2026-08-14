@@ -47,8 +47,17 @@ class Settings(BaseSettings):
     deepseek_api_key: str = ""
     # Agnes AI key，使用 AGNES_API_KEY 环境变量注入，不提交到仓库
     agnes_api_key: str = ""
+    # AssemblyAI 语音转写 key，使用 ASSEMBLYAI_API_KEY 环境变量注入，不提交到仓库
+    assemblyai_api_key: str = ""
     # 视觉模型以内联 data URL 接收图片，避免云端模型无法访问内网对象存储 URL。
     ai_inline_image_max_bytes: int = 10 * 1024 * 1024
+
+    # 语音转写：限制短音频，避免单个请求长期占用模型与解码资源。
+    voice_max_upload_bytes: int = 25 * 1024 * 1024
+    voice_max_duration_seconds: int = 300
+    voice_transcription_timeout_seconds: int = 60
+    voice_transcription_poll_interval_seconds: float = 1.0
+    voice_ffprobe_path: str = "ffprobe"
 
     # ── Email / SMTP (用于发送邮箱验证码) ─────────────────────────────
     # QQ 邮箱：smtp.qq.com / 465 (SSL) 或 587 (STARTTLS)

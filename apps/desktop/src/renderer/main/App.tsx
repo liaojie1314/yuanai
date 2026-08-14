@@ -75,11 +75,13 @@ import type { AIModel, Conversation, Message } from '@yuanai/types'
 
 import type {
   DesktopArtifactPayload,
+  DesktopMediaPermissionRequest,
   DesktopScreenSource,
   DesktopSelectedFile,
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { MessageList } from './MessageList'
+import { useVoiceInput } from './useVoiceInput'
 import '../shared/i18n'
 
 const FALLBACK_MODEL: AIModel = {
@@ -820,6 +822,80 @@ function ConfirmDialog({
   )
 }
 
+interface MediaPermissionDialogProps {
+  request: DesktopMediaPermissionRequest
+  onRespond(granted: boolean): void
+}
+
+/** 在聊天窗口内收集麦克风或摄像头的一次性明确授权。 */
+function MediaPermissionDialog({ request, onRespond }: MediaPermissionDialogProps): ReactElement {
+  const rejectRef = useRef<HTMLButtonElement>(null)
+  const allowRef = useRef<HTMLButtonElement>(null)
+  const deviceName = request.mediaType === 'audio' ? '麦克风' : '摄像头'
+  const titleId = `desktop-media-permission-title-${request.requestId}`
+  const descriptionId = `desktop-media-permission-description-${request.requestId}`
+
+  useEffect(() => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    rejectRef.current?.focus()
+    return () => previouslyFocused?.focus()
+  }, [])
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      onRespond(false)
+      return
+    }
+    if (event.key !== 'Tab') return
+
+    const first = rejectRef.current
+    const last = allowRef.current
+    if (!first || !last) return
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
+  return (
+    <div className="desktop-chat__dialog-backdrop">
+      <div
+        className="desktop-chat__media-permission-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        onKeyDown={handleKeyDown}
+      >
+        <div className="desktop-chat__confirm-dialog-copy">
+          <h2 id={titleId}>允许使用{deviceName}？</h2>
+          <p id={descriptionId}>
+            元AI 将使用{deviceName}录制语音并转写为输入内容。你可以随时停止录音。
+          </p>
+        </div>
+        <div className="desktop-chat__confirm-dialog-actions">
+          <button ref={rejectRef} type="button" onClick={() => onRespond(false)}>
+            拒绝
+          </button>
+          <button
+            ref={allowRef}
+            className="desktop-chat__media-permission-allow"
+            type="button"
+            onClick={() => onRespond(true)}
+          >
+            允许
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ConversationItem({
   conversation,
   active,
@@ -975,6 +1051,9 @@ export function App(): ReactElement {
   const [feedbackReason, setFeedbackReason] = useState('')
   const [messageFeedback, setMessageFeedback] = useState<Record<string, 'like' | 'dislike'>>({})
   const [actionError, setActionError] = useState('')
+  const [voiceToast, setVoiceToast] = useState('')
+  const [mediaPermissionRequest, setMediaPermissionRequest] =
+    useState<DesktopMediaPermissionRequest | null>(null)
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false)
   const [isMessagesAtBottom, setIsMessagesAtBottom] = useState(true)
   const [isDarkTheme, setIsDarkTheme] = useState(
@@ -996,6 +1075,14 @@ export function App(): ReactElement {
     observer.observe(document.documentElement, { attributeFilter: ['data-theme'] })
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    if (!voiceToast) return undefined
+    const timeout = window.setTimeout(() => setVoiceToast(''), 4_000)
+    return () => window.clearTimeout(timeout)
+  }, [voiceToast])
+
+  useEffect(() => window.yuanai.events.onMediaPermissionRequested(setMediaPermissionRequest), [])
 
   const conversations = isLoggedIn
     ? (conversationsQuery.data ?? EMPTY_CONVERSATIONS)
@@ -1027,6 +1114,15 @@ export function App(): ReactElement {
   const isStreaming =
     streamingConversationId !== null &&
     streamingConversationId === (isTemporaryConversation ? TEMPORARY_CONV_ID : activeConversationId)
+  const voiceInput = useVoiceInput({
+    onTranscript: (text) => {
+      setDraft((previous) => {
+        const needsSpace = previous && !previous.endsWith(' ') && !previous.endsWith('\n')
+        return `${previous}${needsSpace ? ' ' : ''}${text}`
+      })
+    },
+    onError: setVoiceToast,
+  })
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? null
   const visibleConversations = useMemo(() => {
@@ -1810,6 +1906,27 @@ export function App(): ReactElement {
     }
   }
 
+  function handleVoiceInput(): void {
+    if (voiceInput.status === 'listening' || voiceInput.status === 'recording') {
+      voiceInput.stop()
+      return
+    }
+    if (voiceInput.status === 'transcribing') {
+      voiceInput.cancel()
+      return
+    }
+    void voiceInput.start()
+  }
+
+  function handleMediaPermissionResponse(granted: boolean): void {
+    const request = mediaPermissionRequest
+    if (!request) return
+    setMediaPermissionRequest(null)
+    void window.yuanai.permissions.respond({ requestId: request.requestId, granted }).catch(() => {
+      setVoiceToast('无法提交麦克风授权结果，请重试')
+    })
+  }
+
   return (
     <main
       className={
@@ -1817,6 +1934,15 @@ export function App(): ReactElement {
       }
       aria-label={`${t('common.appName')} ${t('desktop.chat.title')}`}
     >
+      {voiceToast ? (
+        <div className="desktop-chat__toast" role="alert">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span>{voiceToast}</span>
+          <button type="button" aria-label={t('common.close')} onClick={() => setVoiceToast('')}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       <aside className="desktop-chat__sidebar" aria-label={t('desktop.chat.conversations')}>
         <div className="desktop-chat__sidebar-header">
           <div className="desktop-chat__brand">
@@ -2410,8 +2536,45 @@ export function App(): ReactElement {
                   </div>
                 </>
               ) : null}
-              <button type="button" aria-label="语音输入" title="语音输入暂未开放" disabled>
-                <Mic size={18} aria-hidden="true" />
+              <button
+                className={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? 'is-active'
+                    : undefined
+                }
+                type="button"
+                aria-label={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? '停止语音输入'
+                    : voiceInput.status === 'transcribing'
+                      ? '取消语音转写'
+                      : '语音输入'
+                }
+                aria-pressed={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                }
+                aria-busy={voiceInput.status === 'transcribing'}
+                title={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? '停止语音输入'
+                    : voiceInput.status === 'transcribing'
+                      ? '取消语音转写'
+                      : voiceInput.isAvailable
+                        ? '语音输入'
+                        : '当前桌面环境不支持录音'
+                }
+                disabled={
+                  !isLoggedIn || !voiceInput.isAvailable || isStreaming || isUploadingAttachments
+                }
+                onClick={handleVoiceInput}
+              >
+                {voiceInput.status === 'transcribing' ? (
+                  <LoaderCircle className="desktop-chat__spin" size={18} aria-hidden="true" />
+                ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
+                  <Square size={15} fill="currentColor" aria-hidden="true" />
+                ) : (
+                  <Mic size={18} aria-hidden="true" />
+                )}
               </button>
               <button
                 className={isWebSearchEnabled ? 'is-active' : undefined}
@@ -2513,6 +2676,12 @@ export function App(): ReactElement {
           onClose={() => setFeedbackDialog(null)}
           onReasonChange={setFeedbackReason}
           onSubmit={handleSubmitFeedback}
+        />
+      ) : null}
+      {mediaPermissionRequest ? (
+        <MediaPermissionDialog
+          request={mediaPermissionRequest}
+          onRespond={handleMediaPermissionResponse}
         />
       ) : null}
       {isScreenCaptureOpen ? (

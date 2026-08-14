@@ -58,7 +58,6 @@ import {
   GraduationCap,
   Paperclip,
   Mic,
-  MicOff,
   FileUp,
   Monitor,
   Camera,
@@ -78,7 +77,7 @@ import {
 
 import { triggerAIReplyNotification } from '@/lib/notifications'
 import { useToast } from '@/hooks/useToast'
-import { useSpeechRecognition } from '@/hooks/useSpeechRecognition'
+import { useVoiceInput } from '@/hooks/useVoiceInput'
 import { captureScreenshot, isCameraSupported, isScreenCaptureSupported } from '@/lib/mediaCapture'
 import { CameraModal } from '@/components/chat/CameraModal'
 
@@ -869,9 +868,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setFiles((prev) => [...prev, ...newFiles])
   }, [])
 
-  // ── 语音识别（Web Speech API） ─────────────────────────────
-  const speech = useSpeechRecognition({
-    onResult: (text) => {
+  // ── 语音输入（本地识别优先，Whisper 录音回退） ───────────────
+  const voiceInput = useVoiceInput({
+    onTranscript: (text) => {
       setInputValue((prev) => {
         const needSpace = prev && !prev.endsWith(' ') && !prev.endsWith('\n')
         return prev + (needSpace ? ' ' : '') + text
@@ -888,13 +887,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   })
 
   const toggleVoiceInput = useCallback((): void => {
-    if (!speech.isSupported) {
-      toast.warning('当前浏览器不支持语音输入')
+    if (voiceInput.status === 'listening' || voiceInput.status === 'recording') {
+      voiceInput.stop()
       return
     }
-    if (speech.isListening) speech.stop()
-    else speech.start()
-  }, [speech, toast])
+    if (voiceInput.status === 'transcribing') {
+      voiceInput.cancel()
+      return
+    }
+    void voiceInput.start()
+  }, [voiceInput])
 
   // ── 附件菜单动作 ───────────────────────────────────────────
   const openFilePicker = useCallback((): void => {
@@ -1600,11 +1602,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               ref={inputRef}
               className="ch-input-ta"
               placeholder={
-                speech.isListening
+                voiceInput.status === 'listening'
                   ? '正在聆听…'
-                  : isLoggedIn
-                    ? t('inputPlaceholder')
-                    : t('inputPlaceholderLoggedOut')
+                  : voiceInput.status === 'recording'
+                    ? '正在录音…'
+                    : voiceInput.status === 'transcribing'
+                      ? '正在转写…'
+                      : isLoggedIn
+                        ? t('inputPlaceholder')
+                        : t('inputPlaceholderLoggedOut')
               }
               rows={1}
               value={inputValue}
@@ -1624,17 +1630,43 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               >
                 <Paperclip size={18} />
               </button>
-              {speech.isSupported && (
-                <button
-                  className={`ch-in-btn ${speech.isListening ? 'ch-mic-on' : ''}`}
-                  title={speech.isListening ? '停止语音输入' : '语音输入'}
-                  disabled={!isLoggedIn}
-                  onClick={toggleVoiceInput}
-                  aria-pressed={speech.isListening}
-                >
-                  {speech.isListening ? <MicOff size={18} /> : <Mic size={18} />}
-                </button>
-              )}
+              <button
+                className={`ch-in-btn ${
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? 'ch-mic-on'
+                    : ''
+                }`}
+                title={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? '停止语音输入'
+                    : voiceInput.status === 'transcribing'
+                      ? '取消语音转写'
+                      : voiceInput.isAvailable
+                        ? '语音输入'
+                        : '当前浏览器不支持录音'
+                }
+                aria-label={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                    ? '停止语音输入'
+                    : voiceInput.status === 'transcribing'
+                      ? '取消语音转写'
+                      : '语音输入'
+                }
+                disabled={!isLoggedIn || !voiceInput.isAvailable}
+                onClick={toggleVoiceInput}
+                aria-busy={voiceInput.status === 'transcribing'}
+                aria-pressed={
+                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                }
+              >
+                {voiceInput.status === 'transcribing' ? (
+                  <Loader2 className="spin" size={18} />
+                ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
+                  <Square size={15} fill="currentColor" />
+                ) : (
+                  <Mic size={18} />
+                )}
+              </button>
               <button
                 className={`ch-in-btn ${webSearch ? 'on' : ''}`}
                 title="联网搜索"

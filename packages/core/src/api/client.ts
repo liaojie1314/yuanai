@@ -57,7 +57,6 @@ function isAuthExempt(url: string | undefined): boolean {
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30000,
-  headers: { 'Content-Type': 'application/json' },
 })
 
 /** 返回当前运行时生效的 API base URL。 */

@@ -8,6 +8,7 @@ import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './gu
 import { setupIpc } from './index'
 import type { DesktopSystemService } from '../system/desktop-system'
 import type { DesktopAppearanceService } from '../system/desktop-appearance'
+import type { InAppMediaPermissionPrompt } from '../security/in-app-permission-prompt'
 
 type InvokeHandler = (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown
 
@@ -45,6 +46,7 @@ function setupTestIpc(): {
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
   shell: { openExternal: ReturnType<typeof vi.fn> }
+  mediaPermissionPrompt: { respond: ReturnType<typeof vi.fn> }
   currentWindow: {
     close: ReturnType<typeof vi.fn>
     isDestroyed: ReturnType<typeof vi.fn>
@@ -159,6 +161,10 @@ function setupTestIpc(): {
   } as unknown as DesktopAppearanceService
 
   const shell = { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }
+  const mediaPermissionPrompt = {
+    respond:
+      vi.fn<(sender: WebContents, response: { requestId: string; granted: boolean }) => boolean>(),
+  }
 
   setupIpc({
     ipcMain: {
@@ -178,6 +184,7 @@ function setupTestIpc(): {
     preferencesStorage,
     runtimeConfig,
     selectedFiles,
+    mediaPermissionPrompt: mediaPermissionPrompt as unknown as InAppMediaPermissionPrompt,
     shell,
     systemService,
     windows,
@@ -195,6 +202,7 @@ function setupTestIpc(): {
     onSessionChanged,
     systemService,
     shell,
+    mediaPermissionPrompt,
     currentWindow,
     windows,
   }
@@ -230,6 +238,7 @@ describe('secure IPC handlers', () => {
         IPC.appearance.syncPreferences,
         IPC.clipboard.writeText,
         IPC.dialog.listScreenSources,
+        IPC.permissions.respond,
         IPC.dialog.openFiles,
         IPC.oauth.start,
         IPC.prefs.get,
@@ -250,6 +259,22 @@ describe('secure IPC handlers', () => {
         IPC.window.minimize,
         IPC.window.toggleMaximize,
       ].sort()
+    )
+  })
+
+  it('accepts media permission responses only from the trusted requesting renderer', () => {
+    const { handlers, mediaPermissionPrompt, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.permissions.respond)
+    const response = { requestId: '550e8400-e29b-41d4-a716-446655440000', granted: true }
+    mediaPermissionPrompt.respond.mockReturnValue(true)
+
+    expect(handler(createEvent(sender), response)).toBe(true)
+    expect(mediaPermissionPrompt.respond).toHaveBeenCalledWith(sender, response)
+    expect(() => handler(createEvent(sender), { ...response, extra: true })).toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    expect(() => handler(createEvent(createWebContents(2)), response)).toThrow(
+      'IPC_UNTRUSTED_SENDER'
     )
   })
 
