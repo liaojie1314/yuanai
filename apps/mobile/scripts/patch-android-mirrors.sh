@@ -92,16 +92,15 @@ PY
   echo "✅ settings.gradle: 已在 pluginManagement 中注入 repositories 镜像"
 fi
 
-# 4. android/gradle.properties：把 Kotlin 版本回退到 1.9.24。
-#    Expo SDK 52 默认 kotlinVersion=1.9.25，而 expo-modules-core@2.2.3 的 Compose
-#    Compiler 版本映射表只覆盖到 1.9.24 → compose 1.5.14；用 1.9.25 会命中
-#    compose 1.5.15 但两者不兼容，导致 :expo-modules-core:compileDebugKotlin 失败。
+# 4. android/gradle.properties：与 React Native 0.76 的 Kotlin 1.9.24 对齐。
+#    React Native Gradle Plugin 固定使用 Kotlin 1.9.24。覆盖 Expo 默认的 1.9.25 后，
+#    expo-modules-core 会同步选择 Compose Compiler 1.5.14，避免混用 1.5.15。
 GRADLE_PROPS="$ANDROID_DIR/gradle.properties"
 if [ -f "$GRADLE_PROPS" ] && ! grep -q "^android.kotlinVersion=" "$GRADLE_PROPS"; then
   {
     echo ""
-    echo "# 由 scripts/patch-android-mirrors.sh 注入 —— 与 expo-modules-core 的"
-    echo "# Compose 版本映射表对齐，避免 kotlin 1.9.25 → compose 1.5.15 不兼容错误"
+    echo "# 由 scripts/patch-android-mirrors.sh 注入，必须与 React Native 0.76 的"
+    echo "# Kotlin 1.9.24 对齐，确保 Expo Modules 使用 Compose Compiler 1.5.14"
     echo "android.kotlinVersion=1.9.24"
   } >> "$GRADLE_PROPS"
   echo "✅ gradle.properties: 已固定 android.kotlinVersion=1.9.24"
