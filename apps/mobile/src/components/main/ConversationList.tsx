@@ -7,6 +7,7 @@ import {
   MoreVertical,
   Pin,
   Search,
+  ScanLine,
   Settings,
   Square,
   SquarePen,
@@ -466,6 +467,20 @@ export function ConversationList({
               </Text>
             ) : null}
           </View>
+          <Pressable
+            onPress={() => {
+              onClose?.()
+              router.push({
+                pathname: '/(main)/qr-login',
+                params: { session: Date.now().toString() },
+              })
+            }}
+            hitSlop={6}
+            style={styles.iconBtn}
+            accessibilityLabel={t('qrLogin.title')}
+          >
+            <ScanLine size={16} color={theme.text.secondary} />
+          </Pressable>
           <Pressable
             onPress={() => router.push('/(main)/settings')}
             hitSlop={6}

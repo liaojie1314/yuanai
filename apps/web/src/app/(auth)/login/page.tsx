@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { QrCode, Mail, Lock, Eye, EyeOff, KeyRound, Github } from 'lucide-react'
 import AuthPanel from '@/components/auth/AuthPanel'
+import { QrLoginPanel } from '@/components/auth/QrLoginPanel'
 import { useTranslations } from '@/i18n/client'
 import { useLogin } from '@yuanai/core/hooks'
 import { API_BASE_URL } from '@yuanai/core/api'
@@ -37,35 +38,15 @@ export default function LoginPage(): JSX.Element {
   const [emailErr, setEmailErr] = useState('')
   const [pwdErr, setPwdErr] = useState('')
 
-  // QR code state
-  const [qrCount, setQrCount] = useState(60)
-  const qrTimer = useRef<ReturnType<typeof setInterval> | null>(null)
-
   useEffect(
     () => () => {
       if (codeTimer.current) clearInterval(codeTimer.current)
-      if (qrTimer.current) clearInterval(qrTimer.current)
     },
     []
   )
 
-  const startQr = (): void => {
-    setShowQr(true)
-    setQrCount(60)
-    if (qrTimer.current) clearInterval(qrTimer.current)
-    qrTimer.current = setInterval(() => {
-      setQrCount((c) => {
-        if (c <= 1) {
-          if (qrTimer.current) clearInterval(qrTimer.current)
-          return 0
-        }
-        return c - 1
-      })
-    }, 1000)
-  }
   const closeQr = (): void => {
     setShowQr(false)
-    if (qrTimer.current) clearInterval(qrTimer.current)
   }
 
   const sendEmailCode = (): void => {
@@ -148,31 +129,24 @@ export default function LoginPage(): JSX.Element {
 
       <main className="auth-right">
         <div className="form-card">
-          <button
-            className="qr-toggle"
-            title={t('qrLogin')}
-            aria-label={t('qrLogin')}
-            onClick={startQr}
-          >
-            <QrCode size={18} />
-          </button>
+          {!showQr ? (
+            <button
+              className="qr-toggle"
+              title={t('qrLogin')}
+              aria-label={t('qrLogin')}
+              type="button"
+              onClick={() => setShowQr(true)}
+            >
+              <QrCode size={18} />
+            </button>
+          ) : null}
 
           {showQr ? (
-            <div className="qr-view">
-              <div className="qr-box">
-                <img
-                  src="/icons/qr-demo.svg"
-                  alt={t('qrLogin')}
-                  style={{ width: '100%', height: '100%' }}
-                />
-              </div>
-              <h3>{t('qrLogin')}</h3>
-              <p>{t('qrLoginDesc')}</p>
-              <p className="qr-exp">{t('qrExpires', { seconds: qrCount })}</p>
-              <button className="qr-back" onClick={closeQr}>
-                ← {t('backToPassword')}
-              </button>
-            </div>
+            <QrLoginPanel
+              deviceName="元AI Web 浏览器"
+              onBack={closeQr}
+              onAuthenticated={redirectAfterLogin}
+            />
           ) : (
             <div>
               <h1 className="page-title">{t('welcomeBack')}</h1>
@@ -343,52 +317,56 @@ export default function LoginPage(): JSX.Element {
             </div>
           )}
 
-          <div className="divider">
-            <span>{t('orLoginWith')}</span>
-          </div>
+          {!showQr ? (
+            <>
+              <div className="divider">
+                <span>{t('orLoginWith')}</span>
+              </div>
 
-          <div className="social-row">
-            <button
-              className="soc-btn"
-              aria-label={`GitHub ${t('login')}`}
-              onClick={() => {
-                // 让浏览器直接跳后端 302 到 GitHub 授权页；state 由后端写 Redis
-                window.location.href = `${API_BASE_URL}/auth/github`
-              }}
-              title="使用 GitHub 登录"
-            >
-              <Github size={18} className="soc-icon" aria-hidden="true" />
-              <span>GitHub</span>
-            </button>
-            <button
-              className="soc-btn"
-              aria-label={`${t('wechat')} ${t('login')}`}
-              disabled
-              title="第三方登录即将开放"
-            >
-              <img src="/icons/wechat.svg" alt="" className="soc-icon" />
-              <span>{t('wechat')}</span>
-            </button>
-            <button
-              className="soc-btn"
-              aria-label={`${t('google')} ${t('login')}`}
-              onClick={() => {
-                // 同 GitHub：浏览器直接跳后端 302 到 Google 授权页；state 由后端写 Redis
-                window.location.href = `${API_BASE_URL}/auth/google`
-              }}
-              title="使用 Google 登录"
-            >
-              <img src="/icons/google.svg" alt="" className="soc-icon" />
-              <span>{t('google')}</span>
-            </button>
-          </div>
+              <div className="social-row">
+                <button
+                  className="soc-btn"
+                  aria-label={`GitHub ${t('login')}`}
+                  onClick={() => {
+                    // 让浏览器直接跳后端 302 到 GitHub 授权页；state 由后端写 Redis
+                    window.location.href = `${API_BASE_URL}/auth/github`
+                  }}
+                  title="使用 GitHub 登录"
+                >
+                  <Github size={18} className="soc-icon" aria-hidden="true" />
+                  <span>GitHub</span>
+                </button>
+                <button
+                  className="soc-btn"
+                  aria-label={`${t('wechat')} ${t('login')}`}
+                  disabled
+                  title="第三方登录即将开放"
+                >
+                  <img src="/icons/wechat.svg" alt="" className="soc-icon" />
+                  <span>{t('wechat')}</span>
+                </button>
+                <button
+                  className="soc-btn"
+                  aria-label={`${t('google')} ${t('login')}`}
+                  onClick={() => {
+                    // 同 GitHub：浏览器直接跳后端 302 到 Google 授权页；state 由后端写 Redis
+                    window.location.href = `${API_BASE_URL}/auth/google`
+                  }}
+                  title="使用 Google 登录"
+                >
+                  <img src="/icons/google.svg" alt="" className="soc-icon" />
+                  <span>{t('google')}</span>
+                </button>
+              </div>
 
-          <p className="signup-cta">
-            {t('noAccount')}
-            <Link href="/register" replace>
-              {t('signUpNow')}
-            </Link>
-          </p>
+              <p className="signup-cta">
+                {t('noAccount')}
+                <Link href="/register" replace>
+                  {t('signUpNow')}
+                </Link>
+              </p>
+            </>
+          ) : null}
         </div>
       </main>
     </div>

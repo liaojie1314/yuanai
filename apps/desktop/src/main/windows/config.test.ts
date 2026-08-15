@@ -39,12 +39,12 @@ describe('createWindowOptions', () => {
     })
   })
 
-  it('uses a compact fixed size without a maximize action for login', () => {
+  it('uses enough fixed height for the login form and QR entry', () => {
     expect(createWindowOptions('login', '/preload/index.js', 'linux')).toMatchObject({
       width: 520,
-      height: 600,
+      height: 680,
       minWidth: 520,
-      minHeight: 600,
+      minHeight: 680,
       resizable: false,
       maximizable: false,
       fullscreenable: false,

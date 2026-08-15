@@ -18,6 +18,7 @@ from sqlalchemy.pool import NullPool
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
+os.environ["QR_LOGIN_API_BASE_URL"] = "http://127.0.0.1:8000/api/v1"
 # 邮箱验证码：测试环境统一启用调试后门 "888888"，跳过真实 SMTP 发送与 Redis 校验
 os.environ["VERIFY_CODE_DEBUG_BYPASS"] = "888888"
 # 存储后端：测试环境走本地文件系统，无需 MinIO
@@ -27,7 +28,7 @@ os.environ.setdefault("LOCAL_UPLOADS_DIR", "./uploads-test")
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.main import app  # noqa: E402
-from app.models.user import User  # noqa: E402
+from app.models import User  # noqa: E402
 
 TEST_DATABASE_URL = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
 
@@ -36,7 +37,8 @@ test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullP
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 _TRUNCATE_SQL = text(
-    "TRUNCATE TABLE message_files, messages, file_upload_sessions, files, "
+    "TRUNCATE TABLE qr_login_events, qr_login_challenges, message_files, messages, "
+    "file_upload_sessions, files, "
     "conversation_shares, conversations, users RESTART IDENTITY CASCADE"
 )
 
@@ -73,9 +75,11 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import AsyncMock
 
     import app.services.auth_service as auth_svc
+    import app.services.qr_login_service as qr_login_svc
     import app.services.verify_code_service as vc_svc
 
     store: dict[str, str] = {}
+    counters: dict[str, int] = {}
 
     async def fake_setex(key: str, ttl: int, value: str) -> bool:
         store[key] = value
@@ -87,12 +91,24 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_delete(key: str) -> int:
         return store.pop(key, None) and 1 or 0  # type: ignore[return-value]
 
+    async def fake_incr(key: str) -> int:
+        next_value = counters.get(key, 0) + 1
+        counters[key] = next_value
+        return next_value
+
+    async def fake_expire(key: str, ttl: int) -> bool:
+        del key, ttl
+        return True
+
     mock = AsyncMock()
     mock.setex.side_effect = fake_setex
     mock.get.side_effect = fake_get
     mock.delete.side_effect = fake_delete
+    mock.incr.side_effect = fake_incr
+    mock.expire.side_effect = fake_expire
 
     monkeypatch.setattr(auth_svc, "redis_client", mock)
+    monkeypatch.setattr(qr_login_svc, "redis_client", mock)
     monkeypatch.setattr(vc_svc, "redis_client", mock)
 
 

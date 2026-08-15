@@ -6,6 +6,7 @@ import {
   KeyRound,
   LockKeyhole,
   Mail,
+  QrCode,
   UserRound,
 } from 'lucide-react'
 import { useEffect, useState, type FormEvent, type ReactElement } from 'react'
@@ -14,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 import { useLogin, useRegister, useResetPassword, useSendVerifyCode } from '@yuanai/core/hooks'
 
 import googleIcon from './google.svg'
+import { QrLoginPanel } from './QrLoginPanel'
 import '../shared/i18n'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -281,7 +283,13 @@ function VerificationCodeField({
   )
 }
 
-function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactElement {
+function LoginForm({
+  onNavigate,
+  onShowQrLogin,
+}: {
+  onNavigate(mode: AuthMode): void
+  onShowQrLogin(): void
+}): ReactElement {
   const { t } = useTranslation()
   const loginMutation = useLogin()
   const [email, setEmail] = useState('')
@@ -362,6 +370,10 @@ function LoginForm({ onNavigate }: { onNavigate(mode: AuthMode): void }): ReactE
         </div>
         <button className="desktop-auth__submit" type="submit" disabled={loginMutation.isPending}>
           {loginMutation.isPending ? t('auth.loggingIn') : t('auth.login')}
+        </button>
+        <button className="desktop-auth__qr-refresh" type="button" onClick={onShowQrLogin}>
+          <QrCode aria-hidden="true" size={16} />
+          {t('auth.qrLogin')}
         </button>
         <div className="desktop-auth__divider" role="separator">
           <span>{t('auth.orLoginWith')}</span>
@@ -729,9 +741,13 @@ function ForgotPasswordForm({ onNavigate }: { onNavigate(mode: AuthMode): void }
 /** 提供登录、注册和邮箱验证码重置密码的桌面认证界面。 */
 export function App(): ReactElement {
   const [mode, setMode] = useState<AuthMode>(getModeFromLocation)
+  const [showQrLogin, setShowQrLogin] = useState(false)
 
   useEffect(() => {
-    const syncMode = (): void => setMode(getModeFromLocation())
+    const syncMode = (): void => {
+      setShowQrLogin(false)
+      setMode(getModeFromLocation())
+    }
     window.addEventListener('hashchange', syncMode)
     return () => window.removeEventListener('hashchange', syncMode)
   }, [])
@@ -750,5 +766,6 @@ export function App(): ReactElement {
 
   if (mode === 'register') return <RegisterForm onNavigate={navigate} />
   if (mode === 'forgot') return <ForgotPasswordForm onNavigate={navigate} />
-  return <LoginForm onNavigate={navigate} />
+  if (showQrLogin) return <QrLoginPanel onBack={() => setShowQrLogin(false)} />
+  return <LoginForm onNavigate={navigate} onShowQrLogin={() => setShowQrLogin(true)} />
 }

@@ -59,6 +59,14 @@ class Settings(BaseSettings):
     voice_transcription_poll_interval_seconds: float = 1.0
     voice_ffprobe_path: str = "ffprobe"
 
+    # 扫码登录：二维码只携带短时挑战和 API 地址，凭据始终由服务端哈希保存。
+    qr_login_ttl_seconds: int = 90
+    qr_login_poll_after_ms: int = 1000
+    qr_login_api_base_url: str = "http://localhost:8000/api/v1"
+    qr_login_create_limit: int = 15
+    qr_login_attempt_limit: int = 12
+    qr_login_rate_limit_window_seconds: int = 300
+
     # ── Email / SMTP (用于发送邮箱验证码) ─────────────────────────────
     # QQ 邮箱：smtp.qq.com / 465 (SSL) 或 587 (STARTTLS)
     # 授权码在 QQ 邮箱设置→账户→POP3/IMAP/SMTP 服务里生成（16 位字符串），不是登录密码

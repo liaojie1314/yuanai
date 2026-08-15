@@ -20,7 +20,7 @@
       "supportsTablet": true,
       "buildNumber": "1",
       "infoPlist": {
-        "NSCameraUsageDescription": "元AI 需要访问相机以拍照上传",
+        "NSCameraUsageDescription": "元AI 需要访问相机以拍照上传和扫描登录二维码",
         "NSPhotoLibraryUsageDescription": "元AI 需要访问相册以上传图片",
         "NSMicrophoneUsageDescription": "元AI 需要访问麦克风以进行语音输入",
         "NSSpeechRecognitionUsageDescription": "元AI 需要访问语音识别以进行语音输入",
@@ -80,6 +80,12 @@
         {
           "photosPermission": "元AI 需要访问相册以上传图片",
           "cameraPermission": "元AI 需要访问相机以拍照上传"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "元AI 需要访问相机以扫描登录二维码"
         }
       ],
       [

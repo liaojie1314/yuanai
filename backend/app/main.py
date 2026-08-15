@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import auth, chat, models, notifications, share, voice
+from app.api.v1 import auth, chat, models, notifications, qr_login, share, voice
 from app.api.v1 import files as files_router
 from app.core.config import settings
 
@@ -65,6 +65,7 @@ if settings.storage_backend.lower() == "local":
     app.mount("/uploads", StaticFiles(directory=settings.local_uploads_dir), name="uploads")
 
 app.include_router(auth.router, prefix="/api/v1")
+app.include_router(qr_login.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")

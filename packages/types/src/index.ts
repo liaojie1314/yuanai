@@ -92,6 +92,64 @@ export interface AuthResponse {
   user: User
 }
 
+/** 可以作为扫码登录目标的客户端平台。 */
+export type QrLoginTargetPlatform = 'web' | 'desktop'
+
+/** 扫码登录挑战在其生命周期中暴露的状态。 */
+export type QrLoginStatus = 'pending' | 'approved' | 'denied' | 'consumed' | 'expired'
+
+/** 目标端创建二维码挑战时发送的公开设备信息。 */
+export interface CreateQrLoginChallengeInput {
+  targetPlatform: QrLoginTargetPlatform
+  deviceName: string
+  /** 仅限与服务端预配置地址相同的开发环境覆盖值。 */
+  apiBaseUrl?: string
+}
+
+/** 目标端持有的短时挑战和独立轮询凭据。 */
+export interface QrLoginChallenge {
+  challenge: string
+  /** 绝不能进入二维码、日志、持久化存储或 URL。 */
+  pollSecret: string
+  qrDataUri: string
+  expiresAt: string
+  pollAfterMs: number
+}
+
+/** 目标端轮询挑战时收到的最小状态响应。 */
+export interface QrLoginStatusResponse {
+  status: QrLoginStatus
+  expiresAt: string
+  /** 仅在挑战获批后出现，且只能成功交换一次。 */
+  authorizationCode: string | null
+}
+
+/** 已登录手机在确认前可见的目标设备摘要。 */
+export interface QrLoginInspection {
+  targetPlatform: QrLoginTargetPlatform
+  deviceName: string
+  expiresAt: string
+  status: QrLoginStatus
+}
+
+/** 目标端使用批准结果兑换常规认证会话的请求。 */
+export interface ExchangeQrLoginChallengeInput {
+  challenge: string
+  pollSecret: string
+  authorizationCode: string
+}
+
+/** 从相机数据解析出的无敏感令牌扫码地址。 */
+export interface ParsedQrLoginPayload {
+  challenge: string
+  apiBaseUrl: string
+}
+
+/** 仅为单个扫码请求指定的 API 地址，不会改变应用全局运行时配置。 */
+export interface QrLoginRequestScope {
+  apiBaseUrl?: string
+}
+
 // ============ 会话 ============
 
 /** 对话会话（侧边栏列表项） */

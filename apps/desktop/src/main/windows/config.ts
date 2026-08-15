@@ -5,9 +5,9 @@ export const WINDOW_SPECS = {
   main: { width: 1280, height: 820, minWidth: 1280, minHeight: 640, resizable: true },
   login: {
     width: 520,
-    height: 600,
+    height: 680,
     minWidth: 520,
-    minHeight: 600,
+    minHeight: 680,
     resizable: false,
     maximizable: false,
     fullscreenable: false,
