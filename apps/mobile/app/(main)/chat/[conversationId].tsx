@@ -195,7 +195,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
   // （`skipOptimistic` 跳过乐观用户气泡，避免同一个问题重复出现两遍）。
   // 重发产生的新 assistant 会被 buildMessagePairs 折叠成同一 pair 的新版本。
   const handleRegenerate = useCallback(
-    (pairKey: string, userContent: string): void => {
+    (pairKey: string, userContent: string, userMessageId: string): void => {
       if (!conversationId || isStreaming || !userContent) return
       setRegeneratingPairKey(pairKey)
       // 清掉该 pair 的版本选择，让新版本（最后一版）自动成为展示项
@@ -209,6 +209,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
         content: userContent,
         model: currentModel,
         skipOptimistic: true,
+        regenerateFromMessageId: userMessageId,
         enableThinking: usePrefsStore.getState().showThinking,
         onError: (err) => {
           setRegeneratingPairKey(null)

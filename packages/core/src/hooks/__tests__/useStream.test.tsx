@@ -252,6 +252,32 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(useChatStore.getState().streams).toEqual({})
   })
 
+  it('重新生成时仅向后端传递显式的原问题 ID', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>
+        return makeStreamResponse([])
+      })
+    )
+    const { result } = renderHook(() => useStream(), { wrapper: withProvider() })
+
+    await act(async () => {
+      await result.current.send({
+        convId: 'c1',
+        content: '重新生成同一个问题',
+        model: 'gpt-4o',
+        regenerateFromMessageId: 'original-user-message',
+        skipOptimistic: true,
+      })
+    })
+
+    expect(body).toMatchObject({
+      conversation_id: 'c1',
+      regenerate_from_message_id: 'original-user-message',
+    })
+  })
+
   it('stop() 把已收到的部分内容写入消息缓存（不丢已输出文本）', async () => {
     // 无限流：只发 message_start + 两个 delta，之后挂起等待被 stop 中断
     server.use(

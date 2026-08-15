@@ -602,9 +602,22 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   const selectModel = (m: Model): void => {
+    const previousModel = activeModel
     setActiveModel(m)
     sessionStorage.setItem('yuanai-active-model', m.id)
     setModelDropOpen(false)
+    if (!temporary && activeConv && m.id !== previousModel.id) {
+      updateConv(
+        { id: activeConv, model: m.id },
+        {
+          onError: () => {
+            setActiveModel(previousModel)
+            sessionStorage.setItem('yuanai-active-model', previousModel.id)
+            toast.error('模型切换未保存，请重试')
+          },
+        }
+      )
+    }
   }
 
   const toggleUserPanel = (e: React.MouseEvent): void => {
@@ -984,6 +997,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       model: ctx.activeModel.id,
       skipOptimistic: true,
       enableThinking: ctx.showThinking,
+      regenerateFromMessageId: pair.userMsg.id,
     })
   }, [])
 

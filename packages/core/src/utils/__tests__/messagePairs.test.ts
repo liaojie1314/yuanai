@@ -2,11 +2,17 @@ import { describe, it, expect } from 'vitest'
 import type { Message } from '@yuanai/types'
 import { buildMessagePairs, clampVersionIdx } from '../messagePairs'
 
-function msg(id: string, role: 'user' | 'assistant', content: string): Message {
+function msg(
+  id: string,
+  role: 'user' | 'assistant',
+  content: string,
+  regeneratedFromMessageId?: string
+): Message {
   return {
     id,
     role: role as Message['role'],
     content,
+    ...(regeneratedFromMessageId ? { regeneratedFromMessageId } : {}),
     files: [],
     createdAt: '2026-01-01T00:00:00Z',
   }
@@ -36,17 +42,28 @@ describe('buildMessagePairs', () => {
     expect(pairs[1]?.assistants.map((m) => m.id)).toEqual(['a2'])
   })
 
-  it('相邻同内容用户消息合并为多版本（重新生成场景）', () => {
+  it('相邻的同内容普通提问不会被误判为重新生成', () => {
     const pairs = buildMessagePairs([
       msg('u1', 'user', '讲个笑话'),
       msg('a1', 'assistant', '版本一'),
       msg('u2', 'user', '讲个笑话'),
       msg('a2', 'assistant', '版本二'),
-      msg('u3', 'user', '讲个笑话'),
+    ])
+    expect(pairs).toHaveLength(2)
+    expect(pairs.map((pair) => pair.pairKey)).toEqual(['u1', 'u2'])
+  })
+
+  it('仅显式标记来源的用户消息合并为多版本', () => {
+    const pairs = buildMessagePairs([
+      msg('u1', 'user', '讲个笑话'),
+      msg('a1', 'assistant', '版本一'),
+      msg('u2', 'user', '讲个笑话', 'u1'),
+      msg('a2', 'assistant', '版本二'),
+      msg('u3', 'user', '讲个笑话', 'u1'),
       msg('a3', 'assistant', '版本三'),
     ])
+
     expect(pairs).toHaveLength(1)
-    // pairKey 取首条用户消息，重新生成后保持稳定
     expect(pairs[0]?.pairKey).toBe('u1')
     expect(pairs[0]?.assistants.map((m) => m.id)).toEqual(['a1', 'a2', 'a3'])
   })

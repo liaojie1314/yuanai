@@ -3,10 +3,9 @@ import type { Message } from '@yuanai/types'
 /**
  * 消息对：一条用户消息 + 它对应的若干条 AI 回复。
  *
- * 「重新生成」在后端表现为**再发一次同样的用户消息**（`/chat/stream` 每轮都会新建
- * user + assistant 两条记录），所以同一个问题的多个回答在消息流里是
- * `user A / ai 1 / user A / ai 2` 的形态。配对时把内容相同的相邻用户消息合并，
- * 多个 assistant 就成了同一问题的「多版本」，供 UI 做 `‹ 2/3 ›` 切换。
+ * 「重新生成」在后端表现为新增一条用户消息和一条 assistant 消息；新用户消息会显式
+ * 保存 `regeneratedFromMessageId`。只有这个来源关系才能折叠为同一个问题的多个版本，
+ * 因为用户连续发送相同文本本身仍是两轮独立对话。
  */
 export interface MessagePair {
   /** 配对键 = 首条用户消息 ID（多版本合并后保持稳定，可作 React key / 版本态索引） */
@@ -31,32 +30,34 @@ export interface MessagePair {
  */
 export function buildMessagePairs(msgs: readonly Message[]): MessagePair[] {
   const pairs: MessagePair[] = []
+  const pairsByUserMessageId = new Map<string, MessagePair>()
+  let activePair: MessagePair | null = null
 
   for (const msg of msgs) {
     if (msg.role === 'user') {
-      pairs.push({ pairKey: msg.id, userMsg: msg, assistants: [] })
+      const sourcePair = msg.regeneratedFromMessageId
+        ? pairsByUserMessageId.get(msg.regeneratedFromMessageId)
+        : undefined
+      if (sourcePair) {
+        // 新的 regenerated user 行只是某个已展示问题的版本载体，不再重复渲染问题气泡。
+        activePair = sourcePair
+        pairsByUserMessageId.set(msg.id, sourcePair)
+      } else {
+        activePair = { pairKey: msg.id, userMsg: msg, assistants: [] }
+        pairs.push(activePair)
+        pairsByUserMessageId.set(msg.id, activePair)
+      }
       continue
     }
-    const last = pairs[pairs.length - 1]
-    if (last) {
-      last.assistants.push(msg)
+    if (activePair) {
+      activePair.assistants.push(msg)
     } else {
       // 开头就是 assistant：建一个无用户消息的孤儿对，避免丢内容
-      pairs.push({ pairKey: msg.id, userMsg: null, assistants: [msg] })
+      activePair = { pairKey: msg.id, userMsg: null, assistants: [msg] }
+      pairs.push(activePair)
     }
   }
-
-  // 相邻且用户内容相同 → 判定为「重新生成」，合并成同一对的多个版本
-  const merged: MessagePair[] = []
-  for (const pair of pairs) {
-    const last = merged[merged.length - 1]
-    if (last?.userMsg && pair.userMsg && last.userMsg.content === pair.userMsg.content) {
-      last.assistants.push(...pair.assistants)
-    } else {
-      merged.push(pair)
-    }
-  }
-  return merged
+  return pairs
 }
 
 /**

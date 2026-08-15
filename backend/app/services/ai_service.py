@@ -311,6 +311,7 @@ async def generate_conversation_title(question: str) -> str | None:
                     messages=messages,
                     temperature=0,
                     max_tokens=token_budget,
+                    extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
                 if not completion.choices:
                     return None
@@ -337,7 +338,7 @@ async def stream_chat(
     Args:
         model: 模型 ID（须在 PROVIDER_CONFIG 中注册）
         messages: OpenAI 格式的消息列表
-        enable_thinking: 是否开启思考/推理模式（DeepSeek 系列通过 extra_body 传递）
+        enable_thinking: 是否开启思考/推理模式（由各 provider 的兼容参数传递）
 
     Yields:
         tuple[str, str]: (event_type, token)
@@ -367,6 +368,10 @@ async def stream_chat(
                 "budget_tokens": 8000,
             }
         }
+    elif config["provider"] == "agnes":
+        # Agnes 2.5 Flash 的 OpenAI-compatible Thinking Mode 参数：
+        # https://www.agnes-ai.com/en/docs/agnes-25-flash
+        extra_body = {"chat_template_kwargs": {"enable_thinking": enable_thinking}}
 
     provider_messages = cast(list[ChatCompletionMessageParam], messages)
     if extra_body is None:

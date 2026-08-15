@@ -158,6 +158,27 @@ async def stream_chat_endpoint(
 ) -> StreamingResponse:
     conv = await _get_user_conv(req.conversation_id, current_user.id, db)
 
+    if req.replace_message_id is not None and req.regenerate_from_message_id is not None:
+        raise HTTPException(
+            422,
+            {
+                "code": "INVALID_MESSAGE_OPERATION",
+                "message": "编辑消息和重新生成不能同时执行",
+            },
+        )
+
+    regenerated_from_message_id: uuid.UUID | None = None
+    if req.regenerate_from_message_id is not None:
+        source_result = await db.execute(
+            select(Message.id)
+            .where(Message.id == req.regenerate_from_message_id)
+            .where(Message.conv_id == conv.id)
+            .where(Message.role == MessageRole.user)
+        )
+        regenerated_from_message_id = source_result.scalar_one_or_none()
+        if regenerated_from_message_id is None:
+            raise HTTPException(404, {"code": "MESSAGE_NOT_FOUND", "message": "消息不存在"})
+
     now = datetime.now(UTC)
     is_first_user_message = False
     if req.replace_message_id is None and conv.title_source == "default":
@@ -178,6 +199,7 @@ async def stream_chat_endpoint(
             conv_id=conv.id,
             role=MessageRole.user,
             content=req.message.content,
+            regenerated_from_message_id=regenerated_from_message_id,
             created_at=now,
         )
         db.add(user_msg)

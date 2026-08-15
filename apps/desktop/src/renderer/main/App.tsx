@@ -1271,6 +1271,22 @@ export function App(): ReactElement {
   }, [availableModels, selectedModelId])
 
   useEffect(() => {
+    const activeModelId = activeConversation?.model
+    if (
+      isTemporaryConversation ||
+      !activeModelId ||
+      !availableModels.some((model) => model.id === activeModelId)
+    ) {
+      return
+    }
+    // 只在切换会话或服务器缓存真正更新时同步。不能依赖 selectedModelId，
+    // 否则用户刚选择的模型会在 PATCH 返回前被旧缓存立刻覆盖。
+    setSelectedModelId((previousModelId) =>
+      previousModelId === activeModelId ? previousModelId : activeModelId
+    )
+  }, [activeConversation?.model, availableModels, isTemporaryConversation])
+
+  useEffect(() => {
     setVersionIndexes({})
     setFeedbackDialog(null)
     setFeedbackCategory('')
@@ -1475,7 +1491,7 @@ export function App(): ReactElement {
   }
 
   /** 使用对应用户问题重新生成 AI 回复，不重复显示乐观用户消息。 */
-  function handleRegenerateMessage(content: string, pairKey: string): void {
+  function handleRegenerateMessage(content: string, pairKey: string, userMessageId: string): void {
     if (!isLoggedIn || isStreaming || isTemporaryConversation || !activeConversationId) return
     setActionError('')
     setVersionIndexes((items) => {
@@ -1490,6 +1506,7 @@ export function App(): ReactElement {
         content,
         enableThinking: isThinkingEnabled,
         model: selectedModel.id,
+        regenerateFromMessageId: userMessageId,
         onError: (error) => {
           setRegeneratingPairKey(null)
           setActionError(getErrorMessage(error, '重新生成失败，请重试'))
@@ -1561,7 +1578,6 @@ export function App(): ReactElement {
   }
 
   function handleSelectConversation(conversationId: string): void {
-    if (isStreaming) return
     const conversation = conversations.find((item) => item.id === conversationId)
     setActionError('')
     if (isTemporaryConversation) {
@@ -1575,8 +1591,17 @@ export function App(): ReactElement {
   }
 
   function handleSelectModel(modelId: string): void {
+    const previousModelId = selectedModelId
     setSelectedModelId(modelId)
     setIsModelMenuOpen(false)
+    if (!isTemporaryConversation && activeConversationId && activeConversation?.model !== modelId) {
+      void updateConversation
+        .mutateAsync({ id: activeConversationId, model: modelId })
+        .catch((error: unknown) => {
+          setSelectedModelId(previousModelId)
+          setActionError(getErrorMessage(error, '模型切换未保存，请重试'))
+        })
+    }
   }
 
   function addAttachments(files: readonly File[]): void {

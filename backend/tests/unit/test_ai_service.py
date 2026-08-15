@@ -367,6 +367,25 @@ async def test_stream_chat_deepseek_extra_body_disable_thinking() -> None:
     assert call_kwargs["extra_body"]["thinking"]["type"] == "disabled"
 
 
+@pytest.mark.parametrize("enable_thinking", [True, False])
+async def test_stream_chat_agnes_passes_documented_thinking_toggle(
+    enable_thinking: bool,
+) -> None:
+    """Agnes OpenAI 兼容接口必须接收 chat_template_kwargs 开关。"""
+    mock_client = _build_mock_client(["ok"])
+
+    with patch("app.services.ai_service._get_client", return_value=mock_client):
+        async for _ in stream_chat(
+            "agnes-2.5-flash", [{"role": "user", "content": "hi"}], enable_thinking=enable_thinking
+        ):
+            pass
+
+    call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["extra_body"] == {
+        "chat_template_kwargs": {"enable_thinking": enable_thinking}
+    }
+
+
 async def test_stream_chat_openai_no_extra_body() -> None:
     """OpenAI 模型不应携带 extra_body（非 DeepSeek 提供商）。"""
     mock_client = _build_mock_client(["ok"])

@@ -39,6 +39,8 @@ export interface MockMessage {
   id: string
   role: MessageRole
   parts: MessagePart[]
+  /** 重新生成请求对应的原始用户消息 ID。 */
+  regeneratedFromMessageId?: string
   /** 结构化推理文字（chain-of-thought） */
   thinkContent?: string
   /** 消息内嵌的工具调用记录 */

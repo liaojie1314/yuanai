@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
+import { NextIntlClientProvider } from 'next-intl'
 import type { MockMessage } from '@yuanai/core/stores'
+import { usePrefsStore } from '@yuanai/core/stores'
+import zhMessages from '@/i18n/locales/zh-CN.json'
 import { AIMessage } from '../AIMessage'
 
 Object.defineProperty(navigator, 'clipboard', {
@@ -20,14 +23,16 @@ function makeMsg(text = 'Answer **bold**'): MockMessage {
 
 function renderMsg(text?: string): void {
   render(
-    <AIMessage
-      msg={makeMsg(text)}
-      isStreaming={false}
-      streamingContent=""
-      onFill={() => {}}
-      timeFmt="24h"
-      dateFmt="ymd"
-    />
+    <NextIntlClientProvider locale="zh-CN" messages={zhMessages}>
+      <AIMessage
+        msg={makeMsg(text)}
+        isStreaming={false}
+        streamingContent=""
+        onFill={() => {}}
+        timeFmt="24h"
+        dateFmt="ymd"
+      />
+    </NextIntlClientProvider>
   )
 }
 
@@ -38,6 +43,7 @@ describe('AIMessage 复制交互（hover 触发）', () => {
   })
 
   afterEach(() => {
+    usePrefsStore.getState().setShowThinking(true)
     vi.useRealTimers()
   })
 
@@ -82,5 +88,23 @@ describe('AIMessage 复制交互（hover 触发）', () => {
       fireEvent.click(screen.getByText('复制纯文本'))
     })
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith('A bold _italic_')
+  })
+
+  it('当前关闭思考开关时仍展示历史消息已经保存的思考内容', () => {
+    usePrefsStore.getState().setShowThinking(false)
+    render(
+      <NextIntlClientProvider locale="zh-CN" messages={zhMessages}>
+        <AIMessage
+          msg={{ ...makeMsg(), thinkContent: '这是已保存的推理过程', thinkDurationMs: 300 }}
+          isStreaming={false}
+          streamingContent=""
+          onFill={() => {}}
+          timeFmt="24h"
+          dateFmt="ymd"
+        />
+      </NextIntlClientProvider>
+    )
+
+    expect(screen.getByRole('button', { name: '已完成思考 0.3 秒' })).toBeInTheDocument()
   })
 })

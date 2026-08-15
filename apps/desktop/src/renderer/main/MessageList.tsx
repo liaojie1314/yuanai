@@ -72,7 +72,7 @@ export interface MessageListProps {
   /** 覆盖用户消息并重新请求回复。 */
   onEditMessage(messageId: string, content: string): void
   /** 重新生成一条 AI 回复。 */
-  onRegenerateMessage(content: string, pairKey: string): void
+  onRegenerateMessage(content: string, pairKey: string, userMessageId: string): void
   /** 打开 AI 消息反馈弹窗。 */
   onOpenFeedback(messageId: string, type: 'like' | 'dislike'): void
   /** 在 Artifact 窗口中打开代码或数据。 */
@@ -245,7 +245,9 @@ export function MessageList({
                 onFeedback={onOpenFeedback}
                 onOpenArtifact={onOpenArtifact}
                 onRegenerate={() => {
-                  if (pair.userMsg) onRegenerateMessage(pair.userMsg.content, pair.pairKey)
+                  if (pair.userMsg) {
+                    onRegenerateMessage(pair.userMsg.content, pair.pairKey, pair.userMsg.id)
+                  }
                 }}
                 onEditMessage={onEditMessage}
                 onVersionChange={(index) => onVersionChange(pair.pairKey, index)}

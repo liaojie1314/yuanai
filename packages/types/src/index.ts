@@ -268,6 +268,11 @@ export interface Message {
   role: Role
   content: string
   /**
+   * 仅重新生成产生的用户消息会指向原始用户问题。
+   * 普通重复提问始终为 null/undefined，不能据内容相同推断为一个版本。
+   */
+  regeneratedFromMessageId?: string | null
+  /**
    * 结构化 parts 列表；后端未提供时前端降级为 `[{ type: 'text', content }]`。
    * 后端支持工具调用/多模态后填充此字段。
    */

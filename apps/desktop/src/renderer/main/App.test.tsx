@@ -22,6 +22,7 @@ const chat = vi.hoisted(() => ({
     id: string
     role: string
     content: string
+    regeneratedFromMessageId?: string
     files: Array<{
       id: string
       filename: string
@@ -357,6 +358,14 @@ beforeEach(() => {
     lastMessageAt: null,
     createdAt: '2026-08-10T08:00:00.000Z',
   })
+  chat.updateConversation.mockResolvedValue({
+    id: 'conversation-1',
+    title: '测试会话',
+    model: 'gpt-4.1-mini',
+    isPinned: false,
+    lastMessageAt: new Date().toISOString(),
+    createdAt: '2026-08-10T08:00:00.000Z',
+  })
   chat.deleteConversations.mockResolvedValue(undefined)
   chat.shareLink = null
   chat.createShareLink.mockResolvedValue({
@@ -463,6 +472,7 @@ describe('desktop chat', () => {
           content: '请展示一个标题',
           convId: 'conversation-1',
           model: 'gpt-4o',
+          regenerateFromMessageId: 'message-user',
           skipOptimistic: true,
         })
       )
@@ -628,6 +638,7 @@ describe('desktop chat', () => {
         id: 'message-user-v2',
         role: 'user',
         content: '给我两个不同版本的回答',
+        regeneratedFromMessageId: 'message-user-v1',
         files: [],
         createdAt: '2026-08-10T08:00:02.000Z',
       },
@@ -1385,7 +1396,13 @@ describe('desktop chat', () => {
 
     await user.click(screen.getByRole('button', { name: '选择模型：GPT-4o' }))
     await user.click(screen.getByRole('option', { name: '选择 GPT-4.1 mini' }))
-    expect(screen.getByRole('button', { name: '选择模型：GPT-4.1 mini' })).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '选择模型：GPT-4.1 mini' })).toBeInTheDocument()
+      expect(chat.updateConversation).toHaveBeenCalledWith({
+        id: 'conversation-1',
+        model: 'gpt-4.1-mini',
+      })
+    })
 
     const file = new File(['desktop attachment'], 'notes.txt', { type: 'text/plain' })
     await user.upload(screen.getByTestId('attachment-input'), file)

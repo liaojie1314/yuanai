@@ -46,6 +46,9 @@ export function apiMsgToMock(msg: Message): MockMessage {
     id: msg.id,
     role: msg.role as 'user' | 'assistant',
     parts: [{ type: 'text' as const, content: msg.content }],
+    ...(msg.regeneratedFromMessageId
+      ? { regeneratedFromMessageId: msg.regeneratedFromMessageId }
+      : {}),
     ...(msg.thinkingContent ? { thinkContent: msg.thinkingContent } : {}),
     ...(typeof msg.thinkingDurationMs === 'number'
       ? { thinkDurationMs: msg.thinkingDurationMs }
@@ -88,40 +91,33 @@ export { stripMarkdown } from '@yuanai/core/utils'
 
 /**
  * 将扁平消息列表分组为 `(用户消息, AI回复[])` 对。
- * 用户内容相同的相邻对会合并（用于版本切换：重新生成会产生重复用户消息）。
+ * 只依据后端写入的 `regeneratedFromMessageId` 合并版本；普通重复提问永远保留为独立轮次。
  */
 export function buildPairs(msgs: MockMessage[]): MsgPair[] {
   const pairs: MsgPair[] = []
-  let i = 0
-  while (i < msgs.length) {
-    const msg = msgs[i]
-    if (!msg) {
-      i++
+  const pairsByUserMessageId = new Map<string, MsgPair>()
+  let activePair: MsgPair | null = null
+
+  for (const msg of msgs) {
+    if (msg.role === 'user') {
+      const sourcePair = msg.regeneratedFromMessageId
+        ? pairsByUserMessageId.get(msg.regeneratedFromMessageId)
+        : undefined
+      if (sourcePair) {
+        activePair = sourcePair
+        pairsByUserMessageId.set(msg.id, sourcePair)
+      } else {
+        activePair = { pairKey: msg.id, userMsg: msg, assistants: [] }
+        pairs.push(activePair)
+        pairsByUserMessageId.set(msg.id, activePair)
+      }
       continue
     }
-    if (msg.role === 'user') {
-      const assistants: MockMessage[] = []
-      let j = i + 1
-      while (j < msgs.length && msgs[j]?.role === 'assistant') {
-        assistants.push(msgs[j] as MockMessage)
-        j++
-      }
-      pairs.push({ pairKey: msg.id, userMsg: msg, assistants })
-      i = j
-    } else {
-      i++
+    if (activePair) {
+      activePair.assistants.push(msg)
     }
   }
-  const merged: MsgPair[] = []
-  for (const pair of pairs) {
-    const last = merged[merged.length - 1]
-    if (last && getMsgText(last.userMsg) === getMsgText(pair.userMsg)) {
-      last.assistants.push(...pair.assistants)
-    } else {
-      merged.push(pair)
-    }
-  }
-  return merged
+  return pairs
 }
 
 /**

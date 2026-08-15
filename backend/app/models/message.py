@@ -23,9 +23,14 @@ class Message(Base):
     )
     role: Mapped[MessageRole] = mapped_column(Enum(MessageRole), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 显式记录重新生成来自哪条用户问题；普通重复提问必须保持 None。
+    regenerated_from_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("messages.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # 思考/推理过程文字（仅 assistant 消息，模型不支持时为 None）
     thinking_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # 思考耗时（毫秒）— 首个 reasoning token → 首个 content token 之间的间隔，None 表示未开启或未产生思考
+    # 思考耗时（毫秒）：首个 reasoning token 到首个 content token 的间隔。
+    # None 表示未开启或未产生思考。
     thinking_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     model: Mapped[str | None] = mapped_column(String(100))
     tokens_used: Mapped[int | None] = mapped_column(Integer)

@@ -64,6 +64,8 @@ export interface StreamParams {
   skipOptimistic?: boolean
   /** 编辑既有用户消息时复用其记录，并截断其后的历史回复。 */
   replaceMessageId?: string
+  /** 重新生成时对应的原始用户消息 ID；仅该字段决定 AI 回复版本归属。 */
+  regenerateFromMessageId?: string
   /** 流启动时回调。 */
   onStart?: () => void
   /** 流结束时回调；`completed` 仅在服务器正常完成回复时为 true。 */
@@ -420,6 +422,9 @@ export class ConversationStreamRegistry {
             message: { content: params.content, fileIds: params.fileIds ?? [] },
             enable_thinking: params.enableThinking ?? false,
             ...(params.replaceMessageId ? { replace_message_id: params.replaceMessageId } : {}),
+            ...(params.regenerateFromMessageId
+              ? { regenerate_from_message_id: params.regenerateFromMessageId }
+              : {}),
           }),
         },
         {

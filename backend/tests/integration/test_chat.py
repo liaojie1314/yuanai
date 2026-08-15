@@ -87,6 +87,29 @@ class TestConversation:
         assert update_res.json()["titleSource"] == "manual"
         assert update_res.json()["titleGeneratedAt"] is not None
 
+    async def test_update_conversation_model_persists_for_later_clients(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """模型选择必须保存到会话，供切换会话或另一端恢复。"""
+        create_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = create_res.json()["id"]
+
+        update_res = await client.patch(
+            f"/api/v1/chat/conversations/{conv_id}",
+            json={"model": "agnes-2.5-flash"},
+            headers=auth_headers,
+        )
+        assert update_res.status_code == 200
+        assert update_res.json()["model"] == "agnes-2.5-flash"
+
+        list_res = await client.get("/api/v1/chat/conversations", headers=auth_headers)
+        persisted = next(item for item in list_res.json()["conversations"] if item["id"] == conv_id)
+        assert persisted["model"] == "agnes-2.5-flash"
+
     async def test_pin_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:
@@ -551,6 +574,56 @@ class TestStream:
         assert messages[0]["content"] == "新问题"
         assert messages[1]["role"] == "assistant"
         assert messages[1]["content"] == "新问题 的回答"
+
+    async def test_regeneration_persists_explicit_origin_without_merging_repeated_questions(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """相同文本不是版本；只有带来源 ID 的重新生成才可由客户端折叠。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+
+        async def mock_stream(
+            _model: str, messages: list[dict[str, str]], **_kwargs: object
+        ):  # type: ignore[misc]
+            yield ("content", f"{messages[-1]['content']} 的回答")
+
+        async def send_message(regenerate_from_message_id: str | None = None) -> None:
+            payload: dict[str, object] = {
+                "conversation_id": conv_id,
+                "model": "gpt-4o",
+                "message": {"content": "相同的问题", "file_ids": []},
+            }
+            if regenerate_from_message_id is not None:
+                payload["regenerate_from_message_id"] = regenerate_from_message_id
+            async with client.stream(
+                "POST", "/api/v1/chat/stream", json=payload, headers=auth_headers
+            ) as response:
+                assert response.status_code == 200
+                async for _ in response.aiter_lines():
+                    pass
+
+        with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
+            await send_message()
+            initial_messages = (
+                await client.get(
+                    f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
+                )
+            ).json()["messages"]
+            await send_message()
+            await send_message(initial_messages[0]["id"])
+
+        messages = (
+            await client.get(
+                f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
+            )
+        ).json()["messages"]
+        assert [message["role"] for message in messages] == ["user", "assistant"] * 3
+        assert messages[2]["regeneratedFromMessageId"] is None
+        assert messages[4]["regeneratedFromMessageId"] == initial_messages[0]["id"]
 
     async def test_stream_message_order_user_before_assistant(
         self, client: AsyncClient, auth_headers: dict[str, str]

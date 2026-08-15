@@ -37,8 +37,8 @@ interface MessageListProps {
   /** 各 AI 消息的点赞/踩状态（key = 消息 ID） */
   msgFeedback: Record<string, FeedbackType>
   onVersionChange: (pairKey: string, idx: number) => void
-  /** 重新生成：带上该轮的用户提问原文，直接重发一次 */
-  onRegenerate: (pairKey: string, userContent: string) => void
+  /** 重新生成：带上原问题 ID，后端据此而非文本内容判断版本归属。 */
+  onRegenerate: (pairKey: string, userContent: string, userMessageId: string) => void
   onFeedback: (msgId: string, type: FeedbackType) => void
   /** 用户气泡「编辑」图标 → 进入内联编辑 */
   onStartEdit: (msgId: string) => void
@@ -108,6 +108,7 @@ interface ActionsRow {
   msgId: string
   pairKey: string
   userContent: string
+  userMessageId: string
   /** 完整回复原文（复制用；块只有片段） */
   content: string
   /** AI 回复时间（ISO），显示在操作行左侧（对齐 web ch-msg-ts） */
@@ -300,6 +301,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
 
     for (const pair of pairs) {
       const userContent = pair.userMsg?.content ?? ''
+      const userMessageId = pair.userMsg?.id ?? ''
       if (pair.userMsg) {
         out.push({
           role: 'user',
@@ -352,6 +354,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         msgId: asst.id,
         pairKey: pair.pairKey,
         userContent,
+        userMessageId,
         content: asst.content,
         createdAt: asst.createdAt,
         versionCount: pair.assistants.length,
@@ -511,7 +514,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
               feedback={msgFeedback[msgId]}
               busy={isStreaming}
               onVersionChange={(idx) => onVersionChange(pairKey, idx)}
-              onRegenerate={() => onRegenerate(pairKey, item.userContent)}
+              onRegenerate={() => onRegenerate(pairKey, item.userContent, item.userMessageId)}
               onFeedback={(type) => onFeedback(msgId, type)}
             />
           </View>

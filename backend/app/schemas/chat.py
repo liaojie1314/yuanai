@@ -63,6 +63,7 @@ class MessageResponse(BaseModel):
     id: uuid.UUID
     role: str
     content: str
+    regenerated_from_message_id: uuid.UUID | None = None
     thinking_content: str | None = None
     thinking_duration_ms: int | None = None
     model: str | None = None
@@ -86,6 +87,7 @@ class SendMessageRequest(BaseModel):
     message: MessageContent
     enable_thinking: bool = False
     replace_message_id: uuid.UUID | None = None
+    regenerate_from_message_id: uuid.UUID | None = None
 
 
 class TemporaryChatMessage(BaseModel):
