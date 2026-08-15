@@ -5,8 +5,11 @@ import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
 import { server } from '../../../tests/mocks/server.js'
 import { API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '../../api/client.js'
+import { resetPlatformAdapter, setPlatformAdapter, webAdapter } from '../../platform/index.js'
+import type { StreamHandlers, StreamRequest } from '../../platform/index.js'
 import { useChatStore } from '../../stores/chat.store.js'
 import { useStream } from '../useStream.js'
+import { conversationStreamRegistry } from '../../streams/conversation-stream-registry.js'
 
 function makeStreamResponse(events: Array<{ event: string; data: unknown }>): Response {
   const enc = new TextEncoder()
@@ -37,10 +40,12 @@ function withProvider() {
 const INITIAL_API_BASE_URL = getApiBaseUrl()
 
 beforeEach(() => {
-  useChatStore.getState().finalizeStream()
+  conversationStreamRegistry.reset()
 })
 
 afterEach(() => {
+  conversationStreamRegistry.reset()
+  resetPlatformAdapter()
   setApiBaseUrl(INITIAL_API_BASE_URL)
   vi.clearAllMocks()
 })
@@ -63,10 +68,7 @@ describe('useStream — SSE 解析（端到端行为）', () => {
       await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o', onEnd })
     })
     // 流结束应清空流式态
-    const s = useChatStore.getState()
-    expect(s.streamingConvId).toBeNull()
-    expect(s.streamingContent).toBe('')
-    expect(s.optimisticUserMsg).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
     expect(onEnd).toHaveBeenCalledWith({ completed: true })
   })
 
@@ -83,7 +85,7 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     await act(async () => {
       await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o' })
     })
-    expect(useChatStore.getState().streamingConvId).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
   })
 
   it('将有效 conversation_title 事件精确写入对应会话缓存', async () => {
@@ -165,7 +167,7 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     })
     expect(onError).toHaveBeenCalled()
     expect(onEnd).toHaveBeenCalledWith({ completed: false })
-    expect(useChatStore.getState().streamingConvId).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
   })
 
   it('收到后端 SSE 错误时回调用户可展示的错误消息', async () => {
@@ -201,7 +203,7 @@ describe('useStream — SSE 解析（端到端行为）', () => {
       expect.objectContaining({ message: '当前模型不支持图片识别，请切换至支持视觉的模型后发送' })
     )
     expect(onEnd).toHaveBeenCalledWith({ completed: false })
-    expect(useChatStore.getState().streamingConvId).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
   })
 
   it('在 Hook 初始化后使用最新的运行时 API 地址发起流式请求', async () => {
@@ -247,7 +249,7 @@ describe('useStream — SSE 解析（端到端行为）', () => {
       conversation_id: 'c1',
       replace_message_id: 'original-user-message',
     })
-    expect(useChatStore.getState().optimisticUserMsg).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
   })
 
   it('stop() 把已收到的部分内容写入消息缓存（不丢已输出文本）', async () => {
@@ -292,12 +294,12 @@ describe('useStream — SSE 解析（端到端行为）', () => {
       void result.current.send({ convId: 'c1', content: '数数', model: 'gpt-4o' })
       // 等两个 delta 进 store
       await vi.waitFor(() => {
-        expect(useChatStore.getState().streamingContent).toBe('1\n2\n3\n4\n')
+        expect(useChatStore.getState().streams['c1']?.content).toBe('1\n2\n3\n4\n')
       })
     })
 
     act(() => {
-      result.current.stop()
+      result.current.stop('c1')
     })
 
     // 部分内容写入缓存：user + assistant 两条
@@ -309,6 +311,89 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(cached?.find((m) => m.id === 'a1')?.content).toBe('1\n2\n3\n4\n')
     expect(cached?.find((m) => m.id === 'u1')?.content).toBe('数数')
     // 流式态已清空
-    expect(useChatStore.getState().streamingConvId).toBeNull()
+    expect(useChatStore.getState().streams).toEqual({})
+  })
+
+  it('切换页面后保持两个会话流独立运行，停止 A 不影响 B', async () => {
+    const handlersByConversation = new Map<string, StreamHandlers>()
+    setPlatformAdapter({
+      ...webAdapter,
+      stream: (request: StreamRequest, handlers: StreamHandlers) => {
+        const payload = JSON.parse(request.body ?? '{}') as { conversation_id?: unknown }
+        if (typeof payload.conversation_id !== 'string')
+          throw new Error('测试流缺少 conversation_id')
+        handlersByConversation.set(payload.conversation_id, handlers)
+        return { close: () => handlers.onClose?.() }
+      },
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const firstView = renderHook(() => useStream(), { wrapper })
+
+    act(() => {
+      void firstView.result.current.send({
+        convId: 'conversation-a',
+        content: '问题 A',
+        model: 'gpt-4o',
+      })
+      void firstView.result.current.send({
+        convId: 'conversation-b',
+        content: '问题 B',
+        model: 'gpt-4o',
+      })
+    })
+    await vi.waitFor(() => expect(handlersByConversation.size).toBe(2))
+
+    const sendEvent = (conversationId: string, event: string, data: unknown): void => {
+      const handlers = handlersByConversation.get(conversationId)
+      if (!handlers) throw new Error(`缺少 ${conversationId} 的测试流`)
+      handlers.onMessage({ event, data: JSON.stringify(data) })
+    }
+    act(() => {
+      sendEvent('conversation-a', 'message_start', {
+        user_message_id: 'user-a',
+        assistant_message_id: 'assistant-a',
+      })
+      sendEvent('conversation-b', 'message_start', {
+        user_message_id: 'user-b',
+        assistant_message_id: 'assistant-b',
+      })
+      sendEvent('conversation-a', 'content_delta', { token: 'A-1' })
+      sendEvent('conversation-b', 'content_delta', { token: 'B-1' })
+    })
+    await vi.waitFor(() => {
+      expect(useChatStore.getState().streams['conversation-a']?.content).toBe('A-1')
+      expect(useChatStore.getState().streams['conversation-b']?.content).toBe('B-1')
+    })
+
+    // 模拟切到另一个会话造成的路由卸载；注册表仍持有 A/B 的传输。
+    firstView.unmount()
+    const secondView = renderHook(() => useStream(), { wrapper })
+    act(() => {
+      sendEvent('conversation-a', 'content_delta', { token: 'A-2' })
+      sendEvent('conversation-b', 'content_delta', { token: 'B-2' })
+    })
+    await vi.waitFor(() => {
+      expect(useChatStore.getState().streams['conversation-a']?.content).toBe('A-1A-2')
+      expect(useChatStore.getState().streams['conversation-b']?.content).toBe('B-1B-2')
+    })
+
+    act(() => secondView.result.current.stop('conversation-a'))
+
+    const cachedA = queryClient.getQueryData<Array<{ id: string; content: string }>>([
+      'messages',
+      'conversation-a',
+    ])
+    expect(cachedA?.find((message) => message.id === 'assistant-a')?.content).toBe('A-1A-2')
+    expect(useChatStore.getState().streams['conversation-a']).toBeUndefined()
+    expect(useChatStore.getState().streams['conversation-b']?.content).toBe('B-1B-2')
+    expect(secondView.result.current.isStreaming('conversation-b')).toBe(true)
+
+    secondView.unmount()
   })
 })

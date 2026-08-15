@@ -14,7 +14,7 @@ import {
   useModels,
   useStream,
 } from '@yuanai/core'
-import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import { selectConversationStream, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import type { AIModel, Message } from '@yuanai/types'
 import { Role } from '@yuanai/types'
 
@@ -49,8 +49,10 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { sendTemporary, stop } = useStream()
-  const streamingConvId = useChatStore((s) => s.streamingConvId)
-  const isStreaming = streamingConvId === TEMPORARY_CONV_ID
+  const temporaryStream = useChatStore((state) =>
+    selectConversationStream(state, TEMPORARY_CONV_ID)
+  )
+  const isStreaming = temporaryStream.conversationId === TEMPORARY_CONV_ID
 
   const listRef = useRef<MessageListHandle>(null)
   const modelSheetRef = useRef<BottomSheetModal>(null)
@@ -106,8 +108,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   useFocusEffect(
     useCallback(
       () => () => {
-        if (useChatStore.getState().streamingConvId === TEMPORARY_CONV_ID) {
-          stop()
+        if (selectConversationStream(useChatStore.getState(), TEMPORARY_CONV_ID).conversationId) {
+          stop(TEMPORARY_CONV_ID)
         }
         setMessages([])
         setVersionIdxs({})
@@ -308,7 +310,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         <ChatInput
           streaming={isStreaming}
           onSend={handleSend}
-          onStop={stop}
+          onStop={() => stop(TEMPORARY_CONV_ID)}
           bottomInset={insets.bottom}
           disableAttachments
         />

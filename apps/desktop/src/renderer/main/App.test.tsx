@@ -66,12 +66,18 @@ const chat = vi.hoisted(() => ({
   revokeShareLink: vi.fn(),
   stop: vi.fn(),
   streamState: {
-    optimisticUserMsg: null as string | null,
-    streamingContent: '',
-    streamingConvId: null as string | null,
-    streamingThink: '',
-    streamingThinkDurationMs: 0,
-    streamingToolCalls: [] as ToolCall[],
+    streams: {} as Record<
+      string,
+      {
+        conversationId: string
+        content: string
+        thinking: string
+        thinkingDurationMs: number
+        toolCalls: ToolCall[]
+        optimisticUserMessage: string | null
+        optimisticFiles: never[]
+      }
+    >,
   },
   uploadFileSmart: vi.fn(),
   updateConversation: vi.fn(),
@@ -184,6 +190,7 @@ vi.mock('@yuanai/core/hooks', () => ({
   useCreateShareLink: () => ({ isPending: false, mutateAsync: chat.createShareLink }),
   useRevokeShareLink: () => ({ isPending: false, mutateAsync: chat.revokeShareLink }),
   useStream: () => ({ send: chat.send, sendTemporary: chat.sendTemporary, stop: chat.stop }),
+  TEMPORARY_CONV_ID: '__temporary__',
   useUpdateConversation: () => ({ isPending: false, mutateAsync: chat.updateConversation }),
   useUpdateMyPreferences: () => ({ isPending: false, mutateAsync: chat.updatePreferences }),
   uploadFileSmart: chat.uploadFileSmart,
@@ -193,6 +200,19 @@ vi.mock('@yuanai/core/stores', () => ({
   useAuthStore: (selector: (state: typeof auth) => unknown) => selector(auth),
   useChatStore: (selector: (state: typeof chat.streamState) => unknown) =>
     selector(chat.streamState),
+  selectConversationStream: (
+    state: typeof chat.streamState,
+    conversationId: string | null | undefined
+  ) =>
+    (conversationId ? state.streams[conversationId] : undefined) ?? {
+      conversationId: '',
+      content: '',
+      thinking: '',
+      thinkingDurationMs: 0,
+      toolCalls: [],
+      optimisticUserMessage: null,
+      optimisticFiles: [],
+    },
   usePrefsStore: (selector: (state: typeof prefs) => unknown) => selector(prefs),
 }))
 
@@ -212,6 +232,19 @@ vi.mock('./useVoiceInput', () => ({
 
 import { changeDesktopLanguage } from '../shared/i18n'
 import { App } from './App'
+
+function makeStreamingState(overrides: Partial<(typeof chat.streamState.streams)[string]> = {}) {
+  return {
+    conversationId: 'conversation-1',
+    content: '',
+    thinking: '',
+    thinkingDurationMs: 0,
+    toolCalls: [],
+    optimisticUserMessage: null,
+    optimisticFiles: [],
+    ...overrides,
+  }
+}
 
 beforeEach(() => {
   virtuoso.isScrolling = null
@@ -334,12 +367,7 @@ beforeEach(() => {
     hasPassword: false,
   })
   chat.revokeShareLink.mockResolvedValue(undefined)
-  chat.streamState.streamingConvId = null
-  chat.streamState.streamingContent = ''
-  chat.streamState.streamingThink = ''
-  chat.streamState.streamingThinkDurationMs = 0
-  chat.streamState.streamingToolCalls = []
-  chat.streamState.optimisticUserMsg = null
+  chat.streamState.streams = {}
   chat.send.mockResolvedValue(undefined)
   chat.sendTemporary.mockResolvedValue(undefined)
   chat.updatePreferences.mockResolvedValue(undefined)
@@ -741,17 +769,18 @@ describe('desktop chat', () => {
   })
 
   it('shows active thinking and tool calls for the streaming assistant message', () => {
-    chat.streamState.streamingConvId = 'conversation-1'
-    chat.streamState.streamingThink = '先检索相关资料'
-    chat.streamState.streamingThinkDurationMs = 800
-    chat.streamState.streamingToolCalls = [
-      {
-        id: 'tool-1',
-        name: 'search_web',
-        arguments: '{"query":"元AI"}',
-        status: 'running',
-      },
-    ]
+    chat.streamState.streams['conversation-1'] = makeStreamingState({
+      thinking: '先检索相关资料',
+      thinkingDurationMs: 800,
+      toolCalls: [
+        {
+          id: 'tool-1',
+          name: 'search_web',
+          arguments: '{"query":"元AI"}',
+          status: 'running',
+        },
+      ],
+    })
     render(<App />)
 
     expect(screen.getByRole('button', { name: '正在思考…' })).toBeInTheDocument()
@@ -860,8 +889,7 @@ describe('desktop chat', () => {
     const action = screen.getByRole('button', { name: '回到底部' })
     expect(action).toBeInTheDocument()
 
-    chat.streamState.streamingConvId = 'conversation-1'
-    chat.streamState.streamingContent = '仍在生成的回复'
+    chat.streamState.streams['conversation-1'] = makeStreamingState({ content: '仍在生成的回复' })
     view.rerender(<App />)
 
     expect(virtuoso.scrollToIndex).not.toHaveBeenCalled()
@@ -1103,13 +1131,38 @@ describe('desktop chat', () => {
 
   it('exposes a stop action for the active streaming conversation', async () => {
     const user = userEvent.setup()
-    chat.streamState.streamingConvId = 'conversation-1'
+    chat.streamState.streams['conversation-1'] = makeStreamingState()
     render(<App />)
 
     await screen.findByRole('button', { name: '停止生成' })
     await user.click(screen.getByRole('button', { name: '停止生成' }))
 
-    expect(chat.stop).toHaveBeenCalledOnce()
+    expect(chat.stop).toHaveBeenCalledWith('conversation-1')
+  })
+
+  it('marks a background conversation as running and stops that exact conversation', async () => {
+    const user = userEvent.setup()
+    chat.conversations = [
+      ...chat.conversations,
+      {
+        id: 'conversation-2',
+        title: '新对话',
+        model: 'gpt-4o',
+        isPinned: false,
+        lastMessageAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      },
+    ]
+    chat.streamState.streams['conversation-2'] = {
+      ...makeStreamingState(),
+      conversationId: 'conversation-2',
+    }
+    render(<App />)
+
+    expect(screen.getByRole('status', { name: '新对话 正在生成' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '停止生成：新对话' }))
+
+    expect(chat.stop).toHaveBeenCalledWith('conversation-2')
   })
 
   it('aligns the sidebar account section with Web and opens settings', async () => {

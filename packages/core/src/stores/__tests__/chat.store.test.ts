@@ -1,12 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { useChatStore } from '../chat.store'
+import { beforeEach, describe, expect, it } from 'vitest'
+
+import { selectConversationStream, useChatStore } from '../chat.store'
 
 beforeEach(() => {
   useChatStore.getState().finalizeStream()
 })
 
-describe('chat.store — 流式状态 reducer', () => {
-  it('startStreaming 记录会话 ID 与乐观用户消息', () => {
+describe('chat.store — 按会话隔离流式状态', () => {
+  it('startStreaming 将乐观消息和附件保存在对应会话', () => {
     const files = [
       {
         id: 'file-1',
@@ -16,107 +17,60 @@ describe('chat.store — 流式状态 reducer', () => {
         url: 'blob:design',
       },
     ]
-    useChatStore.getState().startStreaming('c1', 'hi', files)
-    const s = useChatStore.getState()
-    expect(s.streamingConvId).toBe('c1')
-    expect(s.optimisticUserMsg).toBe('hi')
-    expect(s.optimisticFiles).toEqual(files)
-    expect(s.streamingContent).toBe('')
+
+    useChatStore.getState().startStreaming('conversation-a', 'hi', files)
+    const stream = selectConversationStream(useChatStore.getState(), 'conversation-a')
+
+    expect(stream.conversationId).toBe('conversation-a')
+    expect(stream.optimisticUserMessage).toBe('hi')
+    expect(stream.optimisticFiles).toEqual(files)
+    expect(stream.content).toBe('')
   })
 
-  it('appendToken 累积正文', () => {
-    useChatStore.getState().startStreaming('c1', 'hi')
-    useChatStore.getState().appendToken('你好')
-    useChatStore.getState().appendToken('，元AI')
-    expect(useChatStore.getState().streamingContent).toBe('你好，元AI')
-  })
-
-  it('appendThink 累积推理文本并记录起始时间', () => {
-    useChatStore.getState().appendThink('思考1')
-    useChatStore.getState().appendThink('思考2')
-    const s = useChatStore.getState()
-    expect(s.streamingThink).toBe('思考1思考2')
-    expect(s.streamingThinkStartAt).not.toBeNull()
-  })
-
-  it('startToolCall 追加到列表', () => {
-    useChatStore.getState().startToolCall({
-      id: 't1',
+  it('并发会话的正文、思考和工具调用不会互相混入', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('conversation-a', 'A')
+    store.startStreaming('conversation-b', 'B')
+    store.appendToken('conversation-a', '甲')
+    store.appendToken('conversation-b', '乙')
+    store.appendThink('conversation-a', '先分析')
+    store.startToolCall('conversation-b', {
+      id: 'tool-b',
       name: 'search_web',
       arguments: '',
       status: 'running',
     })
-    useChatStore.getState().startToolCall({
-      id: 't2',
-      name: 'read_docs',
-      arguments: '',
-      status: 'running',
-    })
-    const list = useChatStore.getState().streamingToolCalls
-    expect(list).toHaveLength(2)
-    expect(list[0]?.name).toBe('search_web')
-    expect(list[1]?.name).toBe('read_docs')
+    store.appendToolCallArgs('conversation-b', 'tool-b', '{"q":"元AI"}')
+
+    const first = selectConversationStream(useChatStore.getState(), 'conversation-a')
+    const second = selectConversationStream(useChatStore.getState(), 'conversation-b')
+    expect(first.content).toBe('甲')
+    expect(first.thinking).toBe('先分析')
+    expect(first.toolCalls).toEqual([])
+    expect(second.content).toBe('乙')
+    expect(second.thinking).toBe('')
+    expect(second.toolCalls[0]?.arguments).toBe('{"q":"元AI"}')
   })
 
-  it('appendToolCallArgs 追加指定 ID 的参数', () => {
-    useChatStore.getState().startToolCall({
-      id: 't1',
-      name: 'search_web',
-      arguments: '',
-      status: 'running',
-    })
-    useChatStore.getState().appendToolCallArgs('t1', '{"q":')
-    useChatStore.getState().appendToolCallArgs('t1', '"元"}')
-    const list = useChatStore.getState().streamingToolCalls
-    expect(list[0]?.arguments).toBe('{"q":"元"}')
+  it('不存在流时返回稳定空快照，不因其它会话更新而变化', () => {
+    const before = selectConversationStream(useChatStore.getState(), 'conversation-missing')
+    useChatStore.getState().startStreaming('conversation-a', 'A')
+    useChatStore.getState().appendToken('conversation-a', 'token')
+    const after = selectConversationStream(useChatStore.getState(), 'conversation-missing')
+
+    expect(after).toBe(before)
+    expect(after.content).toBe('')
   })
 
-  it('updateToolCall 合并任意字段', () => {
-    useChatStore.getState().startToolCall({
-      id: 't1',
-      name: 'search_web',
-      arguments: '{}',
-      status: 'running',
-    })
-    useChatStore.getState().updateToolCall('t1', {
-      status: 'done',
-      result: 'ok',
-      durationMs: 120,
-    })
-    const list = useChatStore.getState().streamingToolCalls
-    expect(list[0]?.status).toBe('done')
-    expect(list[0]?.result).toBe('ok')
-    expect(list[0]?.durationMs).toBe(120)
-  })
+  it('finalizeStream 只移除指定会话', () => {
+    const store = useChatStore.getState()
+    store.startStreaming('conversation-a', 'A')
+    store.startStreaming('conversation-b', 'B')
+    store.finalizeStream('conversation-a')
 
-  it('setToolCallStatus 仅切换 status', () => {
-    useChatStore.getState().startToolCall({
-      id: 't1',
-      name: 'x',
-      arguments: '',
-      status: 'running',
-    })
-    useChatStore.getState().setToolCallStatus('t1', 'error')
-    expect(useChatStore.getState().streamingToolCalls[0]?.status).toBe('error')
-  })
-
-  it('finalizeStream 清空所有流式状态', () => {
-    useChatStore.getState().startStreaming('c1', 'hi')
-    useChatStore.getState().appendToken('x')
-    useChatStore.getState().appendThink('y')
-    useChatStore.getState().startToolCall({
-      id: 't1',
-      name: 'n',
-      arguments: '',
-      status: 'running',
-    })
-    useChatStore.getState().finalizeStream()
-    const s = useChatStore.getState()
-    expect(s.streamingConvId).toBeNull()
-    expect(s.streamingContent).toBe('')
-    expect(s.streamingThink).toBe('')
-    expect(s.streamingToolCalls).toEqual([])
-    expect(s.optimisticUserMsg).toBeNull()
-    expect(s.optimisticFiles).toEqual([])
+    expect(useChatStore.getState().streams['conversation-a']).toBeUndefined()
+    expect(
+      selectConversationStream(useChatStore.getState(), 'conversation-b').optimisticUserMessage
+    ).toBe('B')
   })
 })

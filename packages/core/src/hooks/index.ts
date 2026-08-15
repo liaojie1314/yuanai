@@ -1,4 +1,4 @@
-export { useStream, TEMPORARY_CONV_ID } from './useStream'
+export { stopAllConversationStreams, useStream, TEMPORARY_CONV_ID } from './useStream'
 export type { StreamParams, TemporaryStreamParams, TemporaryChatMessage } from './useStream'
 export {
   useCurrentUser,

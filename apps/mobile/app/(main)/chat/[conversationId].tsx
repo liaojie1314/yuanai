@@ -24,7 +24,7 @@ import {
   useStream,
   useUpdateConversation,
 } from '@yuanai/core'
-import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import { selectConversationStream, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 import type { AIModel } from '@yuanai/types'
 
 import type { FeedbackType } from '@/components/chat/AIMessageActions'
@@ -83,8 +83,8 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { data: messages = [], isLoading } = useMessages(conversationId)
   const { send, stop } = useStream()
-  const streamingConvId = useChatStore((s) => s.streamingConvId)
-  const isStreaming = streamingConvId === conversationId
+  const activeStream = useChatStore((state) => selectConversationStream(state, conversationId))
+  const isStreaming = activeStream.conversationId === conversationId
   const updateConv = useUpdateConversation()
   const toast = useToast()
 
@@ -372,7 +372,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
         <ChatInput
           streaming={isStreaming}
           onSend={handleSend}
-          onStop={stop}
+          onStop={() => stop(conversationId)}
           bottomInset={insets.bottom}
         />
       </View>

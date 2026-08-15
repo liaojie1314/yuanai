@@ -10,6 +10,8 @@ import { StreamingThinkBlock, ThinkBlock } from './ThinkBlock'
 
 interface AIMessageProps {
   content: string
+  /** 此流式消息所属的会话，用于隔离思考和工具调用订阅。 */
+  conversationId?: string
   /** 流式中：末尾追加闪烁光标 */
   streaming?: boolean
   /** 该消息的首块：显示头像 + 上内边距（非首块用等宽占位保持文本对齐） */
@@ -68,6 +70,7 @@ const mdRules = {
  */
 function AIMessageBase({
   content,
+  conversationId,
   streaming = false,
   isFirst = true,
   isLast = true,
@@ -152,7 +155,9 @@ function AIMessageBase({
         <View style={styles.avatarPlaceholder} />
       )}
       <View style={[styles.bubbleWrap, seamlessBottom && styles.bubbleSeamless]}>
-        {isFirst && streamingMsg ? <StreamingThinkBlock /> : null}
+        {isFirst && streamingMsg && conversationId ? (
+          <StreamingThinkBlock conversationId={conversationId} />
+        ) : null}
         {isFirst && !streamingMsg && thinkContent ? (
           <ThinkBlock content={thinkContent} durationMs={thinkDurationMs} />
         ) : null}
@@ -174,6 +179,7 @@ export const AIMessage = memo(
   AIMessageBase,
   (prev, next) =>
     prev.content === next.content &&
+    prev.conversationId === next.conversationId &&
     prev.streaming === next.streaming &&
     prev.isFirst === next.isFirst &&
     prev.isLast === next.isLast &&

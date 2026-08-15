@@ -16,7 +16,15 @@ import {
   X,
 } from 'lucide-react-native'
 import { useMemo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
@@ -27,6 +35,8 @@ import {
   useDeleteConversation,
   useDeleteConversations,
   useLogout,
+  useChatStore,
+  useStream,
   useUpdateConversation,
   type ConvGroup,
 } from '@yuanai/core'
@@ -92,6 +102,8 @@ export function ConversationList({
   const deleteConvs = useDeleteConversations()
   const updateConv = useUpdateConversation()
   const { mutate: doLogout } = useLogout()
+  const streams = useChatStore((state) => state.streams)
+  const { stop } = useStream()
 
   const groups = useMemo(() => {
     const filtered = search ? conversations.filter((c) => c.title.includes(search)) : conversations
@@ -391,6 +403,7 @@ export function ConversationList({
                 {items.map((c) => {
                   const isActive = c.id === activeId
                   const isSelected = selected.has(c.id)
+                  const isStreaming = streams[c.id] !== undefined
                   return (
                     <Pressable
                       key={c.id}
@@ -430,9 +443,17 @@ export function ConversationList({
                       >
                         {c.title}
                       </Text>
-                      {c.titleSource === 'fallback' ? (
+                      {!isStreaming && c.titleSource === 'fallback' ? (
                         <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
                           <LoaderCircle size={13} color={theme.text.muted} />
+                        </View>
+                      ) : null}
+                      {!selectionMode && isStreaming ? (
+                        <View
+                          accessibilityLabel={`${c.title} 正在生成`}
+                          accessibilityRole="progressbar"
+                        >
+                          <ActivityIndicator size="small" color={brand.solid} />
                         </View>
                       ) : null}
                       {selectionMode ? (
@@ -440,14 +461,32 @@ export function ConversationList({
                           {isSelected ? <Check size={14} color={brand.solid} /> : null}
                         </View>
                       ) : (
-                        <Pressable
-                          onPress={() => openContextMenu(c.id, c.title, c.isPinned)}
-                          hitSlop={8}
-                          style={styles.convMore}
-                          accessibilityLabel={t('common.edit')}
-                        >
-                          <MoreVertical size={14} color={theme.text.muted} />
-                        </Pressable>
+                        <View style={styles.convActions}>
+                          {isStreaming ? (
+                            <Pressable
+                              onPress={(event) => {
+                                event.stopPropagation()
+                                stop(c.id)
+                              }}
+                              hitSlop={8}
+                              style={styles.convMore}
+                              accessibilityLabel={`停止生成：${c.title}`}
+                            >
+                              <Square size={11} color={theme.text.muted} fill={theme.text.muted} />
+                            </Pressable>
+                          ) : null}
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation()
+                              openContextMenu(c.id, c.title, c.isPinned)
+                            }}
+                            hitSlop={8}
+                            style={styles.convMore}
+                            accessibilityLabel={t('common.edit')}
+                          >
+                            <MoreVertical size={14} color={theme.text.muted} />
+                          </Pressable>
+                        </View>
                       )}
                     </Pressable>
                   )
@@ -577,6 +616,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  convActions: { flexDirection: 'row', alignItems: 'center' },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,

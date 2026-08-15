@@ -2,9 +2,8 @@
 
 import { useMemo, type JSX, type RefObject } from 'react'
 import { Virtuoso, type VirtuosoHandle, type ListRange } from 'react-virtuoso'
-import { useChatStore } from '@yuanai/core/stores'
 import type { MockMessage } from '@yuanai/core/stores'
-import type { MessageFile } from '@yuanai/types'
+import type { MessageFile, ToolCall } from '@yuanai/types'
 import { UserMessage } from './UserMessage'
 import { AIMessage } from './AIMessage'
 import type { MsgPair } from './utils'
@@ -49,6 +48,12 @@ export interface MessageListProps {
   regeneratingPairKey: string | null
   /** 流式当前累积正文 */
   streamingContent: string
+  /** 当前会话的流式思考文本。 */
+  streamingThink: string
+  /** 当前会话的流式工具调用。 */
+  streamingToolCalls: ToolCall[]
+  /** 当前会话的流式思考耗时。 */
+  streamingThinkDurationMs: number
   timeFmt: '24h' | '12h'
   dateFmt: 'ymd' | 'mdy' | 'dmy'
   versionIdxs: Record<string, number>
@@ -86,6 +91,9 @@ export function MessageList({
   showStreamingAI,
   regeneratingPairKey,
   streamingContent,
+  streamingThink,
+  streamingToolCalls,
+  streamingThinkDurationMs,
   timeFmt,
   dateFmt,
   versionIdxs,
@@ -102,9 +110,6 @@ export function MessageList({
   onAtBottomStateChange,
   onRangeChanged,
 }: MessageListProps): JSX.Element {
-  const streamingThink = useChatStore((s) => s.streamingThink)
-  const streamingToolCalls = useChatStore((s) => s.streamingToolCalls)
-
   const rows: Row[] = useMemo(() => {
     const list: Row[] = []
     for (const pair of pairs) {
@@ -219,6 +224,7 @@ export function MessageList({
                 feedbackGiven={msgFeedback[asstId]}
                 streamingThink={streamingThink}
                 streamingToolCalls={streamingToolCalls}
+                streamingThinkDurationMs={streamingThinkDurationMs}
               />
             </div>
           )
@@ -261,6 +267,7 @@ export function MessageList({
               dateFmt={dateFmt}
               streamingThink={streamingThink}
               streamingToolCalls={streamingToolCalls}
+              streamingThinkDurationMs={streamingThinkDurationMs}
             />
           </div>
         )

@@ -10,7 +10,7 @@ import {
   ThumbsUp,
   ThumbsDown,
 } from 'lucide-react'
-import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import { usePrefsStore } from '@yuanai/core/stores'
 import type { MockMessage } from '@yuanai/core/stores'
 import type { ToolCall } from '@yuanai/types'
 import MarkdownContent from '@/components/MarkdownContent'
@@ -35,6 +35,8 @@ export interface AIMessageProps {
   streamingThink?: string
   /** 流式过程中已产生的工具调用（有序） */
   streamingToolCalls?: ToolCall[]
+  /** 当前流式思考耗时。 */
+  streamingThinkDurationMs?: number
 }
 
 /**
@@ -60,10 +62,10 @@ function AIMessageBase({
   feedbackGiven,
   streamingThink,
   streamingToolCalls,
+  streamingThinkDurationMs,
 }: AIMessageProps): JSX.Element {
   const displayContent = isStreaming ? streamingContent : getMsgText(msg)
   const [copyState, setCopyState] = useState<'idle' | 'open' | 'md' | 'txt'>('idle')
-  const thinkDuration = useChatStore((s) => s.streamingThinkDurationMs)
   const showThinking = usePrefsStore((s) => s.showThinking)
 
   const copyMd = (): void => {
@@ -109,7 +111,7 @@ function AIMessageBase({
             toolCalls={finalToolCalls}
             active={thinkActive}
             {...(isStreaming
-              ? { durationMs: thinkDuration }
+              ? { durationMs: streamingThinkDurationMs }
               : msg.thinkDurationMs !== undefined
                 ? { durationMs: msg.thinkDurationMs }
                 : {})}
@@ -238,6 +240,7 @@ export const AIMessage = memo(AIMessageBase, (prev, next) => {
     prev.streamingContent === next.streamingContent &&
     prev.streamingThink === next.streamingThink &&
     prev.streamingToolCalls === next.streamingToolCalls &&
+    prev.streamingThinkDurationMs === next.streamingThinkDurationMs &&
     prev.timeFmt === next.timeFmt &&
     prev.dateFmt === next.dateFmt &&
     prev.versionCount === next.versionCount &&

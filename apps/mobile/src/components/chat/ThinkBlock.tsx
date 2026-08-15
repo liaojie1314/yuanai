@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, Sparkles } from 'lucide-react-native'
 import { memo, useEffect, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 
-import { useChatStore } from '@yuanai/core/stores'
+import { selectConversationStream, useChatStore } from '@yuanai/core/stores'
 import type { ToolCall } from '@yuanai/types'
 import { useTranslation } from 'react-i18next'
 
@@ -120,11 +120,16 @@ export const ThinkBlock = memo(function ThinkBlock({
  * `memo` 全部失效 → 回到「每个 token 全量重渲」的 ANR 老路（docs-internal 第 8 条）。
  * 只让这一个组件订阅，重渲染范围就被锁在思考块内部。
  */
-export function StreamingThinkBlock(): React.JSX.Element | null {
-  const think = useChatStore((s) => s.streamingThink)
-  const toolCalls = useChatStore((s) => s.streamingToolCalls)
-  const durationMs = useChatStore((s) => s.streamingThinkDurationMs)
-  const content = useChatStore((s) => s.streamingContent)
+export function StreamingThinkBlock({
+  conversationId,
+}: {
+  conversationId: string
+}): React.JSX.Element | null {
+  const stream = useChatStore((state) => selectConversationStream(state, conversationId))
+  const think = stream.thinking
+  const toolCalls = stream.toolCalls
+  const durationMs = stream.thinkingDurationMs
+  const content = stream.content
 
   if (think === '' && toolCalls.length === 0) return null
 

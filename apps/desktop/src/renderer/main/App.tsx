@@ -68,7 +68,12 @@ import {
   TEMPORARY_CONV_ID,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
-import { useAuthStore, useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import {
+  selectConversationStream,
+  useAuthStore,
+  useChatStore,
+  usePrefsStore,
+} from '@yuanai/core/stores'
 import { buildMessagePairs, filterChatModels } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
@@ -910,6 +915,9 @@ function ConversationItem({
   onRenameValueChange,
   onRenameSave,
 }: ConversationItemProps): ReactElement {
+  const isStreaming = useChatStore((state) => state.streams[conversation.id] !== undefined)
+  const { stop } = useStream()
+
   return (
     <li
       className={
@@ -969,7 +977,16 @@ function ConversationItem({
             {getConversationTitle(conversation).slice(0, 1).toLocaleUpperCase()}
           </span>
           <span>{getConversationTitle(conversation)}</span>
-          {conversation.titleSource === 'fallback' ? (
+          {!selectionMode && isStreaming ? (
+            <span
+              className="desktop-chat__conversation-stream-state"
+              role="status"
+              aria-label={`${getConversationTitle(conversation)} 正在生成`}
+            >
+              <LoaderCircle className="desktop-chat__spin" size={13} aria-hidden="true" />
+            </span>
+          ) : null}
+          {!isStreaming && conversation.titleSource === 'fallback' ? (
             <LoaderCircle
               className="desktop-chat__spin"
               size={13}
@@ -981,6 +998,19 @@ function ConversationItem({
       )}
       {!renaming && !selectionMode && !sidebarCollapsed ? (
         <div className="desktop-chat__conversation-actions">
+          {isStreaming ? (
+            <button
+              type="button"
+              title={`停止生成：${getConversationTitle(conversation)}`}
+              aria-label={`停止生成：${getConversationTitle(conversation)}`}
+              onClick={(event) => {
+                event.stopPropagation()
+                stop(conversation.id)
+              }}
+            >
+              <Square size={11} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : null}
           <button
             type="button"
             title="更多会话操作"
@@ -1113,15 +1143,14 @@ export function App(): ReactElement {
       ? (messagesQuery.data ?? EMPTY_MESSAGES)
       : EMPTY_MESSAGES
   const messagePairs = useMemo(() => buildMessagePairs(messages), [messages])
-  const streamingConversationId = useChatStore((state) => state.streamingConvId)
-  const streamingContent = useChatStore((state) => state.streamingContent)
-  const streamingThinking = useChatStore((state) => state.streamingThink)
-  const streamingThinkingDurationMs = useChatStore((state) => state.streamingThinkDurationMs)
-  const streamingToolCalls = useChatStore((state) => state.streamingToolCalls)
-  const optimisticUserMessage = useChatStore((state) => state.optimisticUserMsg)
-  const isStreaming =
-    streamingConversationId !== null &&
-    streamingConversationId === (isTemporaryConversation ? TEMPORARY_CONV_ID : activeConversationId)
+  const activeStreamKey = isTemporaryConversation ? TEMPORARY_CONV_ID : activeConversationId
+  const activeStream = useChatStore((state) => selectConversationStream(state, activeStreamKey))
+  const streamingContent = activeStream.content
+  const streamingThinking = activeStream.thinking
+  const streamingThinkingDurationMs = activeStream.thinkingDurationMs
+  const streamingToolCalls = activeStream.toolCalls
+  const optimisticUserMessage = activeStream.optimisticUserMessage
+  const isStreaming = activeStream.conversationId === activeStreamKey
   const voiceInput = useVoiceInput({
     onTranscript: (text) => {
       setDraft((previous) => {
@@ -2626,7 +2655,7 @@ export function App(): ReactElement {
                   type="button"
                   aria-label="停止生成"
                   title="停止生成"
-                  onClick={stream.stop}
+                  onClick={() => stream.stop(activeStreamKey ?? TEMPORARY_CONV_ID)}
                 >
                   <Square size={16} fill="currentColor" />
                 </button>

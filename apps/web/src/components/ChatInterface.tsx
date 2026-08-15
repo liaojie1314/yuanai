@@ -18,7 +18,7 @@ import {
   type MsgPair,
 } from '@/components/chat/utils'
 import type { VirtuosoHandle } from 'react-virtuoso'
-import { useChatStore } from '@yuanai/core/stores'
+import { selectConversationStream, useChatStore } from '@yuanai/core/stores'
 import { useAuthStore } from '@yuanai/core/stores'
 import { usePrefsStore } from '@yuanai/core/stores'
 import { useArtifactStore } from '@yuanai/core/stores'
@@ -246,12 +246,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const showThinking = usePrefsStore((s) => s.showThinking)
   const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
-  // ── Streaming state (store) ──
-  const streamingConvId = useChatStore((s) => s.streamingConvId)
-  const streamingContent = useChatStore((s) => s.streamingContent)
-  const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
-  const optimisticFiles = useChatStore((s) => s.optimisticFiles)
-
   // ── View state ── (declared early so isThisStreaming can use activeConv)
   const [view, setView] = useState<'empty' | 'chat'>(() => (initialConvId ? 'chat' : 'empty'))
   const [activeConv, setActiveConv] = useState<string>(() => initialConvId ?? '')
@@ -262,13 +256,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [temporary, setTemporary] = useState(false)
   const [tempMessages, setTempMessages] = useState<MockMessage[]>([])
   const activeConvKey = temporary ? TEMPORARY_CONV_ID : activeConv
+  const activeStream = useChatStore((state) => selectConversationStream(state, activeConvKey))
+  const streamingContent = activeStream.content
+  const optimisticUserMsg = activeStream.optimisticUserMessage
+  const optimisticFiles = activeStream.optimisticFiles
 
   /**
    * 当前会话是否正在流式输出。
    * 来源：Zustand store（持久跨 re-mount），比本地 useState 更可靠：
    * router.push() 重新挂载组件时，本地 state 会被重置为 false，导致 Stop 按钮丢失。
    */
-  const isThisStreaming = streamingConvId === activeConvKey
+  const isThisStreaming = activeConvKey.length > 0 && activeStream.conversationId === activeConvKey
 
   // ── Server state (TanStack Query) ──
   const { data: apiConversations = [] } = useConversations()
@@ -813,7 +811,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }
 
   const stopStreaming = (): void => {
-    stream.stop()
+    stream.stop(activeConvKey)
   }
 
   const fill = useCallback(
@@ -1519,6 +1517,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 showStreamingAI={isThisStreaming && !regeneratingPairKey}
                 regeneratingPairKey={regeneratingPairKey}
                 streamingContent={streamingContent}
+                streamingThink={activeStream.thinking}
+                streamingToolCalls={activeStream.toolCalls}
+                streamingThinkDurationMs={activeStream.thinkingDurationMs}
                 timeFmt={timeFmt}
                 dateFmt={dateFmt}
                 versionIdxs={versionIdxs}
@@ -2096,6 +2097,8 @@ function ConvItem({
 }): JSX.Element {
   const renameRef = useRef<HTMLInputElement>(null)
   const initials = conv.title.slice(0, 2)
+  const isStreaming = useChatStore((state) => state.streams[conv.id] !== undefined)
+  const { stop } = useStream()
 
   useEffect(() => {
     if (isRenaming && renameRef.current) {
@@ -2141,15 +2144,40 @@ function ConvItem({
       ) : (
         <>
           <span className="ch-cv-title">{conv.title}</span>
-          {conv.titleSource === 'fallback' ? (
+          {!isStreaming && conv.titleSource === 'fallback' ? (
             <Loader2 className="ch-spin" size={12} aria-label="正在生成会话标题" role="status" />
           ) : null}
         </>
       )}
       {!isRenaming && (
-        <button className="ch-cv-more" onClick={onMenuOpen} aria-label="更多操作">
-          <MoreVertical size={14} />
-        </button>
+        <>
+          {isStreaming ? (
+            <span
+              className="ch-cv-stream-state"
+              role="status"
+              aria-label={`${conv.title} 正在生成`}
+            >
+              <Loader2 className="ch-spin" size={12} aria-hidden="true" />
+            </span>
+          ) : null}
+          {isStreaming ? (
+            <button
+              className="ch-cv-stop"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation()
+                stop(conv.id)
+              }}
+              aria-label={`停止生成：${conv.title}`}
+              title={`停止生成：${conv.title}`}
+            >
+              <Square size={10} fill="currentColor" aria-hidden="true" />
+            </button>
+          ) : null}
+          <button className="ch-cv-more" onClick={onMenuOpen} aria-label="更多操作">
+            <MoreVertical size={14} />
+          </button>
+        </>
       )}
     </div>
   )

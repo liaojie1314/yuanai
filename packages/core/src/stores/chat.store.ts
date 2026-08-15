@@ -12,7 +12,7 @@ export type ConvGroup = 'pinned' | 'today' | 'yesterday' | 'week'
 export interface MockConversation {
   id: string
   title: string
-  /** 首问标题的来源，供侧栏显示短暂生成状态。 */
+  /** 首问标题的来源，供侧边栏显示短暂生成状态。 */
   titleSource?: ConversationTitleSource
   group: ConvGroup
   updatedAt: number
@@ -52,154 +52,181 @@ export interface MockMessage {
 }
 
 /**
- * 聊天流式状态 Store（Zustand）。
+ * 某个会话正在接收 SSE 时的瞬态展示状态。
  *
- * 仅维护实时流式输出所需的瞬态 UI 状态；
- * 会话列表与历史消息由 TanStack Query 缓存管理。
+ * 后端历史仍由 TanStack Query 管理；此对象只保存尚未落库的乐观消息和增量输出。
  */
-interface ChatStreamState {
-  /** 当前正在流式输出的会话 ID */
-  streamingConvId: string | null
-  /** 已累积的流式输出文本 */
-  streamingContent: string
-  /** 已累积的流式思考文本（reasoning tokens） */
-  streamingThink: string
-  /** 本轮流式产生的工具调用（有序） */
-  streamingToolCalls: ToolCall[]
-  /** 思考开始时的时间戳，用于计算耗时 */
-  streamingThinkStartAt: number | null
-  /** 思考完成时累计的耗时（毫秒） */
-  streamingThinkDurationMs: number
-  /** 发送中用户消息的内容（乐观展示，流结束后由查询结果替换） */
-  optimisticUserMsg: string | null
-  /** 发送中用户消息的附件（上传完成后立即展示，流结束后由查询结果替换） */
+export interface ConversationStreamState {
+  conversationId: string
+  status: 'streaming'
+  content: string
+  thinking: string
+  toolCalls: ToolCall[]
+  thinkingStartAt: number | null
+  thinkingDurationMs: number
+  optimisticUserMessage: string | null
   optimisticFiles: MessageFile[]
+  startedAt: number
+}
 
-  /**
-   * 开始流式输出：记录目标会话 ID 并保存乐观用户消息。
-   * @param convId - 目标会话 ID
-   * @param userContent - 用户发送的消息内容；传 null 表示跳过乐观占位（重新生成场景）
-   */
-  startStreaming: (
-    convId: string,
+const EMPTY_TOOL_CALLS: ToolCall[] = []
+const EMPTY_MESSAGE_FILES: MessageFile[] = []
+
+/** 没有活跃流时的稳定快照，供细粒度 Zustand selector 复用。 */
+export const EMPTY_CONVERSATION_STREAM: Readonly<ConversationStreamState> = Object.freeze({
+  conversationId: '',
+  status: 'streaming',
+  content: '',
+  thinking: '',
+  toolCalls: EMPTY_TOOL_CALLS,
+  thinkingStartAt: null,
+  thinkingDurationMs: 0,
+  optimisticUserMessage: null,
+  optimisticFiles: EMPTY_MESSAGE_FILES,
+  startedAt: 0,
+})
+
+/**
+ * 从聊天 Store 读取一个会话的流式快照。
+ *
+ * 没有流时始终返回同一对象，避免其他会话更新导致当前消息列表无意义重渲染。
+ */
+export function selectConversationStream(
+  state: Pick<ChatStreamState, 'streams'>,
+  conversationId: string | null | undefined
+): ConversationStreamState | Readonly<ConversationStreamState> {
+  if (!conversationId) return EMPTY_CONVERSATION_STREAM
+  return state.streams[conversationId] ?? EMPTY_CONVERSATION_STREAM
+}
+
+/** 聊天流式状态 Store。 */
+export interface ChatStreamState {
+  /** 以会话 ID 索引的全部运行中流。 */
+  streams: Record<string, ConversationStreamState>
+
+  /** 创建或重置指定会话的流式快照。 */
+  startStreaming(
+    conversationId: string,
     userContent: string | null,
     files?: readonly MessageFile[]
-  ) => void
+  ): void
+  /** 追加指定会话的正文增量。 */
+  appendToken(conversationId: string, token: string): void
+  /** 追加指定会话的思考增量。 */
+  appendThink(conversationId: string, token: string): void
+  /** 记录指定会话的一次工具调用开始。 */
+  startToolCall(conversationId: string, toolCall: ToolCall): void
+  /** 合并指定会话内工具调用的字段。 */
+  updateToolCall(conversationId: string, id: string, patch: Partial<ToolCall>): void
+  /** 向指定会话内工具调用的参数追加片段。 */
+  appendToolCallArgs(conversationId: string, id: string, chunk: string): void
+  /** 修改指定会话内工具调用的状态。 */
+  setToolCallStatus(conversationId: string, id: string, status: ToolCallStatus): void
+  /** 移除指定会话的流式快照。省略 ID 时用于测试环境重置全部状态。 */
+  finalizeStream(conversationId?: string): void
+}
 
-  /**
-   * 追加一个流式 token 到累积内容。
-   * @param token - SSE content_delta 事件中的文本片段
-   */
-  appendToken: (token: string) => void
-
-  /**
-   * 追加一段思考文字。
-   * @param token - SSE thinking_delta 事件中的文本片段
-   */
-  appendThink: (token: string) => void
-
-  /**
-   * 记录一次工具调用开始。
-   * @param toolCall - 工具调用初始信息
-   */
-  startToolCall: (toolCall: ToolCall) => void
-
-  /**
-   * 更新指定工具调用的字段（例如追加参数、切换状态、写入结果）。
-   * @param id - 工具调用 ID
-   * @param patch - 需要合并的字段
-   */
-  updateToolCall: (id: string, patch: Partial<ToolCall>) => void
-
-  /**
-   * 向指定工具调用的 `arguments` 追加一段字符串片段。
-   * @param id - 工具调用 ID
-   * @param chunk - 参数分片
-   */
-  appendToolCallArgs: (id: string, chunk: string) => void
-
-  /**
-   * 修改工具调用状态。
-   * @param id - 工具调用 ID
-   * @param status - 新状态
-   */
-  setToolCallStatus: (id: string, status: ToolCallStatus) => void
-
-  /** 完成流式输出：清空所有流式状态 */
-  finalizeStream: () => void
+/**
+ * 基于当前快照更新一个会话，不存在的会话会被安全忽略。
+ */
+function updateConversationStream(
+  state: ChatStreamState,
+  conversationId: string,
+  update: (stream: ConversationStreamState) => ConversationStreamState
+): Pick<ChatStreamState, 'streams'> | Record<string, never> {
+  const current = state.streams[conversationId]
+  if (!current) return {}
+  return { streams: { ...state.streams, [conversationId]: update(current) } }
 }
 
 export const useChatStore = create<ChatStreamState>()((set) => ({
-  streamingConvId: null,
-  streamingContent: '',
-  streamingThink: '',
-  streamingToolCalls: [],
-  streamingThinkStartAt: null,
-  streamingThinkDurationMs: 0,
-  optimisticUserMsg: null,
-  optimisticFiles: [],
+  streams: {},
 
-  startStreaming: (convId, userContent, files = []) =>
-    set({
-      streamingConvId: convId,
-      streamingContent: '',
-      streamingThink: '',
-      streamingToolCalls: [],
-      streamingThinkStartAt: null,
-      streamingThinkDurationMs: 0,
-      optimisticUserMsg: userContent,
-      optimisticFiles: [...files],
-    }),
-
-  appendToken: (token) =>
-    set((s) => {
-      // 首次收到正文 token 时，若曾进入思考态则记录耗时（防止无 thinking_delta 场景 NaN）
-      const shouldClose = s.streamingThinkStartAt !== null && s.streamingThinkDurationMs === 0
-      return {
-        streamingContent: s.streamingContent + token,
-        ...(shouldClose
-          ? { streamingThinkDurationMs: Date.now() - (s.streamingThinkStartAt ?? Date.now()) }
-          : {}),
-      }
-    }),
-
-  appendThink: (token) =>
-    set((s) => ({
-      streamingThink: s.streamingThink + token,
-      streamingThinkStartAt: s.streamingThinkStartAt ?? Date.now(),
+  startStreaming: (conversationId, userContent, files = []) =>
+    set((state) => ({
+      streams: {
+        ...state.streams,
+        [conversationId]: {
+          conversationId,
+          status: 'streaming',
+          content: '',
+          thinking: '',
+          toolCalls: [],
+          thinkingStartAt: null,
+          thinkingDurationMs: 0,
+          optimisticUserMessage: userContent,
+          optimisticFiles: [...files],
+          startedAt: Date.now(),
+        },
+      },
     })),
 
-  startToolCall: (toolCall) =>
-    set((s) => ({ streamingToolCalls: [...s.streamingToolCalls, toolCall] })),
+  appendToken: (conversationId, token) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => {
+        const shouldClose = stream.thinkingStartAt !== null && stream.thinkingDurationMs === 0
+        return {
+          ...stream,
+          content: stream.content + token,
+          ...(shouldClose
+            ? { thinkingDurationMs: Date.now() - (stream.thinkingStartAt ?? Date.now()) }
+            : {}),
+        }
+      })
+    ),
 
-  updateToolCall: (id, patch) =>
-    set((s) => ({
-      streamingToolCalls: s.streamingToolCalls.map((tc) =>
-        tc.id === id ? { ...tc, ...patch } : tc
-      ),
-    })),
+  appendThink: (conversationId, token) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => ({
+        ...stream,
+        thinking: stream.thinking + token,
+        thinkingStartAt: stream.thinkingStartAt ?? Date.now(),
+      }))
+    ),
 
-  appendToolCallArgs: (id, chunk) =>
-    set((s) => ({
-      streamingToolCalls: s.streamingToolCalls.map((tc) =>
-        tc.id === id ? { ...tc, arguments: tc.arguments + chunk } : tc
-      ),
-    })),
+  startToolCall: (conversationId, toolCall) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => ({
+        ...stream,
+        toolCalls: [...stream.toolCalls, toolCall],
+      }))
+    ),
 
-  setToolCallStatus: (id, status) =>
-    set((s) => ({
-      streamingToolCalls: s.streamingToolCalls.map((tc) => (tc.id === id ? { ...tc, status } : tc)),
-    })),
+  updateToolCall: (conversationId, id, patch) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => ({
+        ...stream,
+        toolCalls: stream.toolCalls.map((toolCall) =>
+          toolCall.id === id ? { ...toolCall, ...patch } : toolCall
+        ),
+      }))
+    ),
 
-  finalizeStream: () =>
-    set({
-      streamingConvId: null,
-      streamingContent: '',
-      streamingThink: '',
-      streamingToolCalls: [],
-      streamingThinkStartAt: null,
-      streamingThinkDurationMs: 0,
-      optimisticUserMsg: null,
-      optimisticFiles: [],
+  appendToolCallArgs: (conversationId, id, chunk) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => ({
+        ...stream,
+        toolCalls: stream.toolCalls.map((toolCall) =>
+          toolCall.id === id ? { ...toolCall, arguments: toolCall.arguments + chunk } : toolCall
+        ),
+      }))
+    ),
+
+  setToolCallStatus: (conversationId, id, status) =>
+    set((state) =>
+      updateConversationStream(state, conversationId, (stream) => ({
+        ...stream,
+        toolCalls: stream.toolCalls.map((toolCall) =>
+          toolCall.id === id ? { ...toolCall, status } : toolCall
+        ),
+      }))
+    ),
+
+  finalizeStream: (conversationId) =>
+    set((state) => {
+      if (!conversationId) return { streams: {} }
+      if (!(conversationId in state.streams)) return {}
+      const { [conversationId]: _removed, ...streams } = state.streams
+      return { streams }
     }),
 }))

@@ -400,6 +400,30 @@
   color: var(--fg);
 }
 
+.ch-cv-stream-state,
+.ch-cv-stop {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand);
+}
+
+.ch-cv-stop {
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ch-cv-stop:hover,
+.ch-cv-stop:focus-visible {
+  background: var(--brand-light);
+}
+
 /* ── Multi-select checkbox ───────────────────────────── */
 .ch-cv-chk {
   width: 16px;

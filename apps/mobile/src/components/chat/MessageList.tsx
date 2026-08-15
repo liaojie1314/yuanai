@@ -8,7 +8,7 @@ import { useKeyboardState } from 'react-native-keyboard-controller'
 import { useTranslation } from 'react-i18next'
 
 import { buildMessagePairs, clampVersionIdx, formatMsgTime } from '@yuanai/core/utils'
-import { useChatStore, usePrefsStore } from '@yuanai/core/stores'
+import { selectConversationStream, useChatStore, usePrefsStore } from '@yuanai/core/stores'
 
 import { spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
@@ -249,10 +249,10 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       formatMsgTime(iso, timeFmt, dateFmt, { yesterdayLabel: tr('chat.groups.yesterday') }),
     [timeFmt, dateFmt, tr]
   )
-  const streamingConvId = useChatStore((s) => s.streamingConvId)
-  const streamingContent = useChatStore((s) => s.streamingContent)
-  const optimisticUserMsg = useChatStore((s) => s.optimisticUserMsg)
-  const isStreaming = streamingConvId === convId
+  const stream = useChatStore((state) => selectConversationStream(state, convId))
+  const streamingContent = stream.content
+  const optimisticUserMsg = stream.optimisticUserMessage
+  const isStreaming = stream.conversationId === convId
   // 键盘弹起时列表视口收缩，原本贴底的内容会被推到视口下方看不见 —— 监听
   // 键盘可见性，弹起瞬间重新滚到底，保证最新消息始终可见（配合 KeyboardAvoidingView）。
   const keyboardVisible = useKeyboardState((s) => s.isVisible)
@@ -521,6 +521,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
       return (
         <AIMessage
           content={item.content}
+          conversationId={convId}
           streaming={item.streaming}
           streamingMsg={item.streamingMsg}
           isFirst={item.isFirst}
@@ -534,6 +535,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     },
     [
       prefsKey,
+      convId,
       fmtTs,
       editingMsgId,
       msgFeedback,

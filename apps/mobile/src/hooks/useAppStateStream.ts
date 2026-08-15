@@ -2,7 +2,7 @@ import NetInfo from '@react-native-community/netinfo'
 import { useEffect } from 'react'
 import { AppState, type AppStateStatus } from 'react-native'
 
-import { useChatStore } from '@yuanai/core'
+import { stopAllConversationStreams, useChatStore } from '@yuanai/core'
 
 /**
  * 监听「App 前后台切换」与「网络连通性变化」，两种事件都需要打断当前 SSE 流：
@@ -15,12 +15,10 @@ import { useChatStore } from '@yuanai/core'
  */
 export function useAppStateStream(onNetworkDrop?: () => void): void {
   useEffect(() => {
-    const finalizeStream = useChatStore.getState().finalizeStream
     const handleAppState = (state: AppStateStatus): void => {
       if (state === 'background' || state === 'inactive') {
-        // streamingConvId 存在时才是"生成中"
-        if (useChatStore.getState().streamingConvId !== null) {
-          finalizeStream()
+        if (Object.keys(useChatStore.getState().streams).length > 0) {
+          stopAllConversationStreams()
         }
       }
     }
@@ -32,8 +30,8 @@ export function useAppStateStream(onNetworkDrop?: () => void): void {
 
   useEffect(() => {
     const unsub = NetInfo.addEventListener((state) => {
-      if (state.isConnected === false && useChatStore.getState().streamingConvId !== null) {
-        useChatStore.getState().finalizeStream()
+      if (state.isConnected === false && Object.keys(useChatStore.getState().streams).length > 0) {
+        stopAllConversationStreams()
         onNetworkDrop?.()
       }
     })

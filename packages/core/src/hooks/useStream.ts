@@ -1,575 +1,74 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useRef } from 'react'
-import type { Conversation, ConversationTitleSource, Message, MessageFile } from '@yuanai/types'
-import { Role } from '@yuanai/types'
-import { getApiBaseUrl, refreshAccessTokenForStream } from '../api/client.js'
-import { getPlatformAdapter } from '../platform/index.js'
-import type { SseMessage, StreamHandle } from '../platform/index.js'
-import { useAuthStore } from '../stores/auth.store.js'
-import { useChatStore } from '../stores/chat.store.js'
+import { useCallback } from 'react'
 
-/** SSE 传输层拿不到结构化 status；用错误文本识别 401/Token 失效 */
-function isAuthError(err: Error): boolean {
-  return /AUTH_TOKEN_INVALID|HTTP 401|401/.test(err.message)
-}
+import {
+  conversationStreamRegistry,
+  TEMPORARY_CONV_ID,
+  type StreamParams,
+  type TemporaryStreamParams,
+} from '../streams/conversation-stream-registry.js'
 
-/** 解析后端 SSE 的结构化错误，向各端保留可直接展示的中文消息。 */
-function parseSseError(data: string): Error {
-  try {
-    const payload = JSON.parse(data) as { message?: unknown }
-    if (typeof payload.message === 'string' && payload.message.trim()) {
-      return new Error(payload.message)
-    }
-  } catch {
-    // 不规范的 SSE 错误仍应以安全兜底消息结束流。
-  }
-  return new Error('消息发送失败，请稍后重试')
-}
+export { TEMPORARY_CONV_ID }
+export type {
+  StreamParams,
+  TemporaryChatMessage,
+  TemporaryStreamParams,
+} from '../streams/conversation-stream-registry.js'
 
-/** 验证后端 title event，避免畸形 SSE 污染 TanStack 会话缓存。 */
-function parseConversationTitle(data: Record<string, unknown>): {
-  conversationId: string
-  title: string
-  titleSource: ConversationTitleSource
-  titleGeneratedAt: string
-} | null {
-  const conversationId = data['conversation_id']
-  const title = data['title']
-  const titleSource = data['title_source']
-  const titleGeneratedAt = data['title_generated_at']
-  if (
-    typeof conversationId !== 'string' ||
-    typeof title !== 'string' ||
-    typeof titleGeneratedAt !== 'string' ||
-    !['default', 'fallback', 'ai', 'manual'].includes(String(titleSource))
-  ) {
-    return null
-  }
-  return {
-    conversationId,
-    title,
-    titleSource: titleSource as ConversationTitleSource,
-    titleGeneratedAt,
-  }
-}
-
-/** 临时对话的历史消息条目（不携带附件、不落库） */
-export interface TemporaryChatMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-/** `useStream().sendTemporary` 的参数 */
-export interface TemporaryStreamParams {
-  /** 用户新输入的内容 */
-  content: string
-  /** 已有的历史消息（不包含本次 content） */
-  history: TemporaryChatMessage[]
-  /** 使用的 AI 模型 ID */
-  model: string
-  /** 是否开启思考模式 */
-  enableThinking?: boolean
-  /** 流启动时回调 */
-  onStart?: () => void
-  /**
-   * 流结束时回调（正常收尾 / 出错都会触发）。回传本轮流式累计的状态快照。
-   * 快照来自 chat store 而非闭包变量：`content` 有 80ms 批量合并，闭包里 `finalContent`
-   * 只保证正文部分，思考文本 / 耗时只在 store 里活着。onEnd 在 `finalizeStream` **之前**
-   * 拍快照，之后 store 就被清空。
-   */
-  onEnd?: (result: {
-    content: string
-    think: string
-    thinkDurationMs: number
-    completed: boolean
-  }) => void
-  /** 流出错时回调 */
-  onError?: (err: Error) => void
-}
-
-/** `useStream().send` 的参数 */
-export interface StreamParams {
-  /** 目标会话 ID */
-  convId: string
-  /** 用户发送的消息内容 */
-  content: string
-  /** 使用的 AI 模型 ID */
-  model: string
-  /** 已上传的文件 ID 列表 */
-  fileIds?: string[] | undefined
-  /** 上传完成后用于在 AI 回复开始前展示的文件引用。 */
-  optimisticFiles?: MessageFile[] | undefined
-  /** 是否开启 AI 思考模式（DeepSeek 系列通过 extra_body 传递，其他模型忽略） */
-  enableThinking?: boolean
-  /** 为 true 时不显示乐观用户消息（重新生成场景：原用户消息已存在） */
-  skipOptimistic?: boolean
-  /** 编辑既有用户消息时复用其记录，并截断其后的历史回复。 */
-  replaceMessageId?: string
-  /** 流启动时回调 */
-  onStart?: () => void
-  /** 流结束时回调；`completed` 仅在服务器正常完成回复时为 true。 */
-  onEnd?: (result: { completed: boolean }) => void
-  /** 流出错时回调 */
-  onError?: (err: Error) => void
+/** `useStream` 暴露的会话流控制能力。 */
+export interface UseStreamResult {
+  /** 启动一个会话的后台 SSE 流。 */
+  send(params: StreamParams): Promise<void>
+  /** 启动不落库的临时会话 SSE 流。 */
+  sendTemporary(params: TemporaryStreamParams): Promise<void>
+  /** 停止指定会话的 SSE 流，不影响其它会话。 */
+  stop(conversationId: string): void
+  /** 判断指定会话是否仍在生成。 */
+  isStreaming(conversationId: string): boolean
+  /** 获取当前所有运行中的会话 ID。 */
+  activeConversationIds(): readonly string[]
 }
 
 /**
- * 流式消息发送 hook
+ * 停止当前 renderer 中的全部会话流。
  *
- * 通过 `getPlatformAdapter().stream(...)` 屏蔽 Web (`fetch + ReadableStream`) 与
- * Mobile (`react-native-sse`) 的传输差异，本 hook 只负责根据事件名调度到 chat store。
- *
- * 支持的 SSE 事件：
- * - `content_delta`：追加正文 token
- * - `thinking_delta`：追加思考文字（reasoning tokens）
- * - `tool_call_start` / `tool_call_delta` / `tool_call_end`：工具调用生命周期
- * - `message_start` / `message_end` / `error`：识别但不影响 UI
- *
- * 未知事件会被静默忽略，保证向后兼容。
+ * 供移动端前后台和断网边界调用；每个流仍会分别保留已生成的局部内容。
  */
-export function useStream() {
-  const {
-    startStreaming,
-    appendToken,
-    appendThink,
-    startToolCall,
-    appendToolCallArgs,
-    updateToolCall,
-    finalizeStream,
-  } = useChatStore()
-  const qc = useQueryClient()
-  const streamRef = useRef<StreamHandle | null>(null)
-  // 本轮流式的服务端消息 ID（message_start 携带）；stop() 用它把部分内容写回缓存
-  const streamMetaRef = useRef<{
-    convId: string
-    userMsgId: string
-    assistantMsgId: string
-  } | null>(null)
-  // 用户主动停止标记：让 close 回调跳过 refetch（此刻后端 assistant 占位可能尚未
-  // 写入部分内容，refetch 会用空内容覆盖界面）
-  const stoppedRef = useRef(false)
+export function stopAllConversationStreams(): void {
+  for (const conversationId of conversationStreamRegistry.activeConversationIds()) {
+    conversationStreamRegistry.stop(conversationId)
+  }
+}
 
-  // ── token 批量合并 ─────────────────────────────────────────────
-  // 模型 token 到达频率可达每秒几十上百次；若每个 token 都 set 一次 store，
-  // 订阅者（消息列表 + Markdown 渲染）会以同频率全量重渲染，长回复时 JS 线程
-  // 直接被打满（真机已复现 ANR）。这里把 delta 缓冲 ~80ms 合并成一次提交。
-  const pendingContentRef = useRef('')
-  const pendingThinkRef = useRef('')
-  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const flushDeltas = useCallback((): void => {
-    if (flushTimerRef.current !== null) {
-      clearTimeout(flushTimerRef.current)
-      flushTimerRef.current = null
-    }
-    if (pendingThinkRef.current) {
-      appendThink(pendingThinkRef.current)
-      pendingThinkRef.current = ''
-    }
-    if (pendingContentRef.current) {
-      appendToken(pendingContentRef.current)
-      pendingContentRef.current = ''
-    }
-  }, [appendThink, appendToken])
-
-  const queueDelta = useCallback(
-    (kind: 'content' | 'think', token: string): void => {
-      if (kind === 'content') pendingContentRef.current += token
-      else pendingThinkRef.current += token
-      flushTimerRef.current ??= setTimeout(flushDeltas, 80)
-    },
-    [flushDeltas]
-  )
-
-  const dispatchMessage = useCallback(
-    (msg: SseMessage): void => {
-      let data: Record<string, unknown>
-      try {
-        data = JSON.parse(msg.data) as Record<string, unknown>
-      } catch {
-        return
-      }
-      switch (msg.event) {
-        case 'conversation_title': {
-          const titleUpdate = parseConversationTitle(data)
-          if (titleUpdate === null) break
-          qc.setQueryData<Conversation[]>(['conversations'], (previous) =>
-            previous?.map((conversation) =>
-              conversation.id === titleUpdate.conversationId
-                ? {
-                    ...conversation,
-                    title: titleUpdate.title,
-                    titleSource: titleUpdate.titleSource,
-                    titleGeneratedAt: titleUpdate.titleGeneratedAt,
-                  }
-                : conversation
-            )
-          )
-          break
-        }
-        case 'content_delta':
-          if (typeof data['token'] === 'string') {
-            queueDelta('content', data['token'])
-          }
-          break
-        case 'thinking_delta':
-          if (typeof data['token'] === 'string') {
-            queueDelta('think', data['token'])
-          }
-          break
-        case 'tool_call_start': {
-          const id = data['tool_call_id']
-          const name = data['name']
-          if (typeof id === 'string' && typeof name === 'string') {
-            startToolCall({
-              id,
-              name,
-              arguments: '',
-              status: 'running',
-            })
-          }
-          break
-        }
-        case 'tool_call_delta': {
-          const id = data['tool_call_id']
-          const chunk = data['args_chunk']
-          if (typeof id === 'string' && typeof chunk === 'string') {
-            appendToolCallArgs(id, chunk)
-          }
-          break
-        }
-        case 'tool_call_end': {
-          const id = data['tool_call_id']
-          if (typeof id === 'string') {
-            const status =
-              typeof data['status'] === 'string' &&
-              ['pending', 'running', 'done', 'error'].includes(data['status'])
-                ? (data['status'] as 'pending' | 'running' | 'done' | 'error')
-                : 'done'
-            updateToolCall(id, {
-              status,
-              ...(typeof data['result'] === 'string' ? { result: data['result'] } : {}),
-              ...(typeof data['error'] === 'string' ? { error: data['error'] } : {}),
-              ...(typeof data['duration_ms'] === 'number'
-                ? { durationMs: data['duration_ms'] }
-                : {}),
-            })
-          }
-          break
-        }
-        default:
-          break
-      }
-    },
-    [appendToolCallArgs, qc, queueDelta, startToolCall, updateToolCall]
-  )
+/**
+ * 会话流 React 适配器。
+ *
+ * 浏览器、Electron 与 React Native 的路由会反复挂载；真实传输、缓冲区和停止动作由
+ * 模块级 `conversationStreamRegistry` 按会话保存，Hook 仅为本 renderer 注入 QueryClient。
+ */
+export function useStream(): UseStreamResult {
+  const queryClient = useQueryClient()
 
   const send = useCallback(
-    async ({
-      convId,
-      content,
-      model,
-      fileIds,
-      optimisticFiles,
-      enableThinking,
-      skipOptimistic,
-      replaceMessageId,
-      onStart,
-      onEnd,
-      onError,
-    }: StreamParams): Promise<void> => {
-      if (replaceMessageId) {
-        qc.setQueryData<Message[]>(['messages', convId], (previous) => {
-          const index = previous?.findIndex((message) => message.id === replaceMessageId) ?? -1
-          if (index < 0 || !previous) return previous
-          return previous
-            .slice(0, index + 1)
-            .map((message) => (message.id === replaceMessageId ? { ...message, content } : message))
-        })
-      }
-      startStreaming(
-        convId,
-        skipOptimistic || replaceMessageId ? null : content,
-        skipOptimistic || replaceMessageId ? [] : optimisticFiles
-      )
-      stoppedRef.current = false
-      streamMetaRef.current = null
-      onStart?.()
-
-      // 单次流式尝试；auth 表示未开流就撞上 token 失效（可刷新后重试）。
-      // 失败、主动停止和正常收尾必须可区分，供上层决定是否提示“回复完成”。
-      const attempt = (
-        accessToken: string | null
-      ): Promise<'completed' | 'failed' | 'auth' | 'stopped'> =>
-        new Promise<'completed' | 'failed' | 'auth' | 'stopped'>((resolve) => {
-          let serverError: Error | null = null
-          let handle: StreamHandle | null = null
-          handle = getPlatformAdapter().stream(
-            {
-              url: `${getApiBaseUrl()}/chat/stream`,
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-              },
-              body: JSON.stringify({
-                conversation_id: convId,
-                model,
-                message: { content, fileIds: fileIds ?? [] },
-                enable_thinking: enableThinking ?? false,
-                ...(replaceMessageId ? { replace_message_id: replaceMessageId } : {}),
-              }),
-            },
-            {
-              onMessage: (msg) => {
-                if (msg.event === 'error') {
-                  serverError = parseSseError(msg.data)
-                  handle?.close()
-                  return
-                }
-                // 记录本轮消息 ID：stop() 时把已收到的部分内容写回缓存要用
-                if (msg.event === 'message_start') {
-                  try {
-                    const data = JSON.parse(msg.data) as {
-                      user_message_id?: unknown
-                      assistant_message_id?: unknown
-                    }
-                    if (
-                      typeof data.user_message_id === 'string' &&
-                      typeof data.assistant_message_id === 'string'
-                    ) {
-                      streamMetaRef.current = {
-                        convId,
-                        userMsgId: data.user_message_id,
-                        assistantMsgId: data.assistant_message_id,
-                      }
-                    }
-                  } catch {
-                    /* 忽略解析失败，stop 时退化为 refetch */
-                  }
-                }
-                dispatchMessage(msg)
-              },
-              onError: (err) => {
-                flushDeltas()
-                // token 过期：SSE 不经过 axios 401 拦截器，这里手动走刷新重试通道。
-                // 只在流还没产出任何内容时才重试（有 meta 说明已开流，中途 401 不该发生）
-                if (isAuthError(err) && streamMetaRef.current === null) {
-                  resolve('auth')
-                  return
-                }
-                finalizeStream()
-                onError?.(err)
-                resolve('failed')
-              },
-              onClose: () => {
-                // 收尾前先把缓冲中的尾部 delta 刷进 store，避免短暂丢尾
-                flushDeltas()
-                if (serverError) {
-                  finalizeStream()
-                  onError?.(serverError)
-                  resolve('failed')
-                  return
-                }
-                // 用户主动停止：close 由 stop() 触发，缓存已在 stop() 内写好，
-                // 不 refetch（后端占位行内容为空，会覆盖掉刚写入的部分内容）
-                if (stoppedRef.current) {
-                  resolve('stopped')
-                  return
-                }
-                void Promise.all([
-                  qc.refetchQueries({ queryKey: ['messages', convId] }),
-                  qc.refetchQueries({ queryKey: ['conversations'] }),
-                ]).finally(() => {
-                  finalizeStream()
-                  resolve('completed')
-                })
-              },
-            }
-          )
-          streamRef.current = handle
-        })
-
-      let result = await attempt(useAuthStore.getState().accessToken)
-      if (result === 'auth') {
-        // 刷新失败时 onAuthFailure 已 clearAuth → 路由守卫自动重定向登录页
-        const newToken = await refreshAccessTokenForStream()
-        if (newToken) {
-          result = await attempt(newToken)
-        }
-        if (!newToken || result === 'auth') {
-          if (result === 'auth') useAuthStore.getState().clearAuth()
-          finalizeStream()
-          onError?.(new Error('登录已过期，请重新登录'))
-        }
-      }
-
-      streamRef.current = null
-      onEnd?.({ completed: result === 'completed' })
-    },
-    [startStreaming, finalizeStream, qc, dispatchMessage, flushDeltas]
+    (params: StreamParams): Promise<void> => conversationStreamRegistry.send(queryClient, params),
+    [queryClient]
   )
-
-  /**
-   * 临时对话流式发送：不落库、不刷新会话列表、不使用消息 Query 缓存。
-   *
-   * SSE 协议与 `/chat/stream` 保持一致（相同事件名），因此仍复用 chat store 的
-   * `startStreaming/appendToken/appendThink/finalizeStream` 承载实时 UI 状态；
-   * 用一个约定的伪 convId (`__temporary__`) 作为 streamingConvId，
-   * 上层组件用同一个字符串识别是临时对话中，不与真实 UUID 冲突。
-   */
   const sendTemporary = useCallback(
-    async ({
-      content,
-      history,
-      model,
-      enableThinking,
-      onStart,
-      onEnd,
-      onError,
-    }: TemporaryStreamParams): Promise<void> => {
-      const token = useAuthStore.getState().accessToken
-
-      startStreaming(TEMPORARY_CONV_ID, content)
-      stoppedRef.current = false
-      streamMetaRef.current = null
-      onStart?.()
-
-      let finalContent = ''
-
-      await new Promise<void>((resolve) => {
-        let serverError: Error | null = null
-        let handle: StreamHandle | null = null
-        handle = getPlatformAdapter().stream(
-          {
-            url: `${getApiBaseUrl()}/chat/stream/temporary`,
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              model,
-              messages: [...history, { role: 'user', content }],
-              enableThinking: enableThinking ?? false,
-            }),
-          },
-          {
-            onMessage: (msg) => {
-              if (msg.event === 'error') {
-                serverError = parseSseError(msg.data)
-                handle?.close()
-                return
-              }
-              // 单独处理 content_delta 以累积 finalContent（走同一个批量缓冲）
-              if (msg.event === 'content_delta') {
-                try {
-                  const data = JSON.parse(msg.data) as { token?: unknown }
-                  if (typeof data.token === 'string') {
-                    finalContent += data.token
-                    queueDelta('content', data.token)
-                    return
-                  }
-                } catch {
-                  return
-                }
-              }
-              dispatchMessage(msg)
-            },
-            onError: (err) => {
-              flushDeltas()
-              // ⚠️ 顺序：flush → 快照 → finalize；finalizeStream 会清空 store，
-              // 快照必须在它之前拿。
-              const snap = useChatStore.getState()
-              const result = {
-                content: finalContent,
-                think: snap.streamingThink,
-                thinkDurationMs: snap.streamingThinkDurationMs,
-                completed: false,
-              }
-              finalizeStream()
-              onError?.(err)
-              onEnd?.(result)
-              resolve()
-            },
-            onClose: () => {
-              flushDeltas()
-              const snap = useChatStore.getState()
-              const result = {
-                content: finalContent,
-                think: snap.streamingThink,
-                thinkDurationMs: snap.streamingThinkDurationMs,
-                completed: !stoppedRef.current && serverError === null,
-              }
-              finalizeStream()
-              if (serverError) onError?.(serverError)
-              onEnd?.(result)
-              resolve()
-            },
-          }
-        )
-        streamRef.current = handle
-      })
-
-      streamRef.current = null
-    },
-    [startStreaming, finalizeStream, queueDelta, flushDeltas, dispatchMessage]
+    (params: TemporaryStreamParams): Promise<void> =>
+      conversationStreamRegistry.sendTemporary(queryClient, params),
+    [queryClient]
+  )
+  const stop = useCallback((conversationId: string): void => {
+    conversationStreamRegistry.stop(conversationId)
+  }, [])
+  const isStreaming = useCallback(
+    (conversationId: string): boolean => conversationStreamRegistry.isStreaming(conversationId),
+    []
+  )
+  const activeConversationIds = useCallback(
+    (): readonly string[] => conversationStreamRegistry.activeConversationIds(),
+    []
   )
 
-  /**
-   * 停止生成。
-   *
-   * 关闭传输前先把「已收到的部分内容」写进消息查询缓存：占位的流式行会随
-   * finalizeStream 消失，若不写缓存，已输出的文字会整段闪没（后端 assistant
-   * 占位此刻还是空串，refetch 也救不回来）。服务端的部分内容落库由后端在
-   * 连接断开时自行完成，两边各自兜底。
-   */
-  const stop = useCallback(() => {
-    stoppedRef.current = true
-    flushDeltas() // 把缓冲中的尾部 delta 先落进 store，写缓存才完整
-    const s = useChatStore.getState()
-    const meta = streamMetaRef.current
-
-    if (meta && s.streamingConvId === meta.convId) {
-      const now = new Date().toISOString()
-      qc.setQueryData<Message[]>(['messages', meta.convId], (prev) => {
-        const base = prev ? [...prev] : []
-        if (s.optimisticUserMsg && !base.some((m) => m.id === meta.userMsgId)) {
-          base.push({
-            id: meta.userMsgId,
-            role: Role.User,
-            content: s.optimisticUserMsg,
-            files: [],
-            createdAt: now,
-          })
-        }
-        if (s.streamingContent && !base.some((m) => m.id === meta.assistantMsgId)) {
-          base.push({
-            id: meta.assistantMsgId,
-            role: Role.Assistant,
-            content: s.streamingContent,
-            ...(s.streamingThink ? { thinkingContent: s.streamingThink } : {}),
-            files: [],
-            createdAt: now,
-          })
-        }
-        return base
-      })
-    }
-
-    streamMetaRef.current = null
-    finalizeStream()
-    streamRef.current?.close()
-    streamRef.current = null
-  }, [finalizeStream, qc, flushDeltas])
-
-  return { send, sendTemporary, stop }
+  return { send, sendTemporary, stop, isStreaming, activeConversationIds }
 }
-
-/**
- * 临时对话使用的伪 conversation id。
- *
- * ChatInterface 用该常量判断是否处于临时会话上下文，
- * 避免使用真实 UUID 或魔法字符串散落各处；亦不会与后端会话冲突。
- */
-export const TEMPORARY_CONV_ID = '__temporary__'

@@ -370,6 +370,10 @@ textarea:focus-visible {
   grid-template-columns: 16px minmax(0, 1fr);
 }
 
+.desktop-chat__conversation-select:has(.desktop-chat__conversation-stream-state) {
+  grid-template-columns: minmax(0, 1fr) 16px;
+}
+
 .desktop-chat__conversation-select span {
   overflow: hidden;
   color: var(--desktop-fg);
@@ -413,6 +417,15 @@ textarea:focus-visible {
   right: 6px;
   display: none;
   gap: 2px;
+}
+
+.desktop-chat__conversation-stream-state {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  overflow: visible !important;
+  place-items: center;
+  color: var(--desktop-brand);
 }
 
 .desktop-chat__conversation:hover .desktop-chat__conversation-actions,
