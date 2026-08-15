@@ -18,6 +18,7 @@ yuanai 是一个多端 AI 聊天应用，功能对标 ChatGPT，支持 Android�
 | [页面设计](docs/page-design.md)                     | OpenDesign 原型设计规范               |
 | [开发规范](docs/dev-standards.md)                   | ESLint/Prettier/Husky/Git/提交规范    |
 | [测试规范](docs/testing-standards.md)               | **必读** 单元/集成/E2E 测试规范与用例 |
+| [跨端排障记录](docs/troubleshooting.md)             | 已解决问题、环境限制与真机调试方法    |
 | [Phase 0 — 脚手架](docs/phases/phase-0-scaffold.md) | Monorepo 初始化（**先执行此项**）     |
 | [Phase 1 — 后端](docs/phases/phase-1-backend.md)    | FastAPI 后端核心开发                  |
 | [Phase 2 — Web 端](docs/phases/phase-2-web.md)      | Next.js Web 端完整实现                |
