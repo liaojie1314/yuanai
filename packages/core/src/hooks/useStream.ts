@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
-import type { Message, MessageFile } from '@yuanai/types'
+import type { Conversation, ConversationTitleSource, Message, MessageFile } from '@yuanai/types'
 import { Role } from '@yuanai/types'
 import { getApiBaseUrl, refreshAccessTokenForStream } from '../api/client.js'
 import { getPlatformAdapter } from '../platform/index.js'
@@ -24,6 +24,33 @@ function parseSseError(data: string): Error {
     // 不规范的 SSE 错误仍应以安全兜底消息结束流。
   }
   return new Error('消息发送失败，请稍后重试')
+}
+
+/** 验证后端 title event，避免畸形 SSE 污染 TanStack 会话缓存。 */
+function parseConversationTitle(data: Record<string, unknown>): {
+  conversationId: string
+  title: string
+  titleSource: ConversationTitleSource
+  titleGeneratedAt: string
+} | null {
+  const conversationId = data['conversation_id']
+  const title = data['title']
+  const titleSource = data['title_source']
+  const titleGeneratedAt = data['title_generated_at']
+  if (
+    typeof conversationId !== 'string' ||
+    typeof title !== 'string' ||
+    typeof titleGeneratedAt !== 'string' ||
+    !['default', 'fallback', 'ai', 'manual'].includes(String(titleSource))
+  ) {
+    return null
+  }
+  return {
+    conversationId,
+    title,
+    titleSource: titleSource as ConversationTitleSource,
+    titleGeneratedAt,
+  }
 }
 
 /** 临时对话的历史消息条目（不携带附件、不落库） */
@@ -163,6 +190,23 @@ export function useStream() {
         return
       }
       switch (msg.event) {
+        case 'conversation_title': {
+          const titleUpdate = parseConversationTitle(data)
+          if (titleUpdate === null) break
+          qc.setQueryData<Conversation[]>(['conversations'], (previous) =>
+            previous?.map((conversation) =>
+              conversation.id === titleUpdate.conversationId
+                ? {
+                    ...conversation,
+                    title: titleUpdate.title,
+                    titleSource: titleUpdate.titleSource,
+                    titleGeneratedAt: titleUpdate.titleGeneratedAt,
+                  }
+                : conversation
+            )
+          )
+          break
+        }
         case 'content_delta':
           if (typeof data['token'] === 'string') {
             queueDelta('content', data['token'])
@@ -217,7 +261,7 @@ export function useStream() {
           break
       }
     },
-    [queueDelta, startToolCall, appendToolCallArgs, updateToolCall]
+    [appendToolCallArgs, qc, queueDelta, startToolCall, updateToolCall]
   )
 
   const send = useCallback(

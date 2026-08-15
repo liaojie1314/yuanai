@@ -152,10 +152,17 @@ export interface QrLoginRequestScope {
 
 // ============ 会话 ============
 
+/** 会话标题的最终来源。 */
+export type ConversationTitleSource = 'default' | 'fallback' | 'ai' | 'manual'
+
 /** 对话会话（侧边栏列表项） */
 export interface Conversation {
   id: string
   title: string
+  /** 标题是否由首问回退、Agnes 或用户手动改名得到。 */
+  titleSource: ConversationTitleSource
+  /** 标题最近一次确定的时间；新建空会话为 null。 */
+  titleGeneratedAt: string | null
   /** 当前会话绑定的 AI 模型 ID */
   model: string
   isPinned: boolean
@@ -390,6 +397,15 @@ export interface SSEMessageEnd {
   finishReason: string
 }
 
+/** 会话标题更新事件，首问回退与 Agnes 生成均通过此事件同步侧栏缓存。 */
+export interface SSEConversationTitle {
+  type: 'conversation_title'
+  conversationId: string
+  title: string
+  titleSource: ConversationTitleSource
+  titleGeneratedAt: string
+}
+
 /** SSE 错误事件 */
 export interface SSEError {
   type: 'error'
@@ -405,5 +421,6 @@ export type SSEEvent =
   | SSEToolCallStart
   | SSEToolCallDelta
   | SSEToolCallEnd
+  | SSEConversationTitle
   | SSEMessageEnd
   | SSEError

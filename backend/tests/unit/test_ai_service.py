@@ -29,6 +29,7 @@ from app.services.ai_service import (  # noqa: E402
     VoiceTranscriptionProviderError,
     VoiceTranscriptionUnavailableError,
     _get_client,
+    generate_conversation_title,
     get_available_models,
     stream_chat,
     transcribe_audio,
@@ -138,6 +139,53 @@ def test_agnes_models_are_registered_without_embedded_credentials() -> None:
     assert PROVIDER_CONFIG["agnes-2.5-flash"]["base_url"] == "https://apihub.agnes-ai.com/v1"
     assert any(m["id"] == "agnes-image-2.1-flash" for m in AVAILABLE_MODELS)
     assert any(m["id"] == "agnes-video-v2.0" for m in AVAILABLE_MODELS)
+
+
+async def test_generate_conversation_title_retries_agnes_after_reasoning_budget_exhaustion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agnes 的 reasoning token 耗尽首轮预算时应仅重试一次并返回完整标题。"""
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-agnes-key")
+    first = MagicMock()
+    first.choices = [MagicMock()]
+    first.choices[0].finish_reason = "length"
+    first.choices[0].message.content = ""
+    second = MagicMock()
+    second.choices = [MagicMock()]
+    second.choices[0].finish_reason = "stop"
+    second.choices[0].message.content = "Async SQLAlchemy 事务边界"
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=[first, second])
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+
+    title = await generate_conversation_title("解释 async SQLAlchemy 的事务边界")
+
+    assert title == "Async SQLAlchemy 事务边界"
+    assert client.chat.completions.create.await_count == 2
+    assert [
+        call_kwargs.kwargs["max_tokens"]
+        for call_kwargs in client.chat.completions.create.await_args_list
+    ] == [128, 256]
+
+
+async def test_generate_conversation_title_uses_first_complete_agnes_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未截断的 Agnes 标题不应额外请求，避免首问产生不必要的模型调用。"""
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-agnes-key")
+    completion = MagicMock()
+    completion.choices = [MagicMock()]
+    completion.choices[0].finish_reason = "stop"
+    completion.choices[0].message.content = "SQLAlchemy 事务边界"
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=completion)
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+
+    title = await generate_conversation_title("解释 async SQLAlchemy 的事务边界")
+
+    assert title == "SQLAlchemy 事务边界"
+    client.chat.completions.create.assert_awaited_once()
+    assert client.chat.completions.create.await_args.kwargs["max_tokens"] == 128
 
 
 def test_deepseek_v4_official_metadata() -> None:

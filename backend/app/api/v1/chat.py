@@ -28,6 +28,11 @@ from app.schemas.chat import (
     UpdateConversationRequest,
 )
 from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
+from app.services.conversation_title_service import (
+    ConversationTitleResult,
+    fallback_title,
+    generate_and_store_title,
+)
 from app.services.file_extract_service import extract_preview, preview_context
 from app.services.push_service import send_to_user
 from app.services.storage_service import storage
@@ -75,6 +80,8 @@ async def update_conversation(
     conv = await _get_user_conv(conv_id, current_user.id, db)
     if req.title is not None:
         conv.title = req.title
+        conv.title_source = "manual"
+        conv.title_generated_at = datetime.now(UTC)
     if req.model is not None:
         conv.model = req.model
     if req.is_pinned is not None:
@@ -152,6 +159,17 @@ async def stream_chat_endpoint(
     conv = await _get_user_conv(req.conversation_id, current_user.id, db)
 
     now = datetime.now(UTC)
+    is_first_user_message = False
+    if req.replace_message_id is None and conv.title_source == "default":
+        existing_user_message = await db.execute(
+            select(Message.id)
+            .where(Message.conv_id == conv.id)
+            .where(Message.role == MessageRole.user)
+            .limit(1)
+        )
+        is_first_user_message = existing_user_message.scalar_one_or_none() is None
+
+    title_fallback: dict[str, str] | None = None
     if req.replace_message_id is None:
         # 用显式时间戳强制 user 早于 assistant，避免同一事务下 server_default=func.now()
         # 让两条记录拿到完全相同的 created_at，导致 order_by(created_at) 顺序不确定，
@@ -195,9 +213,23 @@ async def stream_chat_endpoint(
     # 同步推进会话活跃时间：前端分组/排序以 last_message_at 为准；
     # 取 assistant 占位的 created_at，与 list_messages 里的最新一条一致。
     conv.last_message_at = assistant_msg.created_at
+    if is_first_user_message:
+        conv.title = fallback_title(req.message.content)
+        conv.title_source = "fallback"
+        conv.title_generated_at = now
+        title_fallback = {
+            "conversation_id": str(conv.id),
+            "title": conv.title,
+            "title_source": conv.title_source,
+            "title_generated_at": now.isoformat(),
+        }
     await db.commit()
     await db.refresh(user_msg)
     await db.refresh(assistant_msg)
+
+    title_task: asyncio.Task[ConversationTitleResult | None] | None = None
+    if is_first_user_message:
+        title_task = asyncio.create_task(generate_and_store_title(conv.id, req.message.content))
 
     # 新消息关联上传文件；编辑既有消息时保留其原附件。
     attached_files: list[File] = []
@@ -293,6 +325,8 @@ async def stream_chat_endpoint(
             enable_thinking=req.enable_thinking,
             user_id=current_user.id,
             conv_id=conv.id,
+            initial_title_update=title_fallback,
+            title_task=title_task,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
@@ -400,6 +434,8 @@ async def _generate_sse(
     enable_thinking: bool = False,
     user_id: uuid.UUID | None = None,
     conv_id: uuid.UUID | None = None,
+    initial_title_update: dict[str, str] | None = None,
+    title_task: asyncio.Task[ConversationTitleResult | None] | None = None,
 ) -> AsyncGenerator[str, None]:
     payload = json.dumps(
         {
@@ -409,16 +445,40 @@ async def _generate_sse(
         }  # noqa: E501
     )
     yield f"event: message_start\ndata: {payload}\n\n"
+    if initial_title_update is not None:
+        yield (
+            "event: conversation_title\n"
+            f"data: {json.dumps(initial_title_update, ensure_ascii=False)}\n\n"
+        )
 
     full_content = ""
     full_thinking = ""
     # 思考耗时统计：首个 reasoning token → 首个 content token 之间的间隔（毫秒）
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
+    title_update_sent = False
+
+    def take_title_update() -> ConversationTitleResult | None:
+        """读取已完成标题任务，标题失败绝不能影响聊天 SSE。"""
+        if title_task is None or not title_task.done() or title_update_sent:
+            return None
+        try:
+            return title_task.result()
+        except (OSError, RuntimeError):
+            logger.warning("会话标题后台任务异常 (conversation=%s)", conv_id)
+            return None
+
     try:
         async for event_type, token in stream_chat(
             model, messages, enable_thinking=enable_thinking
         ):
+            title_update = take_title_update()
+            if title_update is not None:
+                title_update_sent = True
+                yield (
+                    "event: conversation_title\n"
+                    f"data: {json.dumps(title_update, ensure_ascii=False)}\n\n"
+                )
             if event_type == "thinking":
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
@@ -436,6 +496,21 @@ async def _generate_sse(
         # 极端场景：只有思考没有正文（模型异常提前结束），也补记耗时
         if thinking_start_at is not None and thinking_duration_ms is None:
             thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
+
+        # 回复很快结束时留一个极短窗口给标题任务。它不会延迟首个回复 token；
+        # 若仍未完成，任务继续独立落库，常规会话缓存刷新会读到最终标题。
+        if title_task is not None and not title_task.done():
+            try:
+                await asyncio.wait_for(asyncio.shield(title_task), timeout=0.25)
+            except TimeoutError:
+                pass
+        title_update = take_title_update()
+        if title_update is not None:
+            title_update_sent = True
+            yield (
+                "event: conversation_title\n"
+                f"data: {json.dumps(title_update, ensure_ascii=False)}\n\n"
+            )
 
         # 更新 assistant 消息内容（含思考内容 + 耗时）
         result = await db.execute(select(Message).where(Message.id == assistant_msg_id))

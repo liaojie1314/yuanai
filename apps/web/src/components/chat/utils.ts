@@ -32,6 +32,7 @@ export function apiConvToMock(conv: Conversation): MockConversation {
   return {
     id: conv.id,
     title: conv.title,
+    titleSource: conv.titleSource,
     group: convGroup(conv),
     updatedAt: new Date(ts).getTime(),
   }

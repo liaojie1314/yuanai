@@ -13,6 +13,9 @@ class Conversation(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="新对话")
+    # default: 尚未发送首问；fallback: 已写入首问截断标题；ai/manual: 最终标题来源。
+    title_source: Mapped[str] = mapped_column(String(16), nullable=False, default="default")
+    title_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     model: Mapped[str] = mapped_column(String(100), nullable=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     # 最新消息时间：前端「今天/昨天/本周」分组与列表排序的依据。

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { MessageFile, ToolCall, ToolCallStatus } from '@yuanai/types'
+import type { ConversationTitleSource, MessageFile, ToolCall, ToolCallStatus } from '@yuanai/types'
 
 /**
  * 会话分组类型，用于侧边栏按时间维度对话归类。
@@ -12,6 +12,8 @@ export type ConvGroup = 'pinned' | 'today' | 'yesterday' | 'week'
 export interface MockConversation {
   id: string
   title: string
+  /** 首问标题的来源，供侧栏显示短暂生成状态。 */
+  titleSource?: ConversationTitleSource
   group: ConvGroup
   updatedAt: number
 }

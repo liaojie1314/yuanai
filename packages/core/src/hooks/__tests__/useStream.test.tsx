@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, act } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
+import type { ReactNode } from 'react'
 import { server } from '../../../tests/mocks/server.js'
 import { API_BASE_URL, getApiBaseUrl, setApiBaseUrl } from '../../api/client.js'
 import { useChatStore } from '../../stores/chat.store.js'
@@ -83,6 +84,71 @@ describe('useStream — SSE 解析（端到端行为）', () => {
       await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o' })
     })
     expect(useChatStore.getState().streamingConvId).toBeNull()
+  })
+
+  it('将有效 conversation_title 事件精确写入对应会话缓存', async () => {
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    qc.setQueryData(
+      ['conversations'],
+      [
+        {
+          id: 'c1',
+          title: '新对话',
+          titleSource: 'default',
+          titleGeneratedAt: null,
+          model: 'gpt-4o',
+          isPinned: false,
+          lastMessageAt: null,
+          createdAt: '2026-08-15T00:00:00.000Z',
+        },
+        {
+          id: 'c2',
+          title: '保持不变',
+          titleSource: 'manual',
+          titleGeneratedAt: '2026-08-15T00:00:00.000Z',
+          model: 'gpt-4o',
+          isPinned: false,
+          lastMessageAt: null,
+          createdAt: '2026-08-15T00:00:00.000Z',
+        },
+      ]
+    )
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, () =>
+        makeStreamResponse([
+          { event: 'conversation_title', data: { conversation_id: 42 } },
+          {
+            event: 'conversation_title',
+            data: {
+              conversation_id: 'c1',
+              title: 'SQLAlchemy 事务边界',
+              title_source: 'ai',
+              title_generated_at: '2026-08-15T12:00:00.000Z',
+            },
+          },
+        ])
+      )
+    )
+    const { result } = renderHook(() => useStream(), { wrapper })
+
+    await act(async () => {
+      await result.current.send({ convId: 'c1', content: 'hi', model: 'gpt-4o' })
+    })
+
+    const conversations = qc.getQueryData<
+      Array<{ id: string; title: string; titleSource: string }>
+    >(['conversations'])
+    expect(conversations?.[0]).toMatchObject({
+      id: 'c1',
+      title: 'SQLAlchemy 事务边界',
+      titleSource: 'ai',
+    })
+    expect(conversations?.[1]).toMatchObject({ id: 'c2', title: '保持不变' })
   })
 
   it('HTTP 非 2xx 时清理流式态并回调 onError', async () => {

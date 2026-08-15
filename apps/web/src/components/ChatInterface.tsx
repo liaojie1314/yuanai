@@ -2139,7 +2139,12 @@ function ConvItem({
           onBlur={onRenameCommit}
         />
       ) : (
-        <span className="ch-cv-title">{conv.title}</span>
+        <>
+          <span className="ch-cv-title">{conv.title}</span>
+          {conv.titleSource === 'fallback' ? (
+            <Loader2 className="ch-spin" size={12} aria-label="正在生成会话标题" role="status" />
+          ) : null}
+        </>
       )}
       {!isRenaming && (
         <button className="ch-cv-more" onClick={onMenuOpen} aria-label="更多操作">

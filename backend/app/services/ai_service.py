@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import cast
 
 import httpx
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, OpenAIError
 from openai.types.chat import ChatCompletionMessageParam
 
 from app.core.config import settings
@@ -25,6 +25,14 @@ from app.core.config import settings
 _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
 ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
+TITLE_GENERATION_TIMEOUT_SECONDS = 12
+TITLE_GENERATION_PROMPT = (
+    "Summarize the user's first question as a concise sidebar title in the same language. "
+    "Return only the title, without quotes, Markdown, emoji, numbering, punctuation, "
+    "explanation, or an answer to the question. Maximum 12 CJK characters or 8 words.\n\n"
+    "Question: "
+)
+TITLE_GENERATION_TOKEN_BUDGETS = (128, 256)
 
 PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     "gpt-4o": {"provider": "openai", "base_url": "https://api.openai.com/v1"},
@@ -278,6 +286,41 @@ async def transcribe_audio(*, filename: str, content: bytes, mime_type: str) -> 
         raise VoiceTranscriptionTimeoutError() from exc
     except (httpx.HTTPError, TypeError, ValueError) as exc:
         raise VoiceTranscriptionProviderError() from exc
+
+
+async def generate_conversation_title(question: str) -> str | None:
+    """使用 Agnes 2.5 Flash 为首个问题生成简短标题。
+
+    标题只是界面增强，任何配置或提供商失败均返回 ``None``，调用方必须保留本地
+    截断标题。此调用绝不改用其他聊天模型，避免标题功能产生意外费用或改变模型选择。
+    """
+    if not settings.agnes_api_key or not question.strip():
+        return None
+
+    config = PROVIDER_CONFIG["agnes-2.5-flash"]
+    client = _get_client(config["provider"], config["base_url"])
+    messages = cast(
+        list[ChatCompletionMessageParam],
+        [{"role": "user", "content": f"{TITLE_GENERATION_PROMPT}{question.strip()}"}],
+    )
+    try:
+        async with asyncio.timeout(TITLE_GENERATION_TIMEOUT_SECONDS):
+            for token_budget in TITLE_GENERATION_TOKEN_BUDGETS:
+                completion = await client.chat.completions.create(
+                    model="agnes-2.5-flash",
+                    messages=messages,
+                    temperature=0,
+                    max_tokens=token_budget,
+                )
+                if not completion.choices:
+                    return None
+                choice = completion.choices[0]
+                content = choice.message.content
+                if choice.finish_reason != "length":
+                    return content if isinstance(content, str) and content.strip() else None
+    except (TimeoutError, OpenAIError, httpx.HTTPError, TypeError, ValueError):
+        return None
+    return None
 
 
 async def stream_chat(

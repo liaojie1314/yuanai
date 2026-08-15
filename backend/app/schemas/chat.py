@@ -31,6 +31,8 @@ class ConversationResponse(BaseModel):
 
     id: uuid.UUID
     title: str
+    title_source: str
+    title_generated_at: datetime | None = None
     model: str
     is_pinned: bool
     last_message_at: datetime | None = None

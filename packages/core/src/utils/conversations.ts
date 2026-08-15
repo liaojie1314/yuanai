@@ -1,4 +1,4 @@
-import type { Conversation } from '@yuanai/types'
+import type { Conversation, ConversationTitleSource } from '@yuanai/types'
 
 import type { ConvGroup } from '../stores/chat.store.js'
 
@@ -22,6 +22,8 @@ export function convGroup(conv: Conversation, now: number = 0): ConvGroup {
 export interface ConversationSummary {
   id: string
   title: string
+  /** 标题生成进度，供平台侧边栏在首问期间显示非阻塞状态。 */
+  titleSource: ConversationTitleSource
   group: ConvGroup
   isPinned: boolean
   updatedAt: number
@@ -32,6 +34,7 @@ export function conversationToSummary(conv: Conversation, now: number = 0): Conv
   return {
     id: conv.id,
     title: conv.title,
+    titleSource: conv.titleSource,
     group: convGroup(conv, now),
     isPinned: conv.isPinned,
     updatedAt: new Date(ts).getTime(),

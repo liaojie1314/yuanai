@@ -4,6 +4,7 @@ import {
   CheckSquare,
   Ghost,
   LogOut,
+  LoaderCircle,
   MoreVertical,
   Pin,
   Search,
@@ -429,6 +430,11 @@ export function ConversationList({
                       >
                         {c.title}
                       </Text>
+                      {c.titleSource === 'fallback' ? (
+                        <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
+                          <LoaderCircle size={13} color={theme.text.muted} />
+                        </View>
+                      ) : null}
                       {selectionMode ? (
                         <View style={styles.convMore}>
                           {isSelected ? <Check size={14} color={brand.solid} /> : null}

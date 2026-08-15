@@ -61,6 +61,8 @@ const server = setupServer(
     const conversation: Conversation = {
       id: `conversation-${nextConversationNumber++}`,
       title: body.title ?? '新对话',
+      titleSource: 'default',
+      titleGeneratedAt: null,
       model: body.model,
       isPinned: false,
       lastMessageAt: null,
@@ -266,6 +268,8 @@ describe('desktop chat integration', () => {
       {
         id: 'conversation-1',
         title: '默认会话',
+        titleSource: 'manual',
+        titleGeneratedAt: '2026-08-10T08:00:00.000Z',
         model: 'gpt-4o',
         isPinned: false,
         lastMessageAt: '2026-08-10T08:00:00.000Z',
@@ -274,6 +278,8 @@ describe('desktop chat integration', () => {
       {
         id: 'conversation-2',
         title: '快速模型会话',
+        titleSource: 'manual',
+        titleGeneratedAt: '2026-08-09T08:00:00.000Z',
         model: 'gpt-4.1-mini',
         isPinned: false,
         lastMessageAt: '2026-08-09T08:00:00.000Z',
@@ -354,6 +360,8 @@ describe('desktop chat integration', () => {
       {
         id: 'conversation-1',
         title: '待分享会话',
+        titleSource: 'manual',
+        titleGeneratedAt: '2026-08-10T08:00:00.000Z',
         model: 'gpt-4o',
         isPinned: false,
         lastMessageAt: '2026-08-10T08:00:00.000Z',

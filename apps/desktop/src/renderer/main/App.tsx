@@ -969,6 +969,14 @@ function ConversationItem({
             {getConversationTitle(conversation).slice(0, 1).toLocaleUpperCase()}
           </span>
           <span>{getConversationTitle(conversation)}</span>
+          {conversation.titleSource === 'fallback' ? (
+            <LoaderCircle
+              className="desktop-chat__spin"
+              size={13}
+              role="status"
+              aria-label="正在生成会话标题"
+            />
+          ) : null}
         </button>
       )}
       {!renaming && !selectionMode && !sidebarCollapsed ? (

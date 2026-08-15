@@ -7,7 +7,7 @@ SSE 行格式：event: <name>\ndata: <json>\n\n
 
 import json
 import uuid
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
@@ -28,6 +28,8 @@ class TestConversation:
         assert response.status_code == 201
         data = response.json()
         assert data["title"] == "测试对话"
+        assert data["titleSource"] == "default"
+        assert data["titleGeneratedAt"] is None
         assert data["model"] == "gpt-4o"
         assert data["isPinned"] is False
         assert "id" in data
@@ -82,6 +84,8 @@ class TestConversation:
         )
         assert update_res.status_code == 200
         assert update_res.json()["title"] == "新标题"
+        assert update_res.json()["titleSource"] == "manual"
+        assert update_res.json()["titleGeneratedAt"] is not None
 
     async def test_pin_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]
@@ -176,6 +180,100 @@ class TestMessages:
 
 
 class TestStream:
+    async def test_first_message_emits_fallback_and_agnes_title(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """首问应先同步更新标题，再在 Agnes 结果可用时通过 SSE 替换。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+
+        async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            yield ("content", "回复")
+
+        title_result = {
+            "conversation_id": conv_id,
+            "title": "SQLAlchemy 事务边界",
+            "title_source": "ai",
+            "title_generated_at": "2026-08-15T12:00:00+00:00",
+        }
+        with (
+            patch("app.api.v1.chat.stream_chat", side_effect=mock_stream),
+            patch(
+                "app.api.v1.chat.generate_and_store_title",
+                new=AsyncMock(return_value=title_result),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_id,
+                    "model": "gpt-4o",
+                    "message": {"content": "解释一下 async SQLAlchemy 的事务边界", "file_ids": []},
+                },
+                headers=auth_headers,
+            ) as response:
+                assert response.status_code == 200
+                events = [line async for line in response.aiter_lines() if line.strip()]
+
+        title_data = [
+            json.loads(line.removeprefix("data: "))
+            for line in events
+            if line.startswith("data: ") and line != "data: [DONE]"
+        ]
+        assert any(item.get("title_source") == "fallback" for item in title_data)
+        assert any(item.get("title") == "SQLAlchemy 事务边界" for item in title_data)
+
+    async def test_first_message_keeps_fallback_when_agnes_returns_none(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """未配置 Agnes 或调用失败时，首问回退标题仍应保留且聊天成功。"""
+        conv_res = await client.post(
+            "/api/v1/chat/conversations",
+            json={"model": "gpt-4o"},
+            headers=auth_headers,
+        )
+        conv_id = conv_res.json()["id"]
+
+        async def mock_stream(*args: object, **kwargs: object):  # type: ignore[misc]
+            yield ("content", "回复")
+
+        with (
+            patch("app.api.v1.chat.stream_chat", side_effect=mock_stream),
+            patch(
+                "app.api.v1.chat.generate_and_store_title",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            async with client.stream(
+                "POST",
+                "/api/v1/chat/stream",
+                json={
+                    "conversation_id": conv_id,
+                    "model": "gpt-4o",
+                    "message": {"content": "  第一 个\n问题  ", "file_ids": []},
+                },
+                headers=auth_headers,
+            ) as response:
+                assert response.status_code == 200
+                body = "\n".join([line async for line in response.aiter_lines()])
+
+        assert '"title_source": "fallback"' in body
+        conversations_response = await client.get(
+            "/api/v1/chat/conversations", headers=auth_headers
+        )
+        conversation = next(
+            item
+            for item in conversations_response.json()["conversations"]
+            if item["id"] == conv_id
+        )
+        assert conversation["title"] == "第一 个 问题"
+        assert conversation["titleSource"] == "fallback"
+
     async def test_stream_returns_sse(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:
