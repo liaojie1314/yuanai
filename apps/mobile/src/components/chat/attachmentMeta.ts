@@ -1,37 +1,87 @@
 /**
- * 附件展示共用元数据：mime → 图标字符 / 图片判定 / 字节数格式化。
- * AttachmentTray（输入区预览条）与 UserMessage（消息内附件）共用。
+ * 附件展示共用元数据。
+ *
+ * 后端历史数据有时只有 `application/octet-stream`，不能只依赖 MIME；因此图片和
+ * 文档类型还会结合文件扩展名判断。图标统一使用 Lucide，避免 Android/iOS 的 emoji
+ * 字形不同而和 Web/Desktop 视觉脱节。
  */
+import {
+  FileArchive,
+  FileAudio,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  FileType2,
+  FileVideo,
+} from 'lucide-react-native'
+import type { LucideIcon } from 'lucide-react-native'
 
-/** 根据 mimeType 返回代表字符（文档图标占位） */
-export function mimeIcon(mimeType: string): string {
-  if (mimeType.startsWith('image/')) return '🖼'
-  if (mimeType.startsWith('video/')) return '🎬'
-  if (mimeType.startsWith('audio/')) return '🎵'
-  if (mimeType === 'application/pdf') return '📄'
-  if (
-    mimeType.includes('spreadsheet') ||
-    mimeType.includes('excel') ||
-    mimeType.endsWith('.xlsx') ||
-    mimeType.endsWith('.xls')
-  )
-    return '📊'
-  if (
-    mimeType.includes('presentation') ||
-    mimeType.includes('powerpoint') ||
-    mimeType.endsWith('.pptx')
-  )
-    return '📋'
-  if (mimeType.includes('word') || mimeType.endsWith('.docx') || mimeType.endsWith('.doc'))
-    return '📝'
-  if (mimeType.includes('zip') || mimeType.includes('compressed') || mimeType.includes('archive'))
-    return '🗜'
-  if (mimeType.includes('text/')) return '📃'
-  return '📎'
+/** 附件卡片的视觉种类。 */
+export type AttachmentKind =
+  'image' | 'pdf' | 'sheet' | 'document' | 'text' | 'audio' | 'video' | 'archive' | 'file'
+
+/** 附件卡片显示所需的统一图标与标签。 */
+export interface AttachmentMeta {
+  kind: AttachmentKind
+  label: string
+  Icon: LucideIcon
 }
 
-export function isImageMime(mimeType: string): boolean {
-  return mimeType.startsWith('image/')
+const IMAGE_EXTENSION = /\.(avif|gif|jpe?g|png|webp)$/i
+const SPREADSHEET_EXTENSION = /\.(csv|ods|xls|xlsx)$/i
+const DOCUMENT_EXTENSION = /\.(doc|docx|odt|rtf)$/i
+const TEXT_EXTENSION = /\.(json|md|txt|xml|ya?ml)$/i
+
+/**
+ * 判断附件是否为可内嵌展示的图片。
+ *
+ * @param mimeType 上传或服务端保存的 MIME 类型
+ * @param filename 原始文件名，用于兼容泛型 MIME 的历史附件
+ */
+export function isImageAttachment(mimeType: string, filename = ''): boolean {
+  return mimeType.toLocaleLowerCase().startsWith('image/') || IMAGE_EXTENSION.test(filename)
+}
+
+/**
+ * 根据 MIME 类型与文件名生成跨端一致的附件图标元数据。
+ *
+ * @param mimeType 上传或服务端保存的 MIME 类型
+ * @param filename 原始文件名，用于泛型 MIME 的扩展名回退
+ */
+export function getAttachmentMeta(mimeType: string, filename = ''): AttachmentMeta {
+  const normalizedMime = mimeType.toLocaleLowerCase()
+  const normalizedFilename = filename.toLocaleLowerCase()
+
+  if (isImageAttachment(normalizedMime, normalizedFilename)) {
+    return { kind: 'image', label: '图片', Icon: FileImage }
+  }
+  if (normalizedMime === 'application/pdf' || normalizedFilename.endsWith('.pdf')) {
+    return { kind: 'pdf', label: 'PDF', Icon: FileType2 }
+  }
+  if (
+    normalizedMime.includes('spreadsheet') ||
+    normalizedMime.includes('excel') ||
+    normalizedMime === 'text/csv' ||
+    SPREADSHEET_EXTENSION.test(normalizedFilename)
+  ) {
+    return { kind: 'sheet', label: '表格', Icon: FileSpreadsheet }
+  }
+  if (normalizedMime.includes('word') || DOCUMENT_EXTENSION.test(normalizedFilename)) {
+    return { kind: 'document', label: '文档', Icon: FileText }
+  }
+  if (normalizedMime.startsWith('audio/')) return { kind: 'audio', label: '音频', Icon: FileAudio }
+  if (normalizedMime.startsWith('video/')) return { kind: 'video', label: '视频', Icon: FileVideo }
+  if (
+    normalizedMime.includes('zip') ||
+    normalizedMime.includes('compressed') ||
+    normalizedMime.includes('archive')
+  ) {
+    return { kind: 'archive', label: '压缩包', Icon: FileArchive }
+  }
+  if (normalizedMime.startsWith('text/') || TEXT_EXTENSION.test(normalizedFilename)) {
+    return { kind: 'text', label: '文本', Icon: FileText }
+  }
+  return { kind: 'file', label: '文件', Icon: FileText }
 }
 
 /** 1234567 → "1.2 MB"；小于 1KB 显示字节数 */

@@ -13,6 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { setPlatformAdapter, useAuthStore, usePrefsStore } from '@yuanai/core'
 
 import { ThemeShell } from '@/components/ThemeShell'
+import { ImagePreviewProvider } from '@/components/ui/ImagePreview'
 import { DialogProvider } from '@/components/ui/Dialog'
 import { ToastProvider } from '@/components/ui/Toast'
 import { useAppStateStream } from '@/hooks/useAppStateStream'
@@ -80,7 +81,9 @@ function RootLayout(): React.JSX.Element {
                 <ThemeShell>
                   <DialogProvider>
                     <ToastProvider>
-                      <RootLayoutContent />
+                      <ImagePreviewProvider>
+                        <RootLayoutContent />
+                      </ImagePreviewProvider>
                     </ToastProvider>
                   </DialogProvider>
                 </ThemeShell>

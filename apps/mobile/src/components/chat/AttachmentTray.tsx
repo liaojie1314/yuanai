@@ -22,7 +22,7 @@ import {
 
 import type { AttachmentItem } from '@/hooks/useAttachments'
 
-import { isImageMime, mimeIcon } from './attachmentMeta'
+import { getAttachmentMeta, isImageAttachment } from './attachmentMeta'
 import { radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -48,7 +48,7 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
           key={item.localKey}
           style={[styles.cell, { backgroundColor: t.bg.elevated, borderColor: t.border.default }]}
         >
-          {isImageMime(item.mimeType) ? (
+          {isImageAttachment(item.mimeType, item.name) ? (
             <Image
               source={{ uri: item.uri }}
               style={styles.thumb}
@@ -56,12 +56,7 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
               accessibilityLabel={item.name}
             />
           ) : (
-            <View style={styles.docThumb}>
-              <Text style={styles.docIcon}>{mimeIcon(item.mimeType)}</Text>
-              <Text style={[styles.docName, { color: t.text.secondary }]} numberOfLines={2}>
-                {item.name}
-              </Text>
-            </View>
+            <DocumentThumbnail mimeType={item.mimeType} name={item.name} />
           )}
 
           {/* 上传中遮罩 */}
@@ -90,6 +85,27 @@ export function AttachmentTray({ attachments, onRemove }: AttachmentTrayProps): 
         </View>
       ))}
     </ScrollView>
+  )
+}
+
+/** 输入区文档缩略图，和历史消息附件卡复用同一套类型图标。 */
+function DocumentThumbnail({
+  mimeType,
+  name,
+}: {
+  mimeType: string
+  name: string
+}): React.JSX.Element {
+  const t = useTheme()
+  const { Icon } = getAttachmentMeta(mimeType, name)
+
+  return (
+    <View style={styles.docThumb}>
+      <Icon size={23} color={t.text.secondary} strokeWidth={1.8} aria-hidden />
+      <Text style={[styles.docName, { color: t.text.secondary }]} numberOfLines={2}>
+        {name}
+      </Text>
+    </View>
   )
 }
 
@@ -123,9 +139,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
     gap: 2,
-  },
-  docIcon: {
-    fontSize: 22,
   },
   docName: {
     fontSize: 9,
