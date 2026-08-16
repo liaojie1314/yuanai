@@ -15,9 +15,12 @@ const chat = vi.hoisted(() => ({
     createdAt: string
   }>,
   createConversation: vi.fn(),
+  createMediaTask: vi.fn(),
+  mediaTasks: [],
   createShareLink: vi.fn(),
   deleteConversation: vi.fn(),
   deleteConversations: vi.fn(),
+  cancelMediaTask: vi.fn(),
   messages: [] as Array<{
     id: string
     role: string
@@ -182,10 +185,17 @@ vi.mock('react-virtuoso', async () => {
 vi.mock('@yuanai/core/hooks', () => ({
   useConversations: () => ({ data: chat.conversations, isLoading: false }),
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
+  useCreateMediaTask: () => ({
+    isPending: false,
+    mutate: chat.createMediaTask,
+    mutateAsync: chat.createMediaTask,
+  }),
+  useCancelMediaTask: () => ({ isPending: false, mutate: chat.cancelMediaTask }),
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
   useDeleteConversations: () => ({ isPending: false, mutateAsync: chat.deleteConversations }),
   useLogout: () => ({ isPending: false, mutateAsync: chat.logout }),
   useMessages: () => ({ data: chat.messages, isLoading: false }),
+  useMediaTasks: () => ({ data: chat.mediaTasks, isLoading: false }),
   useModels: () => ({ data: chat.models }),
   useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
   useCreateShareLink: () => ({ isPending: false, mutateAsync: chat.createShareLink }),

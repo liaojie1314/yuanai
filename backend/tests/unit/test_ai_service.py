@@ -25,11 +25,16 @@ import app.services.ai_service as ai_svc  # noqa: E402
 from app.services.ai_service import (  # noqa: E402
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
+    AgnesImageResult,
+    AgnesVideoSnapshot,
+    MediaProviderUnavailableError,
     ModelVisionUnsupportedError,
     VoiceTranscriptionProviderError,
     VoiceTranscriptionUnavailableError,
     _get_client,
+    generate_agnes_image,
     generate_conversation_title,
+    get_agnes_video,
     get_available_models,
     stream_chat,
     transcribe_audio,
@@ -186,6 +191,82 @@ async def test_generate_conversation_title_uses_first_complete_agnes_response(
     assert title == "SQLAlchemy 事务边界"
     client.chat.completions.create.assert_awaited_once()
     assert client.chat.completions.create.await_args.kwargs["max_tokens"] == 128
+
+
+async def test_generate_agnes_image_normalizes_only_the_provider_output_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """图片 API 应使用 Agnes 图片模型并仅返回 provider 的临时输出地址给 worker。"""
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-agnes-key")
+    generated = MagicMock()
+    generated.data = [MagicMock(url="https://provider.example/output.png")]
+    client = MagicMock()
+    client.images.generate = AsyncMock(return_value=generated)
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+
+    result = await generate_agnes_image(
+        "一只红色风筝",
+        size="2K",
+        ratio="16:9",
+        image_urls=("https://files.example/reference.png",),
+    )
+
+    assert result == AgnesImageResult(url="https://provider.example/output.png")
+    client.images.generate.assert_awaited_once_with(
+        model="agnes-image-2.1-flash",
+        prompt="一只红色风筝",
+        size="2K",
+        extra_body={
+            "ratio": "16:9",
+            "extra_body": {
+                "image": ["https://files.example/reference.png"],
+                "response_format": "url",
+            },
+        },
+    )
+
+
+async def test_get_agnes_video_maps_completed_provider_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """视频查询将 provider 的 completed 状态归一为应用的 succeeded 状态。"""
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-agnes-key")
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {
+        "status": "completed",
+        "progress": 100,
+        "metadata": {"url": "https://provider.example/result.mp4"},
+        "width": 1152,
+        "height": 768,
+        "seconds": 5.0,
+    }
+    client = MagicMock()
+    client.get = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **_kwargs: client)
+
+    snapshot = await get_agnes_video("video-1")
+
+    assert snapshot == AgnesVideoSnapshot(
+        provider_task_id=None,
+        video_id="video-1",
+        status="succeeded",
+        progress=100,
+        result_url="https://provider.example/result.mp4",
+        width=1152,
+        height=768,
+        duration_seconds=5.0,
+    )
+
+
+async def test_media_provider_requires_agnes_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """缺失 Agnes 凭据时不得发出任何媒体提供商请求。"""
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "")
+
+    with pytest.raises(MediaProviderUnavailableError):
+        await generate_agnes_image("一只红色风筝", size="1K", ratio="1:1")
 
 
 def test_deepseek_v4_official_metadata() -> None:

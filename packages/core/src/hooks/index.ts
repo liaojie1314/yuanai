@@ -30,6 +30,12 @@ export {
   useInvalidateMessages,
   useAppendMessage,
 } from './useChatQueries'
+export {
+  useCancelMediaTask,
+  useCreateMediaTask,
+  useMediaTasks,
+  type CreateMediaTaskInput,
+} from './useMediaGeneration'
 export { useModels } from './useModelsQuery'
 export {
   useShareLink,

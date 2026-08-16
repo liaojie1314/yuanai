@@ -47,8 +47,25 @@ export interface FileArtifactPayload {
   index?: number
 }
 
+/**
+ * 由生成任务返回的图片或视频预览。
+ *
+ * 生成结果不是用户上传的 `File` 记录，不能走 `/files/{id}/preview` 查询；面板直接
+ * 使用已由后端任务接口返回的受控结果 URL。
+ */
+export interface MediaArtifactPayload {
+  /** 用于与代码和上传文件预览区分的稳定标识。 */
+  kind: 'media'
+  /** 面板顶部展示的媒体名称。 */
+  title: string
+  /** 已完成媒体的 MIME 类型。 */
+  mimeType: string
+  /** 后端任务接口返回的结果 URL。 */
+  url: string
+}
+
 /** Artifact 面板当前承载的内容。 */
-export type ArtifactPayload = CodeArtifactPayload | FileArtifactPayload
+export type ArtifactPayload = CodeArtifactPayload | FileArtifactPayload | MediaArtifactPayload
 
 interface ArtifactState {
   /** 面板是否展开 */
@@ -75,6 +92,9 @@ interface ArtifactState {
       index?: number
     }
   ) => void
+
+  /** 在右侧 Artifact 面板中直接打开已生成的图片或视频。 */
+  openMediaPreview: (payload: Omit<MediaArtifactPayload, 'kind'>) => void
 
   /** 关闭面板并清空 payload */
   close: () => void
@@ -104,6 +124,8 @@ export const useArtifactStore = create<ArtifactState>()((set) => ({
         kind: 'file',
       },
     }),
+
+  openMediaPreview: (payload) => set({ open: true, payload: { ...payload, kind: 'media' } }),
 
   close: () => set({ open: false, payload: null }),
 }))

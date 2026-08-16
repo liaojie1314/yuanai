@@ -183,6 +183,74 @@ export interface MessageFile {
   url: string
 }
 
+/** 可恢复媒体生成任务的类型。 */
+export type MediaGenerationType = 'image' | 'video'
+
+/** 可恢复媒体生成任务的稳定生命周期状态。 */
+export type MediaGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+
+/** Agnes Image 2.1 Flash 的受支持清晰度档位。 */
+export type MediaImageSize = '1K' | '2K' | '3K' | '4K'
+
+/** Agnes Image 2.1 Flash 的受支持画幅比例。 */
+export type MediaImageRatio = '1:1' | '3:4' | '4:3' | '16:9' | '9:16' | '2:3' | '3:2' | '21:9'
+
+/** Agnes Video V2.0 在本应用暴露的画幅比例。 */
+export type MediaVideoAspectRatio = '3:2' | '16:9' | '9:16' | '1:1' | '4:3' | '3:4'
+
+/** Agnes Video V2.0 在本应用暴露的分辨率档位。 */
+export type MediaVideoResolution = '480p' | '720p' | '1080p'
+
+/** Agnes Video V2.0 的受限时长预设，后端会转换为有效的 `8n + 1` 帧数。 */
+export type MediaVideoDurationSeconds = 3 | 5 | 10 | 18
+
+/** 媒体任务的已校验规格，字段由任务类型决定。 */
+export interface MediaGenerationOptions {
+  size?: MediaImageSize
+  ratio?: MediaImageRatio
+  aspectRatio?: MediaVideoAspectRatio
+  resolution?: MediaVideoResolution
+  durationSeconds?: MediaVideoDurationSeconds
+}
+
+/** 创建媒体任务所需的跨端输入，不包含任何 provider URL 或本地路径。 */
+export interface CreateMediaGenerationTaskInput {
+  conversationId: string
+  type: MediaGenerationType
+  prompt: string
+  options?: MediaGenerationOptions
+  /** 仅接受当前用户已经上传的图片文件 ID。 */
+  sourceFileIds?: string[]
+}
+
+/** 后端持久化并关联到 assistant 消息卡的媒体生成任务。 */
+export interface MediaGenerationTask {
+  id: string
+  conversationId: string
+  messageId: string
+  /** 发起此任务的用户消息；旧任务迁移失败时可为空。 */
+  sourceMessageId: string | null
+  type: MediaGenerationType
+  model: 'agnes-image-2.1-flash' | 'agnes-video-v2.0'
+  prompt: string
+  options: MediaGenerationOptions
+  /** 仅用于恢复任务的引用标识，不包含对象存储路径。 */
+  sourceFileIds: string[]
+  status: MediaGenerationStatus
+  progress: number
+  resultUrl: string | null
+  /** 视频首帧封面；图片和旧任务可以为空。 */
+  resultPosterUrl: string | null
+  resultMimeType: string | null
+  resultWidth: number | null
+  resultHeight: number | null
+  resultDurationSeconds: number | null
+  errorCode: string | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 /** 工具调用的执行状态 */
 export type ToolCallStatus = 'pending' | 'running' | 'done' | 'error'
 
@@ -285,6 +353,8 @@ export interface Message {
   model?: string
   /** 本次响应消耗的 token 总量；用户消息无此字段 */
   tokensUsed?: number
+  /** 持久化媒体任务卡；普通 assistant 消息为 null 或未提供。 */
+  mediaTask?: MediaGenerationTask | null
   files: MessageFile[]
   createdAt: string
 }

@@ -10,6 +10,7 @@ export interface MsgPair {
   pairKey: string
   userMsg: MockMessage
   assistants: MockMessage[]
+  mediaAssistants: MockMessage[]
 }
 
 /**
@@ -54,6 +55,7 @@ export function apiMsgToMock(msg: Message): MockMessage {
       ? { thinkDurationMs: msg.thinkingDurationMs }
       : {}),
     ...(msg.files.length > 0 ? { files: msg.files } : {}),
+    ...(msg.mediaTask ? { mediaTask: msg.mediaTask } : {}),
     createdAt: new Date(msg.createdAt).getTime(),
   }
 }
@@ -107,13 +109,18 @@ export function buildPairs(msgs: MockMessage[]): MsgPair[] {
         activePair = sourcePair
         pairsByUserMessageId.set(msg.id, sourcePair)
       } else {
-        activePair = { pairKey: msg.id, userMsg: msg, assistants: [] }
+        activePair = { pairKey: msg.id, userMsg: msg, assistants: [], mediaAssistants: [] }
         pairs.push(activePair)
         pairsByUserMessageId.set(msg.id, activePair)
       }
       continue
     }
-    if (activePair) {
+    if (msg.mediaTask) {
+      const sourceMessageId = msg.mediaTask.sourceMessageId
+      const sourcePair = sourceMessageId ? pairsByUserMessageId.get(sourceMessageId) : undefined
+      const targetPair = sourcePair ?? activePair
+      if (targetPair) targetPair.mediaAssistants.push(msg)
+    } else if (activePair) {
       activePair.assistants.push(msg)
     }
   }

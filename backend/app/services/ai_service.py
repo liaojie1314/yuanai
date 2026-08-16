@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import cast
 
 import httpx
@@ -25,6 +26,7 @@ from app.core.config import settings
 _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
 ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
+AGNES_VIDEO_API_BASE_URL = "https://apihub.agnes-ai.com/v1"
 TITLE_GENERATION_TIMEOUT_SECONDS = 12
 TITLE_GENERATION_PROMPT = (
     "Summarize the user's first question as a concise sidebar title in the same language. "
@@ -99,6 +101,41 @@ class VoiceTranscriptionProviderError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("Voice transcription provider failed")
+
+
+class MediaProviderUnavailableError(RuntimeError):
+    """未配置 Agnes 凭据时媒体生成请求不可用。"""
+
+    def __init__(self) -> None:
+        super().__init__("Media generation provider is unavailable")
+
+
+class MediaProviderError(RuntimeError):
+    """Agnes 媒体请求失败时向任务 worker 暴露的脱敏错误。"""
+
+    def __init__(self) -> None:
+        super().__init__("Media generation provider failed")
+
+
+@dataclass(frozen=True)
+class AgnesImageResult:
+    """Agnes 图片 API 返回的临时 provider 输出地址。"""
+
+    url: str
+
+
+@dataclass(frozen=True)
+class AgnesVideoSnapshot:
+    """Agnes 视频任务在某次查询时的标准化快照。"""
+
+    provider_task_id: str | None
+    video_id: str | None
+    status: str
+    progress: int
+    result_url: str | None
+    width: int | None
+    height: int | None
+    duration_seconds: float | None
 
 
 AVAILABLE_MODELS = [
@@ -218,10 +255,193 @@ def _require_assemblyai_string(payload: object, field: str) -> str:
     """从 AssemblyAI 的 JSON 响应中读取非空字符串字段。"""
     if not isinstance(payload, dict):
         raise VoiceTranscriptionProviderError()
-    value = payload.get(field)
+    value: object = payload.get(field)
     if not isinstance(value, str) or not value.strip():
         raise VoiceTranscriptionProviderError()
     return value.strip()
+
+
+def _require_agnes_key() -> str:
+    """返回当前运行时 Agnes 密钥，缺失时阻止任何上游请求。"""
+    if not settings.agnes_api_key:
+        raise MediaProviderUnavailableError()
+    return settings.agnes_api_key
+
+
+def _optional_agnes_string(payload: object, field: str) -> str | None:
+    """从 Agnes 响应中读取一个可选非空字符串字段。"""
+    if not isinstance(payload, dict):
+        return None
+    value: object = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def _optional_agnes_int(payload: object, field: str) -> int | None:
+    """从 Agnes 响应读取一个合理的非负整数，非法值返回 None。"""
+    if not isinstance(payload, dict):
+        return None
+    value: object = payload.get(field)
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _optional_agnes_seconds(payload: object, field: str) -> float | None:
+    """从 Agnes 响应读取非负秒数，非法值返回 None。"""
+    if not isinstance(payload, dict):
+        return None
+    value: object = payload.get(field)
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, (str, bytes, bytearray, int, float)):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _normalize_agnes_video_status(value: str | None) -> str:
+    """把 Agnes 的提供商状态收敛为应用媒体任务状态。"""
+    normalized = (value or "").strip().lower()
+    if normalized in {"queued", "pending", "created"}:
+        return "queued"
+    if normalized in {"running", "processing", "in_progress", "generating"}:
+        return "running"
+    if normalized in {"completed", "complete", "succeeded", "success"}:
+        return "succeeded"
+    if normalized in {"canceled", "cancelled"}:
+        return "canceled"
+    return "failed"
+
+
+async def generate_agnes_image(
+    prompt: str, *, size: str, ratio: str, image_urls: tuple[str, ...] = ()
+) -> AgnesImageResult:
+    """调用 Agnes Image 2.1 Flash，返回仅供后端持久化的临时输出 URL。
+
+    图片不会将该 URL 返回给客户端；调用方必须下载、校验并写入 YuanAI 对象存储。
+    """
+    _require_agnes_key()
+    config = PROVIDER_CONFIG["agnes-image-2.1-flash"]
+    client = _get_client(config["provider"], config["base_url"])
+    try:
+        async with asyncio.timeout(settings.media_image_timeout_seconds):
+            image_body: dict[str, object] = {"response_format": "url"}
+            if image_urls:
+                image_body["image"] = list(image_urls)
+            response = await client.images.generate(
+                model="agnes-image-2.1-flash",
+                prompt=prompt,
+                size=size,
+                # Agnes requires ratio at the top level and its response/image extensions
+                # inside extra_body. The OpenAI client merges this mapping into the JSON body.
+                extra_body={"ratio": ratio, "extra_body": image_body},
+            )
+    except TimeoutError as error:
+        raise MediaProviderError() from error
+    except (OpenAIError, httpx.HTTPError, TypeError, ValueError) as error:
+        raise MediaProviderError() from error
+
+    data = getattr(response, "data", None)
+    first = data[0] if isinstance(data, list) and data else None
+    url = getattr(first, "url", None)
+    if not isinstance(url, str) or not url.strip():
+        raise MediaProviderError()
+    return AgnesImageResult(url=url.strip())
+
+
+async def _agnes_video_request(
+    method: str,
+    path: str,
+    *,
+    json_body: dict[str, object] | None = None,
+    params: dict[str, str] | None = None,
+) -> object:
+    """执行一条受限超时的 Agnes 视频 API 请求并返回 JSON 对象。"""
+    api_key = _require_agnes_key()
+    try:
+        async with httpx.AsyncClient(
+            base_url=AGNES_VIDEO_API_BASE_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=settings.media_video_poll_timeout_seconds,
+        ) as client:
+            if method == "GET":
+                response = await client.get(path, params=params)
+            else:
+                response = await client.post(path, json=json_body)
+            response.raise_for_status()
+            return response.json()
+    except (httpx.HTTPError, TypeError, ValueError) as error:
+        raise MediaProviderError() from error
+
+
+def _video_snapshot(payload: object, fallback_video_id: str | None = None) -> AgnesVideoSnapshot:
+    """将 Agnes 视频创建或轮询响应转换为稳定的内部快照。"""
+    if not isinstance(payload, dict):
+        raise MediaProviderError()
+    metadata = payload.get("metadata")
+    result_url = _optional_agnes_string(metadata, "url")
+    if result_url is None:
+        result_url = _optional_agnes_string(payload, "url")
+    return AgnesVideoSnapshot(
+        provider_task_id=_optional_agnes_string(payload, "task_id"),
+        video_id=_optional_agnes_string(payload, "video_id") or fallback_video_id,
+        status=_normalize_agnes_video_status(_optional_agnes_string(payload, "status")),
+        progress=min(100, _optional_agnes_int(payload, "progress") or 0),
+        result_url=result_url,
+        width=_optional_agnes_int(payload, "width"),
+        height=_optional_agnes_int(payload, "height"),
+        duration_seconds=_optional_agnes_seconds(payload, "seconds"),
+    )
+
+
+async def create_agnes_video(
+    prompt: str,
+    *,
+    width: int,
+    height: int,
+    num_frames: int,
+    frame_rate: int,
+    image_urls: tuple[str, ...] = (),
+) -> AgnesVideoSnapshot:
+    """创建 Agnes Video V2.0 异步任务并返回初始标准化快照。"""
+    body: dict[str, object] = {
+        "model": "agnes-video-v2.0",
+        "prompt": prompt,
+        "width": width,
+        "height": height,
+        "num_frames": num_frames,
+        "frame_rate": frame_rate,
+    }
+    if len(image_urls) == 1:
+        body["image"] = image_urls[0]
+    elif len(image_urls) > 1:
+        body["extra_body"] = {"image": list(image_urls), "mode": "keyframes"}
+    payload = await _agnes_video_request(
+        "POST",
+        "/videos",
+        json_body=body,
+    )
+    snapshot = _video_snapshot(payload)
+    if snapshot.video_id is None:
+        raise MediaProviderError()
+    return snapshot
+
+
+async def get_agnes_video(video_id: str) -> AgnesVideoSnapshot:
+    """查询一个 Agnes 视频任务并将结果归一化。"""
+    payload = await _agnes_video_request("GET", "/agnesapi", params={"video_id": video_id})
+    return _video_snapshot(payload, fallback_video_id=video_id)
 
 
 async def _poll_assemblyai_transcript(client: httpx.AsyncClient, transcript_id: str) -> str:

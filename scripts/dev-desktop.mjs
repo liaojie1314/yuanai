@@ -5,14 +5,16 @@
  */
 import { spawn } from 'node:child_process'
 
-const command = process.platform === 'win32' ? 'corepack.cmd' : 'corepack'
+// npm scripts already expose the packageManager-pinned pnpm on PATH. Reusing it
+// avoids depending on a globally installed Corepack binary.
+const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const environment = { ...process.env }
 delete environment.ELECTRON_RENDERER_URL
 if (process.platform === 'linux' && environment.CHOKIDAR_USEPOLLING === undefined) {
   environment.CHOKIDAR_USEPOLLING = 'true'
 }
 
-const child = spawn(command, ['pnpm', '--filter', '@yuanai/desktop', 'dev', ...process.argv.slice(2)], {
+const child = spawn(command, ['--filter', '@yuanai/desktop', 'dev', ...process.argv.slice(2)], {
   env: environment,
   stdio: 'inherit',
 })

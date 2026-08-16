@@ -4,6 +4,8 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
+from app.schemas.media_generation import MediaGenerationTaskResponse
+
 
 class CreateConversationRequest(BaseModel):
     model: str
@@ -69,6 +71,7 @@ class MessageResponse(BaseModel):
     model: str | None = None
     tokens_used: int | None = None
     files: list[MessageFileResponse] = []
+    media_task: MediaGenerationTaskResponse | None = None
     created_at: datetime
 
 

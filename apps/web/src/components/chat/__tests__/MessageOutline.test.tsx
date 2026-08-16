@@ -20,6 +20,7 @@ function makePairs(count: number): MsgPair[] {
     pairKey: `p${i}`,
     userMsg: makeUserMsg(`p${i}`, `问题 ${i} 的内容`),
     assistants: [],
+    mediaAssistants: [],
   }))
 }
 
@@ -161,7 +162,12 @@ describe('MessageOutline', () => {
     const ref = { current: null } as RefObject<VirtuosoHandle | null>
     const pairs: MsgPair[] = [
       ...makePairs(2),
-      { pairKey: 'p-long', userMsg: makeUserMsg('p-long', longText), assistants: [] },
+      {
+        pairKey: 'p-long',
+        userMsg: makeUserMsg('p-long', longText),
+        assistants: [],
+        mediaAssistants: [],
+      },
     ]
     const { container } = render(<MessageOutline pairs={pairs} virtuosoRef={ref} />)
     const wrap = container.querySelector('.ch-outline-wrap') as HTMLElement

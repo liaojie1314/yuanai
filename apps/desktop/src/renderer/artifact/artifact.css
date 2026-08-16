@@ -10,6 +10,11 @@ body,
 :root {
   --artifact-border: #dbe3f0;
   --artifact-divider: #e6edf7;
+  --artifact-video-controls-border: rgba(148, 163, 184, 0.42);
+  --artifact-video-controls-bg: rgba(255, 255, 255, 0.94);
+  --artifact-video-controls-hover: #dbeafe;
+  --artifact-video-controls-text: #1e293b;
+  --artifact-video-progress: #2563eb;
   color: #18243f;
   background: #f5f7fb;
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -99,6 +104,13 @@ body {
   background: #eff6ff;
   font-size: 12px;
 }
+
+.artifact__zoom {
+  min-width: 38px;
+  color: #5b6d8d;
+  font-size: 12px;
+  text-align: center;
+}
 .artifact__content {
   display: grid;
   min-width: 0;
@@ -113,21 +125,148 @@ body {
 }
 
 .artifact__content--file {
-  place-items: center;
   background: #f1f5f9;
 }
 
-.artifact__file-image,
 .artifact__file-frame {
   width: 100%;
   height: 100%;
   border: 0;
 }
 
+.artifact__image-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(100, 116, 139, 0.32) transparent;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  background: #f1f5f9;
+  cursor: zoom-in;
+}
+
+.artifact__image-viewport--pannable {
+  cursor: grab;
+}
+
+.artifact__image-viewport--panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.artifact__image-viewport::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.artifact__image-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.artifact__image-viewport::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: rgba(100, 116, 139, 0.36);
+  background-clip: padding-box;
+}
+
+.artifact__image-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.62);
+  background-clip: padding-box;
+}
+
+.artifact__image-canvas {
+  display: grid;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  place-items: center;
+  padding: 24px;
+}
+
 .artifact__file-image {
   display: block;
+  max-width: none;
+  height: auto;
+  flex: 0 0 auto;
+  user-select: none;
+}
+
+.artifact__video-shell {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+  background: #0f172a;
+}
+
+.artifact__file-video {
+  width: 100%;
+  height: 100%;
   max-width: 100%;
   object-fit: contain;
+  cursor: pointer;
+}
+
+.artifact__file-video:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: -4px;
+}
+
+.artifact__video-controls {
+  position: absolute;
+  right: 20px;
+  bottom: 18px;
+  left: 20px;
+  display: grid;
+  min-height: 40px;
+  grid-template-columns: 30px minmax(64px, 1fr) auto 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 1px solid var(--artifact-video-controls-border);
+  border-radius: 6px;
+  color: var(--artifact-video-controls-text);
+  background: var(--artifact-video-controls-bg);
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.2);
+  backdrop-filter: blur(8px);
+}
+
+.artifact__video-controls button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+}
+
+.artifact__video-controls button:hover,
+.artifact__video-controls button:focus-visible {
+  background: var(--artifact-video-controls-hover);
+}
+
+.artifact__video-controls input[type='range'] {
+  width: 100%;
+  accent-color: var(--artifact-video-progress);
+}
+
+.artifact__video-controls input[type='range']:disabled {
+  opacity: 0.5;
+}
+
+.artifact__video-controls span {
+  min-width: 76px;
+  color: var(--artifact-video-controls-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 .artifact__code {
   min-width: 0;
@@ -415,6 +554,11 @@ body {
 :root[data-theme='dark'] {
   --artifact-border: #2a3648;
   --artifact-divider: #2a3648;
+  --artifact-video-controls-border: rgba(148, 163, 184, 0.24);
+  --artifact-video-controls-bg: rgba(15, 23, 42, 0.9);
+  --artifact-video-controls-hover: #1e3a5f;
+  --artifact-video-controls-text: #e2e8f0;
+  --artifact-video-progress: #60a5fa;
   color: #e2e8f0;
   background: #111827;
 }

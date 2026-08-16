@@ -15,6 +15,7 @@ import type { ToolCall } from '@yuanai/types'
 import MarkdownContent from '@/components/MarkdownContent'
 import { ThinkBlock } from './ThinkBlock'
 import { CodeBlock } from './CodeBlock'
+import { MediaTaskCard } from './MediaTaskCard'
 import { getMsgText, formatMsgTime, stripMarkdown } from './utils'
 
 export interface AIMessageProps {
@@ -115,14 +116,17 @@ function AIMessageBase({
                 : {})}
           />
         )}
-        {displayContent && <MarkdownContent content={displayContent} streaming={isStreaming} />}
+        {msg.mediaTask ? <MediaTaskCard task={msg.mediaTask} /> : null}
+        {!msg.mediaTask && displayContent ? (
+          <MarkdownContent content={displayContent} streaming={isStreaming} />
+        ) : null}
         {/* 结构化 parts 中的多模态资源渲染 */}
         {msg.parts
           .filter((p) => p.type === 'code' && p.code)
           .map((p, i) => (
             <CodeBlock key={`code-${i}`} lang={p.lang ?? ''} code={p.code ?? ''} />
           ))}
-        {!isStreaming && (
+        {!isStreaming && !msg.mediaTask && (
           <>
             {versionCount > 1 && onVersionChange && (
               <div className="ch-ver-nav">
@@ -212,7 +216,7 @@ function AIMessageBase({
             </div>
           </>
         )}
-        {!isStreaming && msg.followUps && msg.followUps.length > 0 && (
+        {!isStreaming && !msg.mediaTask && msg.followUps && msg.followUps.length > 0 && (
           <div className="ch-followups">
             {msg.followUps.map((fu) => (
               <button key={fu} className="ch-fu" onClick={() => onFill(fu)}>

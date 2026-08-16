@@ -86,7 +86,9 @@ function isDesktopArtifactPayload(
     payload.title.length > 0 &&
     payload.title.length <= 200 &&
     typeof payload.mimeType === 'string' &&
-    (payload.mimeType.startsWith('image/') || payload.mimeType === 'application/pdf') &&
+    (payload.mimeType.startsWith('image/') ||
+      payload.mimeType === 'video/mp4' ||
+      payload.mimeType === 'application/pdf') &&
     isAllowedPreviewUrl(payload.sourceUrl, runtimeConfig) &&
     (payload.theme === undefined || payload.theme === 'light' || payload.theme === 'dark')
   )

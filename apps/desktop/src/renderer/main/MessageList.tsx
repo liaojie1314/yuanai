@@ -223,6 +223,22 @@ export function MessageList({
                 deferCodeHighlight={deferCodeHighlight}
               />
             ) : null}
+            {pair.mediaAssistants.map((mediaMessage) => (
+              <ChatMessage
+                key={mediaMessage.id}
+                user={user}
+                message={mediaMessage}
+                isStreaming={false}
+                canRegenerate={false}
+                timeFmt={timeFmt}
+                dateFmt={dateFmt}
+                onFeedback={onOpenFeedback}
+                onOpenArtifact={onOpenArtifact}
+                onRegenerate={() => undefined}
+                onEditMessage={onEditMessage}
+                deferCodeHighlight={deferCodeHighlight}
+              />
+            ))}
             {isPairRegenerating ? (
               <StreamingMessage
                 content={streamingContent}

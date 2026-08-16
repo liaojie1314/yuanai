@@ -18,6 +18,35 @@ function msg(
   }
 }
 
+function mediaTaskMessage(id: string, sourceMessageId: string, prompt: string): Message {
+  return {
+    ...msg(id, 'assistant', '正在生成视频'),
+    mediaTask: {
+      id: `task-${id}`,
+      conversationId: 'conversation-1',
+      messageId: id,
+      sourceMessageId,
+      type: 'video',
+      model: 'agnes-video-v2.0',
+      prompt,
+      options: { aspectRatio: '16:9', resolution: '720p', durationSeconds: 5 },
+      sourceFileIds: [],
+      status: 'queued',
+      progress: 0,
+      resultUrl: null,
+      resultPosterUrl: null,
+      resultMimeType: null,
+      resultWidth: null,
+      resultHeight: null,
+      resultDurationSeconds: null,
+      errorCode: null,
+      errorMessage: null,
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+    },
+  }
+}
+
 describe('buildMessagePairs', () => {
   it('空列表返回空数组', () => {
     expect(buildMessagePairs([])).toEqual([])
@@ -78,6 +107,26 @@ describe('buildMessagePairs', () => {
       msg('a3', 'assistant', '答三'),
     ])
     expect(pairs.map((p) => p.pairKey)).toEqual(['u1', 'u2', 'u3'])
+  })
+
+  it('不同媒体请求各自保留用户消息和任务卡，不成为普通回答版本', () => {
+    const pairs = buildMessagePairs([
+      msg('u1', 'user', '生成老师讲课的视频'),
+      mediaTaskMessage('m1', 'u1', '生成老师讲课的视频'),
+      msg('u2', 'user', '生成打羽毛球的视频'),
+      mediaTaskMessage('m2', 'u2', '生成打羽毛球的视频'),
+    ])
+
+    expect(pairs).toHaveLength(2)
+    expect(pairs.map((pair) => pair.userMsg?.content)).toEqual([
+      '生成老师讲课的视频',
+      '生成打羽毛球的视频',
+    ])
+    expect(pairs.map((pair) => pair.assistants)).toEqual([[], []])
+    expect(pairs.map((pair) => pair.mediaAssistants.map((message) => message.id))).toEqual([
+      ['m1'],
+      ['m2'],
+    ])
   })
 
   it('一条用户消息暂无回答时 assistants 为空', () => {

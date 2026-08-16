@@ -1,5 +1,28 @@
-import { Check, Copy, Eye, Play, Terminal } from 'lucide-react'
-import { useEffect, useMemo, useState, type ReactElement } from 'react'
+import {
+  Check,
+  Copy,
+  Eye,
+  Pause,
+  Play,
+  RotateCcw,
+  Terminal,
+  Volume2,
+  VolumeX,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+  type PointerEvent as ReactPointerEvent,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SyntheticEvent,
+  type WheelEvent,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -18,11 +41,38 @@ import { DataPreview } from './DataPreview'
 import './artifact.css'
 
 const CONSOLE_MAX_ENTRIES = 200
+const IMAGE_ZOOM_MIN = 0.1
+const IMAGE_ZOOM_MAX = 4
+const IMAGE_ZOOM_STEP = 1.12
 type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 
 interface ConsoleEntry {
   level: ConsoleLevel
   text: string
+}
+
+interface ImageDimensions {
+  width: number
+  height: number
+}
+
+interface ImagePanState {
+  pointerId: number
+  startX: number
+  startY: number
+  scrollLeft: number
+  scrollTop: number
+}
+
+function clampImageZoom(value: number): number {
+  return Math.min(IMAGE_ZOOM_MAX, Math.max(IMAGE_ZOOM_MIN, value))
+}
+
+function formatVideoTime(seconds: number): string {
+  const safeSeconds = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0
+  const minutes = Math.floor(safeSeconds / 60)
+  const remainder = String(safeSeconds % 60).padStart(2, '0')
+  return `${minutes}:${remainder}`
 }
 
 function isJavascriptLang(lang: string): boolean {
@@ -62,6 +112,16 @@ export function App(): ReactElement {
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
   const [isConsoleOpen, setIsConsoleOpen] = useState(false)
   const [isDarkTheme, setIsDarkTheme] = useState(false)
+  const imageViewportRef = useRef<HTMLDivElement>(null)
+  const imagePanRef = useRef<ImagePanState | null>(null)
+  const [imageDimensions, setImageDimensions] = useState<ImageDimensions | null>(null)
+  const [imageZoom, setImageZoom] = useState(1)
+  const [isImagePanning, setIsImagePanning] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoDuration, setVideoDuration] = useState(0)
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0)
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [isVideoMuted, setIsVideoMuted] = useState(false)
 
   useEffect(
     () =>
@@ -69,6 +129,14 @@ export function App(): ReactElement {
         setPayload(nextPayload)
         setCopied(false)
         setConsoleEntries([])
+        setImageDimensions(null)
+        setImageZoom(1)
+        imagePanRef.current = null
+        setIsImagePanning(false)
+        setVideoDuration(0)
+        setVideoCurrentTime(0)
+        setIsVideoPlaying(false)
+        setIsVideoMuted(false)
         setIsConsoleOpen(
           !isFilePreviewPayload(nextPayload) &&
             nextPayload.mode === 'run' &&
@@ -111,11 +179,121 @@ export function App(): ReactElement {
     return buildRunSrcDoc(payload.lang, payload.code, { dark: isDarkTheme })
   }, [isDarkTheme, payload])
 
+  function fitImageToViewport(width: number, height: number): number {
+    const viewport = imageViewportRef.current
+    if (viewport === null) return 1
+    const availableWidth = Math.max(1, viewport.clientWidth - 48)
+    const availableHeight = Math.max(1, viewport.clientHeight - 48)
+    return clampImageZoom(Math.min(1, availableWidth / width, availableHeight / height))
+  }
+
+  function handleFileImageLoad(event: SyntheticEvent<HTMLImageElement>): void {
+    const { naturalHeight, naturalWidth } = event.currentTarget
+    if (naturalWidth <= 0 || naturalHeight <= 0) return
+    setImageDimensions({ width: naturalWidth, height: naturalHeight })
+    setImageZoom(fitImageToViewport(naturalWidth, naturalHeight))
+  }
+
+  function handleImageWheel(event: WheelEvent<HTMLDivElement>): void {
+    event.preventDefault()
+    const factor = event.deltaY < 0 ? IMAGE_ZOOM_STEP : 1 / IMAGE_ZOOM_STEP
+    setImageZoom((current) => clampImageZoom(current * factor))
+  }
+
+  function handleImagePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    const viewport = event.currentTarget
+    const canPan =
+      viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight
+    if (!canPan) return
+    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
+    const startX = Number.isFinite(event.clientX) ? event.clientX : 0
+    const startY = Number.isFinite(event.clientY) ? event.clientY : 0
+    imagePanRef.current = {
+      pointerId,
+      startX,
+      startY,
+      scrollLeft: Number.isFinite(viewport.scrollLeft) ? viewport.scrollLeft : 0,
+      scrollTop: Number.isFinite(viewport.scrollTop) ? viewport.scrollTop : 0,
+    }
+    if (typeof viewport.setPointerCapture === 'function') {
+      viewport.setPointerCapture(pointerId)
+    }
+    setIsImagePanning(true)
+  }
+
+  function handleImagePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    const pan = imagePanRef.current
+    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
+    const currentX = Number.isFinite(event.clientX) ? event.clientX : 0
+    const currentY = Number.isFinite(event.clientY) ? event.clientY : 0
+    if (pan === null || pan.pointerId !== pointerId) return
+    event.preventDefault()
+    event.currentTarget.scrollLeft = pan.scrollLeft - (currentX - pan.startX)
+    event.currentTarget.scrollTop = pan.scrollTop - (currentY - pan.startY)
+  }
+
+  function finishImagePan(event: ReactPointerEvent<HTMLDivElement>): void {
+    const pan = imagePanRef.current
+    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
+    if (pan === null || pan.pointerId !== pointerId) return
+    imagePanRef.current = null
+    if (typeof event.currentTarget.releasePointerCapture === 'function') {
+      event.currentTarget.releasePointerCapture(pointerId)
+    }
+    setIsImagePanning(false)
+  }
+
+  function toggleVideoPlayback(): void {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) {
+      void video.play().catch(() => setIsVideoPlaying(false))
+      return
+    }
+    video.pause()
+  }
+
+  function handleVideoKeyDown(event: ReactKeyboardEvent<HTMLVideoElement>): void {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    toggleVideoPlayback()
+  }
+
+  function updateVideoMetadata(event: SyntheticEvent<HTMLVideoElement>): void {
+    const duration = event.currentTarget.duration
+    setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : 0)
+  }
+
+  function updateVideoProgress(event: SyntheticEvent<HTMLVideoElement>): void {
+    const currentTime = event.currentTarget.currentTime
+    setVideoCurrentTime(Number.isFinite(currentTime) && currentTime >= 0 ? currentTime : 0)
+  }
+
+  function seekVideo(event: ChangeEvent<HTMLInputElement>): void {
+    const video = videoRef.current
+    const nextTime = Number(event.target.value)
+    if (!video || !Number.isFinite(nextTime)) return
+    video.currentTime = nextTime
+    setVideoCurrentTime(nextTime)
+  }
+
+  function toggleVideoMute(): void {
+    const video = videoRef.current
+    if (!video) return
+    video.muted = !video.muted
+    setIsVideoMuted(video.muted)
+  }
+
   if (!payload) return <main className="artifact__empty">{t('desktop.artifact.preparing')}</main>
 
   const shown = payload
   if (isFilePreviewPayload(shown)) {
     const isPdf = shown.mimeType === 'application/pdf'
+    const isVideo = shown.mimeType === 'video/mp4'
+    const imageWidth = imageDimensions ? `${imageDimensions.width * imageZoom}px` : undefined
+    const imagePannable =
+      imageDimensions !== null &&
+      imageZoom > fitImageToViewport(imageDimensions.width, imageDimensions.height)
     return (
       <main className="artifact" aria-label={`文件预览 ${shown.title}`} tabIndex={-1}>
         <header className="artifact__header">
@@ -123,7 +301,46 @@ export function App(): ReactElement {
             <h1>{shown.title}</h1>
             <p>{isPdf ? 'PDF' : shown.mimeType}</p>
           </div>
-          <span className="artifact__mode">文件预览</span>
+          <div className="artifact__actions">
+            {!isPdf && !isVideo && imageDimensions ? (
+              <>
+                <button
+                  type="button"
+                  aria-label="缩小图片"
+                  title="缩小图片"
+                  onClick={() =>
+                    setImageZoom((current) => clampImageZoom(current / IMAGE_ZOOM_STEP))
+                  }
+                >
+                  <ZoomOut size={16} aria-hidden="true" />
+                </button>
+                <span className="artifact__zoom" aria-live="polite">
+                  {Math.round(imageZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  aria-label="恢复适合窗口的缩放"
+                  title="恢复适合窗口的缩放"
+                  onClick={() =>
+                    setImageZoom(fitImageToViewport(imageDimensions.width, imageDimensions.height))
+                  }
+                >
+                  <RotateCcw size={16} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  aria-label="放大图片"
+                  title="放大图片"
+                  onClick={() =>
+                    setImageZoom((current) => clampImageZoom(current * IMAGE_ZOOM_STEP))
+                  }
+                >
+                  <ZoomIn size={16} aria-hidden="true" />
+                </button>
+              </>
+            ) : null}
+            <span className="artifact__mode">文件预览</span>
+          </div>
         </header>
         <section className="artifact__content artifact__content--file">
           {isPdf ? (
@@ -133,8 +350,89 @@ export function App(): ReactElement {
               src={shown.sourceUrl}
               title={`预览 ${shown.title}`}
             />
+          ) : isVideo ? (
+            <div className="artifact__video-shell">
+              <video
+                ref={videoRef}
+                className="artifact__file-video"
+                src={shown.sourceUrl}
+                playsInline
+                preload="metadata"
+                role="button"
+                tabIndex={0}
+                aria-label={isVideoPlaying ? '点击暂停视频' : '点击播放视频'}
+                onEnded={() => setIsVideoPlaying(false)}
+                onClick={toggleVideoPlayback}
+                onKeyDown={handleVideoKeyDown}
+                onLoadedMetadata={updateVideoMetadata}
+                onPause={() => setIsVideoPlaying(false)}
+                onPlay={() => setIsVideoPlaying(true)}
+                onTimeUpdate={updateVideoProgress}
+              />
+              <div className="artifact__video-controls" aria-label="视频控制">
+                <button
+                  type="button"
+                  aria-label={isVideoPlaying ? '暂停视频' : '播放视频'}
+                  title={isVideoPlaying ? '暂停视频' : '播放视频'}
+                  onClick={toggleVideoPlayback}
+                >
+                  {isVideoPlaying ? (
+                    <Pause size={17} aria-hidden="true" />
+                  ) : (
+                    <Play size={17} aria-hidden="true" />
+                  )}
+                </button>
+                <input
+                  type="range"
+                  min="0"
+                  max={videoDuration}
+                  step="0.1"
+                  value={Math.min(videoCurrentTime, videoDuration)}
+                  disabled={videoDuration <= 0}
+                  aria-label="视频进度"
+                  onChange={seekVideo}
+                />
+                <span aria-live="off">
+                  {formatVideoTime(videoCurrentTime)} / {formatVideoTime(videoDuration)}
+                </span>
+                <button
+                  type="button"
+                  aria-label={isVideoMuted ? '取消静音' : '静音'}
+                  title={isVideoMuted ? '取消静音' : '静音'}
+                  onClick={toggleVideoMute}
+                >
+                  {isVideoMuted ? (
+                    <VolumeX size={17} aria-hidden="true" />
+                  ) : (
+                    <Volume2 size={17} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
+            </div>
           ) : (
-            <img className="artifact__file-image" src={shown.sourceUrl} alt={shown.title} />
+            <div
+              ref={imageViewportRef}
+              className={`artifact__image-viewport${
+                imagePannable ? 'artifact__image-viewport--pannable' : ''
+              }${isImagePanning ? 'artifact__image-viewport--panning' : ''}`}
+              onWheel={handleImageWheel}
+              onPointerCancel={finishImagePan}
+              onPointerDown={handleImagePointerDown}
+              onPointerMove={handleImagePointerMove}
+              onPointerUp={finishImagePan}
+              onDragStart={(event) => event.preventDefault()}
+            >
+              <div className="artifact__image-canvas">
+                <img
+                  className="artifact__file-image"
+                  src={shown.sourceUrl}
+                  alt={shown.title}
+                  draggable={false}
+                  style={imageWidth ? { width: imageWidth } : undefined}
+                  onLoad={handleFileImageLoad}
+                />
+              </div>
+            </div>
           )}
         </section>
       </main>

@@ -1,6 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState, type JSX, type WheelEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
+  type WheelEvent,
+} from 'react'
 import { createPortal } from 'react-dom'
 import {
   Copy,
@@ -34,6 +43,7 @@ import {
   type ArtifactPayload,
   type CodeArtifactPayload,
   type FileArtifactPayload,
+  type MediaArtifactPayload,
 } from '@yuanai/core/stores'
 import type { MessageFile } from '@yuanai/types'
 import { downloadSourceFile } from '@/lib/fileDownload'
@@ -59,6 +69,98 @@ type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 interface ConsoleEntry {
   level: ConsoleLevel
   text: string
+}
+
+interface LightboxImageSize {
+  width: number
+  height: number
+}
+
+interface LightboxPanState {
+  pointerId: number
+  startX: number
+  startY: number
+  scrollLeft: number
+  scrollTop: number
+}
+
+/** 管理放大图片的真实尺寸和指针平移，避免仅缩放视觉层而无法滚动查看细节。 */
+function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, zoomScale: number) {
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const panRef = useRef<LightboxPanState | null>(null)
+  const [baseSize, setBaseSize] = useState<LightboxImageSize | null>(null)
+  const [isPanning, setIsPanning] = useState(false)
+
+  useEffect(() => {
+    panRef.current = null
+    setBaseSize(null)
+    setIsPanning(false)
+  }, [sourceUrl, zoomed])
+
+  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>): void => {
+    const { height, width } = event.currentTarget.getBoundingClientRect()
+    if (width <= 0 || height <= 0) return
+    setBaseSize({ width, height })
+  }
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const viewport = event.currentTarget
+    const canPan =
+      zoomScale > 1 &&
+      (viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight)
+    if (!canPan) return
+    event.preventDefault()
+    const startX = Number.isFinite(event.clientX) ? event.clientX : 0
+    const startY = Number.isFinite(event.clientY) ? event.clientY : 0
+    panRef.current = {
+      pointerId: event.pointerId,
+      startX,
+      startY,
+      scrollLeft: viewport.scrollLeft,
+      scrollTop: viewport.scrollTop,
+    }
+    viewport.setPointerCapture?.(event.pointerId)
+    setIsPanning(true)
+  }
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const pan = panRef.current
+    if (!pan || pan.pointerId !== event.pointerId) return
+    event.preventDefault()
+    const currentX = Number.isFinite(event.clientX) ? event.clientX : 0
+    const currentY = Number.isFinite(event.clientY) ? event.clientY : 0
+    event.currentTarget.scrollLeft = pan.scrollLeft - (currentX - pan.startX)
+    event.currentTarget.scrollTop = pan.scrollTop - (currentY - pan.startY)
+  }
+
+  const finishPan = (event: ReactPointerEvent<HTMLDivElement>): void => {
+    const pan = panRef.current
+    if (!pan || pan.pointerId !== event.pointerId) return
+    panRef.current = null
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    setIsPanning(false)
+  }
+
+  const imageStyle = baseSize
+    ? {
+        width: `${Math.round(baseSize.width * zoomScale)}px`,
+        height: `${Math.round(baseSize.height * zoomScale)}px`,
+      }
+    : undefined
+
+  return {
+    viewportRef,
+    handleImageLoad,
+    handlePointerDown,
+    handlePointerMove,
+    finishPan,
+    imageStyle,
+    isPannable: zoomScale > 1 && baseSize !== null,
+    isPanning,
+    isResized: baseSize !== null,
+  }
 }
 
 /** 在现有 Artifact 工作区中展示一个已上传文件的后端受限预览。 */
@@ -98,6 +200,11 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
     [previewFiles]
   )
   const currentImagePosition = imageIndexes.indexOf(currentIndex)
+  const imageCanvas = useLightboxImageCanvas(
+    data?.kind === 'image' ? data.url : undefined,
+    zoomed,
+    zoomScale
+  )
 
   const selectFile = (index: number): void => {
     const next = previewFiles[index]
@@ -209,14 +316,28 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
                 <ChevronLeft size={26} aria-hidden="true" />
               </button>
             ) : null}
-            <div className="ch-ap-lightbox-viewport" onWheel={handleLightboxWheel}>
-              <img
-                className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
-                src={data.url}
-                alt={currentFile.filename}
-                style={{ transform: `scale(${zoomScale})` }}
-                onClick={(event) => event.stopPropagation()}
-              />
+            <div
+              ref={imageCanvas.viewportRef}
+              className={`ch-ap-lightbox-viewport${
+                imageCanvas.isPannable ? 'is-pannable' : ''
+              }${imageCanvas.isPanning ? 'is-panning' : ''}`}
+              onWheel={handleLightboxWheel}
+              onPointerCancel={imageCanvas.finishPan}
+              onPointerDown={imageCanvas.handlePointerDown}
+              onPointerMove={imageCanvas.handlePointerMove}
+              onPointerUp={imageCanvas.finishPan}
+            >
+              <div className={`ch-ap-lightbox-canvas${imageCanvas.isResized ? 'is-resized' : ''}`}>
+                <img
+                  className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
+                  src={data.url}
+                  alt={currentFile.filename}
+                  draggable={false}
+                  style={imageCanvas.imageStyle}
+                  onDragStart={(event) => event.preventDefault()}
+                  onLoad={imageCanvas.handleImageLoad}
+                />
+              </div>
             </div>
             {imageIndexes.length > 1 && currentImagePosition < imageIndexes.length - 1 ? (
               <button
@@ -348,6 +469,192 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
         >
           <Download size={13} aria-hidden="true" /> 下载原文件
         </button>
+      </footer>
+      {lightbox}
+    </>
+  )
+}
+
+/** 直接展示生成任务的结果，避免将媒体任务误当作已上传文件请求预览接口。 */
+function MediaArtifactPreview({
+  payload,
+  active,
+}: {
+  payload: MediaArtifactPayload
+  active: boolean
+}): JSX.Element {
+  const close = useArtifactStore((state) => state.close)
+  const [zoomed, setZoomed] = useState(false)
+  const [zoomScale, setZoomScale] = useState(1)
+  const isImage = payload.mimeType.startsWith('image/')
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const imageCanvas = useLightboxImageCanvas(isImage ? payload.url : undefined, zoomed, zoomScale)
+
+  useEffect(() => {
+    if (active) return
+    const video = videoRef.current
+    if (!video) return
+    video.pause()
+    video.currentTime = 0
+  }, [active])
+
+  const changeZoom = (delta: number): void => {
+    setZoomScale((current) =>
+      Math.min(4, Math.max(0.25, Math.round((current + delta) * 100) / 100))
+    )
+  }
+
+  const closeLightbox = (): void => {
+    setZoomed(false)
+    setZoomScale(1)
+  }
+
+  const closePreview = (): void => {
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.currentTime = 0
+    }
+    close()
+  }
+
+  const lightbox =
+    zoomed && isImage
+      ? createPortal(
+          <div
+            className="ch-ap-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`放大预览 ${payload.title}`}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) closeLightbox()
+            }}
+          >
+            <button
+              type="button"
+              className="ch-ap-lightbox-close"
+              onClick={closeLightbox}
+              aria-label="关闭放大预览"
+              title="关闭放大预览"
+            >
+              <X size={20} aria-hidden="true" />
+            </button>
+            <div className="ch-ap-lightbox-tools" aria-label="图片缩放">
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => changeZoom(-0.25)}
+                disabled={zoomScale <= 0.25}
+                aria-label="缩小图片"
+                title="缩小图片"
+              >
+                <ZoomOut size={17} aria-hidden="true" />
+              </button>
+              <span aria-live="polite">{Math.round(zoomScale * 100)}%</span>
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => changeZoom(0.25)}
+                disabled={zoomScale >= 4}
+                aria-label="放大图片"
+                title="放大图片"
+              >
+                <ZoomIn size={17} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="ch-ap-lightbox-tool"
+                onClick={() => setZoomScale(1)}
+                disabled={zoomScale === 1}
+                aria-label="重置图片缩放"
+                title="重置图片缩放"
+              >
+                <RotateCcw size={16} aria-hidden="true" />
+              </button>
+            </div>
+            <div
+              ref={imageCanvas.viewportRef}
+              className={`ch-ap-lightbox-viewport${
+                imageCanvas.isPannable ? 'is-pannable' : ''
+              }${imageCanvas.isPanning ? 'is-panning' : ''}`}
+              onWheel={(event) => {
+                event.preventDefault()
+                changeZoom(event.deltaY < 0 ? 0.25 : -0.25)
+              }}
+              onPointerCancel={imageCanvas.finishPan}
+              onPointerDown={imageCanvas.handlePointerDown}
+              onPointerMove={imageCanvas.handlePointerMove}
+              onPointerUp={imageCanvas.finishPan}
+            >
+              <div className={`ch-ap-lightbox-canvas${imageCanvas.isResized ? 'is-resized' : ''}`}>
+                <img
+                  className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
+                  src={payload.url}
+                  alt={payload.title}
+                  draggable={false}
+                  style={imageCanvas.imageStyle}
+                  onDragStart={(event) => event.preventDefault()}
+                  onLoad={imageCanvas.handleImageLoad}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )
+      : null
+
+  return (
+    <>
+      <div className="ch-ap-head">
+        <span className="ch-ap-lang">{isImage ? '图片' : '视频'}</span>
+        <span className="ch-ap-title" title={payload.title}>
+          {payload.title}
+        </span>
+        <button
+          className="ch-ib"
+          type="button"
+          onClick={closePreview}
+          title="关闭面板"
+          aria-label="关闭面板"
+        >
+          <X size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <section className="ch-ap-body ch-ap-file ch-ap-media" aria-live="polite">
+        {isImage ? (
+          <button
+            className="ch-ap-file-image-trigger"
+            type="button"
+            onClick={() => {
+              setZoomScale(1)
+              setZoomed(true)
+            }}
+            aria-label={`放大 ${payload.title}`}
+            title="放大图片"
+          >
+            <img className="ch-ap-file-image" src={payload.url} alt={payload.title} />
+            <span className="ch-ap-file-image-hint" aria-hidden="true">
+              <Maximize2 size={18} />
+              放大
+            </span>
+          </button>
+        ) : active ? (
+          <video
+            ref={videoRef}
+            className="ch-ap-media-video"
+            src={payload.url}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={`播放 ${payload.title}`}
+          />
+        ) : null}
+      </section>
+      <footer className="ch-ap-footer">
+        <span className="ch-ap-finfo">{payload.mimeType}</span>
+        <a className="ch-ap-copy-btn" href={payload.url} download={payload.title}>
+          <Download size={13} aria-hidden="true" /> 下载
+        </a>
       </footer>
       {lightbox}
     </>
@@ -626,15 +933,19 @@ export function ArtifactPanel(): JSX.Element {
 
   const errorCount = consoleMsgs.filter((m) => m.level === 'error').length
 
-  if (shown.kind === 'file') {
+  if (shown.kind === 'file' || shown.kind === 'media') {
     return (
       <div
         className="ch-artifact-panel"
         role="complementary"
-        aria-label="文件预览面板"
+        aria-label={shown.kind === 'file' ? '文件预览面板' : '媒体预览面板'}
         aria-hidden={!open}
       >
-        <FileArtifactPreview payload={shown} />
+        {shown.kind === 'file' ? (
+          <FileArtifactPreview payload={shown} />
+        ) : (
+          <MediaArtifactPreview payload={shown} active={open} />
+        )}
       </div>
     )
   }

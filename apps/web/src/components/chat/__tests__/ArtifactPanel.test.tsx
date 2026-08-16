@@ -23,6 +23,15 @@ Object.defineProperty(navigator, 'clipboard', {
   configurable: true,
 })
 
+function createPointerEvent(
+  type: 'pointerdown' | 'pointermove' | 'pointerup',
+  { clientX, clientY, pointerId }: { clientX: number; clientY: number; pointerId: number }
+): MouseEvent {
+  const event = new MouseEvent(type, { bubbles: true, clientX, clientY })
+  Object.defineProperty(event, 'pointerId', { value: pointerId })
+  return event
+}
+
 beforeEach(() => {
   useArtifactStore.getState().close()
   filePreview.value = null
@@ -118,7 +127,7 @@ describe('ArtifactPanel', () => {
     )
   })
 
-  it('图片可以放大，并能在同一条消息的附件之间切换', () => {
+  it('图片可以放大、拖拽查看细节，并能在同一条消息的附件之间切换', () => {
     filePreview.value = {
       kind: 'image',
       url: 'https://cdn.example.com/files/one.png',
@@ -155,16 +164,40 @@ describe('ArtifactPanel', () => {
     expect(lightbox).toBeInTheDocument()
     const viewport = lightbox.querySelector('.ch-ap-lightbox-viewport')
     if (!viewport) throw new Error('expected lightbox viewport')
+    const image = within(lightbox).getByRole('img', { name: 'one.png' })
+    Object.defineProperty(image, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ height: 300, width: 400 }),
+    })
+    Object.defineProperties(viewport, {
+      clientHeight: { configurable: true, value: 300 },
+      clientWidth: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 375 },
+      scrollWidth: { configurable: true, value: 500 },
+    })
+    viewport.scrollLeft = 50
+    viewport.scrollTop = 40
+    fireEvent.load(image)
     expect(within(lightbox).getByRole('button', { name: '缩小图片' })).toBeEnabled()
     fireEvent.wheel(viewport, { deltaY: -100 })
-    expect(within(lightbox).getByRole('img', { name: 'one.png' })).toHaveStyle({
-      transform: 'scale(1.25)',
-    })
+    expect(image).toHaveStyle({ width: '500px', height: '375px' })
+    fireEvent(
+      viewport,
+      createPointerEvent('pointerdown', { clientX: 300, clientY: 200, pointerId: 1 })
+    )
+    fireEvent(
+      viewport,
+      createPointerEvent('pointermove', { clientX: 250, clientY: 170, pointerId: 1 })
+    )
+    fireEvent(
+      viewport,
+      createPointerEvent('pointerup', { clientX: 250, clientY: 170, pointerId: 1 })
+    )
+    expect(viewport.scrollLeft).toBe(100)
+    expect(viewport.scrollTop).toBe(70)
     fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
     fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
-    expect(within(lightbox).getByRole('img', { name: 'one.png' })).toHaveStyle({
-      transform: 'scale(0.75)',
-    })
+    expect(image).toHaveStyle({ width: '300px', height: '225px' })
     fireEvent.click(within(lightbox).getByRole('button', { name: '下一个图片' }))
     expect(useArtifactStore.getState().payload).toMatchObject({
       fileId: 'file-2',
@@ -186,5 +219,47 @@ describe('ArtifactPanel', () => {
     })
     render(<ArtifactPanel />)
     expect(screen.getByTitle('预览 requirements.pdf')).toHaveAttribute('sandbox', 'allow-downloads')
+  })
+
+  it('直接预览生成的图片和视频，不请求上传文件预览接口', () => {
+    useArtifactStore.getState().openMediaPreview({
+      title: '图片生成-1.png',
+      mimeType: 'image/png',
+      url: 'https://cdn.example.com/media/image.png',
+    })
+    const { unmount } = render(<ArtifactPanel />)
+    expect(screen.getByRole('complementary', { name: '媒体预览面板' })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: '图片生成-1.png' })).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/media/image.png'
+    )
+
+    unmount()
+    useArtifactStore.getState().openMediaPreview({
+      title: '视频生成-1.mp4',
+      mimeType: 'video/mp4',
+      url: 'https://cdn.example.com/media/video.mp4',
+    })
+    render(<ArtifactPanel />)
+    expect(screen.getByLabelText('播放 视频生成-1.mp4')).toHaveAttribute(
+      'src',
+      'https://cdn.example.com/media/video.mp4'
+    )
+  })
+
+  it('关闭媒体预览会暂停并卸载正在播放的视频', () => {
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined)
+    useArtifactStore.getState().openMediaPreview({
+      title: '视频生成-2.mp4',
+      mimeType: 'video/mp4',
+      url: 'https://cdn.example.com/media/video-2.mp4',
+    })
+    render(<ArtifactPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭面板' }))
+
+    expect(pause).toHaveBeenCalledOnce()
+    expect(screen.queryByLabelText('播放 视频生成-2.mp4')).not.toBeInTheDocument()
+    pause.mockRestore()
   })
 })

@@ -1,5 +1,5 @@
 import { FlashList, type FlashListProps } from '@shopify/flash-list'
-import type { Message, MessageFile } from '@yuanai/types'
+import type { MediaGenerationTask, Message, MessageFile } from '@yuanai/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useState } from 'react'
 import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
@@ -15,6 +15,7 @@ import { useTheme } from '@/theme/useTheme'
 
 import { AIMessage } from './AIMessage'
 import { AIMessageActions, type FeedbackType } from './AIMessageActions'
+import { MediaTaskCard } from './MediaTaskCard'
 import { ScrollToBottomFab } from './ScrollToBottomFab'
 import { UserMessage } from './UserMessage'
 
@@ -117,7 +118,13 @@ interface ActionsRow {
   versionIdx: number
 }
 
-type Row = UserRow | AIRow | ActionsRow
+interface MediaRow {
+  role: 'media'
+  id: string
+  task: MediaGenerationTask
+}
+
+type Row = UserRow | AIRow | ActionsRow | MediaRow
 
 /** AI 消息按行切块的块大小；块高需明显小于视口高度 */
 const CHUNK_LINES = 12
@@ -312,6 +319,12 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           ...(pair.userMsg.files.length > 0 ? { files: pair.userMsg.files } : {}),
         })
       }
+
+      pair.mediaAssistants.forEach((mediaMessage) => {
+        if (mediaMessage.mediaTask) {
+          out.push({ role: 'media', id: mediaMessage.id, task: mediaMessage.mediaTask })
+        }
+      })
 
       const isRegen = isStreaming && regeneratingPairKey === pair.pairKey
       if (isRegen) {
@@ -520,6 +533,8 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           </View>
         )
       }
+
+      if (item.role === 'media') return <MediaTaskCard task={item.task} />
 
       return (
         <AIMessage

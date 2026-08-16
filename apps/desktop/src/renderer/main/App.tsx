@@ -35,6 +35,7 @@ import {
   Sparkles,
   Settings,
   Square,
+  Play,
   Trash2,
   X,
 } from 'lucide-react'
@@ -53,11 +54,13 @@ import type { VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from 'react-i18next'
 import {
   useConversations,
+  useCreateMediaTask,
   useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
   useLogout,
   useMessages,
+  useMediaTasks,
   useModels,
   useCreateShareLink,
   useRevokeShareLink,
@@ -123,6 +126,12 @@ const DEFAULT_MODELS: AIModel[] = [
     isDefault: false,
   },
 ]
+const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
+const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
+const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
+const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const
+const VIDEO_DURATIONS = [3, 5, 10, 18] as const
+type ComposerMode = 'chat' | 'image' | 'video'
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const SHARE_EXPIRY_OPTIONS = [
@@ -1038,6 +1047,7 @@ export function App(): ReactElement {
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
   const stream = useStream()
+  const createMediaTask = useCreateMediaTask()
   const logout = useLogout()
   const updatePreferences = useUpdateMyPreferences()
   const user = useAuthStore((state) => state.user)
@@ -1053,6 +1063,12 @@ export function App(): ReactElement {
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(true)
   const [isThinkingEnabled, setIsThinkingEnabled] = useState(false)
+  const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
+  const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
+  const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
+  const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
+  const [videoResolution, setVideoResolution] = useState<(typeof VIDEO_RESOLUTIONS)[number]>('720p')
+  const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
   const [selectedModelId, setSelectedModelId] = useState(FALLBACK_MODEL.id)
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
@@ -1137,6 +1153,7 @@ export function App(): ReactElement {
   const messagesQuery = useMessages(
     isLoggedIn && !isTemporaryConversation ? (activeConversationId ?? '') : ''
   )
+  useMediaTasks(isTemporaryConversation ? undefined : (activeConversationId ?? undefined))
   const messages = isTemporaryConversation
     ? temporaryMessages
     : isLoggedIn
@@ -1878,14 +1895,27 @@ export function App(): ReactElement {
     const content = draft.trim()
     if (!isLoggedIn || !content || isStreaming || isUploadingAttachments) return
     setActionError('')
+    const isMediaMode = composerMode !== 'chat'
+    if (isMediaMode && isTemporaryConversation) {
+      setActionError('临时对话不支持图片或视频生成')
+      return
+    }
     if (
+      isMediaMode &&
+      attachments.some((attachment) => !attachment.file.type.startsWith('image/'))
+    ) {
+      setActionError('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
+      return
+    }
+    if (
+      !isMediaMode &&
       attachments.some((attachment) => attachment.file.type.startsWith('image/')) &&
       !selectedModel.supportsVision
     ) {
       setActionError('当前模型不支持图片识别，请切换至支持视觉的模型后发送')
       return
     }
-    if (attachments.length > 0 && !selectedModel.supportsFiles) {
+    if (!isMediaMode && attachments.length > 0 && !selectedModel.supportsFiles) {
       setActionError('当前模型不支持文件识别，请切换至支持文件的模型后发送')
       return
     }
@@ -1947,6 +1977,27 @@ export function App(): ReactElement {
       setIsUploadingAttachments(true)
       const fileIds = await resolveAttachmentIds()
       const targetConversationId = conversationId
+      if (isMediaMode) {
+        await createMediaTask.mutateAsync({
+          conversationId: targetConversationId,
+          type: composerMode === 'image' ? 'image' : 'video',
+          prompt: content,
+          options:
+            composerMode === 'image'
+              ? { size: imageSize, ratio: imageRatio }
+              : {
+                  aspectRatio: videoRatio,
+                  resolution: videoResolution,
+                  durationSeconds: videoDuration,
+                },
+          sourceFileIds: fileIds,
+        })
+        revokeAttachmentPreviews(attachments)
+        setAttachments([])
+        setDraft('')
+        void requestAnimationFrame(() => scrollMessagesToBottom('smooth'))
+        return
+      }
       await stream.send({
         convId: targetConversationId,
         content,
@@ -2456,252 +2507,372 @@ export function App(): ReactElement {
           ) : null}
         </div>
 
-        <form
-          className="desktop-chat__composer"
-          onSubmit={(event) => void handleSendMessage(event)}
-        >
-          {attachments.length > 0 ? (
-            <ul className="desktop-chat__attachment-list" aria-label="待发送附件">
-              {attachments.map((attachment) => {
-                const isImage = Boolean(attachment.previewUrl)
-                return (
-                  <li
-                    key={attachment.id}
-                    className={
-                      isImage
-                        ? 'desktop-chat__attachment desktop-chat__attachment--image'
-                        : 'desktop-chat__attachment'
-                    }
-                    title={attachment.status === 'error' ? '上传失败' : attachment.file.name}
-                  >
-                    {isImage ? (
-                      <img src={attachment.previewUrl} alt={attachment.file.name} />
-                    ) : (
-                      <>
-                        <FileText size={15} aria-hidden="true" />
-                        <span>{attachment.file.name}</span>
-                      </>
-                    )}
-                    {attachment.status === 'uploading' ? (
-                      <>
-                        {isImage ? (
-                          <span className="desktop-chat__attachment-progress" aria-hidden="true">
-                            <span style={{ width: `${attachment.progress}%` }} />
-                          </span>
-                        ) : null}
-                        <small>{attachment.progress}%</small>
-                      </>
-                    ) : null}
-                    {attachment.status === 'error' ? <small>上传失败</small> : null}
-                    <button
-                      type="button"
-                      aria-label={`移除附件 ${attachment.file.name}`}
-                      title="移除附件"
-                      disabled={isUploadingAttachments}
-                      onClick={() => removeAttachment(attachment.id)}
-                    >
-                      <X size={isImage ? 11 : 14} aria-hidden="true" />
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : null}
-          <textarea
-            ref={composerInputRef}
-            aria-label="输入消息"
-            rows={1}
-            value={draft}
-            placeholder={
-              isLoggedIn ? t('chat.inputPlaceholder') : t('chat.inputPlaceholderLoggedOut')
-            }
-            disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault()
-                void handleSendMessage()
-              }
-            }}
-          />
-          <div className="desktop-chat__composer-toolbar">
-            <div className="desktop-chat__composer-tools">
-              <input
-                ref={fileInputRef}
-                className="desktop-chat__sr-only"
-                data-testid="attachment-input"
-                type="file"
-                multiple
-                disabled={isTemporaryConversation}
-                onChange={handleAttachmentChange}
-              />
-              <button
-                className={attachments.length > 0 || isAttachmentMenuOpen ? 'is-active' : undefined}
-                type="button"
-                aria-label="添加附件"
-                aria-expanded={isAttachmentMenuOpen}
-                aria-haspopup="menu"
-                title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
-                disabled={
-                  !isLoggedIn || isTemporaryConversation || isStreaming || isUploadingAttachments
-                }
-                onClick={() => setIsAttachmentMenuOpen((value) => !value)}
-              >
-                <Paperclip size={18} aria-hidden="true" />
-              </button>
-              {isAttachmentMenuOpen ? (
-                <>
-                  <button
-                    className="desktop-chat__attachment-menu-dismiss"
-                    type="button"
-                    aria-label="关闭附件菜单"
-                    onClick={() => setIsAttachmentMenuOpen(false)}
-                  />
-                  <div className="desktop-chat__attachment-menu" role="menu" aria-label="添加附件">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      aria-label="上传文件"
-                      onClick={() => void handleOpenSystemFiles()}
-                    >
-                      <FileUp size={17} aria-hidden="true" />
-                      <span>
-                        <strong>上传文件</strong>
-                        <small>从系统选择本地图片或文档</small>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      aria-label="截屏"
-                      disabled={isScreenSourcesLoading}
-                      onClick={() => void handleOpenScreenCapture()}
-                    >
-                      <Monitor size={17} aria-hidden="true" />
-                      <span>
-                        <strong>截屏</strong>
-                        <small>选择窗口或屏幕，捕获一帧</small>
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      aria-label="摄像头拍照"
-                      onClick={() => void handleOpenCamera()}
-                    >
-                      <Camera size={17} aria-hidden="true" />
-                      <span>
-                        <strong>摄像头拍照</strong>
-                        <small>预览后拍照，直接添加</small>
-                      </span>
-                    </button>
-                  </div>
-                </>
-              ) : null}
-              <button
-                className={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? 'is-active'
-                    : undefined
-                }
-                type="button"
-                aria-label={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? '停止语音输入'
-                    : voiceInput.status === 'transcribing'
-                      ? '取消语音转写'
-                      : '语音输入'
-                }
-                aria-pressed={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                }
-                aria-busy={voiceInput.status === 'transcribing'}
-                title={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? '停止语音输入'
-                    : voiceInput.status === 'transcribing'
-                      ? '取消语音转写'
-                      : voiceInput.isAvailable
-                        ? '语音输入'
-                        : '当前桌面环境不支持录音'
-                }
-                disabled={
-                  !isLoggedIn || !voiceInput.isAvailable || isStreaming || isUploadingAttachments
-                }
-                onClick={handleVoiceInput}
-              >
-                {voiceInput.status === 'transcribing' ? (
-                  <LoaderCircle className="desktop-chat__spin" size={18} aria-hidden="true" />
-                ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
-                  <Square size={15} fill="currentColor" aria-hidden="true" />
-                ) : (
-                  <Mic size={18} aria-hidden="true" />
-                )}
-              </button>
-              <button
-                className={isWebSearchEnabled ? 'is-active' : undefined}
-                type="button"
-                aria-label="联网搜索"
-                title="联网搜索"
-                aria-pressed={isWebSearchEnabled}
-                disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
-                onClick={() => setIsWebSearchEnabled((value) => !value)}
-              >
-                <Globe2 size={18} aria-hidden="true" />
-              </button>
-              <button
-                className={isThinkingEnabled ? 'is-active' : undefined}
-                type="button"
-                aria-label={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
-                title={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
-                aria-pressed={isThinkingEnabled}
-                disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
-                onClick={() => setIsThinkingEnabled((value) => !value)}
-              >
-                <Brain size={18} aria-hidden="true" />
-              </button>
-            </div>
-            <div className="desktop-chat__composer-actions">
-              <button
-                className="desktop-chat__composer-model"
-                type="button"
-                aria-label={`切换输入模型：${selectedModel.name}`}
-                aria-expanded={isModelMenuOpen}
-                aria-haspopup="listbox"
-                onClick={() => setIsModelMenuOpen((value) => !value)}
-              >
-                <span aria-hidden="true">{getModelInitial(selectedModel)}</span>
-                {selectedModel.name}
-                <ChevronDown size={13} aria-hidden="true" />
-              </button>
-              {isStreaming ? (
+        <div className="desktop-chat__composer-shell">
+          {composerMode === 'image' ? (
+            <div className="desktop-chat__media-options" aria-label="图片生成规格">
+              <span>清晰度</span>
+              {IMAGE_SIZES.map((value) => (
                 <button
-                  className="desktop-chat__stop"
+                  key={value}
                   type="button"
-                  aria-label="停止生成"
-                  title="停止生成"
-                  onClick={() => stream.stop(activeStreamKey ?? TEMPORARY_CONV_ID)}
+                  className={imageSize === value ? 'is-active' : undefined}
+                  onClick={() => setImageSize(value)}
                 >
-                  <Square size={16} fill="currentColor" />
+                  {value}
                 </button>
-              ) : (
+              ))}
+              <span>比例</span>
+              {IMAGE_RATIOS.map((value) => (
                 <button
-                  className="desktop-chat__send"
-                  type="submit"
-                  aria-label="发送消息"
-                  title="发送消息"
-                  disabled={!isLoggedIn || !draft.trim() || isUploadingAttachments}
+                  key={value}
+                  type="button"
+                  className={imageRatio === value ? 'is-active' : undefined}
+                  onClick={() => setImageRatio(value)}
                 >
-                  {isUploadingAttachments ? (
-                    <LoaderCircle className="desktop-chat__spin" size={17} />
+                  {value}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {composerMode === 'video' ? (
+            <div className="desktop-chat__media-options" aria-label="视频生成规格">
+              <span>画幅</span>
+              {VIDEO_RATIOS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={videoRatio === value ? 'is-active' : undefined}
+                  onClick={() => setVideoRatio(value)}
+                >
+                  {value}
+                </button>
+              ))}
+              <span>清晰度</span>
+              {VIDEO_RESOLUTIONS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={videoResolution === value ? 'is-active' : undefined}
+                  onClick={() => setVideoResolution(value)}
+                >
+                  {value}
+                </button>
+              ))}
+              <span>时长</span>
+              {VIDEO_DURATIONS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={videoDuration === value ? 'is-active' : undefined}
+                  onClick={() => setVideoDuration(value)}
+                >
+                  {value} 秒
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <form
+            className="desktop-chat__composer"
+            onSubmit={(event) => void handleSendMessage(event)}
+          >
+            {attachments.length > 0 ? (
+              <ul className="desktop-chat__attachment-list" aria-label="待发送附件">
+                {attachments.map((attachment) => {
+                  const isImage = Boolean(attachment.previewUrl)
+                  return (
+                    <li
+                      key={attachment.id}
+                      className={
+                        isImage
+                          ? 'desktop-chat__attachment desktop-chat__attachment--image'
+                          : 'desktop-chat__attachment'
+                      }
+                      title={attachment.status === 'error' ? '上传失败' : attachment.file.name}
+                    >
+                      {isImage ? (
+                        <img src={attachment.previewUrl} alt={attachment.file.name} />
+                      ) : (
+                        <>
+                          <FileText size={15} aria-hidden="true" />
+                          <span>{attachment.file.name}</span>
+                        </>
+                      )}
+                      {attachment.status === 'uploading' ? (
+                        <>
+                          {isImage ? (
+                            <span className="desktop-chat__attachment-progress" aria-hidden="true">
+                              <span style={{ width: `${attachment.progress}%` }} />
+                            </span>
+                          ) : null}
+                          <small>{attachment.progress}%</small>
+                        </>
+                      ) : null}
+                      {attachment.status === 'error' ? <small>上传失败</small> : null}
+                      <button
+                        type="button"
+                        aria-label={`移除附件 ${attachment.file.name}`}
+                        title="移除附件"
+                        disabled={isUploadingAttachments}
+                        onClick={() => removeAttachment(attachment.id)}
+                      >
+                        <X size={isImage ? 11 : 14} aria-hidden="true" />
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
+            <textarea
+              ref={composerInputRef}
+              aria-label="输入消息"
+              rows={1}
+              value={draft}
+              placeholder={
+                isLoggedIn ? t('chat.inputPlaceholder') : t('chat.inputPlaceholderLoggedOut')
+              }
+              disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault()
+                  void handleSendMessage()
+                }
+              }}
+            />
+            <div className="desktop-chat__composer-toolbar">
+              <div className="desktop-chat__composer-tools">
+                <input
+                  ref={fileInputRef}
+                  className="desktop-chat__sr-only"
+                  data-testid="attachment-input"
+                  type="file"
+                  multiple
+                  disabled={isTemporaryConversation}
+                  onChange={handleAttachmentChange}
+                />
+                <button
+                  className={
+                    attachments.length > 0 || isAttachmentMenuOpen ? 'is-active' : undefined
+                  }
+                  type="button"
+                  aria-label="添加附件"
+                  aria-expanded={isAttachmentMenuOpen}
+                  aria-haspopup="menu"
+                  title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
+                  disabled={
+                    !isLoggedIn || isTemporaryConversation || isStreaming || isUploadingAttachments
+                  }
+                  onClick={() => setIsAttachmentMenuOpen((value) => !value)}
+                >
+                  <Paperclip size={18} aria-hidden="true" />
+                </button>
+                {isAttachmentMenuOpen ? (
+                  <>
+                    <button
+                      className="desktop-chat__attachment-menu-dismiss"
+                      type="button"
+                      aria-label="关闭附件菜单"
+                      onClick={() => setIsAttachmentMenuOpen(false)}
+                    />
+                    <div
+                      className="desktop-chat__attachment-menu"
+                      role="menu"
+                      aria-label="添加附件"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-label="上传文件"
+                        onClick={() => void handleOpenSystemFiles()}
+                      >
+                        <FileUp size={17} aria-hidden="true" />
+                        <span>
+                          <strong>上传文件</strong>
+                          <small>从系统选择本地图片或文档</small>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-label="截屏"
+                        disabled={isScreenSourcesLoading}
+                        onClick={() => void handleOpenScreenCapture()}
+                      >
+                        <Monitor size={17} aria-hidden="true" />
+                        <span>
+                          <strong>截屏</strong>
+                          <small>选择窗口或屏幕，捕获一帧</small>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        aria-label="摄像头拍照"
+                        onClick={() => void handleOpenCamera()}
+                      >
+                        <Camera size={17} aria-hidden="true" />
+                        <span>
+                          <strong>摄像头拍照</strong>
+                          <small>预览后拍照，直接添加</small>
+                        </span>
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+                <button
+                  className={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? 'is-active'
+                      : undefined
+                  }
+                  type="button"
+                  aria-label={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? '停止语音输入'
+                      : voiceInput.status === 'transcribing'
+                        ? '取消语音转写'
+                        : '语音输入'
+                  }
+                  aria-pressed={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                  }
+                  aria-busy={voiceInput.status === 'transcribing'}
+                  title={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? '停止语音输入'
+                      : voiceInput.status === 'transcribing'
+                        ? '取消语音转写'
+                        : voiceInput.isAvailable
+                          ? '语音输入'
+                          : '当前桌面环境不支持录音'
+                  }
+                  disabled={
+                    !isLoggedIn || !voiceInput.isAvailable || isStreaming || isUploadingAttachments
+                  }
+                  onClick={handleVoiceInput}
+                >
+                  {voiceInput.status === 'transcribing' ? (
+                    <LoaderCircle className="desktop-chat__spin" size={18} aria-hidden="true" />
+                  ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
+                    <Square size={15} fill="currentColor" aria-hidden="true" />
                   ) : (
-                    <SendHorizontal size={18} />
+                    <Mic size={18} aria-hidden="true" />
                   )}
                 </button>
-              )}
+                {composerMode === 'chat' ? (
+                  <>
+                    <button
+                      className={isWebSearchEnabled ? 'is-active' : undefined}
+                      type="button"
+                      aria-label="联网搜索"
+                      title="联网搜索"
+                      aria-pressed={isWebSearchEnabled}
+                      disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
+                      onClick={() => setIsWebSearchEnabled((value) => !value)}
+                    >
+                      <Globe2 size={18} aria-hidden="true" />
+                    </button>
+                    <button
+                      className={isThinkingEnabled ? 'is-active' : undefined}
+                      type="button"
+                      aria-label={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
+                      title={isThinkingEnabled ? '关闭思考过程' : '开启思考过程'}
+                      aria-pressed={isThinkingEnabled}
+                      disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
+                      onClick={() => setIsThinkingEnabled((value) => !value)}
+                    >
+                      <Brain size={18} aria-hidden="true" />
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  className={composerMode === 'image' ? 'is-active' : undefined}
+                  type="button"
+                  aria-label={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  title={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  aria-pressed={composerMode === 'image'}
+                  disabled={
+                    !isLoggedIn ||
+                    isTemporaryConversation ||
+                    isStreaming ||
+                    isUploadingAttachments ||
+                    createMediaTask.isPending
+                  }
+                  onClick={() => setComposerMode((mode) => (mode === 'image' ? 'chat' : 'image'))}
+                >
+                  <Image size={18} aria-hidden="true" />
+                </button>
+                <button
+                  className={composerMode === 'video' ? 'is-active' : undefined}
+                  type="button"
+                  aria-label={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  title={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  aria-pressed={composerMode === 'video'}
+                  disabled={
+                    !isLoggedIn ||
+                    isTemporaryConversation ||
+                    isStreaming ||
+                    isUploadingAttachments ||
+                    createMediaTask.isPending
+                  }
+                  onClick={() => setComposerMode((mode) => (mode === 'video' ? 'chat' : 'video'))}
+                >
+                  <Play size={18} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="desktop-chat__composer-actions">
+                {composerMode === 'chat' ? (
+                  <button
+                    className="desktop-chat__composer-model"
+                    type="button"
+                    aria-label={`切换输入模型：${selectedModel.name}`}
+                    aria-expanded={isModelMenuOpen}
+                    aria-haspopup="listbox"
+                    onClick={() => setIsModelMenuOpen((value) => !value)}
+                  >
+                    <span aria-hidden="true">{getModelInitial(selectedModel)}</span>
+                    {selectedModel.name}
+                    <ChevronDown size={13} aria-hidden="true" />
+                  </button>
+                ) : (
+                  <span className="desktop-chat__composer-media-model">
+                    {composerMode === 'image' ? 'Agnes Image 2.1 Flash' : 'Agnes Video V2.0'}
+                  </span>
+                )}
+                {isStreaming ? (
+                  <button
+                    className="desktop-chat__stop"
+                    type="button"
+                    aria-label="停止生成"
+                    title="停止生成"
+                    onClick={() => stream.stop(activeStreamKey ?? TEMPORARY_CONV_ID)}
+                  >
+                    <Square size={16} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    className="desktop-chat__send"
+                    type="submit"
+                    aria-label="发送消息"
+                    title="发送消息"
+                    disabled={
+                      !isLoggedIn ||
+                      !draft.trim() ||
+                      isUploadingAttachments ||
+                      createMediaTask.isPending
+                    }
+                  >
+                    {isUploadingAttachments ? (
+                      <LoaderCircle className="desktop-chat__spin" size={17} />
+                    ) : (
+                      <SendHorizontal size={18} />
+                    )}
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
       {conversationPendingDeletion ? (
         <ConfirmDialog

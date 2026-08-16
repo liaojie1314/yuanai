@@ -1,3 +1,4 @@
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -6,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import auth, chat, models, notifications, qr_login, share, voice
+from app.api.v1 import auth, chat, media, models, notifications, qr_login, share, voice
 from app.api.v1 import files as files_router
 from app.core.config import settings
 
@@ -21,6 +22,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     ``AsyncHttpxClientWrapper.__del__`` 报错。
     """
     # ── startup ──────────────────────────────────────────────
+    from app.services.media_generation_service import run_media_generation_worker
     from app.services.storage_service import storage
 
     if hasattr(storage, "ensure_bucket"):
@@ -29,7 +31,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             # 冷启动阶段 MinIO 可能尚未就绪，稍后请求时再报错即可
             pass
+    stop_media_worker = asyncio.Event()
+    media_worker = asyncio.create_task(run_media_generation_worker(stop_media_worker))
     yield
+    stop_media_worker.set()
+    await media_worker
     # ── shutdown ─────────────────────────────────────────────
     from app.services.ai_service import _AI_CLIENTS
 
@@ -67,6 +73,8 @@ if settings.storage_backend.lower() == "local":
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(qr_login.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
+app.include_router(media.router, prefix="/api/v1")
+app.include_router(media.chat_media_router, prefix="/api/v1")
 app.include_router(models.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(share.router, prefix="/api/v1")

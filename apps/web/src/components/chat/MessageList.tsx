@@ -24,6 +24,11 @@ interface RowAI {
   versionCount: number
   versionIdx: number
 }
+interface RowMedia {
+  kind: 'media'
+  msg: MockMessage
+  pairIndex: number
+}
 interface RowOptimisticUser {
   kind: 'opt-user'
   content: string
@@ -33,7 +38,7 @@ interface RowStreamingAI {
   kind: 'stream-ai'
   streamingContent: string
 }
-type Row = RowUser | RowAI | RowOptimisticUser | RowStreamingAI
+type Row = RowUser | RowAI | RowMedia | RowOptimisticUser | RowStreamingAI
 
 export interface MessageListProps {
   virtuosoRef: RefObject<VirtuosoHandle | null>
@@ -112,8 +117,9 @@ export function MessageList({
 }: MessageListProps): JSX.Element {
   const rows: Row[] = useMemo(() => {
     const list: Row[] = []
-    for (const pair of pairs) {
+    for (const [pairIndex, pair] of pairs.entries()) {
       list.push({ kind: 'user', pair })
+      pair.mediaAssistants.forEach((msg) => list.push({ kind: 'media', msg, pairIndex }))
       const rawIdx = versionIdxs[pair.pairKey] ?? pair.assistants.length - 1
       const vIdx = Math.max(0, Math.min(rawIdx, pair.assistants.length - 1))
       const isPairRegenerating = regeneratingPairKey === pair.pairKey
@@ -170,8 +176,9 @@ export function MessageList({
         // 每两行对应一个 pair（user + ai）；取可视区间中点，
         // 避免仅看到上一条 AI 尾部时误把上一 pair 当作 active。
         const midRow = Math.round((range.startIndex + range.endIndex) / 2)
-        const pairIdx = Math.floor(midRow / 2)
-        onRangeChanged(pairIdx)
+        const row = rows[midRow]
+        if (row?.kind === 'media') onRangeChanged(row.pairIndex)
+        else onRangeChanged(Math.min(pairs.length - 1, Math.floor(midRow / 2)))
       }}
       atBottomThreshold={80}
       increaseViewportBy={{ top: 300, bottom: 300 }}
@@ -219,12 +226,26 @@ export function MessageList({
                 versionCount={row.versionCount}
                 versionIdx={row.versionIdx}
                 onVersionChange={(i) => onVersionChange(row.pair.pairKey, i)}
-                onRegenerate={() => onRegenerate(row.pair)}
+                {...(asstMsg.mediaTask ? {} : { onRegenerate: () => onRegenerate(row.pair) })}
                 onFeedback={(type) => onFeedback(asstId, type)}
                 feedbackGiven={msgFeedback[asstId]}
                 streamingThink={streamingThink}
                 streamingToolCalls={streamingToolCalls}
                 streamingThinkDurationMs={streamingThinkDurationMs}
+              />
+            </div>
+          )
+        }
+        if (row.kind === 'media') {
+          return (
+            <div className="ch-msgs-inner ch-msgs-item">
+              <AIMessage
+                msg={row.msg}
+                isStreaming={false}
+                streamingContent=""
+                onFill={onFill}
+                timeFmt={timeFmt}
+                dateFmt={dateFmt}
               />
             </div>
           )

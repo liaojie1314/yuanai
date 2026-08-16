@@ -5,11 +5,13 @@ import {
   ChevronRight,
   Copy,
   Download,
+  Eye,
   ExternalLink,
   FileText,
   Pencil,
   Play,
   RotateCcw,
+  Square,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -28,13 +30,14 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
 import { getFilePreview } from '@yuanai/core'
+import { useCancelMediaTask, useCreateMediaTask } from '@yuanai/core/hooks'
 import type { DateFmt, TimeFmt } from '@yuanai/core/stores'
 import { formatMsgTime, isDataPreviewLang, isRunnableLang, stripMarkdown } from '@yuanai/core/utils'
 import { Role } from '@yuanai/types'
 import type { DesktopArtifactPayload } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { CodeHighlight } from '../shared/CodeHighlight'
-import type { Message, ToolCall, User } from '@yuanai/types'
+import type { MediaGenerationTask, Message, ToolCall, User } from '@yuanai/types'
 
 /** 聊天消息区的交互回调。 */
 export interface ChatMessageActions {
@@ -368,6 +371,15 @@ function MessageAttachment({
         <button type="button" aria-label={`预览图片 ${file.filename}`} onClick={openImagePreview}>
           <img src={file.url} alt={file.filename} onError={() => setImageFailed(true)} />
         </button>
+        <a
+          className="desktop-chat__file-download"
+          href={file.url}
+          download={file.filename}
+          aria-label={`下载 ${file.filename}`}
+          title={`下载 ${file.filename}`}
+        >
+          <Download size={15} aria-hidden="true" />
+        </a>
         {previewError ? <small role="status">{previewError}</small> : null}
       </li>
     )
@@ -408,8 +420,14 @@ function MessageAttachment({
     <li className="desktop-chat__file" title={file.filename}>
       <FileText size={14} aria-hidden="true" />
       <span>{file.filename}</span>
-      <button type="button" onClick={() => void openPreview()} aria-label={`预览 ${file.filename}`}>
-        预览
+      <button
+        type="button"
+        className="desktop-chat__file-action"
+        onClick={() => void openPreview()}
+        aria-label={`预览 ${file.filename}`}
+        title={`预览 ${file.filename}`}
+      >
+        <Eye size={14} aria-hidden="true" />
       </button>
       <a href={file.url} download aria-label={`下载 ${file.filename}`}>
         <Download size={13} aria-hidden="true" />
@@ -639,6 +657,113 @@ function AssistantMessageActions({
   )
 }
 
+/** 在桌面端独立 Artifact 窗口预览、取消或重试生成任务。 */
+function MediaTaskCard({
+  task,
+  onOpenArtifact,
+}: {
+  task: MediaGenerationTask
+  onOpenArtifact(payload: DesktopArtifactPayload): void
+}): ReactElement {
+  const cancel = useCancelMediaTask()
+  const retry = useCreateMediaTask()
+  const active = task.status === 'queued' || task.status === 'running'
+  const label = task.type === 'image' ? '图片生成' : '视频生成'
+  const requestedRatio = task.type === 'image' ? task.options.ratio : task.options.aspectRatio
+  const mediaStyle = {
+    aspectRatio: requestedRatio
+      ? requestedRatio.replace(':', ' / ')
+      : task.type === 'image'
+        ? '1 / 1'
+        : '16 / 9',
+  }
+  const thumbnailUrl = task.type === 'image' ? task.resultUrl : task.resultPosterUrl
+
+  return (
+    <section className="desktop-chat__media-task" aria-label={`${label}任务`}>
+      <header>
+        <span>{label}</span>
+        <small>
+          {active ? `${task.progress}%` : task.status === 'succeeded' ? '已完成' : '已结束'}
+        </small>
+      </header>
+      <p>{task.prompt}</p>
+      {active ? (
+        <div className="desktop-chat__media-progress" aria-label={`生成进度 ${task.progress}%`}>
+          <span style={{ width: `${Math.max(4, task.progress)}%` }} />
+        </div>
+      ) : null}
+      {task.status === 'succeeded' && task.resultUrl && task.resultMimeType ? (
+        <div className="desktop-chat__media-result-shell" style={mediaStyle}>
+          <button
+            type="button"
+            className="desktop-chat__media-result"
+            aria-label={`预览${label}`}
+            title={`预览${label}`}
+            onClick={() =>
+              onOpenArtifact({
+                kind: 'file-preview',
+                title: `${label}-${task.id.slice(0, 8)}`,
+                sourceUrl: task.resultUrl ?? '',
+                mimeType: task.resultMimeType ?? '',
+              })
+            }
+          >
+            {thumbnailUrl ? (
+              <img
+                src={thumbnailUrl}
+                alt={task.type === 'image' ? task.prompt : ''}
+                draggable={false}
+              />
+            ) : (
+              <span className="desktop-chat__media-video-fallback" aria-hidden="true" />
+            )}
+            {task.type === 'video' ? (
+              <span className="desktop-chat__media-play" aria-hidden="true">
+                <Play size={20} fill="currentColor" />
+              </span>
+            ) : null}
+          </button>
+          <a
+            className="desktop-chat__media-download"
+            href={task.resultUrl}
+            download
+            aria-label={`下载${label}`}
+            title={`下载${label}`}
+          >
+            <Download size={16} aria-hidden="true" />
+          </a>
+        </div>
+      ) : null}
+      {task.status === 'failed' ? <small className="is-error">{task.errorMessage}</small> : null}
+      <footer>
+        {active ? (
+          <button type="button" onClick={() => cancel.mutate(task.id)} disabled={cancel.isPending}>
+            <Square size={13} fill="currentColor" /> 停止
+          </button>
+        ) : null}
+        {task.status === 'failed' ? (
+          <button
+            type="button"
+            onClick={() =>
+              retry.mutate({
+                conversationId: task.conversationId,
+                type: task.type,
+                prompt: task.prompt,
+                options: task.options,
+                sourceFileIds: task.sourceFileIds,
+              })
+            }
+            disabled={retry.isPending}
+          >
+            <RotateCcw size={13} /> 重试
+          </button>
+        ) : null}
+      </footer>
+    </section>
+  )
+}
+
 /** 渲染已完成消息的头像、思考块、代码工具栏和消息操作。 */
 export function ChatMessage({
   user,
@@ -698,6 +823,8 @@ export function ChatMessage({
           <div className="desktop-chat__markdown desktop-chat__message-bubble">
             <p>{message.content}</p>
           </div>
+        ) : message.mediaTask ? (
+          <MediaTaskCard task={message.mediaTask} onOpenArtifact={onOpenArtifact} />
         ) : (
           <div className="desktop-chat__markdown">
             <MarkdownContent
@@ -758,7 +885,7 @@ export function ChatMessage({
             isStreaming={isStreaming}
             onStartEdit={() => setIsEditing(true)}
           />
-        ) : !isEditing ? (
+        ) : !isEditing && !message.mediaTask ? (
           <AssistantMessageActions
             content={message.content}
             canRegenerate={canRegenerate}

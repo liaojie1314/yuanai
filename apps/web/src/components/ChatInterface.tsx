@@ -26,12 +26,14 @@ import { useStream, TEMPORARY_CONV_ID } from '@yuanai/core/hooks'
 import type { TemporaryChatMessage } from '@yuanai/core/hooks'
 import {
   useConversations,
+  useCreateMediaTask,
   useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
   useLogout,
   useMessages,
   useModels,
+  useMediaTasks,
   useUpdateConversation,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
@@ -73,6 +75,8 @@ import {
   Loader2,
   Brain,
   Ghost,
+  Image,
+  Video,
 } from 'lucide-react'
 
 import { triggerAIReplyNotification } from '@/lib/notifications'
@@ -110,6 +114,48 @@ interface AttachFile {
   fileId?: string
   /** 上传失败时的错误消息。 */
   error?: string
+}
+
+type ComposerMode = 'chat' | 'image' | 'video'
+
+const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
+const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
+const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
+const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const
+const VIDEO_DURATIONS = [3, 5, 10, 18] as const
+
+/** 输入框上方的紧凑媒体规格分段选择。 */
+function OptionGroup<T extends string | number>({
+  label,
+  value,
+  values,
+  onChange,
+  suffix = '',
+}: {
+  label: string
+  value: T
+  values: readonly T[]
+  onChange(value: T): void
+  suffix?: string
+}): JSX.Element {
+  return (
+    <div className="ch-media-option-group">
+      <span>{label}</span>
+      <div>
+        {values.map((item) => (
+          <button
+            key={String(item)}
+            type="button"
+            className={item === value ? 'active' : ''}
+            onClick={() => onChange(item)}
+          >
+            {item}
+            {suffix}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ── Static constants ─────────────────────────────────
@@ -283,6 +329,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   }, [modelsQuery.data])
 
   const stream = useStream()
+  const createMediaTask = useCreateMediaTask()
+  useMediaTasks(temporary ? undefined : activeConv)
 
   useEffect(() => {
     if (initialConvId) {
@@ -329,6 +377,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const artifactOpen = useArtifactStore((s) => s.open)
   const openFilePreview = useArtifactStore((s) => s.openFilePreview)
   const [webSearch, setWebSearch] = useState(true)
+  const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
+  const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
+  const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
+  const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
+  const [videoResolution, setVideoResolution] = useState<(typeof VIDEO_RESOLUTIONS)[number]>('720p')
+  const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
   const [modelDropOpen, setModelDropOpen] = useState(false)
@@ -665,11 +719,20 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
     const text = inputValue.trim()
     const hasImageAttachment = files.some((file) => file.type === 'image')
-    if (hasImageAttachment && !activeModel.supportsVision) {
+    const isMediaMode = composerMode !== 'chat'
+    if (isMediaMode && temporary) {
+      toast.error('临时对话不支持图片或视频生成')
+      return
+    }
+    if (isMediaMode && files.some((file) => file.type !== 'image')) {
+      toast.error('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
+      return
+    }
+    if (!isMediaMode && hasImageAttachment && !activeModel.supportsVision) {
       toast.error('当前模型不支持图片识别，请切换至支持视觉的模型后发送')
       return
     }
-    if (files.length > 0 && !activeModel.supportsFiles) {
+    if (!isMediaMode && files.length > 0 && !activeModel.supportsFiles) {
       toast.error('当前模型不支持文件识别，请切换至支持文件的模型后发送')
       return
     }
@@ -805,6 +868,29 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     setInputValue('')
     setFiles([])
     if (inputRef.current) inputRef.current.style.height = 'auto'
+
+    if (isMediaMode) {
+      try {
+        await createMediaTask.mutateAsync({
+          conversationId: convId,
+          type: composerMode,
+          prompt: text,
+          options:
+            composerMode === 'image'
+              ? { size: imageSize, ratio: imageRatio }
+              : {
+                  aspectRatio: videoRatio,
+                  resolution: videoResolution,
+                  durationSeconds: videoDuration,
+                },
+          sourceFileIds: fileIds,
+        })
+        virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '创建生成任务失败')
+      }
+      return
+    }
 
     // 发送前先滚到底部，确保用户能看到流式输出
     virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
@@ -1567,182 +1653,265 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         </div>
 
         {/* Input area */}
-        <div className="ch-input-wrap">
-          <div className="ch-input-inner">
-            {/* Attachment preview row */}
-            {files.length > 0 && (
-              <div className="ch-attach-row">
-                {files.map((f) =>
-                  f.type === 'image' ? (
-                    <div key={f.id} className={`ch-attach-img${f.status === 'error' ? 'err' : ''}`}>
-                      <img src={f.preview} alt={f.file.name} />
-                      {f.status === 'uploading' && (
-                        <div className="ch-attach-prog" aria-hidden>
-                          <div className="ch-attach-prog-bar" style={{ width: `${f.progress}%` }} />
-                        </div>
-                      )}
-                      <button
-                        className="ch-attach-rm"
-                        onClick={() => removeFile(f.id)}
-                        aria-label="移除附件"
-                      >
-                        <X size={8} />
-                      </button>
-                    </div>
-                  ) : (
-                    <div
-                      key={f.id}
-                      className={`ch-attach-doc${f.status === 'error' ? 'err' : ''}`}
-                      title={f.error ?? undefined}
-                    >
-                      <FileText size={14} />
-                      <span>{f.preview}</span>
-                      {f.status === 'uploading' && (
-                        <span className="ch-attach-pct">{f.progress}%</span>
-                      )}
-                      {f.status === 'error' && <span className="ch-attach-pct err">上传失败</span>}
-                      <button
-                        className="ch-attach-rm-doc"
-                        onClick={() => removeFile(f.id)}
-                        aria-label="移除附件"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  )
-                )}
-              </div>
-            )}
-            <textarea
-              ref={inputRef}
-              className="ch-input-ta"
-              placeholder={
-                voiceInput.status === 'listening'
-                  ? '正在聆听…'
-                  : voiceInput.status === 'recording'
-                    ? '正在录音…'
-                    : voiceInput.status === 'transcribing'
-                      ? '正在转写…'
-                      : isLoggedIn
-                        ? t('inputPlaceholder')
-                        : t('inputPlaceholderLoggedOut')
-              }
-              rows={1}
-              value={inputValue}
-              onChange={onInputChange}
-              onKeyDown={onInputKey}
-              disabled={!isLoggedIn}
-            />
-            <div className="ch-input-tb">
-              <button
-                ref={attachBtnRef}
-                className={`ch-in-btn ${attachMenuOpen ? 'on' : ''}`}
-                title={temporary ? t('temporary.filesDisabled') : '添加附件'}
-                disabled={!isLoggedIn || temporary}
-                onClick={() => setAttachMenuOpen((v) => !v)}
-                aria-haspopup="menu"
-                aria-expanded={attachMenuOpen}
-              >
-                <Paperclip size={18} />
-              </button>
-              <button
-                className={`ch-in-btn ${
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? 'ch-mic-on'
-                    : ''
-                }`}
-                title={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? '停止语音输入'
-                    : voiceInput.status === 'transcribing'
-                      ? '取消语音转写'
-                      : voiceInput.isAvailable
-                        ? '语音输入'
-                        : '当前浏览器不支持录音'
-                }
-                aria-label={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                    ? '停止语音输入'
-                    : voiceInput.status === 'transcribing'
-                      ? '取消语音转写'
-                      : '语音输入'
-                }
-                disabled={!isLoggedIn || !voiceInput.isAvailable}
-                onClick={toggleVoiceInput}
-                aria-busy={voiceInput.status === 'transcribing'}
-                aria-pressed={
-                  voiceInput.status === 'listening' || voiceInput.status === 'recording'
-                }
-              >
-                {voiceInput.status === 'transcribing' ? (
-                  <Loader2 className="spin" size={18} />
-                ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
-                  <Square size={15} fill="currentColor" />
-                ) : (
-                  <Mic size={18} />
-                )}
-              </button>
-              <button
-                className={`ch-in-btn ${webSearch ? 'on' : ''}`}
-                title="联网搜索"
-                disabled={!isLoggedIn}
-                aria-pressed={webSearch}
-                onClick={() => setWebSearch((w) => !w)}
-              >
-                <Globe size={18} />
-              </button>
-              <button
-                className={`ch-in-btn ${showThinking ? 'on' : ''}`}
-                title={showThinking ? '关闭思考过程' : '开启思考过程'}
-                disabled={!isLoggedIn}
-                onClick={() => setShowThinking(!showThinking)}
-              >
-                <Brain size={18} />
-              </button>
-              <div className="ch-in-sep" />
-              <div className="ch-in-r">
-                <button className="ch-m-tag" onClick={toggleModelDrop}>
-                  <div
-                    className="ch-m-dot-sm"
-                    style={{ background: activeModel.gradient ?? activeModel.color }}
-                  >
-                    {activeModel.letter}
-                  </div>
-                  {activeModel.name}
-                </button>
-                {charCount > 0 && (
-                  <span className={`ch-char-c ${charCount > 3800 ? 'over' : ''}`}>
-                    {charCount} / 4000
-                  </span>
-                )}
-                {isThisStreaming ? (
-                  <button
-                    className="ch-send-btn streaming on"
-                    onClick={stopStreaming}
-                    title={t('actions.stopGeneration')}
-                  >
-                    <Square size={16} fill="currentColor" />
-                  </button>
-                ) : uploading ? (
-                  <button className="ch-send-btn on" disabled title="上传中...">
-                    <Loader2 size={18} className="ch-spin" />
-                  </button>
-                ) : (
-                  <button
-                    className={`ch-send-btn ${inputValue.trim() && isLoggedIn ? 'on' : ''}`}
-                    onClick={() => {
-                      void sendMessage()
-                    }}
-                    disabled={!inputValue.trim() || !isLoggedIn}
-                    title="发送 (Enter)"
-                  >
-                    <SendHorizontal size={20} />
-                  </button>
-                )}
+        <div className="ch-composer-shell">
+          {composerMode === 'image' ? (
+            <div className="ch-media-options-wrap" aria-label="图片生成规格">
+              <div className="ch-media-options">
+                <OptionGroup<(typeof IMAGE_SIZES)[number]>
+                  label="清晰度"
+                  value={imageSize}
+                  values={IMAGE_SIZES}
+                  onChange={setImageSize}
+                />
+                <OptionGroup<(typeof IMAGE_RATIOS)[number]>
+                  label="比例"
+                  value={imageRatio}
+                  values={IMAGE_RATIOS}
+                  onChange={setImageRatio}
+                />
               </div>
             </div>
+          ) : null}
+          {composerMode === 'video' ? (
+            <div className="ch-media-options-wrap" aria-label="视频生成规格">
+              <div className="ch-media-options">
+                <OptionGroup<(typeof VIDEO_RATIOS)[number]>
+                  label="画幅"
+                  value={videoRatio}
+                  values={VIDEO_RATIOS}
+                  onChange={setVideoRatio}
+                />
+                <OptionGroup<(typeof VIDEO_RESOLUTIONS)[number]>
+                  label="清晰度"
+                  value={videoResolution}
+                  values={VIDEO_RESOLUTIONS}
+                  onChange={setVideoResolution}
+                />
+                <OptionGroup<(typeof VIDEO_DURATIONS)[number]>
+                  label="时长"
+                  value={videoDuration}
+                  values={VIDEO_DURATIONS}
+                  onChange={setVideoDuration}
+                  suffix=" 秒"
+                />
+              </div>
+            </div>
+          ) : null}
+          <div className="ch-input-wrap">
+            <div className="ch-input-inner">
+              {/* Attachment preview row */}
+              {files.length > 0 && (
+                <div className="ch-attach-row">
+                  {files.map((f) =>
+                    f.type === 'image' ? (
+                      <div
+                        key={f.id}
+                        className={`ch-attach-img${f.status === 'error' ? 'err' : ''}`}
+                      >
+                        <img src={f.preview} alt={f.file.name} />
+                        {f.status === 'uploading' && (
+                          <div className="ch-attach-prog" aria-hidden>
+                            <div
+                              className="ch-attach-prog-bar"
+                              style={{ width: `${f.progress}%` }}
+                            />
+                          </div>
+                        )}
+                        <button
+                          className="ch-attach-rm"
+                          onClick={() => removeFile(f.id)}
+                          aria-label="移除附件"
+                        >
+                          <X size={8} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        key={f.id}
+                        className={`ch-attach-doc${f.status === 'error' ? 'err' : ''}`}
+                        title={f.error ?? undefined}
+                      >
+                        <FileText size={14} />
+                        <span>{f.preview}</span>
+                        {f.status === 'uploading' && (
+                          <span className="ch-attach-pct">{f.progress}%</span>
+                        )}
+                        {f.status === 'error' && (
+                          <span className="ch-attach-pct err">上传失败</span>
+                        )}
+                        <button
+                          className="ch-attach-rm-doc"
+                          onClick={() => removeFile(f.id)}
+                          aria-label="移除附件"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    )
+                  )}
+                </div>
+              )}
+              <textarea
+                ref={inputRef}
+                className="ch-input-ta"
+                placeholder={
+                  voiceInput.status === 'listening'
+                    ? '正在聆听…'
+                    : voiceInput.status === 'recording'
+                      ? '正在录音…'
+                      : voiceInput.status === 'transcribing'
+                        ? '正在转写…'
+                        : isLoggedIn
+                          ? t('inputPlaceholder')
+                          : t('inputPlaceholderLoggedOut')
+                }
+                rows={1}
+                value={inputValue}
+                onChange={onInputChange}
+                onKeyDown={onInputKey}
+                disabled={!isLoggedIn}
+              />
+              <div className="ch-input-tb">
+                <button
+                  ref={attachBtnRef}
+                  className={`ch-in-btn ${attachMenuOpen ? 'on' : ''}`}
+                  title={temporary ? t('temporary.filesDisabled') : '添加附件'}
+                  disabled={!isLoggedIn || temporary}
+                  onClick={() => setAttachMenuOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={attachMenuOpen}
+                >
+                  <Paperclip size={18} />
+                </button>
+                <button
+                  className={`ch-in-btn ${
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? 'ch-mic-on'
+                      : ''
+                  }`}
+                  title={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? '停止语音输入'
+                      : voiceInput.status === 'transcribing'
+                        ? '取消语音转写'
+                        : voiceInput.isAvailable
+                          ? '语音输入'
+                          : '当前浏览器不支持录音'
+                  }
+                  aria-label={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                      ? '停止语音输入'
+                      : voiceInput.status === 'transcribing'
+                        ? '取消语音转写'
+                        : '语音输入'
+                  }
+                  disabled={!isLoggedIn || !voiceInput.isAvailable}
+                  onClick={toggleVoiceInput}
+                  aria-busy={voiceInput.status === 'transcribing'}
+                  aria-pressed={
+                    voiceInput.status === 'listening' || voiceInput.status === 'recording'
+                  }
+                >
+                  {voiceInput.status === 'transcribing' ? (
+                    <Loader2 className="spin" size={18} />
+                  ) : voiceInput.status === 'listening' || voiceInput.status === 'recording' ? (
+                    <Square size={15} fill="currentColor" />
+                  ) : (
+                    <Mic size={18} />
+                  )}
+                </button>
+                {composerMode === 'chat' ? (
+                  <>
+                    <button
+                      className={`ch-in-btn ${webSearch ? 'on' : ''}`}
+                      title="联网搜索"
+                      disabled={!isLoggedIn}
+                      aria-pressed={webSearch}
+                      onClick={() => setWebSearch((w) => !w)}
+                    >
+                      <Globe size={18} />
+                    </button>
+                    <button
+                      className={`ch-in-btn ${showThinking ? 'on' : ''}`}
+                      title={showThinking ? '关闭思考过程' : '开启思考过程'}
+                      disabled={!isLoggedIn}
+                      onClick={() => setShowThinking(!showThinking)}
+                    >
+                      <Brain size={18} />
+                    </button>
+                  </>
+                ) : null}
+                <button
+                  className={`ch-in-btn ${composerMode === 'image' ? 'on' : ''}`}
+                  title={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  aria-label={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  aria-pressed={composerMode === 'image'}
+                  disabled={!isLoggedIn || temporary || uploading || createMediaTask.isPending}
+                  onClick={() => setComposerMode((mode) => (mode === 'image' ? 'chat' : 'image'))}
+                >
+                  <Image size={18} />
+                </button>
+                <button
+                  className={`ch-in-btn ${composerMode === 'video' ? 'on' : ''}`}
+                  title={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  aria-label={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  aria-pressed={composerMode === 'video'}
+                  disabled={!isLoggedIn || temporary || uploading || createMediaTask.isPending}
+                  onClick={() => setComposerMode((mode) => (mode === 'video' ? 'chat' : 'video'))}
+                >
+                  <Video size={18} />
+                </button>
+                <div className="ch-in-sep" />
+                <div className="ch-in-r">
+                  {composerMode === 'chat' ? (
+                    <button className="ch-m-tag" onClick={toggleModelDrop}>
+                      <div
+                        className="ch-m-dot-sm"
+                        style={{ background: activeModel.gradient ?? activeModel.color }}
+                      >
+                        {activeModel.letter}
+                      </div>
+                      {activeModel.name}
+                    </button>
+                  ) : (
+                    <span className="ch-media-model">
+                      {composerMode === 'image' ? 'Agnes Image 2.1 Flash' : 'Agnes Video V2.0'}
+                    </span>
+                  )}
+                  {charCount > 0 && (
+                    <span className={`ch-char-c ${charCount > 3800 ? 'over' : ''}`}>
+                      {charCount} / 4000
+                    </span>
+                  )}
+                  {isThisStreaming ? (
+                    <button
+                      className="ch-send-btn streaming on"
+                      onClick={stopStreaming}
+                      title={t('actions.stopGeneration')}
+                    >
+                      <Square size={16} fill="currentColor" />
+                    </button>
+                  ) : uploading ? (
+                    <button className="ch-send-btn on" disabled title="上传中...">
+                      <Loader2 size={18} className="ch-spin" />
+                    </button>
+                  ) : (
+                    <button
+                      className={`ch-send-btn ${inputValue.trim() && isLoggedIn ? 'on' : ''}`}
+                      onClick={() => {
+                        void sendMessage()
+                      }}
+                      disabled={!inputValue.trim() || !isLoggedIn}
+                      title="发送 (Enter)"
+                    >
+                      <SendHorizontal size={20} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="ch-input-hint">{t('disclaimer')}</p>
           </div>
-          <p className="ch-input-hint">{t('disclaimer')}</p>
         </div>
       </main>
 

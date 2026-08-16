@@ -39,6 +39,24 @@ describe('artifact.store', () => {
     expect(payload?.kind === 'file' ? payload.fileId : undefined).toBe('file-1')
   })
 
+  it('openMediaPreview 直接记录生成媒体结果，不伪装为上传文件', () => {
+    useArtifactStore.getState().openMediaPreview({
+      title: '视频生成-1.mp4',
+      mimeType: 'video/mp4',
+      url: 'https://cdn.example.com/media/video.mp4',
+    })
+
+    expect(useArtifactStore.getState()).toMatchObject({
+      open: true,
+      payload: {
+        kind: 'media',
+        title: '视频生成-1.mp4',
+        mimeType: 'video/mp4',
+        url: 'https://cdn.example.com/media/video.mp4',
+      },
+    })
+  })
+
   it('close 清空 payload', () => {
     useArtifactStore.getState().openView({ title: 'x', lang: 'js', code: 'a=1' })
     useArtifactStore.getState().close()

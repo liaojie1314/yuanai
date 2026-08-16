@@ -1375,6 +1375,13 @@
 }
 
 /* ── Input area ──────────────────────────────────── */
+.ch-composer-shell {
+  flex-shrink: 0;
+  background: var(--bg);
+}
+.ch-media-options-wrap {
+  padding: 0 20px 2px;
+}
 .ch-input-wrap {
   padding: 4px 20px 12px;
   flex-shrink: 0;
@@ -1850,6 +1857,14 @@
   max-height: 100%;
   object-fit: contain;
 }
+.ch-ap-media-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  background: var(--surface);
+  object-fit: contain;
+}
 .ch-ap-file-image-trigger {
   position: relative;
   display: flex;
@@ -1998,15 +2013,34 @@
   background: rgba(15, 23, 42, 0.9);
 }
 .ch-ap-lightbox-viewport {
-  display: flex;
+  display: block;
   width: 100%;
   height: 100%;
   min-width: 0;
   min-height: 0;
-  align-items: center;
-  justify-content: center;
   overflow: auto;
   overscroll-behavior: contain;
+  cursor: zoom-in;
+}
+.ch-ap-lightbox-viewport.is-pannable {
+  cursor: grab;
+  touch-action: none;
+}
+.ch-ap-lightbox-viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+.ch-ap-lightbox-canvas {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  place-items: center;
+}
+.ch-ap-lightbox-canvas.is-resized {
+  width: max-content;
+  height: max-content;
 }
 .ch-ap-lightbox-image {
   display: block;
@@ -2017,14 +2051,12 @@
   object-fit: contain;
   border-radius: 6px;
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
-  cursor: zoom-in;
-  transform-origin: center;
-  transition: transform 120ms ease;
+  cursor: inherit;
+  user-select: none;
 }
 .ch-ap-lightbox-image.is-zoomed {
   max-width: none;
   max-height: none;
-  cursor: grab;
 }
 .ch-ap-lightbox-close,
 .ch-ap-lightbox-nav {
@@ -3577,4 +3609,217 @@
 .ch-cam-shoot:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* ── 媒体生成规格 ─────────────────────────────────── */
+.ch-media-options,
+.ch-media-option-group,
+.ch-media-option-group > div {
+  display: flex;
+  align-items: center;
+}
+.ch-media-option-group button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 27px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--fg3);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ch-media-option-group button.active {
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
+  background: var(--brand-light);
+  color: var(--brand);
+}
+.ch-media-options {
+  width: min(100%, 800px);
+  min-height: 30px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 0 4px 4px;
+}
+.ch-media-option-group {
+  gap: 6px;
+}
+.ch-media-option-group > span {
+  color: var(--fg3);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ch-media-option-group > div {
+  gap: 3px;
+  overflow-x: auto;
+  max-width: min(100%, 420px);
+  scrollbar-width: none;
+}
+.ch-media-option-group button {
+  min-height: 24px;
+  padding: 3px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.ch-media-model {
+  max-width: 190px;
+  overflow: hidden;
+  color: var(--fg2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+  .ch-media-options-wrap {
+    padding-inline: 12px;
+  }
+  .ch-media-options {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 5px;
+    scrollbar-width: none;
+  }
+}
+
+/* ── 图片 / 视频生成任务卡 ─────────────────────────── */
+.ch-media-task {
+  width: min(100%, 560px);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--brand-light));
+}
+.ch-media-task__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+}
+.ch-media-task__icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--brand-light);
+  color: var(--brand);
+}
+.ch-media-task__head div {
+  min-width: 0;
+  flex: 1;
+}
+.ch-media-task__head strong {
+  display: block;
+  font-size: 13px;
+  color: var(--fg);
+}
+.ch-media-task__head p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--fg3);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.ch-media-task__progress {
+  height: 3px;
+  background: var(--border);
+}
+.ch-media-task__progress span {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width 0.24s ease;
+}
+.ch-media-task__result {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-height: 380px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: #111827;
+  cursor: zoom-in;
+}
+.ch-media-task__visual {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.ch-media-task__visual > img,
+.ch-media-task__video-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: 380px;
+  object-fit: contain;
+}
+.ch-media-task__video-fallback {
+  background: color-mix(in srgb, var(--brand-light) 74%, var(--surface));
+}
+.ch-media-task__play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.8);
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(15, 23, 42, 0.28);
+  transform: translate(-50%, -50%);
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+}
+.ch-media-task__result--video:hover .ch-media-task__play {
+  background: rgba(15, 23, 42, 0.94);
+  transform: translate(-50%, -50%) scale(1.06);
+}
+.ch-media-task__error {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0 12px 10px;
+  color: #dc2626;
+  font-size: 12px;
+}
+.ch-media-task__actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+}
+.ch-media-task__actions button,
+.ch-media-task__actions a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--bg2);
+  color: var(--fg2);
+  font-size: 12px;
+  text-decoration: none;
+  cursor: pointer;
+}
+.ch-media-task__actions button:hover:not(:disabled),
+.ch-media-task__actions a:hover {
+  background: var(--brand-light);
+  color: var(--brand);
 }

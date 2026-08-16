@@ -17,6 +17,8 @@ export interface MessagePair {
   userMsg: Message | null
   /** 该轮的 AI 回复，按时间正序；长度 > 1 即存在多版本 */
   assistants: Message[]
+  /** 媒体任务卡按显式来源消息单独归属，绝不参与回答版本切换。 */
+  mediaAssistants: Message[]
 }
 
 /**
@@ -43,17 +45,32 @@ export function buildMessagePairs(msgs: readonly Message[]): MessagePair[] {
         activePair = sourcePair
         pairsByUserMessageId.set(msg.id, sourcePair)
       } else {
-        activePair = { pairKey: msg.id, userMsg: msg, assistants: [] }
+        activePair = { pairKey: msg.id, userMsg: msg, assistants: [], mediaAssistants: [] }
         pairs.push(activePair)
         pairsByUserMessageId.set(msg.id, activePair)
       }
       continue
     }
-    if (activePair) {
+    if (msg.mediaTask) {
+      const sourceMessageId = msg.mediaTask.sourceMessageId
+      const sourcePair = sourceMessageId ? pairsByUserMessageId.get(sourceMessageId) : undefined
+      const targetPair = sourcePair ?? activePair
+      if (targetPair) {
+        targetPair.mediaAssistants.push(msg)
+      } else {
+        activePair = {
+          pairKey: msg.id,
+          userMsg: null,
+          assistants: [],
+          mediaAssistants: [msg],
+        }
+        pairs.push(activePair)
+      }
+    } else if (activePair) {
       activePair.assistants.push(msg)
     } else {
       // 开头就是 assistant：建一个无用户消息的孤儿对，避免丢内容
-      activePair = { pairKey: msg.id, userMsg: null, assistants: [msg] }
+      activePair = { pairKey: msg.id, userMsg: null, assistants: [msg], mediaAssistants: [] }
       pairs.push(activePair)
     }
   }

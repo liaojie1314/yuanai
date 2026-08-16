@@ -19,13 +19,15 @@ import {
   TABLET_MIN_WIDTH,
   filterChatModels,
   useConversations,
+  useCreateMediaTask,
+  useMediaTasks,
   useMessages,
   useModels,
   useStream,
   useUpdateConversation,
 } from '@yuanai/core'
 import { selectConversationStream, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import type { AIModel } from '@yuanai/types'
+import type { AIModel, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
 
 import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { ChatInput } from '@/components/chat/ChatInput'
@@ -82,10 +84,12 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { data: messages = [], isLoading } = useMessages(conversationId)
+  useMediaTasks(conversationId)
   const { send, stop } = useStream()
   const activeStream = useChatStore((state) => selectConversationStream(state, conversationId))
   const isStreaming = activeStream.conversationId === conversationId
   const updateConv = useUpdateConversation()
+  const createMediaTask = useCreateMediaTask()
   const toast = useToast()
 
   const listRef = useRef<MessageListHandle>(null)
@@ -183,6 +187,37 @@ export default function ChatConversationScreen(): React.JSX.Element {
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
     },
     [conversationId, currentModel, send, showSendError]
+  )
+
+  const handleCreateMediaTask = useCallback(
+    async ({
+      content,
+      fileIds,
+      type,
+      options,
+    }: {
+      content: string
+      fileIds?: string[]
+      type: MediaGenerationType
+      options: MediaGenerationOptions
+    }): Promise<boolean> => {
+      if (!conversationId || !content.trim() || createMediaTask.isPending) return false
+      try {
+        await createMediaTask.mutateAsync({
+          conversationId,
+          type,
+          prompt: content,
+          options,
+          ...(fileIds && fileIds.length > 0 ? { sourceFileIds: fileIds } : {}),
+        })
+        requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
+        return true
+      } catch (error: unknown) {
+        showSendError(error)
+        return false
+      }
+    },
+    [conversationId, createMediaTask, showSendError]
   )
 
   // ── 版本切换 ────────────────────────────────────────────────
@@ -375,6 +410,9 @@ export default function ChatConversationScreen(): React.JSX.Element {
           onSend={handleSend}
           onStop={() => stop(conversationId)}
           bottomInset={insets.bottom}
+          mediaGenerationEnabled={Boolean(conversationId)}
+          mediaTaskCreating={createMediaTask.isPending}
+          onCreateMediaTask={handleCreateMediaTask}
         />
       </View>
 

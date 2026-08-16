@@ -17,4 +17,5 @@ export type {
   ArtifactPayload,
   CodeArtifactPayload,
   FileArtifactPayload,
+  MediaArtifactPayload,
 } from './artifact.store'

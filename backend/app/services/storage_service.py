@@ -23,7 +23,7 @@ from app.core.config import settings
 
 # 允许匿名 GET 的对象前缀 —— 头像永远公开，聊天附件在 MVP 阶段也公开以简化展示；
 # 未来接入分享/私有文件流程时可改为签名 URL。
-_PUBLIC_READ_PREFIXES = ("avatars/*", "files/*")
+_PUBLIC_READ_PREFIXES = ("avatars/*", "files/*", "generated/*")
 
 
 class StorageService(Protocol):

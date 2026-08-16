@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     voice_transcription_poll_interval_seconds: float = 1.0
     voice_ffprobe_path: str = "ffprobe"
 
+    # 图片/视频生成：任务 worker 持久化 provider 输出后才向客户端公开对象存储地址。
+    media_prompt_max_chars: int = 4_000
+    media_worker_poll_interval_seconds: float = 1.0
+    media_worker_lease_seconds: int = 60
+    media_image_timeout_seconds: int = 90
+    media_video_poll_timeout_seconds: int = 20
+    media_video_poll_interval_seconds: float = 5.0
+    media_video_max_poll_failures: int = 5
+    media_max_output_bytes: int = 50 * 1024 * 1024
+    media_ffmpeg_path: str = "ffmpeg"
+    media_video_poster_timeout_seconds: int = 12
+    media_video_poster_max_bytes: int = 2 * 1024 * 1024
+
     # 扫码登录：二维码只携带短时挑战和 API 地址，凭据始终由服务端哈希保存。
     qr_login_ttl_seconds: int = 90
     qr_login_poll_after_ms: int = 1000

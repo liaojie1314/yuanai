@@ -91,13 +91,13 @@ export interface DesktopCodeArtifactPayload {
   theme?: 'light' | 'dark'
 }
 
-/** 由主进程校验来源后在独立窗口展示的图片或 PDF 附件。 */
+/** 由主进程校验来源后在独立窗口展示的图片、视频或 PDF 附件。 */
 export interface DesktopFilePreviewPayload {
   /** 用于与代码 Artifact 区分的固定判别字段。 */
   kind: 'file-preview'
   /** 窗口标题和无障碍名称。 */
   title: string
-  /** 已校验来源的图片或 PDF URL。 */
+  /** 已校验来源的图片、视频或 PDF URL。 */
   sourceUrl: string
   /** 当前只允许浏览器安全展示的媒体类型。 */
   mimeType: string

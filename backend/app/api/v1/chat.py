@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
+from app.models.media_generation_task import MediaGenerationTask
 from app.models.message import Message, MessageRole
 from app.schemas.chat import (
     ConversationResponse,
@@ -27,6 +28,7 @@ from app.schemas.chat import (
     TemporaryChatRequest,
     UpdateConversationRequest,
 )
+from app.schemas.media_generation import MediaGenerationTaskResponse
 from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
 from app.services.conversation_title_service import (
     ConversationTitleResult,
@@ -112,14 +114,20 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     result = await db.execute(
         select(Message)
         .where(Message.conv_id == conv_id)
-        # 二级排序按 id 保证同 created_at 场景下顺序可确定
-        .order_by(Message.created_at, Message.id)
+        # 旧数据中可能有同一时间戳的成对消息。优先用户消息可修复 UUID
+        # 二级排序把媒体任务卡置于其提问前面，随后仍以 ID 保证顺序稳定。
+        .order_by(
+            Message.created_at,
+            case((Message.role == MessageRole.user, 0), else_=1),
+            Message.id,
+        )
         .limit(200)
     )
     messages = result.scalars().all()
 
     # 批量联查消息附件（Message 模型上无 relationship，这里手动组装 files）
     files_by_msg: dict[uuid.UUID, list[MessageFileResponse]] = {}
+    tasks_by_message: dict[uuid.UUID, MediaGenerationTaskResponse] = {}
     if messages:
         from app.services.storage_service import storage
 
@@ -139,11 +147,21 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
                     url=storage.get_url(f.s3_key),
                 )
             )
+        task_rows = await db.execute(
+            select(MediaGenerationTask).where(
+                MediaGenerationTask.message_id.in_([message.id for message in messages])
+            )
+        )
+        tasks_by_message = {
+            task.message_id: MediaGenerationTaskResponse.from_task(task, storage)
+            for task in task_rows.scalars()
+        }
 
     items: list[MessageResponse] = []
     for m in messages:
         item = MessageResponse.model_validate(m)
         item.files = files_by_msg.get(m.id, [])
+        item.media_task = tasks_by_message.get(m.id)
         items.append(item)
     return {
         "messages": items,
@@ -267,9 +285,9 @@ async def stream_chat_endpoint(
         await db.commit()
     elif req.replace_message_id is not None:
         file_results = await db.execute(
-            select(File).join(MessageFile, MessageFile.file_id == File.id).where(
-                MessageFile.message_id == user_msg.id
-            )
+            select(File)
+            .join(MessageFile, MessageFile.file_id == File.id)
+            .where(MessageFile.message_id == user_msg.id)
         )
         attached_files = list(file_results.scalars().all())
 

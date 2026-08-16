@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import type { ConversationTitleSource, MessageFile, ToolCall, ToolCallStatus } from '@yuanai/types'
+import type {
+  ConversationTitleSource,
+  MediaGenerationTask,
+  MessageFile,
+  ToolCall,
+  ToolCallStatus,
+} from '@yuanai/types'
 
 /**
  * 会话分组类型，用于侧边栏按时间维度对话归类。
@@ -50,6 +56,8 @@ export interface MockMessage {
   followUps?: string[]
   /** 消息关联的已上传附件。 */
   files?: MessageFile[]
+  /** 图片或视频生成任务在 assistant 消息上的可恢复状态。 */
+  mediaTask?: MediaGenerationTask | null
   createdAt: number
 }
 
