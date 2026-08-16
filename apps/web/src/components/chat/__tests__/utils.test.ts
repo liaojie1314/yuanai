@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { MockMessage } from '@yuanai/core/stores'
+import { Role, type Message } from '@yuanai/types'
 
-import { buildPairs } from '../utils'
+import { apiMsgToMock, buildPairs } from '../utils'
 
 function message(
   id: string,
@@ -84,5 +85,41 @@ describe('buildPairs', () => {
       ['m1'],
       ['m2'],
     ])
+  })
+})
+
+describe('apiMsgToMock', () => {
+  it('保留历史消息中的联网搜索工具调用', () => {
+    const message: Message = {
+      id: 'assistant-search-1',
+      role: Role.Assistant,
+      content: '以下是今天的人工智能新闻。',
+      thinkingContent: '我先检索可靠来源。',
+      thinkingDurationMs: 1200,
+      toolCalls: [
+        {
+          id: 'tool-search-1',
+          name: 'search_web',
+          arguments: '{"query":"今天的人工智能新闻"}',
+          result: '找到 1 条可靠来源。',
+          sources: [
+            {
+              provider: 'searxng',
+              title: 'AI News',
+              url: 'https://example.com/ai-news',
+              snippet: 'A reliable source',
+            },
+          ],
+          status: 'done',
+        },
+      ],
+      files: [],
+      createdAt: '2026-08-16T00:00:00Z',
+    }
+
+    const adapted = apiMsgToMock(message)
+
+    expect(adapted.thinkContent).toBe('我先检索可靠来源。')
+    expect(adapted.toolCalls).toEqual(message.toolCalls)
   })
 })

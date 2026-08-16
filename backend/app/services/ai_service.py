@@ -1,13 +1,28 @@
 import asyncio
+import html
+import json
+import re
+import uuid
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import cast
 
 import httpx
-from openai import AsyncOpenAI, OpenAIError
-from openai.types.chat import ChatCompletionMessageParam
+from openai import AsyncOpenAI, AsyncStream, OpenAIError
+from openai.types.chat import (
+    ChatCompletionChunk,
+    ChatCompletionMessageParam,
+    ChatCompletionToolParam,
+)
 
 from app.core.config import settings
+from app.services.tools.search import (
+    SearchError,
+    SearchRateLimitError,
+    get_search_capability,
+    normalize_query,
+    search_web,
+)
 
 # ---------------------------------------------------------------------------
 # 模块级单例：每个 provider 只创建一个 AsyncOpenAI 实例。
@@ -35,7 +50,56 @@ TITLE_GENERATION_PROMPT = (
     "Question: "
 )
 TITLE_GENERATION_TOKEN_BUDGETS = (128, 256)
+MAX_TOOL_CALLS = 2
+_TEXT_TOOL_CALL_PATTERN = re.compile(
+    r"<tool_call>\s*<function=(?P<name>[A-Za-z_][\w-]*)>\s*"
+    r"<parameter=(?P<parameter>[A-Za-z_][\w-]*)>(?P<value>.*?)</parameter>\s*"
+    r"</function>\s*</tool_call>",
+    re.IGNORECASE | re.DOTALL,
+)
+_TEXT_TOOL_CALL_OPEN = "<tool_call>"
+_TEXT_TOOL_CALL_CLOSE = "</tool_call>"
+_DEEPSEEK_DSML_TOKEN = "\uFF5C\uFF5CDSML\uFF5C\uFF5C"
+_DEEPSEEK_DSML_TOOL_CALL_OPEN = f"<{_DEEPSEEK_DSML_TOKEN}tool_calls>"
+_DEEPSEEK_DSML_TOOL_CALL_CLOSE = f"</{_DEEPSEEK_DSML_TOKEN}tool_calls>"
+_DEEPSEEK_DSML_TOOL_CALL_BLOCK_PATTERN = re.compile(
+    rf"<{re.escape(_DEEPSEEK_DSML_TOKEN)}tool_calls>(?P<body>.*?)"
+    rf"</{re.escape(_DEEPSEEK_DSML_TOKEN)}tool_calls>",
+    re.DOTALL,
+)
+_DEEPSEEK_DSML_INVOKE_PATTERN = re.compile(
+    rf"<{re.escape(_DEEPSEEK_DSML_TOKEN)}invoke\s+name=[\"'](?P<name>[A-Za-z_][\w-]*)[\"']>\s*"
+    rf"<{re.escape(_DEEPSEEK_DSML_TOKEN)}parameter\s+name=[\"']"
+    rf"(?P<parameter>[A-Za-z_][\w-]*)[\"'][^>]*>(?P<value>.*?)"
+    rf"</{re.escape(_DEEPSEEK_DSML_TOKEN)}parameter>\s*"
+    rf"</{re.escape(_DEEPSEEK_DSML_TOKEN)}invoke>",
+    re.DOTALL,
+)
+_TEXT_TOOL_MARKUP_PAIRS = (
+    (_TEXT_TOOL_CALL_OPEN, _TEXT_TOOL_CALL_CLOSE),
+    (_DEEPSEEK_DSML_TOOL_CALL_OPEN, _DEEPSEEK_DSML_TOOL_CALL_CLOSE),
+)
 
+WEB_SEARCH_TOOL = cast(
+    ChatCompletionToolParam,
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": (
+                "Search current public web sources when fresh factual evidence is needed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "minLength": 1, "maxLength": 300}
+                },
+                "required": ["query"],
+                "additionalProperties": False,
+            },
+        },
+    },
+)
 PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     "gpt-4o": {"provider": "openai", "base_url": "https://api.openai.com/v1"},
     "gpt-4o-mini": {"provider": "openai", "base_url": "https://api.openai.com/v1"},
@@ -136,6 +200,115 @@ class AgnesVideoSnapshot:
     width: int | None
     height: int | None
     duration_seconds: float | None
+
+
+@dataclass
+class _PendingToolCall:
+    """流式 OpenAI tool delta 聚合到一次完整调用的内部状态。"""
+
+    id: str
+    name: str = ""
+    arguments: str = ""
+    started: bool = False
+
+
+class _TextToolCallMarkupFilter:
+    """跨 SSE 分片剥离模型错误输出的 XML 或 DSML 工具标签。"""
+
+    def __init__(self) -> None:
+        self._buffer = ""
+
+    def push(self, text: str) -> list[str]:
+        """接收一个正文分片，返回当前已能确认安全展示的正文。"""
+        self._buffer += text
+        output: list[str] = []
+        while self._buffer:
+            markup_pair = self._find_markup_pair()
+            if markup_pair is None:
+                suffix_length = self._open_tag_prefix_length()
+                visible_end = len(self._buffer) - suffix_length
+                if visible_end > 0:
+                    output.append(self._buffer[:visible_end])
+                    self._buffer = self._buffer[visible_end:]
+                break
+            start, _, close_tag = markup_pair
+            if start > 0:
+                output.append(self._buffer[:start])
+                self._buffer = self._buffer[start:]
+                continue
+            end = self._buffer.lower().find(close_tag.lower())
+            if end < 0:
+                break
+            self._buffer = self._buffer[end + len(close_tag) :]
+        return output
+
+    def flush(self) -> list[str]:
+        """流结束时输出非标签残留，并丢弃不完整工具标签。"""
+        if any(
+            self._buffer.lower().startswith(open_tag.lower())
+            for open_tag, _ in _TEXT_TOOL_MARKUP_PAIRS
+        ):
+            self._buffer = ""
+            return []
+        output = [self._buffer] if self._buffer else []
+        self._buffer = ""
+        return output
+
+    def _open_tag_prefix_length(self) -> int:
+        """保留可能在下一个分片补全的工具标签前缀。"""
+        max_open_length = max(len(open_tag) for open_tag, _ in _TEXT_TOOL_MARKUP_PAIRS)
+        max_length = min(len(self._buffer), max_open_length - 1)
+        lower_buffer = self._buffer.lower()
+        for length in range(max_length, 0, -1):
+            if any(
+                open_tag.lower().startswith(lower_buffer[-length:])
+                for open_tag, _ in _TEXT_TOOL_MARKUP_PAIRS
+            ):
+                return length
+        return 0
+
+    def _find_markup_pair(self) -> tuple[int, str, str] | None:
+        """返回缓冲区中最早出现的受限工具标签及其闭合标签。"""
+        lower_buffer = self._buffer.lower()
+        matches = [
+            (index, open_tag, close_tag)
+            for open_tag, close_tag in _TEXT_TOOL_MARKUP_PAIRS
+            if (index := lower_buffer.find(open_tag.lower())) >= 0
+        ]
+        return min(matches, default=None, key=lambda match: match[0])
+
+
+def _parse_text_tool_calls(content: str) -> list[_PendingToolCall]:
+    """将 OpenAI 兼容服务返回的文本工具标签转为受限内部调用。"""
+    calls: list[_PendingToolCall] = []
+    for index, match in enumerate(_TEXT_TOOL_CALL_PATTERN.finditer(content)):
+        name = match.group("name")
+        parameter = match.group("parameter")
+        value = html.unescape(match.group("value")).strip()
+        if not value:
+            continue
+        calls.append(
+            _PendingToolCall(
+                id=f"text-tool-{index}",
+                name=name,
+                arguments=json.dumps({parameter: value}, ensure_ascii=False),
+            )
+        )
+    for block in _DEEPSEEK_DSML_TOOL_CALL_BLOCK_PATTERN.finditer(content):
+        for match in _DEEPSEEK_DSML_INVOKE_PATTERN.finditer(block.group("body")):
+            name = match.group("name")
+            parameter = match.group("parameter")
+            value = html.unescape(match.group("value")).strip()
+            if not value:
+                continue
+            calls.append(
+                _PendingToolCall(
+                    id=f"text-tool-{len(calls)}",
+                    name=name,
+                    arguments=json.dumps({parameter: value}, ensure_ascii=False),
+                )
+            )
+    return calls
 
 
 AVAILABLE_MODELS = [
@@ -544,11 +717,216 @@ async def generate_conversation_title(question: str) -> str | None:
     return None
 
 
+def _chat_extra_body(provider: str, enable_thinking: bool) -> dict[str, object] | None:
+    """构造 provider 特有的思考开关，工具调用和普通流共享这一配置。"""
+    if provider == "deepseek":
+        return {
+            "thinking": {
+                "type": "enabled" if enable_thinking else "disabled",
+                "budget_tokens": 8000,
+            }
+        }
+    if provider == "agnes":
+        return {"chat_template_kwargs": {"enable_thinking": enable_thinking}}
+    return None
+
+
+async def _create_chat_stream(
+    client: AsyncOpenAI,
+    *,
+    model: str,
+    messages: list[ChatCompletionMessageParam],
+    extra_body: dict[str, object] | None,
+    tools: list[ChatCompletionToolParam] | None = None,
+) -> AsyncStream[ChatCompletionChunk]:
+    """在保持 provider 思考参数的同时创建 OpenAI-compatible SSE 流。"""
+    if tools is None and extra_body is None:
+        return await client.chat.completions.create(model=model, messages=messages, stream=True)
+    if tools is None:
+        return await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            extra_body=extra_body,
+        )
+    return await client.chat.completions.create(
+        model=model,
+        messages=messages,
+        stream=True,
+        extra_body=extra_body,
+        tools=tools,
+    )
+
+
+async def _stream_web_search_round(
+    *,
+    client: AsyncOpenAI,
+    model: str,
+    messages: list[ChatCompletionMessageParam],
+    extra_body: dict[str, object] | None,
+    user_id: uuid.UUID,
+) -> AsyncGenerator[tuple[str, str | dict[str, object]], None]:
+    """执行一个受限搜索工具轮，再继续生成最终自然语言回答。"""
+    first_stream = await _create_chat_stream(
+        client,
+        model=model,
+        messages=messages,
+        extra_body=extra_body,
+        tools=[WEB_SEARCH_TOOL],
+    )
+    pending: dict[int, _PendingToolCall] = {}
+    text_tool_call_content: list[str] = []
+
+    async for chunk in first_stream:
+        delta = chunk.choices[0].delta if chunk.choices else None
+        if delta is None:
+            continue
+        reasoning: str | None = getattr(delta, "reasoning_content", None)
+        if reasoning:
+            yield ("thinking", reasoning)
+        if isinstance(delta.content, str) and delta.content:
+            # 少数 OpenAI 兼容服务将工具调用编码为 XML/DSML 正文；先完整聚合，避免
+            # 标签被切到多个 SSE 分片时泄漏为回答正文。
+            text_tool_call_content.append(delta.content)
+        tool_deltas = getattr(delta, "tool_calls", None)
+        if not isinstance(tool_deltas, list):
+            continue
+        for tool_delta in tool_deltas:
+            index_value = getattr(tool_delta, "index", 0)
+            index = index_value if isinstance(index_value, int) else 0
+            call_id = getattr(tool_delta, "id", None)
+            existing = pending.get(index)
+            if existing is None:
+                existing = _PendingToolCall(
+                    id=call_id if isinstance(call_id, str) and call_id else f"search-{index}",
+                )
+                pending[index] = existing
+            function = getattr(tool_delta, "function", None)
+            name = getattr(function, "name", None)
+            if isinstance(name, str) and name:
+                existing.name = name
+                if not existing.started:
+                    existing.started = True
+                    yield (
+                        "tool_call_start",
+                        {"tool_call_id": existing.id, "name": existing.name},
+                    )
+            arguments = getattr(function, "arguments", None)
+            if isinstance(arguments, str) and arguments:
+                existing.arguments += arguments
+                yield (
+                    "tool_call_delta",
+                    {"tool_call_id": existing.id, "args_chunk": arguments},
+                )
+
+    text_tool_calls = _parse_text_tool_calls("".join(text_tool_call_content))
+    if text_tool_calls and not pending:
+        next_index = max(pending, default=-1) + 1
+        for call in text_tool_calls[:MAX_TOOL_CALLS]:
+            pending[next_index] = call
+            next_index += 1
+            call.started = True
+            yield ("tool_call_start", {"tool_call_id": call.id, "name": call.name})
+            yield (
+                "tool_call_delta",
+                {"tool_call_id": call.id, "args_chunk": call.arguments},
+            )
+
+    calls = [call for _, call in sorted(pending.items()) if call.name][:MAX_TOOL_CALLS]
+    if not calls:
+        for content in text_tool_call_content:
+            yield ("content", content)
+        return
+
+    # DeepSeek 等 provider 可能在原生 tool_calls 前先输出一句计划说明，
+    # 或把工具调用标签混在正文分片中。它不是最终回答，应进入思考区；
+    # 只要已经拿到结构化工具调用，就继续执行，不再误报 INVALID_TOOL_SEQUENCE。
+    if text_tool_call_content:
+        markup_filter = _TextToolCallMarkupFilter()
+        for content in text_tool_call_content:
+            for visible_content in markup_filter.push(content):
+                yield ("thinking", visible_content)
+        for visible_content in markup_filter.flush():
+            yield ("thinking", visible_content)
+
+    assistant_calls = [
+        {
+            "id": call.id,
+            "type": "function",
+            "function": {"name": call.name, "arguments": call.arguments},
+        }
+        for call in calls
+    ]
+    tool_messages: list[ChatCompletionMessageParam] = [
+        cast(ChatCompletionMessageParam, {"role": "assistant", "tool_calls": assistant_calls})
+    ]
+
+    for call in calls:
+        started_at = asyncio.get_running_loop().time()
+        end_payload: dict[str, object] = {"tool_call_id": call.id}
+        tool_content: str
+        if call.name != "search_web":
+            end_payload.update({"status": "error", "error": "WEB_SEARCH_UNKNOWN_TOOL"})
+            tool_content = json.dumps({"error": "WEB_SEARCH_UNKNOWN_TOOL"})
+        else:
+            try:
+                arguments = json.loads(call.arguments)
+                query = arguments.get("query") if isinstance(arguments, dict) else None
+                if not isinstance(query, str):
+                    raise SearchError("WEB_SEARCH_INVALID_QUERY")
+                sources = await search_web(user_id=user_id, query=normalize_query(query))
+                source_payload = [asdict(source) for source in sources]
+                end_payload.update(
+                    {
+                        "status": "done",
+                        "result": f"已检索 {len(sources)} 条网页来源",
+                        "sources": source_payload,
+                    }
+                )
+                tool_content = json.dumps({"sources": source_payload}, ensure_ascii=False)
+            except (json.JSONDecodeError, SearchError) as exc:
+                error_code = str(exc) or "WEB_SEARCH_UNAVAILABLE"
+                if isinstance(exc, SearchRateLimitError):
+                    error_code = "WEB_SEARCH_RATE_LIMITED"
+                end_payload.update({"status": "error", "error": error_code})
+                tool_content = json.dumps({"error": error_code})
+        end_payload["duration_ms"] = int((asyncio.get_running_loop().time() - started_at) * 1000)
+        yield ("tool_call_end", end_payload)
+        tool_messages.append(
+            cast(
+                ChatCompletionMessageParam,
+                {"role": "tool", "tool_call_id": call.id, "content": tool_content},
+            )
+        )
+
+    final_stream = await _create_chat_stream(
+        client,
+        model=model,
+        messages=[*messages, *tool_messages],
+        extra_body=extra_body,
+    )
+    markup_filter = _TextToolCallMarkupFilter()
+    async for chunk in final_stream:
+        delta = chunk.choices[0].delta if chunk.choices else None
+        if delta is None:
+            continue
+        reasoning = getattr(delta, "reasoning_content", None)
+        if isinstance(reasoning, str) and reasoning:
+            yield ("thinking", reasoning)
+        if isinstance(delta.content, str) and delta.content:
+            for visible_content in markup_filter.push(delta.content):
+                yield ("content", visible_content)
+    for visible_content in markup_filter.flush():
+        yield ("content", visible_content)
+
+
 async def stream_chat(
     model: str,
     messages: list[dict[str, object]],
     enable_thinking: bool = False,
-) -> AsyncGenerator[tuple[str, str], None]:
+    enable_web_search: bool = False,
+    user_id: uuid.UUID | None = None,
+) -> AsyncGenerator[tuple[str, str | dict[str, object]], None]:
     """向 AI 提供商发送流式聊天请求，逐 token yield 事件元组。
 
     使用模块级单例 client（_get_client），避免每请求创建/销毁 AsyncOpenAI 实例，
@@ -561,7 +939,7 @@ async def stream_chat(
         enable_thinking: 是否开启思考/推理模式（由各 provider 的兼容参数传递）
 
     Yields:
-        tuple[str, str]: (event_type, token)
+        tuple[str, str | dict[str, object]]: (event_type, token)
             event_type: 'content' — 正文 token
                         'thinking' — 思考/推理 token（DeepSeek-R1 等支持 reasoning 的模型）
 
@@ -578,35 +956,27 @@ async def stream_chat(
 
     client = _get_client(config["provider"], config["base_url"])
 
-    # DeepSeek 模型通过 extra_body 控制思考模式：
-    # https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
-    extra_body: dict[str, object] | None = None
-    if config["provider"] == "deepseek":
-        extra_body = {
-            "thinking": {
-                "type": "enabled" if enable_thinking else "disabled",
-                "budget_tokens": 8000,
-            }
-        }
-    elif config["provider"] == "agnes":
-        # Agnes 2.5 Flash 的 OpenAI-compatible Thinking Mode 参数：
-        # https://www.agnes-ai.com/en/docs/agnes-25-flash
-        extra_body = {"chat_template_kwargs": {"enable_thinking": enable_thinking}}
-
+    extra_body = _chat_extra_body(config["provider"], enable_thinking)
     provider_messages = cast(list[ChatCompletionMessageParam], messages)
-    if extra_body is None:
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=provider_messages,
-            stream=True,
-        )
-    else:
-        stream = await client.chat.completions.create(
-            model=model,
-            messages=provider_messages,
-            stream=True,
-            extra_body=extra_body,
-        )
+    if enable_web_search and user_id is not None:
+        capability = await get_search_capability()
+        if capability.enabled:
+            async for event in _stream_web_search_round(
+                client=client,
+                model=model,
+                messages=provider_messages,
+                extra_body=extra_body,
+                user_id=user_id,
+            ):
+                yield event
+            return
+
+    stream = await _create_chat_stream(
+        client,
+        model=model,
+        messages=provider_messages,
+        extra_body=extra_body,
+    )
 
     async for chunk in stream:
         delta = chunk.choices[0].delta if chunk.choices else None

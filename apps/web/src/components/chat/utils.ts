@@ -54,6 +54,7 @@ export function apiMsgToMock(msg: Message): MockMessage {
     ...(typeof msg.thinkingDurationMs === 'number'
       ? { thinkDurationMs: msg.thinkingDurationMs }
       : {}),
+    ...(msg.toolCalls && msg.toolCalls.length > 0 ? { toolCalls: msg.toolCalls } : {}),
     ...(msg.files.length > 0 ? { files: msg.files } : {}),
     ...(msg.mediaTask ? { mediaTask: msg.mediaTask } : {}),
     createdAt: new Date(msg.createdAt).getTime(),

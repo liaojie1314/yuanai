@@ -12,6 +12,7 @@
 """
 
 import os
+import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -39,6 +40,7 @@ from app.services.ai_service import (  # noqa: E402
     stream_chat,
     transcribe_audio,
 )
+from app.services.tools.search import SearchSource  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -370,6 +372,308 @@ async def test_stream_chat_yields_thinking_tokens() -> None:
             events.append((event_type, token))
 
     assert events == [("thinking", "think1"), ("thinking", "think2"), ("content", "answer")]
+
+
+async def test_stream_chat_runs_bounded_search_tool_round_and_returns_sources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """已启用搜索时必须按工具事件顺序返回净化来源，再继续输出最终回答。"""
+
+    def chunk(
+        *, content: str | None = None, tool_calls: list[MagicMock] | None = None
+    ) -> MagicMock:
+        result = MagicMock()
+        delta = MagicMock()
+        delta.content = content
+        delta.reasoning_content = None
+        delta.tool_calls = tool_calls
+        result.choices = [MagicMock(delta=delta)]
+        return result
+
+    tool_delta = MagicMock()
+    tool_delta.index = 0
+    tool_delta.id = "search-1"
+    tool_delta.function.name = "search_web"
+    tool_delta.function.arguments = '{"query":"元AI"}'
+
+    async def tool_call_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(tool_calls=[tool_delta])
+
+    async def answer_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(content="这是联网回答")
+
+    first_stream = MagicMock()
+    first_stream.__aiter__ = lambda _self: tool_call_stream()
+    second_stream = MagicMock()
+    second_stream.__aiter__ = lambda _self: answer_stream()
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=[first_stream, second_stream])
+
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+    monkeypatch.setattr(
+        ai_svc, "get_search_capability", AsyncMock(return_value=MagicMock(enabled=True))
+    )
+    monkeypatch.setattr(
+        ai_svc,
+        "search_web",
+        AsyncMock(
+            return_value=[
+                SearchSource(
+                    title="元AI 官网",
+                    url="https://example.com/yuanai",
+                    snippet="安全来源摘要",
+                    provider="searxng",
+                )
+            ]
+        ),
+    )
+
+    events: list[tuple[str, str | dict[str, object]]] = []
+    async for event in stream_chat(
+        "gpt-4o",
+        [{"role": "user", "content": "元AI 是什么？"}],
+        enable_web_search=True,
+        user_id=uuid.uuid4(),
+    ):
+        events.append(event)
+
+    assert [event[0] for event in events] == [
+        "tool_call_start",
+        "tool_call_delta",
+        "tool_call_end",
+        "content",
+    ]
+    assert isinstance(events[2][1], dict)
+    tool_end = events[2][1]
+    assert {key: value for key, value in tool_end.items() if key != "duration_ms"} == {
+        "tool_call_id": "search-1",
+        "status": "done",
+        "result": "已检索 1 条网页来源",
+        "sources": [
+            {
+                "title": "元AI 官网",
+                "url": "https://example.com/yuanai",
+                "snippet": "安全来源摘要",
+                "provider": "searxng",
+            }
+        ],
+    }
+    assert isinstance(tool_end.get("duration_ms"), int)
+    assert tool_end["duration_ms"] >= 0
+    first_request = client.chat.completions.create.await_args_list[0].kwargs
+    assert first_request["tools"] == [ai_svc.WEB_SEARCH_TOOL]
+    final_request = client.chat.completions.create.await_args_list[1].kwargs
+    assert final_request["messages"][-1]["role"] == "tool"
+
+
+async def test_stream_chat_treats_tool_preamble_as_thinking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """工具调用前的 provider 计划说明应进入思考区，而不是阻断搜索。"""
+
+    def chunk(
+        *, content: str | None = None, tool_calls: list[MagicMock] | None = None
+    ) -> MagicMock:
+        result = MagicMock()
+        delta = MagicMock()
+        delta.content = content
+        delta.reasoning_content = None
+        delta.tool_calls = tool_calls
+        result.choices = [MagicMock(delta=delta)]
+        return result
+
+    tool_delta = MagicMock()
+    tool_delta.index = 0
+    tool_delta.id = "search-preamble-1"
+    tool_delta.function.name = "search_web"
+    tool_delta.function.arguments = '{"query":"今天的 AI 新闻"}'
+
+    async def tool_call_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(content="我来搜索今天的人工智能新闻。")
+        yield chunk(tool_calls=[tool_delta])
+
+    async def answer_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(content="这是基于搜索结果的回答")
+
+    first_stream = MagicMock()
+    first_stream.__aiter__ = lambda _self: tool_call_stream()
+    second_stream = MagicMock()
+    second_stream.__aiter__ = lambda _self: answer_stream()
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=[first_stream, second_stream])
+
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+    monkeypatch.setattr(
+        ai_svc, "get_search_capability", AsyncMock(return_value=MagicMock(enabled=True))
+    )
+    monkeypatch.setattr(ai_svc, "search_web", AsyncMock(return_value=[]))
+
+    events: list[tuple[str, str | dict[str, object]]] = []
+    async for event in stream_chat(
+        "deepseek-v4-flash",
+        [{"role": "user", "content": "联网搜索今天的 AI 新闻"}],
+        enable_web_search=True,
+        user_id=uuid.uuid4(),
+    ):
+        events.append(event)
+
+    assert [event[0] for event in events] == [
+        "tool_call_start",
+        "tool_call_delta",
+        "thinking",
+        "tool_call_end",
+        "content",
+    ]
+    assert events[2] == ("thinking", "我来搜索今天的人工智能新闻。")
+    assert events[3][1]["status"] == "done"
+    assert events[-1] == ("content", "这是基于搜索结果的回答")
+    search_web = ai_svc.search_web
+    assert isinstance(search_web, AsyncMock)
+    search_web.assert_awaited_once()
+
+
+async def test_stream_chat_executes_split_textual_search_tool_call_without_leaking_markup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agnes 的 XML 文本工具调用跨分片时仍须执行搜索且绝不能出现在回答中。"""
+
+    def chunk(content: str) -> MagicMock:
+        result = MagicMock()
+        delta = MagicMock()
+        delta.content = content
+        delta.reasoning_content = None
+        delta.tool_calls = None
+        result.choices = [MagicMock(delta=delta)]
+        return result
+
+    async def text_tool_call_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk("<tool_call><function=search_")
+        yield chunk("web><parameter=query>最新 AI ")
+        yield chunk("行业动态</parameter></function></tool_call>")
+
+    async def answer_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk("这是联网回答")
+
+    first_stream = MagicMock()
+    first_stream.__aiter__ = lambda _self: text_tool_call_stream()
+    second_stream = MagicMock()
+    second_stream.__aiter__ = lambda _self: answer_stream()
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=[first_stream, second_stream])
+
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+    monkeypatch.setattr(
+        ai_svc, "get_search_capability", AsyncMock(return_value=MagicMock(enabled=True))
+    )
+    monkeypatch.setattr(
+        ai_svc,
+        "search_web",
+        AsyncMock(
+            return_value=[
+                SearchSource(
+                    title="元AI 官网",
+                    url="https://example.com/yuanai",
+                    snippet="安全来源摘要",
+                    provider="searxng",
+                )
+            ]
+        ),
+    )
+
+    events: list[tuple[str, str | dict[str, object]]] = []
+    async for event in stream_chat(
+        "agnes-2.5-flash",
+        [{"role": "user", "content": "联网搜索最新 AI 行业动态"}],
+        enable_web_search=True,
+        user_id=uuid.uuid4(),
+    ):
+        events.append(event)
+
+    assert [event[0] for event in events] == [
+        "tool_call_start",
+        "tool_call_delta",
+        "tool_call_end",
+        "content",
+    ]
+    content = "".join(value for event_type, value in events if event_type == "content")
+    assert content == "这是联网回答"
+    assert all("<tool_call>" not in str(value) for _, value in events)
+    search_web = ai_svc.search_web
+    assert isinstance(search_web, AsyncMock)
+    search_web.assert_awaited_once()
+
+
+async def test_stream_chat_executes_deepseek_dsml_search_tool_call_without_leaking_markup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DeepSeek DSML 文本工具调用跨分片时也必须转为受限搜索事件。"""
+
+    def chunk(content: str) -> MagicMock:
+        result = MagicMock()
+        delta = MagicMock()
+        delta.content = content
+        delta.reasoning_content = None
+        delta.tool_calls = None
+        result.choices = [MagicMock(delta=delta)]
+        return result
+
+    dsml = "\uFF5C\uFF5CDSML\uFF5C\uFF5C"
+
+    async def text_tool_call_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(f'<{dsml}tool_calls><{dsml}invoke name="search_')
+        yield chunk(f'web"><{dsml}parameter name="query" string="true">最新 AI 行业')
+        yield chunk(f'</{dsml}parameter></{dsml}invoke></{dsml}tool_calls>')
+
+    async def answer_stream() -> AsyncGenerator[MagicMock, None]:
+        yield chunk(f'<{dsml}tool_calls>unexpected</{dsml}tool_calls>这是联网回答')
+
+    first_stream = MagicMock()
+    first_stream.__aiter__ = lambda _self: text_tool_call_stream()
+    second_stream = MagicMock()
+    second_stream.__aiter__ = lambda _self: answer_stream()
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=[first_stream, second_stream])
+
+    monkeypatch.setattr(ai_svc, "_get_client", lambda _provider, _base_url: client)
+    monkeypatch.setattr(
+        ai_svc, "get_search_capability", AsyncMock(return_value=MagicMock(enabled=True))
+    )
+    monkeypatch.setattr(
+        ai_svc,
+        "search_web",
+        AsyncMock(
+            return_value=[
+                SearchSource(
+                    title="元AI 官网",
+                    url="https://example.com/yuanai",
+                    snippet="安全来源摘要",
+                    provider="searxng",
+                )
+            ]
+        ),
+    )
+
+    events: list[tuple[str, str | dict[str, object]]] = []
+    async for event in stream_chat(
+        "deepseek-v4-flash",
+        [{"role": "user", "content": "联网搜索最新 AI 行业动态"}],
+        enable_web_search=True,
+        user_id=uuid.uuid4(),
+    ):
+        events.append(event)
+
+    assert [event[0] for event in events] == [
+        "tool_call_start",
+        "tool_call_delta",
+        "tool_call_end",
+        "content",
+    ]
+    content = "".join(value for event_type, value in events if event_type == "content")
+    assert content == "这是联网回答"
+    assert all("DSML" not in str(value) for _, value in events)
+    search_web = ai_svc.search_web
+    assert isinstance(search_web, AsyncMock)
+    search_web.assert_awaited_once()
 
 
 async def test_stream_chat_skips_empty_delta() -> None:
