@@ -75,6 +75,14 @@ export interface ChatMessageProps extends ChatMessageActions {
   dateFmt: DateFmt
   /** 列表滚动期间延后代码语法高亮。 */
   deferCodeHighlight?: boolean
+  /** 历史消息思考块的受控展开状态；由虚拟列表按消息 ID 保存。 */
+  thinkingOpen?: boolean
+  /** 用户切换历史消息思考块时通知虚拟列表持久化状态。 */
+  onThinkingOpenChange?(open: boolean): void
+  /** 按工具调用 ID 保存历史消息中的工具详情展开状态。 */
+  toolCallOpenById?: Readonly<Record<string, boolean>>
+  /** 用户切换工具详情时通知虚拟列表持久化状态。 */
+  onToolCallOpenChange?(toolCallId: string, open: boolean): void
 }
 
 const LANGUAGE_EXTENSIONS: Readonly<Record<string, string>> = {
@@ -133,9 +141,18 @@ export function UserAvatar({
   )
 }
 
-function ToolCallDetails({ toolCall }: { toolCall: ToolCall }): ReactElement {
+function ToolCallDetails({
+  toolCall,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  toolCall: ToolCall
+  open?: boolean
+  onOpenChange?(open: boolean): void
+}): ReactElement {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
   const status =
     toolCall.status === 'done'
       ? t('chat.toolDone')
@@ -145,9 +162,22 @@ function ToolCallDetails({ toolCall }: { toolCall: ToolCall }): ReactElement {
           ? t('chat.toolRunning')
           : t('chat.toolPending')
 
+  function toggleOpen(): void {
+    const nextOpen = !open
+    if (controlledOpen === undefined) setInternalOpen(nextOpen)
+    onOpenChange?.(nextOpen)
+  }
+
   return (
     <details className="desktop-chat__tool-call" open={open}>
-      <summary onClick={() => setOpen((value) => !value)}>
+      <summary
+        onClick={(event) => {
+          // `open` is controlled when the parent is virtualized. Prevent the native
+          // details toggle so an unmount/remount cannot overwrite the saved state.
+          event.preventDefault()
+          toggleOpen()
+        }}
+      >
         <span>
           <Wrench size={13} aria-hidden="true" />
           {toolCall.name}
@@ -158,6 +188,24 @@ function ToolCallDetails({ toolCall }: { toolCall: ToolCall }): ReactElement {
         {toolCall.arguments ? <pre>{toolCall.arguments}</pre> : null}
         {toolCall.result ? <pre>{toolCall.result}</pre> : null}
         {toolCall.error ? <pre className="is-error">{toolCall.error}</pre> : null}
+        {toolCall.sources && toolCall.sources.length > 0 ? (
+          <ul className="desktop-chat__tool-sources" aria-label="联网来源">
+            {toolCall.sources.map((source) => (
+              <li key={source.url}>
+                <button
+                  type="button"
+                  title={source.snippet}
+                  onClick={() => {
+                    void window.yuanai.shell.openExternalUrl(source.url).catch(() => undefined)
+                  }}
+                >
+                  <span>{source.title}</span>
+                  <ExternalLink size={12} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </details>
   )
@@ -166,29 +214,48 @@ function ToolCallDetails({ toolCall }: { toolCall: ToolCall }): ReactElement {
 function ThinkingBlock({
   message,
   active = false,
+  open: controlledOpen,
+  onOpenChange,
+  toolCallOpenById,
+  onToolCallOpenChange,
 }: {
   message: Message
   active?: boolean
+  open?: boolean
+  onOpenChange?(open: boolean): void
+  toolCallOpenById?: Readonly<Record<string, boolean>>
+  onToolCallOpenChange?(toolCallId: string, open: boolean): void
 }): ReactElement | null {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(active)
+  const [internalOpen, setInternalOpen] = useState(active)
+  const open = controlledOpen ?? internalOpen
   const parts = message.messageParts ?? []
   const partThinking = parts
     .filter((part) => part.type === 'thinking')
     .map((part) => part.content)
     .join('\n')
-  const toolCalls = parts.filter((part) => part.type === 'tool_call').map((part) => part.toolCall)
+  const partToolCalls = parts
+    .filter((part) => part.type === 'tool_call')
+    .map((part) => part.toolCall)
+  // 已完成消息从 API 的 `toolCalls` 恢复；仅流式消息把工具调用临时编码到 messageParts。
+  const toolCalls = message.toolCalls?.length ? message.toolCalls : partToolCalls
   const content = message.thinkingContent ?? partThinking
   const duration = message.thinkingDurationMs
 
   if (!content && toolCalls.length === 0 && !active) return null
+
+  function toggleOpen(): void {
+    const nextOpen = !open
+    if (controlledOpen === undefined) setInternalOpen(nextOpen)
+    onOpenChange?.(nextOpen)
+  }
 
   return (
     <section
       className={open ? 'desktop-chat__thinking is-open' : 'desktop-chat__thinking'}
       data-state={active ? 'active' : 'done'}
     >
-      <button type="button" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button type="button" aria-expanded={open} onClick={toggleOpen}>
         <span>
           <Sparkles size={14} aria-hidden="true" />
           {active ? t('chat.thinking') : t('chat.thinkingDone')}
@@ -202,9 +269,21 @@ function ThinkingBlock({
       </button>
       {open ? (
         <div className="desktop-chat__thinking-body">
-          {content ? <p>{content}</p> : <p>{t('chat.thinkingPreparing')}</p>}
+          {content ? <p>{content}</p> : null}
           {toolCalls.map((toolCall) => (
-            <ToolCallDetails key={toolCall.id} toolCall={toolCall} />
+            <ToolCallDetails
+              key={toolCall.id}
+              toolCall={toolCall}
+              {...(toolCallOpenById && toolCall.id in toolCallOpenById
+                ? { open: toolCallOpenById[toolCall.id] }
+                : {})}
+              {...(onToolCallOpenChange
+                ? {
+                    onOpenChange: (nextOpen: boolean) =>
+                      onToolCallOpenChange(toolCall.id, nextOpen),
+                  }
+                : {})}
+            />
           ))}
         </div>
       ) : null}
@@ -781,6 +860,10 @@ export function ChatMessage({
   deferCodeHighlight = false,
   versionCount = 1,
   versionIndex = 0,
+  thinkingOpen,
+  onThinkingOpenChange,
+  toolCallOpenById,
+  onToolCallOpenChange,
 }: ChatMessageProps): ReactElement {
   const { t } = useTranslation()
   const isUser = message.role === Role.User
@@ -812,7 +895,15 @@ export function ChatMessage({
         </div>
       )}
       <div className="desktop-chat__message-body">
-        {!isUser ? <ThinkingBlock message={message} /> : null}
+        {!isUser ? (
+          <ThinkingBlock
+            message={message}
+            {...(thinkingOpen !== undefined ? { open: thinkingOpen } : {})}
+            {...(onThinkingOpenChange ? { onOpenChange: onThinkingOpenChange } : {})}
+            {...(toolCallOpenById ? { toolCallOpenById } : {})}
+            {...(onToolCallOpenChange ? { onToolCallOpenChange } : {})}
+          />
+        ) : null}
         {isUser && isEditing ? (
           <UserMessageEditor
             content={message.content}

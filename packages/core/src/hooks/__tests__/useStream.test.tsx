@@ -153,6 +153,84 @@ describe('useStream — SSE 解析（端到端行为）', () => {
     expect(conversations?.[1]).toMatchObject({ id: 'c2', title: '保持不变' })
   })
 
+  it('透传联网搜索开关，并将安全来源写入完成消息缓存', async () => {
+    let body: Record<string, unknown> | null = null
+    server.use(
+      http.post(`${API_BASE_URL}/chat/stream`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>
+        return makeStreamResponse([
+          {
+            event: 'message_start',
+            data: { user_message_id: 'u-search', assistant_message_id: 'a-search' },
+          },
+          { event: 'tool_call_start', data: { tool_call_id: 'search-1', name: 'search_web' } },
+          {
+            event: 'tool_call_delta',
+            data: { tool_call_id: 'search-1', args_chunk: '{"query":"元AI"}' },
+          },
+          {
+            event: 'tool_call_end',
+            data: {
+              tool_call_id: 'search-1',
+              status: 'done',
+              result: '已检索 1 条网页来源',
+              sources: [
+                {
+                  title: '元AI 官网',
+                  url: 'https://example.com/yuanai',
+                  snippet: '安全来源摘要',
+                  provider: 'searxng',
+                },
+                {
+                  title: '不安全来源',
+                  url: 'http://unsafe.example.com',
+                  snippet: '不应进入缓存',
+                  provider: 'searxng',
+                },
+              ],
+            },
+          },
+          { event: 'content_delta', data: { token: '这是联网回答' } },
+        ])
+      })
+    )
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useStream(), { wrapper })
+
+    await act(async () => {
+      await result.current.send({
+        convId: 'c-search',
+        content: '元AI 是什么？',
+        model: 'gpt-4o',
+        enableWebSearch: true,
+      })
+    })
+
+    expect(body).toMatchObject({ enable_web_search: true })
+    const messages = qc.getQueryData<Array<{ id: string; toolCalls?: unknown[] }>>([
+      'messages',
+      'c-search',
+    ])
+    expect(messages?.find((message) => message.id === 'a-search')?.toolCalls).toEqual([
+      expect.objectContaining({
+        id: 'search-1',
+        sources: [
+          {
+            title: '元AI 官网',
+            url: 'https://example.com/yuanai',
+            snippet: '安全来源摘要',
+            provider: 'searxng',
+          },
+        ],
+      }),
+    ])
+  })
+
   it('HTTP 非 2xx 时清理流式态并回调 onError', async () => {
     server.use(
       http.post(`${API_BASE_URL}/chat/stream`, () =>

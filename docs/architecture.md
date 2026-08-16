@@ -265,6 +265,14 @@ files
 renderer。自定义 `yuanai-app://` 用于打包 renderer，`yuanai-file://` 只读取由原生
 选择器一次性授权的文件，避免在页面中暴露本机绝对路径。
 
+### 联网搜索数据流
+
+用户可单独打开联网搜索。前端先读取 `/chat/capabilities`，仅在服务端报告可用 provider
+时发送 `enable_web_search=true`；后端按 `auto | searxng | brave | tavily | disabled` 解析
+provider，对查询做限流、缓存与结果净化，再由 `ai_service` 的受限工具循环发出 SSE
+`tool_call_start`、`tool_call_delta`、`tool_call_end`。来源仅保存为消息工具元数据，三端
+在思考区域按需展开，外链由各平台的受控方式打开。
+
 ## 构建产物
 
 | 端              | 产物               | 部署方式                 |

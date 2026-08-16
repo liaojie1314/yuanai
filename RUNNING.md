@@ -75,10 +75,14 @@ cd ..
 
 ## 基础设施启动（Docker）
 
-后端依赖 **PostgreSQL 16**、**Redis 7**、**MinIO**（S3 兼容对象存储）。  
+后端依赖 **PostgreSQL 16**、**Redis 7**、**MinIO**（S3 兼容对象存储）和本地
+**SearXNG**（联网搜索默认 provider）。
 根目录已提供 `docker-compose.yml`，一条命令启动全部：
 
 ```bash
+# 首次运行生成仅供本地 SearXNG 使用的随机密钥
+pnpm setup:search
+
 # 启动所有服务（后台运行）
 docker compose up -d
 
@@ -97,6 +101,7 @@ docker compose logs -f
 | Redis        | `localhost:6379` | 无密码                                          |
 | MinIO API    | `localhost:9000` | S3 兼容接口                                     |
 | MinIO 控制台 | `localhost:9001` | 账号 `minioadmin` / 密码 `minioadmin`           |
+| SearXNG      | `127.0.0.1:8082` | 联网搜索的无密钥本地 provider                   |
 
 **停止所有服务**：
 
@@ -138,6 +143,12 @@ REFRESH_TOKEN_EXPIRE_DAYS=30
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 DEEPSEEK_API_KEY=sk-...
+AGNES_API_KEY=sk-...
+
+# 联网搜索（默认 auto 优先使用本地 SearXNG）
+SEARCH_PROVIDER=auto # auto | searxng | brave | tavily | disabled
+BRAVE_SEARCH_API_KEY=
+TAVILY_API_KEY=
 
 # MinIO（Docker 默认值可直接使用）
 S3_ENDPOINT_URL=http://localhost:9000
@@ -172,6 +183,10 @@ EXPO_PUBLIC_API_URL=http://localhost:8000/api/v1
 ```
 
 > **移动设备注意**：如在真机上调试，`localhost` 需改为开发机的局域网 IP，例如 `http://192.168.1.100:8000/api/v1`。
+
+> **联网搜索说明**：`pnpm dev:real` 会自动生成 SearXNG 密钥并启动该服务；仅手动
+> 启动 Compose 时才需要先运行 `pnpm setup:search`。Brave/Tavily 的申请步骤、provider
+> 回退顺序与可选代理设置见[AI 大模型接入指南](docs/ai-providers.md#联网搜索)。
 
 ---
 
@@ -242,16 +257,11 @@ pnpm dev           # 启动 Expo Dev Server（显示 QR 码）
 
 ## 启动桌面端（Electron）
 
-桌面端使用真实 API，不走 Web 的 MSW Mock。先启动“基础设施”和“后端”，再设置
-桌面端 API 基地址并启动 Electron：
+桌面端使用真实 API，不走 Web 的 MSW Mock。先启动“基础设施”和“后端”，再使用根脚本
+启动 Electron：
 
 ```bash
-# macOS / Linux：从根目录启动
-YUANAI_API_URL=http://localhost:8000/api/v1 pnpm --filter @yuanai/desktop dev
-
-# Windows PowerShell
-$env:YUANAI_API_URL = 'http://localhost:8000/api/v1'
-pnpm --filter @yuanai/desktop dev
+pnpm dev:desktop
 ```
 
 Electron 会自动打开登录窗口或恢复安全存储中的会话。`YUANAI_WEB_URL` 可选，
@@ -276,8 +286,9 @@ pnpm --filter @yuanai/desktop package:mac
 ```
 
 桌面端包含主聊天、认证、设置、关于、Artifact 和 OAuth renderer；托盘、原生
-通知、开机自启与全局快捷键由主进程提供。平台安装包须在对应操作系统完成安装
-验收；当前没有已发布的签名安装包或生产自动更新源。
+通知、开机自启与全局快捷键由主进程提供。联网搜索的来源与思考详情会在虚拟消息列表
+滚动、回收与重新挂载后维持用户展开状态。平台安装包须在对应操作系统完成安装验收；
+当前没有已发布的签名安装包或生产自动更新源。
 
 ---
 

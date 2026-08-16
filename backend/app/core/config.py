@@ -1,4 +1,8 @@
+from typing import Literal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+SearchProviderName = Literal["auto", "searxng", "brave", "tavily", "disabled"]
 
 
 class Settings(BaseSettings):
@@ -71,6 +75,16 @@ class Settings(BaseSettings):
     media_ffmpeg_path: str = "ffmpeg"
     media_video_poster_timeout_seconds: int = 12
     media_video_poster_max_bytes: int = 2 * 1024 * 1024
+
+    # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
+    search_provider: SearchProviderName = "auto"
+    searxng_base_url: str = "http://127.0.0.1:8082"
+    brave_search_api_key: str = ""
+    tavily_api_key: str = ""
+    web_search_timeout_seconds: float = 8.0
+    web_search_max_results: int = 5
+    web_search_cache_ttl_seconds: int = 300
+    web_search_per_user_limit_per_minute: int = 10
 
     # 扫码登录：二维码只携带短时挑战和 API 地址，凭据始终由服务端哈希保存。
     qr_login_ttl_seconds: int = 90

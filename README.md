@@ -1,6 +1,8 @@
 # 元AI
 
-多端 AI 聊天应用，功能对标 ChatGPT。支持 Web、Android、iOS、Windows、macOS、Linux，接入 DeepSeek / GPT-4o / Claude 等多种大模型。
+多端 AI 聊天应用，功能对标 ChatGPT。支持 Web、Android、iOS、Windows、macOS、Linux，
+接入 DeepSeek、Agnes、OpenAI 与 Anthropic 等模型，并提供文件理解、语音输入、图片/视频
+生成和可配置联网搜索。
 
 ## 技术栈
 
@@ -43,7 +45,8 @@ pnpm dev:mock
 pnpm dev:real
 ```
 
-自动完成：启动 Docker 基础设施 → 等待 PostgreSQL → 数据库迁移 → 启动后端 → 启动前端。  
+自动完成：生成本地 SearXNG 密钥 → 启动 Docker 基础设施（含 SearXNG）→ 等待 PostgreSQL
+→ 数据库迁移 → 启动后端 → 启动前端。
 首次运行若 `backend/.env` 不存在，会暂停并提示填写 API Key。  
 兼容 macOS / Linux / Windows（使用 Node.js 脚本，无需 bash）。
 
@@ -56,16 +59,17 @@ pnpm dev:real
 
 ### 桌面端开发与预览
 
-桌面端复用真实后端 API；先按“全栈模式”启动基础设施和 FastAPI，再启动 Electron：
+桌面端复用真实后端 API；先按“全栈模式”启动基础设施和 FastAPI，再通过根脚本启动
+Electron：
 
 ```bash
-YUANAI_API_URL=http://localhost:8000/api/v1 pnpm --filter @yuanai/desktop dev
+pnpm dev:desktop
 ```
 
 生产构建后的本地预览使用：
 
 ```bash
-pnpm --filter @yuanai/desktop preview
+pnpm preview:desktop
 ```
 
 详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
@@ -77,11 +81,26 @@ pnpm --filter @yuanai/desktop preview
 
 ```bash
 DEEPSEEK_API_KEY=sk-xxxxxxxx    # DeepSeek V4
+AGNES_API_KEY=sk-xxxxxxxx       # Agnes 2.5 Flash / Image 2.1 Flash / Video V2.0
 OPENAI_API_KEY=sk-proj-xxxxxxx  # GPT-4o（可选）
 ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 ```
 
 详细说明、各平台注册步骤、新增模型方法见 [AI 大模型接入指南](docs/ai-providers.md)。
+
+## 联网搜索
+
+聊天输入框的“联网搜索”可以独立于“思考”开关使用。已检索的来源保存在该次回复的
+工具调用记录中，三端都在思考块内展示可展开的来源标题、摘要和安全外链；不会拼接到
+回答正文。默认 `auto` 使用无密钥的本地 SearXNG，也可显式配置 Brave 或 Tavily Key。
+
+```bash
+# 仅在手动启动 SearXNG 前需要；pnpm dev:real 会自动执行
+pnpm setup:search
+docker compose up -d searxng
+```
+
+获取第三方 Key、选择 provider 和可选代理设置见[联网搜索配置](docs/ai-providers.md#联网搜索)。
 
 ## 三方登录（可选）
 
@@ -95,17 +114,19 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 ## 常用命令
 
-| 命令                                    | 说明                               |
-| --------------------------------------- | ---------------------------------- |
-| `pnpm setup`                            | 首次初始化（安装依赖 + 复制 .env） |
-| `pnpm dev:mock`                         | 纯前端 Mock 模式（无需后端）       |
-| `pnpm dev:real`                         | 一键全栈启动（真实 AI 接口）       |
-| `pnpm build`                            | 构建全部应用                       |
-| `pnpm lint`                             | ESLint 检查                        |
-| `pnpm typecheck`                        | TypeScript 类型检查                |
-| `pnpm test:unit`                        | 运行单元测试                       |
-| `pnpm --filter @yuanai/desktop dev`     | 启动 Electron 开发窗口             |
-| `pnpm --filter @yuanai/desktop preview` | 预览生产构建的 Electron 应用       |
+| 命令                   | 说明                               |
+| ---------------------- | ---------------------------------- |
+| `pnpm setup`           | 首次初始化（安装依赖 + 复制 .env） |
+| `pnpm dev:mock`        | 纯前端 Mock 模式（无需后端）       |
+| `pnpm dev:real`        | 一键全栈启动（真实 AI 接口）       |
+| `pnpm dev:desktop`     | 启动 Electron 开发窗口             |
+| `pnpm dev:mobile`      | 启动 Expo 真机/模拟器开发服务      |
+| `pnpm setup:search`    | 生成本地 SearXNG 必需的随机密钥    |
+| `pnpm build`           | 构建全部应用                       |
+| `pnpm lint`            | ESLint 检查                        |
+| `pnpm typecheck`       | TypeScript 类型检查                |
+| `pnpm test:unit`       | 运行单元测试                       |
+| `pnpm preview:desktop` | 预览生产构建的 Electron 应用       |
 
 ## 文档
 
@@ -118,6 +139,7 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 | [UI 规范](docs/ui-spec.md)                         | 设计系统与组件规范          |
 | [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md) | 桌面端实施状态与验收边界    |
 | [桌面端说明](apps/desktop/README.md)               | Electron 启动、测试与打包   |
+| [跨端排障记录](docs/troubleshooting.md)            | 已解决问题和真机调试方法    |
 | [RUNNING.md](RUNNING.md)                           | 完整的从零部署参考手册      |
 
 ## 目录结构

@@ -254,6 +254,21 @@ export interface MediaGenerationTask {
 /** 工具调用的执行状态 */
 export type ToolCallStatus = 'pending' | 'running' | 'done' | 'error'
 
+/** 联网搜索工具向用户展示的安全来源。 */
+export interface SearchSource {
+  title: string
+  url: string
+  snippet: string
+  provider: 'searxng' | 'brave' | 'tavily'
+}
+
+/** 当前会话可用的联网搜索配置，不包含 endpoint 和任何密钥。 */
+export interface SearchCapability {
+  enabled: boolean
+  provider: 'searxng' | 'brave' | 'tavily' | null
+  reason: 'disabled' | 'unavailable' | null
+}
+
 /**
  * AI 一次工具调用的完整生命周期数据。
  *
@@ -277,6 +292,8 @@ export interface ToolCall {
   error?: string
   /** 执行耗时（毫秒） */
   durationMs?: number
+  /** 搜索成功后的来源列表，仅由后端净化后返回。 */
+  sources?: SearchSource[]
 }
 
 /** 文本片段 part */
@@ -353,6 +370,8 @@ export interface Message {
   model?: string
   /** 本次响应消耗的 token 总量；用户消息无此字段 */
   tokensUsed?: number
+  /** 已完成工具调用；用于会话重载后恢复来源链接。 */
+  toolCalls?: ToolCall[]
   /** 持久化媒体任务卡；普通 assistant 消息为 null 或未提供。 */
   mediaTask?: MediaGenerationTask | null
   files: MessageFile[]
@@ -463,6 +482,8 @@ export interface SSEToolCallEnd {
   /** 出错原因（`status === 'error'`） */
   error?: string
   durationMs?: number
+  /** 搜索成功后的安全来源。 */
+  sources?: SearchSource[]
 }
 
 /** SSE 流结束事件 */

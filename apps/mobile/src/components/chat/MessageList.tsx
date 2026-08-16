@@ -1,5 +1,5 @@
 import { FlashList, type FlashListProps } from '@shopify/flash-list'
-import type { MediaGenerationTask, Message, MessageFile } from '@yuanai/types'
+import type { MediaGenerationTask, Message, MessageFile, ToolCall } from '@yuanai/types'
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react'
 import { useState } from 'react'
 import { Keyboard, Pressable, StyleSheet, View } from 'react-native'
@@ -95,6 +95,7 @@ interface AIRow {
   streamingMsg: boolean
   thinkContent: string
   thinkDurationMs: number | undefined
+  toolCalls: readonly ToolCall[]
 }
 
 /**
@@ -173,6 +174,7 @@ interface AIExpandSpec {
   streamingMsg: boolean
   thinkContent: string
   thinkDurationMs: number | undefined
+  toolCalls: readonly ToolCall[]
 }
 
 /** 把一条 AI 消息展开成若干展示块 */
@@ -192,6 +194,7 @@ function expandAI(spec: AIExpandSpec): AIRow[] {
     streamingMsg: spec.streamingMsg,
     thinkContent: spec.thinkContent,
     thinkDurationMs: spec.thinkDurationMs,
+    toolCalls: spec.toolCalls,
   }))
 }
 
@@ -339,6 +342,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
             streamingMsg: true,
             thinkContent: '',
             thinkDurationMs: undefined,
+            toolCalls: [],
           })
         )
         regenRendered = true
@@ -358,6 +362,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           streamingMsg: false,
           thinkContent: asst.thinkingContent ?? '',
           thinkDurationMs: asst.thinkingDurationMs ?? undefined,
+          toolCalls: asst.toolCalls ?? [],
         })
       )
       out.push({
@@ -392,6 +397,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
             streamingMsg: true,
             thinkContent: '',
             thinkDurationMs: undefined,
+            toolCalls: [],
           })
         )
       }
@@ -547,6 +553,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
           seamlessBottom={item.seamlessBottom}
           thinkContent={item.thinkContent}
           thinkDurationMs={item.thinkDurationMs}
+          toolCalls={item.toolCalls}
           prefsKey={prefsKey}
         />
       )

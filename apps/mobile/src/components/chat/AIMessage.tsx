@@ -2,6 +2,8 @@ import Markdown, { type ASTNode } from 'react-native-markdown-display'
 import { memo, useMemo } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
 
+import type { ToolCall } from '@yuanai/types'
+
 import { brand, radius, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -30,6 +32,8 @@ interface AIMessageProps {
   thinkContent?: string
   /** 历史消息的思考耗时（毫秒） */
   thinkDurationMs?: number | undefined
+  /** 历史消息已持久化的工具调用；与思考内容一起展示。 */
+  toolCalls?: readonly ToolCall[]
   /**
    * 字号/密度快照。MessageList 透传以便 memo 在偏好变化时失效；
    * 组件内仍读 useTheme()，本字段只作比较键。
@@ -78,6 +82,7 @@ function AIMessageBase({
   streamingMsg = false,
   thinkContent = '',
   thinkDurationMs,
+  toolCalls,
   prefsKey: _prefsKey,
 }: AIMessageProps): React.JSX.Element {
   const t = useTheme()
@@ -158,8 +163,12 @@ function AIMessageBase({
         {isFirst && streamingMsg && conversationId ? (
           <StreamingThinkBlock conversationId={conversationId} />
         ) : null}
-        {isFirst && !streamingMsg && thinkContent ? (
-          <ThinkBlock content={thinkContent} durationMs={thinkDurationMs} />
+        {isFirst && !streamingMsg && (thinkContent || (toolCalls?.length ?? 0) > 0) ? (
+          <ThinkBlock
+            content={thinkContent}
+            {...(toolCalls ? { toolCalls } : {})}
+            {...(thinkDurationMs !== undefined ? { durationMs: thinkDurationMs } : {})}
+          />
         ) : null}
         {display ? (
           <Markdown style={mdStyles} rules={mdRules}>
@@ -187,6 +196,7 @@ export const AIMessage = memo(
     prev.streamingMsg === next.streamingMsg &&
     prev.thinkContent === next.thinkContent &&
     prev.thinkDurationMs === next.thinkDurationMs &&
+    prev.toolCalls === next.toolCalls &&
     prev.prefsKey === next.prefsKey
 )
 

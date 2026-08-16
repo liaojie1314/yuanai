@@ -77,7 +77,7 @@ describe('AppearanceProvider', () => {
 
     expect(document.documentElement).toHaveAttribute('data-theme', 'dark')
     expect(document.documentElement).toHaveAttribute('data-density', 'loose')
-    expect(document.documentElement.style.getPropertyValue('--desktop-font-size')).toBe('16px')
+    expect(document.documentElement.style.getPropertyValue('--desktop-font-size')).toBe('15px')
     expect(stores.prefs.replaceAll).toHaveBeenCalledWith({
       theme: 'dark',
       fontSize: 'large',

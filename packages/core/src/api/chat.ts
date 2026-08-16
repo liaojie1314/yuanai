@@ -1,4 +1,4 @@
-import type { Conversation, Message } from '@yuanai/types'
+import type { Conversation, Message, SearchCapability } from '@yuanai/types'
 import { apiClient } from './client.js'
 
 /** 获取会话列表（最多 50 条） */
@@ -39,4 +39,10 @@ export async function listMessages(convId: string): Promise<Message[]> {
     hasMore: boolean
   }>(`/chat/conversations/${convId}/messages`)
   return res.data.messages
+}
+
+/** 获取当前账户的聊天扩展能力。 */
+export async function getChatCapabilities(): Promise<{ webSearch: SearchCapability }> {
+  const res = await apiClient.get<{ webSearch: SearchCapability }>('/chat/capabilities')
+  return res.data
 }

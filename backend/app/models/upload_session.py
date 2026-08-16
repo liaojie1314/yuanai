@@ -45,14 +45,14 @@ class FileUploadSession(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     total_chunks: Mapped[int] = mapped_column(Integer)
     # 已上传分片索引（从 0 开始，对应前端切片顺序）
-    uploaded_chunks: Mapped[list] = mapped_column(JSON, default=list)
+    uploaded_chunks: Mapped[list[int]] = mapped_column(JSON, default=list)
     file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # S3 侧多段上传的 upload_id（LocalStorage 也复用同一字段）
     s3_upload_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # 目标对象 key（用户 id 前缀 + 会话 id + 扩展名）
     s3_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # 已上传分片的 S3 ETag 记录：[{"PartNumber": 1, "ETag": "..."}]
-    s3_parts: Mapped[list] = mapped_column(JSON, default=list)
+    s3_parts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

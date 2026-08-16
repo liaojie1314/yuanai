@@ -7,7 +7,13 @@ import { Keyboard, StyleSheet, Pressable, Text, useWindowDimensions, View } from
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { TABLET_MIN_WIDTH, filterChatModels, useCreateConversation, useModels } from '@yuanai/core'
+import {
+  TABLET_MIN_WIDTH,
+  filterChatModels,
+  useChatCapabilities,
+  useCreateConversation,
+  useModels,
+} from '@yuanai/core'
 import type { AIModel } from '@yuanai/types'
 
 import { ChatInput } from '@/components/chat/ChatInput'
@@ -41,6 +47,8 @@ export default function ChatNewScreen(): React.JSX.Element {
   const dialog = useDialog()
 
   const createConv = useCreateConversation()
+  const chatCapabilitiesQuery = useChatCapabilities()
+  const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const [submitting, setSubmitting] = useState(false)
@@ -86,7 +94,7 @@ export default function ChatNewScreen(): React.JSX.Element {
   }, [navigation])
 
   const handleSend = useCallback(
-    (content: string, fileIds?: string[]): void => {
+    (content: string, fileIds?: string[], options?: { enableWebSearch: boolean }): void => {
       if (busyRef.current) return
       busyRef.current = true
       setSubmitting(true)
@@ -101,6 +109,7 @@ export default function ChatNewScreen(): React.JSX.Element {
               conversationId: conv.id,
               draft: content,
               ...(fileIds && fileIds.length > 0 ? { draftFileIds: JSON.stringify(fileIds) } : {}),
+              ...(options?.enableWebSearch ? { draftEnableWebSearch: 'true' } : {}),
             },
           })
         } catch (err) {
@@ -168,7 +177,12 @@ export default function ChatNewScreen(): React.JSX.Element {
           </Text>
         </Pressable>
 
-        <ChatInput streaming={submitting} onSend={handleSend} bottomInset={insets.bottom} />
+        <ChatInput
+          streaming={submitting}
+          onSend={handleSend}
+          bottomInset={insets.bottom}
+          webSearchAvailable={webSearchAvailable}
+        />
       </View>
 
       <ModelSelectorSheet

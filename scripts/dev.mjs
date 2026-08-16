@@ -98,7 +98,8 @@ ok('前端已配置为真实接口模式')
 step('【3/6】启动 Docker 基础设施')
 // ════════════════════════════════════════════════════════════════════════
 
-log('启动 PostgreSQL + Redis + MinIO...')
+run(process.execPath, [join(ROOT, 'scripts', 'ensure-searxng-secret.mjs')], { cwd: ROOT })
+log('启动 PostgreSQL + Redis + MinIO + SearXNG...')
 run('docker', ['compose', '-f', join(ROOT, 'docker-compose.yml'), 'up', '-d'])
 
 // 等待 PostgreSQL 端口可连接（宿主机 5433 → 容器 5432）

@@ -26,6 +26,7 @@ import { useStream, TEMPORARY_CONV_ID } from '@yuanai/core/hooks'
 import type { TemporaryChatMessage } from '@yuanai/core/hooks'
 import {
   useConversations,
+  useChatCapabilities,
   useCreateMediaTask,
   useCreateConversation,
   useDeleteConversation,
@@ -323,6 +324,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const { mutate: deleteConvs } = useDeleteConversations()
   const { mutate: updateConv } = useUpdateConversation()
   const modelsQuery = useModels()
+  const chatCapabilitiesQuery = useChatCapabilities()
+  const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
+  const webSearchAvailable = webSearchCapability?.enabled === true
   const chatModels = useMemo(() => {
     const models = filterChatModels(modelsQuery.data ?? []).map(toModelOption)
     return models.length > 0 ? models : MODELS
@@ -376,7 +380,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   // ── UI state ──
   const artifactOpen = useArtifactStore((s) => s.open)
   const openFilePreview = useArtifactStore((s) => s.openFilePreview)
-  const [webSearch, setWebSearch] = useState(true)
+  const [webSearch, setWebSearch] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
   const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
   const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
@@ -415,6 +419,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   // ── Toast & 语音识别 ──
   const toast = useToast()
+
+  useEffect(() => {
+    if (webSearchCapability && !webSearchCapability.enabled) setWebSearch(false)
+  }, [webSearchCapability])
 
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
@@ -765,6 +773,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         history,
         model: activeModel.id,
         enableThinking: showThinking,
+        enableWebSearch: webSearch && webSearchAvailable,
         onEnd: ({ completed, content: finalContent, think, thinkDurationMs }) => {
           const assistantMsg: MockMessage = {
             id: `temp-assistant-${Date.now()}`,
@@ -902,6 +911,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       fileIds: fileIds.length > 0 ? fileIds : undefined,
       optimisticFiles: optimisticFilesForStream.length > 0 ? optimisticFilesForStream : undefined,
       enableThinking: showThinking,
+      enableWebSearch: webSearch && webSearchAvailable,
       onEnd: ({ completed }) => {
         if (completed) triggerAIReplyNotification()
       },
@@ -932,10 +942,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const fillWebSearchPrompt = useCallback(
     (text: string): void => {
+      if (!webSearchAvailable) {
+        toast.error('联网搜索当前不可用，请检查搜索服务配置')
+        return
+      }
       setWebSearch(true)
       fill(text)
     },
-    [fill]
+    [fill, toast, webSearchAvailable]
   )
 
   const toBottom = (): void => {
@@ -1824,8 +1838,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   <>
                     <button
                       className={`ch-in-btn ${webSearch ? 'on' : ''}`}
-                      title="联网搜索"
-                      disabled={!isLoggedIn}
+                      title={
+                        webSearchAvailable
+                          ? '联网搜索'
+                          : chatCapabilitiesQuery.isLoading
+                            ? '正在检查联网搜索服务'
+                            : '联网搜索当前不可用，请检查搜索服务配置'
+                      }
+                      disabled={!isLoggedIn || !webSearchAvailable}
                       aria-pressed={webSearch}
                       onClick={() => setWebSearch((w) => !w)}
                     >

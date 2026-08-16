@@ -1,7 +1,15 @@
 'use client'
 
 import { useState, type JSX } from 'react'
-import { ChevronRight, Wrench, Loader2, CheckCircle2, XCircle, Clock } from 'lucide-react'
+import {
+  ChevronRight,
+  Wrench,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  ExternalLink,
+} from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import type { ToolCall, ToolCallStatus } from '@yuanai/types'
 
@@ -114,6 +122,26 @@ export function ToolCallRow({ toolCall }: ToolCallRowProps): JSX.Element {
             <div className="ch-tool-section">
               <div className="ch-tool-lbl ch-tool-lbl-err">{t('toolError')}</div>
               <pre className="ch-tool-code ch-tool-code-err">{toolCall.error}</pre>
+            </div>
+          )}
+          {toolCall.sources && toolCall.sources.length > 0 && (
+            <div className="ch-tool-section">
+              <div className="ch-tool-lbl">来源</div>
+              <ul className="ch-tool-sources">
+                {toolCall.sources.map((source) => (
+                  <li key={source.url}>
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={source.snippet}
+                    >
+                      <span>{source.title}</span>
+                      <ExternalLink size={12} aria-hidden="true" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           {toolCall.status === 'running' && (

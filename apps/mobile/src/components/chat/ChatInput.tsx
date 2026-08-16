@@ -64,6 +64,10 @@ interface MediaTaskSubmission {
   options: MediaGenerationOptions
 }
 
+interface ChatSendOptions {
+  enableWebSearch: boolean
+}
+
 interface ChatInputProps {
   disabled?: boolean
   streaming?: boolean
@@ -75,8 +79,10 @@ interface ChatInputProps {
   /**
    * 发送回调：收到文本内容和（若有）已上传文件 ID 列表
    */
-  onSend: (content: string, fileIds?: string[]) => void
+  onSend: (content: string, fileIds?: string[], options?: ChatSendOptions) => void
   onStop?: () => void
+  /** 后端返回的联网搜索能力；不可用时 Globe 保持禁用。 */
+  webSearchAvailable?: boolean
   /** 当前页面是否有持久化会话，只有这时显示图片/视频生成入口。 */
   mediaGenerationEnabled?: boolean
   /** 创建任务请求进行中，防止重复提交。 */
@@ -159,6 +165,7 @@ export function ChatInput({
   disableAttachments = false,
   onSend,
   onStop,
+  webSearchAvailable = false,
   mediaGenerationEnabled = false,
   mediaTaskCreating = false,
   onCreateMediaTask,
@@ -172,6 +179,7 @@ export function ChatInput({
   const [videoRatio, setVideoRatio] = useState<MediaVideoAspectRatio>('3:2')
   const [videoResolution, setVideoResolution] = useState<MediaVideoResolution>('720p')
   const [videoDuration, setVideoDuration] = useState<MediaVideoDurationSeconds>(5)
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
   const toast = useToast()
@@ -245,15 +253,13 @@ export function ChatInput({
     if (streaming) return
     setValue('')
     clear()
-    onSend(content, fileIds.length > 0 ? fileIds : undefined)
+    onSend(content, fileIds.length > 0 ? fileIds : undefined, {
+      enableWebSearch: webSearchEnabled && webSearchAvailable,
+    })
   }
 
   const toggleMediaMode = (mode: Exclude<ComposerMode, 'chat'>): void => {
     setComposerMode((previous) => (previous === mode ? 'chat' : mode))
-  }
-
-  const notReady = (label: string) => (): void => {
-    void dialog.alert({ title: label, message: t('chat.comingSoonTitle') })
   }
 
   const handlePaperclip = (): void => {
@@ -409,12 +415,28 @@ export function ChatInput({
           {composerMode === 'chat' ? (
             <>
               <Pressable
-                onPress={notReady(t('chat.webSearch'))}
+                onPress={() => setWebSearchEnabled((value) => !value)}
+                disabled={!webSearchAvailable || disabled || streaming || isUploading}
                 hitSlop={6}
-                style={[styles.toolBtn, { backgroundColor: theme.bg.elevated }]}
-                accessibilityLabel={t('chat.webSearchSoon')}
+                style={[
+                  styles.toolBtn,
+                  {
+                    backgroundColor: webSearchEnabled ? theme.brand.selected : theme.bg.elevated,
+                    opacity: !webSearchAvailable || disabled || streaming || isUploading ? 0.45 : 1,
+                  },
+                ]}
+                accessibilityLabel={t('chat.webSearch')}
+                accessibilityHint={
+                  webSearchAvailable
+                    ? '让本条消息调用联网搜索'
+                    : '联网搜索当前不可用，请检查搜索服务配置'
+                }
+                accessibilityState={{ selected: webSearchEnabled, disabled: !webSearchAvailable }}
               >
-                <Globe size={17} color={theme.text.secondary} />
+                <Globe
+                  size={17}
+                  color={webSearchEnabled ? theme.brand.selectedFg : theme.text.secondary}
+                />
               </Pressable>
               <Pressable
                 onPress={() => setShowThinking(!showThinking)}

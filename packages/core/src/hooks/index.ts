@@ -29,6 +29,7 @@ export {
   useUpdateConversation,
   useInvalidateMessages,
   useAppendMessage,
+  useChatCapabilities,
 } from './useChatQueries'
 export {
   useCancelMediaTask,

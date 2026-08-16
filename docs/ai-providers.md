@@ -52,6 +52,80 @@ OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxx
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxx
 ```
 
+## 联网搜索
+
+聊天输入区的“联网搜索”开关会把搜索结果放在该条回答的“思考”内容中：折叠时只保留
+工具状态，展开后可以查看来源标题、摘要和链接，来源不会混入回答正文。搜索工具支持
+`auto`、`searxng`、`brave`、`tavily` 和 `disabled` 五种模式。
+
+```mermaid
+flowchart TD
+  A[开启联网搜索] --> B{SEARCH_PROVIDER}
+  B -->|auto| C[本地 SearXNG]
+  C -->|未配置或不可用| D{已配置第三方 Key?}
+  D -->|Brave| E[Brave Search API]
+  D -->|Tavily| F[Tavily API]
+  D -->|都没有| G[搜索不可用并提示用户]
+  B -->|searxng| C
+  B -->|brave| E
+  B -->|tavily| F
+  B -->|disabled| G
+  E --> H[净化来源并写入思考区]
+  F --> H
+  C --> H
+```
+
+### 默认无密钥方案：SearXNG
+
+SearXNG 运行在本地 Docker 容器中，不需要第三方 API Key。首次启动前执行：
+
+```bash
+pnpm setup:search
+docker compose up -d searxng
+```
+
+`pnpm setup:search` 只在根目录 `.env` 生成随机的 `SEARXNG_SECRET`；它不会生成、
+读取或上传任何第三方账号凭据。`SEARCH_PROVIDER=auto`（默认）会优先使用
+`http://127.0.0.1:8082` 的本地实例。
+
+### Brave Search
+
+1. 打开 [Brave Search API Keys](https://api.search.brave.com/app/keys) 并登录。
+2. 创建一个 Search API Key，复制后只写入被 Git 忽略的 `backend/.env`。
+3. 设置：
+
+   ```dotenv
+   SEARCH_PROVIDER=brave
+   BRAVE_SEARCH_API_KEY=你的BraveKey
+   ```
+
+### Tavily
+
+1. 打开 [Tavily Dashboard](https://app.tavily.com/home) 并登录。
+2. 创建或复制 API Key，写入被 Git 忽略的 `backend/.env`。
+3. 设置：
+
+   ```dotenv
+   SEARCH_PROVIDER=tavily
+   TAVILY_API_KEY=你的TavilyKey
+   ```
+
+### 代理（可选）
+
+搜索默认直接联网，不假设用户存在代理。只有本机网络确实需要代理时，才在仓库根目录
+`.env` 显式设置 `SEARXNG_PROXY_URL`，例如：
+
+```dotenv
+SEARXNG_PROXY_URL=http://127.0.0.1:<你的代理端口>
+```
+
+没有代理或代理端口不一致的用户应保持该变量为空；不要把代理地址写入源码、提交或
+`backend/.env.example`。代理只传给 SearXNG Docker 服务，Brave/Tavily 通过其自身
+HTTPS 接口访问。
+
+搜索结果会做 HTTPS、凭据、查询串/片段、长度和重复来源校验，并按用户限流和缓存；
+搜索 provider 故障不会把原始 provider 响应直接展示给模型或客户端。
+
 **默认模型**：模型列表中第一个被标记为默认模型，优先级顺序为：DeepSeek → OpenAI → Anthropic（按 `ai_service.py` 中 `AVAILABLE_MODELS` 的声明顺序）。
 
 ---

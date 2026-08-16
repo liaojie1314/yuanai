@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.schemas.media_generation import MediaGenerationTaskResponse
@@ -70,9 +71,54 @@ class MessageResponse(BaseModel):
     thinking_duration_ms: int | None = None
     model: str | None = None
     tokens_used: int | None = None
+    tool_calls: list["ToolCallResponse"] = []
     files: list[MessageFileResponse] = []
     media_task: MediaGenerationTaskResponse | None = None
     created_at: datetime
+
+    @field_validator("tool_calls", mode="before")
+    @classmethod
+    def default_tool_calls(cls, value: object) -> object:
+        """兼容新增 JSON 列前保存的历史 assistant 消息。"""
+        return [] if value is None else value
+
+
+class SearchSourceResponse(BaseModel):
+    """持久化后再次展示给客户端的网页来源。"""
+
+    title: str
+    url: str
+    snippet: str
+    provider: Literal["searxng", "brave", "tavily"]
+
+
+class ToolCallResponse(BaseModel):
+    """一条已净化工具调用的持久化表示。"""
+
+    id: str
+    name: str
+    arguments: str
+    status: Literal["pending", "running", "done", "error"]
+    result: str | None = None
+    error: str | None = None
+    duration_ms: int | None = None
+    sources: list[SearchSourceResponse] = []
+
+
+class SearchCapabilityResponse(BaseModel):
+    """联网搜索开关的匿名配置结果。"""
+
+    enabled: bool
+    provider: Literal["searxng", "brave", "tavily"] | None = None
+    reason: Literal["disabled", "unavailable"] | None = None
+
+
+class ChatCapabilitiesResponse(BaseModel):
+    """聊天页面可用能力集合。"""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    web_search: SearchCapabilityResponse
 
 
 class MessageContent(BaseModel):
@@ -89,6 +135,7 @@ class SendMessageRequest(BaseModel):
     model: str
     message: MessageContent
     enable_thinking: bool = False
+    enable_web_search: bool = False
     replace_message_id: uuid.UUID | None = None
     regenerate_from_message_id: uuid.UUID | None = None
 
@@ -110,6 +157,7 @@ class TemporaryChatRequest(BaseModel):
     model: str
     messages: list[TemporaryChatMessage]
     enable_thinking: bool = False
+    enable_web_search: bool = False
 
 
 class ShareLinkResponse(BaseModel):

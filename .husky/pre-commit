@@ -1,1 +1,5 @@
-corepack pnpm lint-staged
+if command -v corepack >/dev/null 2>&1; then
+  exec corepack pnpm lint-staged
+fi
+
+exec pnpm lint-staged

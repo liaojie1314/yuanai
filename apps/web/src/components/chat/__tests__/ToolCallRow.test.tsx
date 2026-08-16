@@ -64,4 +64,27 @@ describe('ToolCallRow', () => {
     fireEvent.click(screen.getByRole('button'))
     expect(screen.getByText('共 3 条结果')).toBeInTheDocument()
   })
+
+  it('展开后以安全新窗口链接显示搜索来源', () => {
+    renderToolCallRow(
+      <ToolCallRow
+        toolCall={makeCall({
+          sources: [
+            {
+              title: '元AI 搜索来源',
+              url: 'https://example.com/research',
+              snippet: '安全的来源摘要',
+              provider: 'searxng',
+            },
+          ],
+        })}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button'))
+    expect(screen.getByRole('link', { name: '元AI 搜索来源' })).toHaveAttribute(
+      'rel',
+      'noopener noreferrer'
+    )
+  })
 })

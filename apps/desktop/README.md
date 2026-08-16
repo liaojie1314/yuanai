@@ -11,6 +11,8 @@
 - 邮箱认证与 GitHub/Google OAuth；会话凭据经 Electron `safeStorage` 加密保存。
 - 真实后端会话、模型、流式聊天、临时对话、会话管理、分享、文件/截图附件和
   消息操作。
+- 可配置联网搜索：搜索与思考开关可独立使用；来源保存在消息工具记录中，在思考块的
+  `search_web` 详情内安全打开。虚拟列表滚动不会重置已展开的思考或工具详情。
 - Markdown、数学公式、代码高亮、数据预览与单一 Artifact 窗口；长聊天采用
   虚拟列表，滚动期间延迟 Prism 高亮以保持交互流畅。
 - 明暗主题、语言、字体、密度、时间格式等服务端偏好同步；关闭到托盘、开机自启、
@@ -69,9 +71,13 @@ pnpm --filter @yuanai/desktop package:all
 ```
 
 这些命令调用 electron-builder；实际安装包格式由当前平台和 electron-builder
-配置决定。发布前必须在目标平台安装验证，尤其是 Windows/macOS 的签名、
-Linux 的桌面协议注册和各平台自动更新。当前仓库尚未发布签名安装包或配置
-生产更新源。
+配置决定。当前仓库尚未发布签名安装包或配置生产更新源。发布前必须完成以下外部验收：
+
+- Windows、macOS 和 Ubuntu 分别运行对应的 `package:*` 脚本并安装，验证认证、真实
+  聊天、系统托盘、全局快捷键、深链接和 Artifact 预览。
+- 配置 Windows 代码签名、macOS notarization 与 GitHub Releases 更新源；用已发布的
+  旧版本验证下载、重启安装和失败回退。
+- 验证 Linux 桌面协议注册和更新提示；AppImage、deb、rpm 的安装路径均需覆盖。
 
 ## 安全边界
 

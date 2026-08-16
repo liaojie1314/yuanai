@@ -69,6 +69,7 @@ describe('preload API', () => {
     await api.system.setAutoLaunch(true)
     await api.system.notify({ title: '元AI', body: '回复已完成' })
     await api.shell.openExternal('repository')
+    await api.shell.openExternalUrl('https://example.com/source')
     await api.oauth.start('github')
 
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(1, IPC.auth.get)
@@ -119,7 +120,12 @@ describe('preload API', () => {
       body: '回复已完成',
     })
     expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(26, IPC.shell.openExternal, 'repository')
-    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(27, IPC.oauth.start, 'github')
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(
+      27,
+      IPC.shell.openExternalUrl,
+      'https://example.com/source'
+    )
+    expect(ipcRenderer.invoke).toHaveBeenNthCalledWith(28, IPC.oauth.start, 'github')
   })
 
   it('removes the exact wrapped listener on unsubscribe', () => {

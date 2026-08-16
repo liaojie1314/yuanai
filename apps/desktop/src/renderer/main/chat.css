@@ -11,7 +11,7 @@
   --desktop-brand-light: #eff6ff;
   --desktop-brand-border: #bfdbfe;
   --desktop-border: #dbe7f6;
-  --desktop-font-size: 14px;
+  --desktop-font-size: 13px;
   color: var(--desktop-fg);
   background: var(--desktop-bg);
   font-family:
@@ -1928,6 +1928,46 @@ textarea:focus-visible {
 
 .desktop-chat__tool-call pre.is-error {
   color: #dc2626;
+}
+
+.desktop-chat__tool-sources {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.desktop-chat__tool-sources button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--desktop-border);
+  border-radius: 5px;
+  padding: 7px 8px;
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-elevated);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.desktop-chat__tool-sources button:hover,
+.desktop-chat__tool-sources button:focus-visible {
+  border-color: var(--desktop-brand);
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__tool-sources button span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-chat__message-actions {

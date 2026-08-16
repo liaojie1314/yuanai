@@ -194,7 +194,10 @@ export const IPC = {
     setGlobalShortcut: 'system:set-global-shortcut',
     notify: 'system:notify',
   },
-  shell: { openExternal: 'shell:open-external' },
+  shell: {
+    openExternal: 'shell:open-external',
+    openExternalUrl: 'shell:open-external-url',
+  },
   events: {
     authChanged: 'event:auth-changed',
     prefsChanged: 'event:prefs-changed',

@@ -1,6 +1,6 @@
 import { Check, ChevronDown, ChevronRight, Clock, Loader, Wrench, X } from 'lucide-react-native'
 import { memo, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import type { ToolCall, ToolCallStatus } from '@yuanai/types'
 import { useTranslation } from 'react-i18next'
@@ -57,6 +57,15 @@ function tryFormatJson(raw: string): string {
     return JSON.stringify(JSON.parse(trimmed), null, 2)
   } catch {
     return trimmed
+  }
+}
+
+function isSafeSearchSourceUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password
+  } catch {
+    return false
   }
 }
 
@@ -137,6 +146,40 @@ export const ToolCallRow = memo(function ToolCallRow({
           ) : null}
           {toolCall.status === 'error' && toolCall.error ? (
             <Section label={t('chat.toolError')} content={toolCall.error} danger t={theme} />
+          ) : null}
+          {toolCall.sources && toolCall.sources.length > 0 ? (
+            <View style={styles.sources} accessibilityLabel="联网来源">
+              <Text style={[styles.sectionLabel, { color: theme.text.secondary }]}>来源</Text>
+              {toolCall.sources.map((source) => (
+                <Pressable
+                  key={source.url}
+                  disabled={!isSafeSearchSourceUrl(source.url)}
+                  onPress={() => {
+                    if (!isSafeSearchSourceUrl(source.url)) return
+                    void Linking.openURL(source.url).catch(() => undefined)
+                  }}
+                  style={[
+                    styles.source,
+                    {
+                      borderColor: theme.border.default,
+                      backgroundColor: theme.bg.elevated,
+                      opacity: isSafeSearchSourceUrl(source.url) ? 1 : 0.45,
+                    },
+                  ]}
+                  accessibilityRole="link"
+                  accessibilityLabel={source.title}
+                  accessibilityHint={source.snippet}
+                >
+                  <Text
+                    style={[styles.sourceTitle, { color: theme.brand.solid }]}
+                    numberOfLines={1}
+                  >
+                    {source.title}
+                  </Text>
+                  <ChevronRight size={13} color={theme.text.muted} />
+                </Pressable>
+              ))}
+            </View>
           ) : null}
           {toolCall.status === 'running' ? (
             <Text style={[styles.runningHint, { color: theme.text.muted }]}>
@@ -219,8 +262,19 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   section: { gap: 2 },
-  sectionLabel: { fontSize: 10, fontWeight: '600' },
+  sectionLabel: { fontSize: 10, lineHeight: 14, fontWeight: '600' },
   sectionScroll: { borderRadius: radius.sm, padding: spacing.xs },
   sectionCode: { fontFamily: 'monospace', fontSize: 11, lineHeight: 16 },
+  sources: { gap: 5 },
+  source: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  sourceTitle: { flex: 1, fontSize: 11, lineHeight: 15, fontWeight: '600' },
   runningHint: { fontSize: 11, fontStyle: 'italic' },
 })

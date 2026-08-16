@@ -57,7 +57,7 @@ pnpm dev:mock
 ### 启动步骤
 
 ```bash
-# 1. 启动基础设施（PostgreSQL + Redis + MinIO）
+# 1. 启动基础设施（pnpm dev:real 会自动生成 SearXNG 密钥）
 docker compose up -d
 
 # 2. 进入后端目录

@@ -2961,6 +2961,40 @@
   flex-direction: column;
   gap: 4px;
 }
+.ch-tool-sources {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ch-tool-sources a {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--elevated);
+  border-radius: 5px;
+  color: var(--brand);
+  background: var(--surface);
+  font-size: 13px;
+  line-height: 1.35;
+  text-decoration: none;
+}
+.ch-tool-sources a:hover,
+.ch-tool-sources a:focus-visible {
+  border-color: var(--brand);
+  background: var(--brand-light);
+}
+.ch-tool-sources span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ch-tool-lbl {
   font-size: 11px;
   font-weight: 600;

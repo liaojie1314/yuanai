@@ -1,9 +1,15 @@
 #!/bin/sh
 
 echo "⏳ Running type check..."
-corepack pnpm typecheck || { echo "❌ Type check failed. Push aborted."; exit 1; }
+if command -v corepack >/dev/null 2>&1; then
+  run_pnpm() { corepack pnpm "$@"; }
+else
+  run_pnpm() { pnpm "$@"; }
+fi
+
+run_pnpm typecheck || { echo "❌ Type check failed. Push aborted."; exit 1; }
 
 echo "⏳ Running unit tests..."
-corepack pnpm test:unit || { echo "❌ Unit tests failed. Push aborted."; exit 1; }
+run_pnpm test:unit || { echo "❌ Unit tests failed. Push aborted."; exit 1; }
 
 echo "✅ All checks passed. Pushing..."

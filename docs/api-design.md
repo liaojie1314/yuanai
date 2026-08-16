@@ -610,6 +610,28 @@ Google 已按同一模式落地；未来接入微信时继续复用。
 
 ---
 
+### GET `/chat/capabilities` — 获取聊天扩展能力（需认证）
+
+客户端在渲染输入区前调用。响应只说明用户可用能力，不返回搜索 provider 的 URL、
+代理地址或任何密钥。
+
+**Response 200:**
+
+```json
+{
+  "webSearch": {
+    "enabled": true,
+    "provider": "searxng",
+    "reason": null
+  }
+}
+```
+
+`enabled` 为 `false` 时，`reason` 为 `"disabled"` 或 `"unavailable"`；客户端必须禁用
+联网搜索开关，而不是猜测 provider 配置。
+
+---
+
 ### POST `/chat/stream` — 流式对话（SSE，需认证）
 
 这是核心接口，返回 Server-Sent Events 流。
@@ -620,6 +642,8 @@ Google 已按同一模式落地；未来接入微信时继续复用。
 {
   "conversation_id": "uuid",
   "model": "gpt-4o",
+  "enable_thinking": false,
+  "enable_web_search": true,
   "message": {
     "content": "请解释什么是 RAG",
     "file_ids": ["uuid1", "uuid2"]
@@ -627,7 +651,9 @@ Google 已按同一模式落地；未来接入微信时继续复用。
 }
 ```
 
-`file_ids` 可选，引用已通过 `POST /files/upload` 上传的文件 ID。
+`file_ids` 可选，引用已通过 `POST /files/upload` 上传的文件 ID。`enable_web_search`
+仅在 `/chat/capabilities` 报告 `webSearch.enabled=true` 时可用，并可独立于
+`enable_thinking` 打开。
 
 **Response Headers:**
 
@@ -650,6 +676,20 @@ data: {"token":"RAG"}
 
 event: content_delta
 data: {"token":"（检索增强生成）"}
+
+# 思考内容（模型或工具执行过程，可选）
+event: thinking_delta
+data: {"token":"检索可靠来源…"}
+
+# 联网搜索工具调用（可选；完整来源写入 assistant 消息 tool_calls）
+event: tool_call_start
+data: {"tool_call_id":"search-1","name":"search_web"}
+
+event: tool_call_delta
+data: {"tool_call_id":"search-1","args_chunk":"{\"query\":\"RAG\"}"}
+
+event: tool_call_end
+data: {"tool_call_id":"search-1","status":"done","result":"已检索 3 条来源","sources":[{"title":"...","url":"https://...","snippet":"...","provider":"searxng"}]}
 
 # 消息结束（包含完整统计）
 event: message_end

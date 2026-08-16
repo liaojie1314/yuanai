@@ -106,7 +106,8 @@ ok('apps/mobile/.env → EXPO_PUBLIC_API_URL=http://localhost:8000/api/v1 (MOCK 
 step('【3/7】启动 Docker 基础设施')
 // ════════════════════════════════════════════════════════════════════════
 
-log('启动 PostgreSQL + Redis + MinIO...')
+run(process.execPath, [join(ROOT, 'scripts', 'ensure-searxng-secret.mjs')], { cwd: ROOT })
+log('启动 PostgreSQL + Redis + MinIO + SearXNG...')
 run('docker', ['compose', '-f', join(ROOT, 'docker-compose.yml'), 'up', '-d'])
 log('等待 PostgreSQL 就绪（5433）...')
 await waitPort(5433, '127.0.0.1', 60).catch((e) => err(`${e.message}\n   docker compose ps`))

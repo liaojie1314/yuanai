@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
 from app.core.security import hash_password, verify_password
@@ -45,7 +46,9 @@ def _to_share_link(share: ConversationShare) -> ShareLinkResponse:
     )
 
 
-async def _get_user_conv(conv_id: uuid.UUID, user_id: uuid.UUID, db) -> Conversation:
+async def _get_user_conv(
+    conv_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> Conversation:
     result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
     conv = result.scalar_one_or_none()
     if not conv:
@@ -142,7 +145,7 @@ async def revoke_share_link(
     await db.commit()
 
 
-async def _load_share(share_token: str, db) -> ConversationShare:
+async def _load_share(share_token: str, db: AsyncSession) -> ConversationShare:
     result = await db.execute(
         select(ConversationShare).where(ConversationShare.share_token == share_token)
     )
@@ -173,7 +176,7 @@ async def get_shared_meta(share_token: str, db: DB) -> SharedConversationMetaRes
 
 
 async def _load_share_conversation(
-    share: ConversationShare, db
+    share: ConversationShare, db: AsyncSession
 ) -> SharedConversationResponse:
     conv_result = await db.execute(select(Conversation).where(Conversation.id == share.conv_id))
     conv = conv_result.scalar_one_or_none()

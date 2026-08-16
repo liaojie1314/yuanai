@@ -17,7 +17,7 @@ export function applyRendererPreferences(preferences: UserPreferences): void {
   document.documentElement.setAttribute('data-density', preferences.density)
   document.documentElement.style.setProperty(
     '--desktop-font-size',
-    preferences.fontSize === 'small' ? '13px' : preferences.fontSize === 'large' ? '16px' : '14px'
+    preferences.fontSize === 'small' ? '12px' : preferences.fontSize === 'large' ? '15px' : '13px'
   )
 }
 

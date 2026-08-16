@@ -1,0 +1,20 @@
+use_default_settings: true
+
+server:
+  bind_address: '0.0.0.0'
+  port: 8080
+  secret_key: 'replace-at-startup'
+
+search:
+  formats:
+    - html
+    - json
+  safe_search: 2
+
+# 默认海外引擎在当前开发网络经常超时；显式启用可无密钥访问的中文通用搜索。
+# 仍保留 SearXNG 默认设置，部署方可以在自己的配置中覆盖或添加其他引擎。
+engines:
+  - name: baidu
+    disabled: false
+  - name: sogou
+    disabled: false

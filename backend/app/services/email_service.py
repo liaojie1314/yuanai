@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """邮件发送服务 — 通过 SMTP (SSL) 发送邮件。
 
 设计要点：
@@ -37,7 +38,7 @@ def _send_sync(*, to: str, subject: str, html_body: str) -> None:
     msg = MIMEText(html_body, "html", "utf-8")
     msg["From"] = formataddr((str(Header(settings.smtp_from_name, "utf-8")), settings.smtp_user))
     msg["To"] = to
-    msg["Subject"] = Header(subject, "utf-8")
+    msg["Subject"] = str(Header(subject, "utf-8"))
 
     try:
         # QQ 邮箱默认 465 端口 SSL；如需 STARTTLS 请改用 smtplib.SMTP(host, 587) + starttls()

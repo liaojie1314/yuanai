@@ -31,6 +31,22 @@ services:
     volumes:
       - minio_data:/data
 
+  searxng:
+    image: ghcr.io/searxng/searxng:2026.8.14-094c33d40@sha256:892cf809341915a4b7710d3c9045005b4c377d51335a089b6d4da0b28750788d
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?run pnpm setup:search first}
+      # 代理仅由开发者显式配置；默认直接联网，不能假设终端用户拥有 7890 等本地端口。
+      HTTP_PROXY: ${SEARXNG_PROXY_URL:-}
+      HTTPS_PROXY: ${SEARXNG_PROXY_URL:-}
+      NO_PROXY: localhost,127.0.0.1,searxng,postgres,redis,minio
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - '127.0.0.1:8082:8080'
+    volumes:
+      - ./infra/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

@@ -111,7 +111,27 @@ export function MessageList({
   onVersionChange,
 }: MessageListProps): ReactElement {
   const [deferCodeHighlight, setDeferCodeHighlight] = useState(false)
+  const [thinkingOpenByMessageId, setThinkingOpenByMessageId] = useState<
+    Readonly<Record<string, boolean>>
+  >({})
+  const [toolCallOpenByMessageId, setToolCallOpenByMessageId] = useState<
+    Readonly<Record<string, Readonly<Record<string, boolean>>>>
+  >({})
   const codeHighlightTimerRef = useRef<number | null>(null)
+
+  const handleThinkingOpenChange = useCallback((messageId: string, open: boolean): void => {
+    setThinkingOpenByMessageId((current) => ({ ...current, [messageId]: open }))
+  }, [])
+
+  const handleToolCallOpenChange = useCallback(
+    (messageId: string, toolCallId: string, open: boolean): void => {
+      setToolCallOpenByMessageId((current) => ({
+        ...current,
+        [messageId]: { ...current[messageId], [toolCallId]: open },
+      }))
+    },
+    []
+  )
 
   useEffect(() => {
     return () => {
@@ -237,6 +257,14 @@ export function MessageList({
                 onRegenerate={() => undefined}
                 onEditMessage={onEditMessage}
                 deferCodeHighlight={deferCodeHighlight}
+                {...(thinkingOpenByMessageId[mediaMessage.id] !== undefined
+                  ? { thinkingOpen: thinkingOpenByMessageId[mediaMessage.id] }
+                  : {})}
+                onThinkingOpenChange={(open) => handleThinkingOpenChange(mediaMessage.id, open)}
+                toolCallOpenById={toolCallOpenByMessageId[mediaMessage.id] ?? {}}
+                onToolCallOpenChange={(toolCallId, open) =>
+                  handleToolCallOpenChange(mediaMessage.id, toolCallId, open)
+                }
               />
             ))}
             {isPairRegenerating ? (
@@ -268,6 +296,14 @@ export function MessageList({
                 onEditMessage={onEditMessage}
                 onVersionChange={(index) => onVersionChange(pair.pairKey, index)}
                 deferCodeHighlight={deferCodeHighlight}
+                {...(thinkingOpenByMessageId[assistantMessage.id] !== undefined
+                  ? { thinkingOpen: thinkingOpenByMessageId[assistantMessage.id] }
+                  : {})}
+                onThinkingOpenChange={(open) => handleThinkingOpenChange(assistantMessage.id, open)}
+                toolCallOpenById={toolCallOpenByMessageId[assistantMessage.id] ?? {}}
+                onToolCallOpenChange={(toolCallId, open) =>
+                  handleToolCallOpenChange(assistantMessage.id, toolCallId, open)
+                }
                 {...(messageFeedback[assistantMessage.id]
                   ? { feedback: messageFeedback[assistantMessage.id] }
                   : {})}

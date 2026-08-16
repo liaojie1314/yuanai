@@ -54,6 +54,7 @@ import type { VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from 'react-i18next'
 import {
   useConversations,
+  useChatCapabilities,
   useCreateMediaTask,
   useCreateConversation,
   useDeleteConversation,
@@ -926,7 +927,6 @@ function ConversationItem({
 }: ConversationItemProps): ReactElement {
   const isStreaming = useChatStore((state) => state.streams[conversation.id] !== undefined)
   const { stop } = useStream()
-
   const conversationClassName = [
     'desktop-chat__conversation',
     active ? 'desktop-chat__conversation--active' : '',
@@ -935,6 +935,7 @@ function ConversationItem({
   ]
     .filter(Boolean)
     .join(' ')
+
   return (
     <li
       className={conversationClassName}
@@ -1046,6 +1047,9 @@ export function App(): ReactElement {
   const deleteConversations = useDeleteConversations()
   const updateConversation = useUpdateConversation()
   const modelsQuery = useModels()
+  const chatCapabilitiesQuery = useChatCapabilities()
+  const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
+  const webSearchAvailable = webSearchCapability?.enabled === true
   const stream = useStream()
   const createMediaTask = useCreateMediaTask()
   const logout = useLogout()
@@ -1061,7 +1065,7 @@ export function App(): ReactElement {
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
-  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(true)
+  const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false)
   const [isThinkingEnabled, setIsThinkingEnabled] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
   const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
@@ -1135,6 +1139,10 @@ export function App(): ReactElement {
     const timeout = window.setTimeout(() => setVoiceToast(''), 4_000)
     return () => window.clearTimeout(timeout)
   }, [voiceToast])
+
+  useEffect(() => {
+    if (webSearchCapability && !webSearchCapability.enabled) setIsWebSearchEnabled(false)
+  }, [webSearchCapability])
 
   useEffect(() => window.yuanai.events.onMediaPermissionRequested(setMediaPermissionRequest), [])
 
@@ -1366,7 +1374,13 @@ export function App(): ReactElement {
 
   function handleQuickPrompt(prompt: string, enablesWebSearch = false): void {
     if (!isLoggedIn) return
-    if (enablesWebSearch) setIsWebSearchEnabled(true)
+    if (enablesWebSearch) {
+      if (!webSearchAvailable) {
+        setActionError('联网搜索当前不可用，请检查搜索服务配置')
+        return
+      }
+      setIsWebSearchEnabled(true)
+    }
     setDraft(prompt)
     window.setTimeout(() => {
       const input = composerInputRef.current
@@ -1942,6 +1956,7 @@ export function App(): ReactElement {
           history,
           model: selectedModel.id,
           enableThinking: isThinkingEnabled,
+          enableWebSearch: isWebSearchEnabled && webSearchAvailable,
           onEnd: ({ completed, content: response, think }) => {
             if (!response && !think) return
             setTemporaryMessages((items) => [
@@ -2002,6 +2017,7 @@ export function App(): ReactElement {
         convId: targetConversationId,
         content,
         enableThinking: isThinkingEnabled,
+        enableWebSearch: isWebSearchEnabled && webSearchAvailable,
         fileIds,
         model: selectedModel.id,
         onEnd: ({ completed }) => {
@@ -2765,9 +2781,17 @@ export function App(): ReactElement {
                       className={isWebSearchEnabled ? 'is-active' : undefined}
                       type="button"
                       aria-label="联网搜索"
-                      title="联网搜索"
+                      title={
+                        webSearchAvailable
+                          ? '联网搜索'
+                          : chatCapabilitiesQuery.isLoading
+                            ? '正在检查联网搜索服务'
+                            : '联网搜索当前不可用，请检查搜索服务配置'
+                      }
                       aria-pressed={isWebSearchEnabled}
-                      disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
+                      disabled={
+                        !isLoggedIn || !webSearchAvailable || isStreaming || isUploadingAttachments
+                      }
                       onClick={() => setIsWebSearchEnabled((value) => !value)}
                     >
                       <Globe2 size={18} aria-hidden="true" />

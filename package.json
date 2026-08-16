@@ -13,6 +13,7 @@
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "dev:mobile": "node scripts/dev-mobile.mjs",
     "dev:mobile:mock": "node scripts/dev-mobile-mock.mjs",
+    "setup:search": "node scripts/ensure-searxng-secret.mjs",
     "preview:desktop": "pnpm --filter @yuanai/desktop preview",
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",

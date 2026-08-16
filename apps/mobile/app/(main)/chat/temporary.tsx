@@ -11,6 +11,7 @@ import {
   TABLET_MIN_WIDTH,
   TEMPORARY_CONV_ID,
   filterChatModels,
+  useChatCapabilities,
   useModels,
   useStream,
 } from '@yuanai/core'
@@ -46,6 +47,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   const navigation = useNavigation()
   const dialog = useDialog()
 
+  const chatCapabilitiesQuery = useChatCapabilities()
+  const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { sendTemporary, stop } = useStream()
@@ -126,8 +129,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   // 流式期间会出现两个相同的用户气泡。统一在 onEnd（出错时也会触发，
   // finalContent 为空）里把 user +（非空时）assistant 一起落进本地列表。
   const handleSend = useCallback(
-    // fileIds 参数签名与 ChatInput.onSend 对齐，临时对话忽略附件（后端不支持）
-    (content: string, _fileIds?: string[]): void => {
+    // fileIds 参数签名与 ChatInput.onSend 对齐，临时对话忽略附件（后端不支持）。
+    (content: string, _fileIds?: string[], options?: { enableWebSearch: boolean }): void => {
       if (isStreaming) return
       const history = messagesRef.current.map((m) => ({
         role: m.role === Role.User ? ('user' as const) : ('assistant' as const),
@@ -138,6 +141,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
         history,
         model: activeModelId,
         enableThinking: usePrefsStore.getState().showThinking,
+        enableWebSearch: options?.enableWebSearch === true && webSearchAvailable,
         onEnd: ({ content: finalContent, think, thinkDurationMs }) => {
           const now = Date.now()
           setMessages((prev) => {
@@ -175,7 +179,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
       })
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
     },
-    [isStreaming, sendTemporary, activeModelId, dialog, t]
+    [isStreaming, sendTemporary, activeModelId, dialog, t, webSearchAvailable]
   )
 
   // ── 交互 handlers（复用正式会话屏语义）───────────────────────
@@ -313,6 +317,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
           onStop={() => stop(TEMPORARY_CONV_ID)}
           bottomInset={insets.bottom}
           disableAttachments
+          webSearchAvailable={webSearchAvailable}
         />
       </View>
 

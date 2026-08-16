@@ -245,6 +245,7 @@ describe('secure IPC handlers', () => {
         IPC.prefs.update,
         IPC.runtime.getConfig,
         IPC.shell.openExternal,
+        IPC.shell.openExternalUrl,
         IPC.system.getInfo,
         IPC.system.setAutoLaunch,
         IPC.system.setGlobalShortcut,
@@ -287,6 +288,25 @@ describe('secure IPC handlers', () => {
     expect(systemService.notifyAiReply).toHaveBeenCalledWith(payload)
     await expect(handler(createEvent(sender), { title: '', body: 'x' })).rejects.toThrow(
       'IPC_PAYLOAD_INVALID'
+    )
+  })
+
+  it('opens only validated HTTPS source URLs for trusted renderers', async () => {
+    const { handlers, sender, shell } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.shell.openExternalUrl)
+
+    await expect(
+      handler(createEvent(sender), 'https://example.com/research')
+    ).resolves.toBeUndefined()
+    expect(shell.openExternal).toHaveBeenCalledWith('https://example.com/research')
+    await expect(handler(createEvent(sender), 'http://example.com')).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    await expect(handler(createEvent(sender), 'https://user:secret@example.com')).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    await expect(handler(createEvent(createWebContents(2)), 'https://example.com')).rejects.toThrow(
+      'IPC_UNTRUSTED_SENDER'
     )
   })
 

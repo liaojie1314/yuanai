@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { Role } from '@yuanai/types'
@@ -65,6 +65,31 @@ const imageMessage: Message = {
   createdAt: '2026-08-16T00:00:00Z',
 }
 
+const searchedMessage: Message = {
+  id: 'message-search-1',
+  role: Role.Assistant,
+  content: '这是带来源的回答',
+  files: [],
+  toolCalls: [
+    {
+      id: 'tool-search-1',
+      name: 'search_web',
+      arguments: '{"query":"元AI"}',
+      status: 'done',
+      result: '已检索 1 条网页来源',
+      sources: [
+        {
+          title: '元AI 搜索来源',
+          url: 'https://example.com/research',
+          snippet: '安全的来源摘要',
+          provider: 'searxng',
+        },
+      ],
+    },
+  ],
+  createdAt: '2026-08-16T00:00:00Z',
+}
+
 describe('ChatMessage media task', () => {
   it('uses a poster image in the timeline and exposes a download action', () => {
     const { container } = render(
@@ -110,5 +135,86 @@ describe('ChatMessage media task', () => {
       'href',
       imageMessage.files[0]?.url
     )
+  })
+
+  it('renders persisted HTTPS search sources inside the tool details', () => {
+    const { container } = render(
+      <ChatMessage
+        user={null}
+        message={searchedMessage}
+        isStreaming={false}
+        canRegenerate={false}
+        timeFmt="24h"
+        dateFmt="ymd"
+        onEditMessage={vi.fn()}
+        onRegenerate={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onFeedback={vi.fn()}
+      />
+    )
+
+    const thinkingToggle = container.querySelector<HTMLButtonElement>(
+      '.desktop-chat__thinking > button'
+    )
+    expect(thinkingToggle).not.toBeNull()
+    fireEvent.click(thinkingToggle as HTMLButtonElement)
+    expect(screen.getByRole('button', { name: '元AI 搜索来源' })).toBeInTheDocument()
+    expect(screen.queryByText('chat.thinkingPreparing')).not.toBeInTheDocument()
+  })
+
+  it('notifies the virtual list when the thinking block is toggled', () => {
+    const onThinkingOpenChange = vi.fn()
+    const { container } = render(
+      <ChatMessage
+        user={null}
+        message={{
+          ...searchedMessage,
+          thinkingContent: '先检索可靠来源，再组织回答。',
+        }}
+        isStreaming={false}
+        canRegenerate={false}
+        timeFmt="24h"
+        dateFmt="ymd"
+        onEditMessage={vi.fn()}
+        onRegenerate={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onFeedback={vi.fn()}
+        thinkingOpen={false}
+        onThinkingOpenChange={onThinkingOpenChange}
+      />
+    )
+
+    const thinkingToggle = container.querySelector<HTMLButtonElement>(
+      '.desktop-chat__thinking > button'
+    )
+    expect(thinkingToggle).not.toBeNull()
+    fireEvent.click(thinkingToggle as HTMLButtonElement)
+    expect(onThinkingOpenChange).toHaveBeenCalledWith(true)
+  })
+
+  it('notifies the virtual list when a search detail is toggled', () => {
+    const onToolCallOpenChange = vi.fn()
+    const { container } = render(
+      <ChatMessage
+        user={null}
+        message={searchedMessage}
+        isStreaming={false}
+        canRegenerate={false}
+        timeFmt="24h"
+        dateFmt="ymd"
+        onEditMessage={vi.fn()}
+        onRegenerate={vi.fn()}
+        onOpenArtifact={vi.fn()}
+        onFeedback={vi.fn()}
+        thinkingOpen
+        toolCallOpenById={{ 'tool-search-1': false }}
+        onToolCallOpenChange={onToolCallOpenChange}
+      />
+    )
+
+    const detailSummary = container.querySelector<HTMLElement>('.desktop-chat__tool-call > summary')
+    expect(detailSummary).not.toBeNull()
+    fireEvent.click(detailSummary as HTMLElement)
+    expect(onToolCallOpenChange).toHaveBeenCalledWith('tool-search-1', true)
   })
 })

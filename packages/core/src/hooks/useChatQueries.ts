@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Conversation, Message } from '@yuanai/types'
+import type { Conversation, Message, SearchCapability } from '@yuanai/types'
 import {
   createConversation,
   deleteConversation,
+  getChatCapabilities,
   listConversations,
   listMessages,
   updateConversation,
@@ -27,6 +28,17 @@ export function useMessages(convId: string) {
     queryFn: () => listMessages(convId),
     enabled: !!convId,
     staleTime: 10 * 1000,
+  })
+}
+
+/** 已登录用户的聊天能力查询，供联网搜索等开关决定可用状态。 */
+export function useChatCapabilities() {
+  const accessToken = useAuthStore((s) => s.accessToken)
+  return useQuery<{ webSearch: SearchCapability }>({
+    queryKey: ['chat-capabilities'],
+    queryFn: getChatCapabilities,
+    enabled: !!accessToken,
+    staleTime: 30 * 1000,
   })
 }
 

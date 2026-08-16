@@ -60,6 +60,23 @@ function readExternalLink(args: readonly unknown[]): ExternalLinkId {
   throw new Error('IPC_PAYLOAD_INVALID')
 }
 
+function readExternalHttpsUrl(args: readonly unknown[]): string {
+  const value = readSingleIpcPayload(args)
+  if (typeof value !== 'string' || value.length === 0 || value.length > 2_048) {
+    throw new Error('IPC_PAYLOAD_INVALID')
+  }
+  try {
+    const url = new URL(value)
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) {
+      throw new Error('IPC_PAYLOAD_INVALID')
+    }
+    return url.toString()
+  } catch (error: unknown) {
+    if (error instanceof Error && error.message === 'IPC_PAYLOAD_INVALID') throw error
+    throw new Error('IPC_PAYLOAD_INVALID')
+  }
+}
+
 function readNotificationPayload(
   args: readonly unknown[]
 ): Omit<DesktopNotificationPayload, 'playSound'> {
@@ -125,6 +142,13 @@ export function registerSystemIpcHandlers(options: SystemIpcOptions): void {
     async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
       options.guard.assertTrusted(event)
       await options.shell.openExternal(EXTERNAL_LINKS[readExternalLink(args)])
+    }
+  )
+  options.ipcMain.handle(
+    IPC.shell.openExternalUrl,
+    async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
+      options.guard.assertTrusted(event)
+      await options.shell.openExternal(readExternalHttpsUrl(args))
     }
   )
 }

@@ -70,6 +70,8 @@ export interface YuanaiApi {
   }
   shell: {
     openExternal: (link: ExternalLinkId) => Promise<void>
+    /** 使用主进程校验后的 HTTPS 来源在默认浏览器中打开。 */
+    openExternalUrl: (url: string) => Promise<void>
   }
   oauth: {
     start: (provider: DesktopOAuthProvider) => Promise<void>
@@ -160,6 +162,7 @@ export const api: YuanaiApi = {
   },
   shell: {
     openExternal: (link) => ipcRenderer.invoke(IPC.shell.openExternal, link),
+    openExternalUrl: (url) => ipcRenderer.invoke(IPC.shell.openExternalUrl, url),
   },
   oauth: {
     start: (provider) => ipcRenderer.invoke(IPC.oauth.start, provider),

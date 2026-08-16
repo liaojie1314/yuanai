@@ -222,13 +222,13 @@ async def upload_avatar(file: UploadFile, current_user: CurrentUser, db: DB) -> 
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(400, {"code": "INVALID_FILE_TYPE", "message": "仅支持上传图片文件"})
 
-    _EXT_MAP = {
+    extension_map = {
         "image/jpeg": "jpg",
         "image/png": "png",
         "image/webp": "webp",
         "image/gif": "gif",
     }
-    ext = _EXT_MAP.get(file.content_type, "jpg")
+    ext = extension_map.get(file.content_type, "jpg")
 
     content = await file.read()
     max_size = 5 * 1024 * 1024

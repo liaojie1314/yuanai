@@ -19,6 +19,7 @@ import {
   TABLET_MIN_WIDTH,
   filterChatModels,
   useConversations,
+  useChatCapabilities,
   useCreateMediaTask,
   useMediaTasks,
   useMessages,
@@ -71,16 +72,19 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const insets = useSafeAreaInsets()
   const { width } = useWindowDimensions()
   const isTablet = width >= TABLET_MIN_WIDTH
-  const { conversationId, draft, draftFileIds } = useLocalSearchParams<{
+  const { conversationId, draft, draftFileIds, draftEnableWebSearch } = useLocalSearchParams<{
     conversationId: string
     draft?: string
     draftFileIds?: string
+    draftEnableWebSearch?: string
   }>()
   const router = useRouter()
   const navigation = useNavigation()
   const dialog = useDialog()
 
   const { data: conversations = [] } = useConversations()
+  const chatCapabilitiesQuery = useChatCapabilities()
+  const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
   const { data: messages = [], isLoading } = useMessages(conversationId)
@@ -171,7 +175,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
   )
 
   const handleSend = useCallback(
-    (content: string, fileIds?: string[]): void => {
+    (content: string, fileIds?: string[], options?: { enableWebSearch: boolean }): void => {
       if (!conversationId) return
       // 发送后立即滚到底；send 是 async 但我们不 await，让 UI 立刻响应。
       // 实际的自动贴底由 MessageList 监听 rows.length 变化完成，这里再补一次兜底。
@@ -182,11 +186,12 @@ export default function ChatConversationScreen(): React.JSX.Element {
         model: currentModel,
         fileIds: fileIds && fileIds.length > 0 ? fileIds : undefined,
         enableThinking: usePrefsStore.getState().showThinking,
+        enableWebSearch: options?.enableWebSearch === true && webSearchAvailable,
         onError: showSendError,
       })
       requestAnimationFrame(() => listRef.current?.scrollToEnd?.(true))
     },
-    [conversationId, currentModel, send, showSendError]
+    [conversationId, currentModel, send, showSendError, webSearchAvailable]
   )
 
   const handleCreateMediaTask = useCallback(
@@ -307,9 +312,9 @@ export default function ChatConversationScreen(): React.JSX.Element {
         // ignore malformed param
       }
     }
-    handleSend(text, parsedFileIds)
-    router.setParams({ draft: '', draftFileIds: '' })
-  }, [draft, draftFileIds, conversationId, handleSend, router])
+    handleSend(text, parsedFileIds, { enableWebSearch: draftEnableWebSearch === 'true' })
+    router.setParams({ draft: '', draftFileIds: '', draftEnableWebSearch: '' })
+  }, [draft, draftEnableWebSearch, draftFileIds, conversationId, handleSend, router])
 
   return (
     <KeyboardAvoidingView
@@ -410,6 +415,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
           onSend={handleSend}
           onStop={() => stop(conversationId)}
           bottomInset={insets.bottom}
+          webSearchAvailable={webSearchAvailable}
           mediaGenerationEnabled={Boolean(conversationId)}
           mediaTaskCreating={createMediaTask.isPending}
           onCreateMediaTask={handleCreateMediaTask}

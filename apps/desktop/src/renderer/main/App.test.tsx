@@ -191,6 +191,9 @@ vi.mock('@yuanai/core/hooks', () => ({
     mutateAsync: chat.createMediaTask,
   }),
   useCancelMediaTask: () => ({ isPending: false, mutate: chat.cancelMediaTask }),
+  useChatCapabilities: () => ({
+    data: { webSearch: { enabled: true, provider: 'searxng', reason: null } },
+  }),
   useDeleteConversation: () => ({ isPending: false, mutateAsync: chat.deleteConversation }),
   useDeleteConversations: () => ({ isPending: false, mutateAsync: chat.deleteConversations }),
   useLogout: () => ({ isPending: false, mutateAsync: chat.logout }),
@@ -831,6 +834,9 @@ describe('desktop chat', () => {
       .find((button) => button.hasAttribute('aria-pressed'))
     if (!composerWebSearch) throw new Error('未找到输入框工具栏的联网搜索按钮')
 
+    expect(composerWebSearch).toHaveAttribute('aria-pressed', 'false')
+    await user.click(composerWebSearch)
+    expect(composerWebSearch).toHaveAttribute('aria-pressed', 'true')
     await user.click(composerWebSearch)
     expect(composerWebSearch).toHaveAttribute('aria-pressed', 'false')
 

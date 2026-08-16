@@ -20,10 +20,12 @@ from app.models.file import File, MessageFile
 from app.models.media_generation_task import MediaGenerationTask
 from app.models.message import Message, MessageRole
 from app.schemas.chat import (
+    ChatCapabilitiesResponse,
     ConversationResponse,
     CreateConversationRequest,
     MessageFileResponse,
     MessageResponse,
+    SearchCapabilityResponse,
     SendMessageRequest,
     TemporaryChatRequest,
     UpdateConversationRequest,
@@ -38,10 +40,24 @@ from app.services.conversation_title_service import (
 from app.services.file_extract_service import extract_preview, preview_context
 from app.services.push_service import send_to_user
 from app.services.storage_service import storage
+from app.services.tools.search import get_search_capability
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+@router.get("/capabilities", response_model=ChatCapabilitiesResponse)
+async def get_chat_capabilities(_current_user: CurrentUser) -> ChatCapabilitiesResponse:
+    """返回当前账户可用的聊天扩展能力，不暴露 provider 配置和密钥。"""
+    capability = await get_search_capability()
+    return ChatCapabilitiesResponse(
+        web_search=SearchCapabilityResponse(
+            enabled=capability.enabled,
+            provider=capability.provider,
+            reason=capability.reason,
+        )
+    )
 
 
 @router.post("/conversations", response_model=ConversationResponse, status_code=201)
@@ -363,6 +379,7 @@ async def stream_chat_endpoint(
             user_msg.id,
             db,
             enable_thinking=req.enable_thinking,
+            enable_web_search=req.enable_web_search,
             user_id=current_user.id,
             conv_id=conv.id,
             initial_title_update=title_fallback,
@@ -391,7 +408,13 @@ async def stream_temporary_chat(
         {"role": m.role, "content": m.content} for m in req.messages[-50:]
     ]
     return StreamingResponse(
-        _generate_temp_sse(openai_messages, req.model, enable_thinking=req.enable_thinking),
+        _generate_temp_sse(
+            openai_messages,
+            req.model,
+            enable_thinking=req.enable_thinking,
+            enable_web_search=req.enable_web_search,
+            user_id=current_user.id,
+        ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -402,6 +425,8 @@ async def _generate_temp_sse(
     model: str,
     *,
     enable_thinking: bool = False,
+    enable_web_search: bool = False,
+    user_id: uuid.UUID | None = None,
 ) -> AsyncGenerator[str, None]:
     """临时对话专用 SSE 生成器：与 `_generate_sse` 事件协议一致，但无 DB 依赖。"""
     payload = json.dumps({"model": model, "temporary": True})
@@ -410,19 +435,30 @@ async def _generate_temp_sse(
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
     try:
-        async for event_type, token in stream_chat(
-            model, messages, enable_thinking=enable_thinking
+        async for event_type, value in stream_chat(
+            model,
+            messages,
+            enable_thinking=enable_thinking,
+            enable_web_search=enable_web_search,
+            user_id=user_id,
         ):
             if event_type == "thinking":
+                if not isinstance(value, str):
+                    continue
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
-                delta = json.dumps({"token": token}, ensure_ascii=False)
+                delta = json.dumps({"token": value}, ensure_ascii=False)
                 yield f"event: thinking_delta\ndata: {delta}\n\n"
-            else:
+            elif event_type == "content":
+                if not isinstance(value, str):
+                    continue
                 if thinking_start_at is not None and thinking_duration_ms is None:
                     thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
-                delta = json.dumps({"token": token}, ensure_ascii=False)
+                delta = json.dumps({"token": value}, ensure_ascii=False)
                 yield f"event: content_delta\ndata: {delta}\n\n"
+            elif event_type in {"tool_call_start", "tool_call_delta", "tool_call_end"}:
+                if isinstance(value, dict):
+                    yield f"event: {event_type}\ndata: {json.dumps(value, ensure_ascii=False)}\n\n"
 
         end_payload: dict[str, object] = {"tokens_used": 0, "finish_reason": "stop"}
         if thinking_duration_ms is not None:
@@ -442,6 +478,7 @@ async def _persist_partial(
     content: str,
     thinking: str,
     thinking_duration_ms: int | None,
+    tool_calls: list[dict[str, object]],
 ) -> None:
     """客户端中途断开时，把已生成的部分内容写入 assistant 占位消息。
 
@@ -459,6 +496,8 @@ async def _persist_partial(
                 msg.thinking_content = thinking
             if thinking_duration_ms is not None:
                 msg.thinking_duration_ms = thinking_duration_ms
+            if tool_calls:
+                msg.tool_calls = tool_calls
             await db.commit()
     except Exception as e:  # noqa: BLE001 - 收尾兜底，任何异常只记日志
         logger.warning("部分内容落库失败 (msg=%s): %s", assistant_msg_id, e)
@@ -472,6 +511,7 @@ async def _generate_sse(
     db: AsyncSession,
     *,
     enable_thinking: bool = False,
+    enable_web_search: bool = False,
     user_id: uuid.UUID | None = None,
     conv_id: uuid.UUID | None = None,
     initial_title_update: dict[str, str] | None = None,
@@ -496,6 +536,7 @@ async def _generate_sse(
     # 思考耗时统计：首个 reasoning token → 首个 content token 之间的间隔（毫秒）
     thinking_start_at: float | None = None
     thinking_duration_ms: int | None = None
+    tool_calls: dict[str, dict[str, object]] = {}
     title_update_sent = False
 
     def take_title_update() -> ConversationTitleResult | None:
@@ -509,8 +550,12 @@ async def _generate_sse(
             return None
 
     try:
-        async for event_type, token in stream_chat(
-            model, messages, enable_thinking=enable_thinking
+        async for event_type, value in stream_chat(
+            model,
+            messages,
+            enable_thinking=enable_thinking,
+            enable_web_search=enable_web_search,
+            user_id=user_id,
         ):
             title_update = take_title_update()
             if title_update is not None:
@@ -520,18 +565,50 @@ async def _generate_sse(
                     f"data: {json.dumps(title_update, ensure_ascii=False)}\n\n"
                 )
             if event_type == "thinking":
+                if not isinstance(value, str):
+                    continue
                 if thinking_start_at is None:
                     thinking_start_at = time.monotonic()
-                full_thinking += token
-                delta = json.dumps({"token": token}, ensure_ascii=False)
+                full_thinking += value
+                delta = json.dumps({"token": value}, ensure_ascii=False)
                 yield f"event: thinking_delta\ndata: {delta}\n\n"
-            else:
+            elif event_type == "content":
+                if not isinstance(value, str):
+                    continue
                 # 首个正文 token 到达时，思考阶段结束——记录耗时
                 if thinking_start_at is not None and thinking_duration_ms is None:
                     thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
-                full_content += token
-                delta = json.dumps({"token": token}, ensure_ascii=False)
+                full_content += value
+                delta = json.dumps({"token": value}, ensure_ascii=False)
                 yield f"event: content_delta\ndata: {delta}\n\n"
+            elif event_type == "tool_call_start" and isinstance(value, dict):
+                tool_call_id = value.get("tool_call_id")
+                name = value.get("name")
+                if isinstance(tool_call_id, str) and isinstance(name, str):
+                    tool_calls[tool_call_id] = {
+                        "id": tool_call_id,
+                        "name": name,
+                        "arguments": "",
+                        "status": "running",
+                    }
+                    data = json.dumps(value, ensure_ascii=False)
+                    yield f"event: tool_call_start\ndata: {data}\n\n"
+            elif event_type == "tool_call_delta" and isinstance(value, dict):
+                tool_call_id = value.get("tool_call_id")
+                args_chunk = value.get("args_chunk")
+                call = tool_calls.get(tool_call_id) if isinstance(tool_call_id, str) else None
+                if call is not None and isinstance(args_chunk, str):
+                    call["arguments"] = str(call["arguments"]) + args_chunk
+                    data = json.dumps(value, ensure_ascii=False)
+                    yield f"event: tool_call_delta\ndata: {data}\n\n"
+            elif event_type == "tool_call_end" and isinstance(value, dict):
+                tool_call_id = value.get("tool_call_id")
+                call = tool_calls.get(tool_call_id) if isinstance(tool_call_id, str) else None
+                if call is not None:
+                    for key in ("status", "result", "error", "duration_ms", "sources"):
+                        if key in value:
+                            call[key] = value[key]
+                    yield f"event: tool_call_end\ndata: {json.dumps(value, ensure_ascii=False)}\n\n"
 
         # 极端场景：只有思考没有正文（模型异常提前结束），也补记耗时
         if thinking_start_at is not None and thinking_duration_ms is None:
@@ -560,6 +637,8 @@ async def _generate_sse(
             msg.thinking_content = full_thinking
         if thinking_duration_ms is not None:
             msg.thinking_duration_ms = thinking_duration_ms
+        if tool_calls:
+            msg.tool_calls = list(tool_calls.values())
         await db.commit()
 
         # AI 回复落库后，向该用户推送「回复完成」通知（Web Push + Expo Push）。
@@ -590,10 +669,14 @@ async def _generate_sse(
         # 客户端中途断开（用户点了停止 / 杀进程）：StreamingResponse 取消本生成器。
         # 把已生成的部分内容落库（shield 防止落库操作本身也被取消），再继续抛出
         # 让取消语义正常传播。
-        if full_content or full_thinking:
+        if full_content or full_thinking or tool_calls:
             await asyncio.shield(
                 _persist_partial(
-                    assistant_msg_id, full_content, full_thinking, thinking_duration_ms
+                    assistant_msg_id,
+                    full_content,
+                    full_thinking,
+                    thinking_duration_ms,
+                    list(tool_calls.values()),
                 )
             )
         raise
@@ -604,10 +687,14 @@ async def _generate_sse(
         logger.exception("stream_chat failed for assistant_msg=%s", assistant_msg_id)
         # 与 CancelledError 分支一致：把已收到的部分内容落库，避免 DB 里留一条空 assistant
         # 记录。上游 SDK 冷启动/连接抖动等偶发异常也能保住部分回复给用户看。
-        if full_content or full_thinking:
+        if full_content or full_thinking or tool_calls:
             try:
                 await _persist_partial(
-                    assistant_msg_id, full_content, full_thinking, thinking_duration_ms
+                    assistant_msg_id,
+                    full_content,
+                    full_thinking,
+                    thinking_duration_ms,
+                    list(tool_calls.values()),
                 )
             except Exception:  # noqa: BLE001 - 落库失败不应遮蔽原始错误
                 logger.exception(

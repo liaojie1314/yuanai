@@ -1,1 +1,5 @@
-corepack pnpm commitlint --edit "$1"
+if command -v corepack >/dev/null 2>&1; then
+  exec corepack pnpm commitlint --edit "$1"
+fi
+
+exec pnpm commitlint --edit "$1"

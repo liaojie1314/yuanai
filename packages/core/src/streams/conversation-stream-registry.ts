@@ -4,6 +4,7 @@ import type {
   ConversationTitleSource,
   Message,
   MessageFile,
+  SearchSource,
   ToolCall,
 } from '@yuanai/types'
 import { Role } from '@yuanai/types'
@@ -33,6 +34,8 @@ export interface TemporaryStreamParams {
   model: string
   /** 是否开启思考模式。 */
   enableThinking?: boolean
+  /** 是否让当前临时对话调用受限联网搜索工具。 */
+  enableWebSearch?: boolean
   /** 流启动时回调。 */
   onStart?: () => void
   /** 流结束时回调。 */
@@ -60,6 +63,8 @@ export interface StreamParams {
   optimisticFiles?: MessageFile[] | undefined
   /** 是否开启 AI 思考模式。 */
   enableThinking?: boolean
+  /** 是否让当前会话调用受限联网搜索工具。 */
+  enableWebSearch?: boolean
   /** 为 true 时不显示乐观用户消息（重新生成场景）。 */
   skipOptimistic?: boolean
   /** 编辑既有用户消息时复用其记录，并截断其后的历史回复。 */
@@ -138,6 +143,32 @@ function parseConversationTitle(data: Record<string, unknown>): {
     titleSource: titleSource as ConversationTitleSource,
     titleGeneratedAt,
   }
+}
+
+/** 仅接受后端净化过的 HTTPS 搜索来源，避免畸形 SSE 渗入渲染层。 */
+function parseSearchSources(value: unknown): SearchSource[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const sources = value.flatMap((item): SearchSource[] => {
+    if (!item || typeof item !== 'object') return []
+    const source = item as Record<string, unknown>
+    const title = source['title']
+    const url = source['url']
+    const snippet = source['snippet']
+    const provider = source['provider']
+    if (
+      typeof title !== 'string' ||
+      !title.trim() ||
+      typeof snippet !== 'string' ||
+      !snippet.trim() ||
+      typeof url !== 'string' ||
+      !url.startsWith('https://') ||
+      (provider !== 'searxng' && provider !== 'brave' && provider !== 'tavily')
+    ) {
+      return []
+    }
+    return [{ title, url, snippet, provider }]
+  })
+  return sources.length > 0 ? sources : undefined
 }
 
 /** 从 `message_start` 事件读取后端生成的两个消息 ID。 */
@@ -363,11 +394,13 @@ export class ConversationStreamRegistry {
           ['pending', 'running', 'done', 'error'].includes(data['status'])
             ? (data['status'] as ToolCall['status'])
             : 'done'
+        const sources = parseSearchSources(data['sources'])
         useChatStore.getState().updateToolCall(entry.conversationId, id, {
           status,
           ...(typeof data['result'] === 'string' ? { result: data['result'] } : {}),
           ...(typeof data['error'] === 'string' ? { error: data['error'] } : {}),
           ...(typeof data['duration_ms'] === 'number' ? { durationMs: data['duration_ms'] } : {}),
+          ...(sources ? { sources } : {}),
         })
         return
       }
@@ -421,6 +454,7 @@ export class ConversationStreamRegistry {
             model: params.model,
             message: { content: params.content, fileIds: params.fileIds ?? [] },
             enable_thinking: params.enableThinking ?? false,
+            enable_web_search: params.enableWebSearch ?? false,
             ...(params.replaceMessageId ? { replace_message_id: params.replaceMessageId } : {}),
             ...(params.regenerateFromMessageId
               ? { regenerate_from_message_id: params.regenerateFromMessageId }
@@ -464,6 +498,9 @@ export class ConversationStreamRegistry {
               settle('stopped')
               return
             }
+            // 先把已完成流的正文、思考和工具来源写入缓存，再用后端历史刷新确认最终状态。
+            // 这样网络刷新存在短暂延迟时，来源仍会立即留在思考区。
+            this.persistPartial(entry)
             void Promise.all([
               entry.queryClient.refetchQueries({ queryKey: ['messages', entry.conversationId] }),
               entry.queryClient.refetchQueries({ queryKey: ['conversations'] }),
@@ -530,6 +567,7 @@ export class ConversationStreamRegistry {
             model: params.model,
             messages: [...params.history, { role: 'user', content: params.content }],
             enableThinking: params.enableThinking ?? false,
+            enableWebSearch: params.enableWebSearch ?? false,
           }),
         },
         {
