@@ -927,17 +927,17 @@ function ConversationItem({
   const isStreaming = useChatStore((state) => state.streams[conversation.id] !== undefined)
   const { stop } = useStream()
 
+  const conversationClassName = [
+    'desktop-chat__conversation',
+    active ? 'desktop-chat__conversation--active' : '',
+    selected ? 'desktop-chat__conversation--selected' : '',
+    isStreaming ? 'desktop-chat__conversation--streaming' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   return (
     <li
-      className={
-        active && selected
-          ? 'desktop-chat__conversation desktop-chat__conversation--active desktop-chat__conversation--selected'
-          : active
-            ? 'desktop-chat__conversation desktop-chat__conversation--active'
-            : selected
-              ? 'desktop-chat__conversation desktop-chat__conversation--selected'
-              : 'desktop-chat__conversation'
-      }
+      className={conversationClassName}
       onContextMenu={
         renaming
           ? undefined

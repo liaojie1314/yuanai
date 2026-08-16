@@ -376,8 +376,9 @@ textarea:focus-visible {
   grid-template-columns: 16px minmax(0, 1fr);
 }
 
-.desktop-chat__conversation-select:has(.desktop-chat__conversation-stream-state) {
+.desktop-chat__conversation--streaming .desktop-chat__conversation-select {
   grid-template-columns: minmax(0, 1fr) 16px;
+  padding-right: 64px;
 }
 
 .desktop-chat__conversation-select span {

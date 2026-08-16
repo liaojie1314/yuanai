@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createElement, type Key, type ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -1180,8 +1180,12 @@ describe('desktop chat', () => {
     }
     render(<App />)
 
-    expect(screen.getByRole('status', { name: '新对话 正在生成' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '停止生成：新对话' }))
+    const streamState = screen.getByRole('status', { name: '新对话 正在生成' })
+    const conversationItem = streamState.closest('li')
+    if (conversationItem === null) throw new Error('未找到流式会话项')
+
+    expect(conversationItem).toHaveClass('desktop-chat__conversation--streaming')
+    await user.click(within(conversationItem).getByRole('button', { name: '停止生成：新对话' }))
 
     expect(chat.stop).toHaveBeenCalledWith('conversation-2')
   })
