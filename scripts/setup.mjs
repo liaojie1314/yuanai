@@ -7,11 +7,23 @@
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  WIN, log, ok, warn, err, step, banner, prompt,
-  run, hasCmd, capture, existsSync, copyFileSync, patchEnvFile,
+  WIN,
+  log,
+  ok,
+  warn,
+  err,
+  step,
+  banner,
+  prompt,
+  run,
+  hasCmd,
+  capture,
+  existsSync,
+  copyFileSync,
+  patchEnvFile,
 } from './_utils.mjs'
 
-const ROOT    = join(dirname(fileURLToPath(import.meta.url)), '..')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const BACKEND = join(ROOT, 'backend')
 const WEB_ENV = join(ROOT, 'apps', 'web', '.env.local')
 
@@ -20,11 +32,11 @@ step('【1/4】检查必要工具')
 // ════════════════════════════════════════════════════════════════════════
 
 const tools = [
-  { cmd: 'node',   label: 'Node.js',  hint: 'https://nodejs.org' },
-  { cmd: 'pnpm',   label: 'pnpm',     hint: 'npm install -g pnpm' },
-  { cmd: 'uv',     label: 'uv',       hint: 'curl -LsSf https://astral.sh/uv/install.sh | sh' },
-  { cmd: 'docker', label: 'Docker',   hint: 'https://docs.docker.com/get-docker/' },
-  { cmd: 'git',    label: 'Git',      hint: 'https://git-scm.com' },
+  { cmd: 'node', label: 'Node.js', hint: 'https://nodejs.org' },
+  { cmd: 'pnpm', label: 'pnpm', hint: 'npm install -g pnpm' },
+  { cmd: 'uv', label: 'uv', hint: 'curl -LsSf https://astral.sh/uv/install.sh | sh' },
+  { cmd: 'docker', label: 'Docker', hint: 'https://docs.docker.com/get-docker/' },
+  { cmd: 'git', label: 'Git', hint: 'https://git-scm.com' },
 ]
 
 let allOk = true
@@ -38,6 +50,8 @@ for (const t of tools) {
   }
 }
 if (!allOk) err('请先安装以上缺失工具，然后重新运行 pnpm setup')
+
+run(process.execPath, [join(ROOT, 'scripts', 'check-runtime.mjs')], { cwd: ROOT })
 
 // ════════════════════════════════════════════════════════════════════════
 step('【2/4】安装依赖')
@@ -66,7 +80,7 @@ if (!existsSync(backendEnv)) {
 // 前端默认使用 mock 模式（无需后端即可运行）
 patchEnvFile(WEB_ENV, {
   NEXT_PUBLIC_MOCK: 'true',
-  NEXT_PUBLIC_API_URL: null,  // 移除，避免与 MOCK 冲突
+  NEXT_PUBLIC_API_URL: null, // 移除，避免与 MOCK 冲突
 })
 ok('前端默认配置为 Mock 模式（apps/web/.env.local）')
 
@@ -85,7 +99,9 @@ if (initDb.trim().toLowerCase() === 'y') {
   run('uv', ['run', 'alembic', 'upgrade', 'head'], { cwd: BACKEND })
   ok('数据库迁移完成')
 } else {
-  warn('跳过数据库初始化，需要时运行：docker compose up -d && cd backend && uv run alembic upgrade head')
+  warn(
+    '跳过数据库初始化，需要时运行：docker compose up -d && cd backend && uv run alembic upgrade head'
+  )
 }
 
 // ════════════════════════════════════════════════════════════════════════

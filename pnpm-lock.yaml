@@ -63,7 +63,7 @@ importers:
         specifier: ^0.6.0
         version: 0.6.14(prettier@3.9.5)
       turbo:
-        specifier: latest
+        specifier: 2.10.7
         version: 2.10.7
       typescript:
         specifier: ^5.7.0

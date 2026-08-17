@@ -19,6 +19,27 @@
 
 ## 快速开始
 
+### 固定开发运行时
+
+本仓库锁定 **Node.js 22.21.1**、**pnpm 10.22.0** 与 **Turborepo 2.10.7**。首次安装
+或切换分支后，先执行：
+
+```bash
+corepack enable
+corepack prepare pnpm@10.22.0 --activate
+pnpm check:runtime
+pnpm install --frozen-lockfile
+```
+
+`.nvmrc` 和 `.node-version` 供 nvm、asdf 等版本管理器读取；已使用 Volta 的开发者可执行：
+
+```bash
+volta install node@22.21.1 pnpm@10.22.0
+```
+
+若系统没有 `corepack`，请安装 Volta 后执行上面的 Volta 命令。开发、初始化和打包入口会在
+版本不一致时停止并给出修复提示，避免不同 pnpm 主版本改写锁文件。
+
 ### 方式一：首次克隆后初始化（推荐）
 
 ```bash
@@ -117,6 +138,7 @@ docker compose up -d searxng
 | 命令                   | 说明                               |
 | ---------------------- | ---------------------------------- |
 | `pnpm setup`           | 首次初始化（安装依赖 + 复制 .env） |
+| `pnpm check:runtime`   | 验证锁定的 Node.js 与 pnpm 版本    |
 | `pnpm dev:mock`        | 纯前端 Mock 模式（无需后端）       |
 | `pnpm dev:real`        | 一键全栈启动（真实 AI 接口）       |
 | `pnpm dev:desktop`     | 启动 Electron 开发窗口             |

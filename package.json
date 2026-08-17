@@ -3,10 +3,21 @@
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "engines": {
-    "node": ">=22.0.0",
-    "pnpm": ">=9.0.0"
+    "node": "22.21.1",
+    "pnpm": "10.22.0"
+  },
+  "volta": {
+    "node": "22.21.1",
+    "pnpm": "10.22.0"
   },
   "scripts": {
+    "check:runtime": "node scripts/check-runtime.mjs",
+    "predev:mock": "pnpm check:runtime",
+    "predev:real": "pnpm check:runtime",
+    "predev:desktop": "pnpm check:runtime",
+    "predev:mobile": "pnpm check:runtime",
+    "predev:mobile:mock": "pnpm check:runtime",
+    "presetup": "pnpm check:runtime",
     "dev": "turbo run dev",
     "dev:mock": "pnpm --filter @yuanai/web dev:mock",
     "dev:real": "node scripts/dev.mjs",
@@ -32,6 +43,7 @@
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
     "test:coverage": "turbo run test:coverage",
+    "test:scripts": "node --test scripts/*.test.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
@@ -47,7 +59,7 @@
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
-    "turbo": "latest",
+    "turbo": "2.10.7",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.0.0"
   },

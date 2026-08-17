@@ -1,5 +1,20 @@
 # 开发运行指南
 
+## 固定运行时
+
+所有开发机必须使用 **Node.js 22.21.1** 与 **pnpm 10.22.0**；锁文件对应
+**Turborepo 2.10.7**。先切换 Node.js 版本，再运行：
+
+```bash
+corepack enable
+corepack prepare pnpm@10.22.0 --activate
+pnpm check:runtime
+pnpm install --frozen-lockfile
+```
+
+`.nvmrc`、`.node-version` 与 `package.json` 的 Volta 配置均锁定相同版本。没有 Corepack
+时使用 `volta install node@22.21.1 pnpm@10.22.0`，不要用其他 pnpm 主版本重新生成锁文件。
+
 ## 两种模式对比
 
 | 特性         | Mock 模式                       | 真实接口模式          |
