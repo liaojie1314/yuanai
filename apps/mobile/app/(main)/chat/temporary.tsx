@@ -281,8 +281,8 @@ export default function TemporaryChatScreen(): React.JSX.Element {
           <View style={styles.topBtn} />
         </View>
 
-        {/* 消息区：Pressable 包一层，tap 空白区域关键盘（对齐 [conversationId].tsx） */}
-        <Pressable style={styles.listArea} onPress={Keyboard.dismiss}>
+        {/* 消息区不抢 FlashList 的 Markdown 滑动手势；touch end 再收起键盘。 */}
+        <View style={styles.listArea} onTouchEnd={Keyboard.dismiss}>
           {messages.length === 0 && !isStreaming ? (
             <View style={styles.center}>
               <Ghost size={40} color={theme.text.muted} />
@@ -308,7 +308,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
               onCancelEdit={handleCancelEdit}
             />
           )}
-        </Pressable>
+        </View>
 
         {/* 输入区 */}
         <ChatInput

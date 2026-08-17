@@ -376,10 +376,10 @@ export default function ChatConversationScreen(): React.JSX.Element {
           </Pressable>
         </View>
 
-        {/* 消息区。外层用 Pressable：tap 未被子孙可交互元素消费时触发关键盘。
-            列表内的 UserMessage/AIMessage 图标按钮、模型 chip 等都是 Pressable，
-            会先拦住 tap；消息之间的空白 tap 冒泡到这里 → 键盘落下。 */}
-        <Pressable style={styles.listArea} onPress={Keyboard.dismiss}>
+        {/* 消息区不使用 Pressable 包裹：Markdown 子树的触摸必须交给 FlashList，
+            否则 Android 会在正文区域与外层键盘 dismiss 手势竞争，拖动出现卡顿。
+            touch end 只负责收起键盘，不参与滚动 responder 竞争。 */}
+        <View style={styles.listArea} onTouchEnd={Keyboard.dismiss}>
           {isLoading && messages.length === 0 ? (
             <View style={styles.center}>
               <ActivityIndicator />
@@ -407,7 +407,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
               onCancelEdit={handleCancelEdit}
             />
           )}
-        </Pressable>
+        </View>
 
         {/* 输入区 */}
         <ChatInput

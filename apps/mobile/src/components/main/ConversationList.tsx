@@ -16,22 +16,14 @@ import {
   X,
 } from 'lucide-react-native'
 import { useMemo, useState } from 'react'
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native'
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { FlashList, type FlashListProps } from '@shopify/flash-list'
 
 import {
   groupConversations,
   useAuthStore,
   useConversations,
-  useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
   useLogout,
@@ -47,8 +39,17 @@ import { unregisterPushNotifications } from '@/lib/pushNotifications'
 import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 
+import { flattenConversationGroups, type ConversationListRow } from './conversation-list-rows'
+
 const GROUP_ORDER: readonly ConvGroup[] = ['pinned', 'today', 'yesterday', 'week']
 // labels via t('chat.groups.*') at render time
+
+// FlashList v1.7 的 class 类型与当前 React 类型组合下 JSX 断言失败；此 shim
+// 仅修正声明，运行时仍使用原生 FlashList 实现。
+type ConversationFlashListComponent = (
+  props: FlashListProps<ConversationListRow>
+) => React.JSX.Element
+const TypedConversationFlashList = FlashList as unknown as ConversationFlashListComponent
 
 interface ConversationListProps {
   /** 当前活跃会话 ID，用于高亮 */
@@ -97,7 +98,6 @@ export function ConversationList({
 
   const user = useAuthStore((s) => s.user)
   const { data: conversations = [] } = useConversations()
-  const createConv = useCreateConversation()
   const deleteConv = useDeleteConversation()
   const deleteConvs = useDeleteConversations()
   const updateConv = useUpdateConversation()
@@ -110,8 +110,17 @@ export function ConversationList({
     return groupConversations(filtered)
   }, [conversations, search])
 
-  const totalCount =
-    groups.pinned.length + groups.today.length + groups.yesterday.length + groups.week.length
+  const listRows = useMemo(
+    () =>
+      flattenConversationGroups(groups, GROUP_ORDER, {
+        pinned: t('chat.groups.pinned'),
+        today: t('chat.groups.today'),
+        yesterday: t('chat.groups.yesterday'),
+        week: t('chat.groups.week'),
+      }),
+    [groups, t]
+  )
+
   const visibleIds = useMemo(
     () => [...groups.pinned, ...groups.today, ...groups.yesterday, ...groups.week].map((c) => c.id),
     [groups]
@@ -193,18 +202,10 @@ export function ConversationList({
     })()
   }
 
-  const handleNew = async (): Promise<void> => {
-    try {
-      // model 默认走 web 端一致的 deepseek-v4-flash；首次发送时才真正建 conv 的路径
-      // 由 /chat（新会话页）承担，这里保留侧栏「新建」显式建空会话的入口。
-      const conv = await createConv.mutateAsync({ model: 'deepseek-v4-flash' })
-      handlePick(conv.id)
-    } catch (err) {
-      void dialog.alert({
-        title: t('chat.newChatFailed'),
-        message: err instanceof Error ? err.message : t('common.retryLater'),
-      })
-    }
+  const handleNew = (): void => {
+    // 只打开空白 composer；首次发送由 chat/index 创建持久会话，避免历史出现空条目。
+    onClose?.()
+    router.push('/(main)/chat')
   }
 
   const openContextMenu = (id: string, title: string, isPinned: boolean): void => {
@@ -341,9 +342,7 @@ export function ConversationList({
               <Ghost size={18} color={theme.text.primary} />
             </Pressable>
             <Pressable
-              onPress={() => {
-                void handleNew()
-              }}
+              onPress={handleNew}
               hitSlop={8}
               style={styles.iconBtn}
               accessibilityLabel={t('chat.newChat')}
@@ -379,123 +378,110 @@ export function ConversationList({
         />
       </View>
 
-      {/* Conversation groups */}
-      <ScrollView
-        style={{ flex: 1 }}
+      {/* Conversation groups: FlashList only mounts rows near the viewport. */}
+      <TypedConversationFlashList
+        style={styles.conversationList}
+        data={listRows}
+        extraData={{ activeId, selectionMode, selected, streams, theme, t }}
         contentContainerStyle={{ paddingVertical: spacing.sm }}
         keyboardShouldPersistTaps="handled"
-      >
-        {totalCount === 0 ? (
-          <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-            <Text style={{ fontSize: 13, color: theme.text.muted }}>
-              {search ? t('chat.emptyList') : t('chat.emptyList')}
-            </Text>
+        estimatedItemSize={46}
+        keyExtractor={(item) => item.id}
+        getItemType={(item) => item.kind}
+        ListEmptyComponent={
+          <View style={styles.emptyList}>
+            <Text style={{ fontSize: 13, color: theme.text.muted }}>{t('chat.emptyList')}</Text>
           </View>
-        ) : (
-          GROUP_ORDER.map((g) => {
-            const items = groups[g]
-            if (items.length === 0) return null
+        }
+        renderItem={({ item }) => {
+          if (item.kind === 'group') {
             return (
-              <View key={g} style={{ marginBottom: spacing.md }}>
-                <Text style={[styles.groupLabel, { color: theme.text.muted }]}>
-                  {t(`chat.groups.${g}`)}
-                </Text>
-                {items.map((c) => {
-                  const isActive = c.id === activeId
-                  const isSelected = selected.has(c.id)
-                  const isStreaming = streams[c.id] !== undefined
-                  return (
-                    <Pressable
-                      key={c.id}
-                      onPress={() => handlePick(c.id)}
-                      onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
-                      style={[
-                        styles.convItem,
-                        { paddingVertical: theme.density.convPy },
-                        isActive && !selectionMode && { backgroundColor: theme.brand.selected },
-                        selectionMode && isSelected && { backgroundColor: theme.brand.selected },
-                      ]}
-                    >
-                      {selectionMode ? (
-                        isSelected ? (
-                          <CheckSquare size={14} color={brand.solid} />
-                        ) : (
-                          <Square size={14} color={theme.text.muted} />
-                        )
-                      ) : c.isPinned ? (
-                        <Pin size={12} color={brand.solid} fill={brand.solid} />
-                      ) : (
-                        <View style={{ width: 12 }} />
-                      )}
-                      <Text
-                        style={[
-                          styles.convTitle,
-                          {
-                            color: theme.text.primary,
-                            fontSize: theme.typography.title,
-                          },
-                          isActive && {
-                            color: theme.brand.selectedFg,
-                            fontWeight: '600' as const,
-                          },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {c.title}
-                      </Text>
-                      {!isStreaming && c.titleSource === 'fallback' ? (
-                        <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
-                          <LoaderCircle size={13} color={theme.text.muted} />
-                        </View>
-                      ) : null}
-                      {!selectionMode && isStreaming ? (
-                        <View
-                          accessibilityLabel={`${c.title} 正在生成`}
-                          accessibilityRole="progressbar"
-                        >
-                          <ActivityIndicator size="small" color={brand.solid} />
-                        </View>
-                      ) : null}
-                      {selectionMode ? (
-                        <View style={styles.convMore}>
-                          {isSelected ? <Check size={14} color={brand.solid} /> : null}
-                        </View>
-                      ) : (
-                        <View style={styles.convActions}>
-                          {isStreaming ? (
-                            <Pressable
-                              onPress={(event) => {
-                                event.stopPropagation()
-                                stop(c.id)
-                              }}
-                              hitSlop={8}
-                              style={styles.convMore}
-                              accessibilityLabel={`停止生成：${c.title}`}
-                            >
-                              <Square size={11} color={theme.text.muted} fill={theme.text.muted} />
-                            </Pressable>
-                          ) : null}
-                          <Pressable
-                            onPress={(event) => {
-                              event.stopPropagation()
-                              openContextMenu(c.id, c.title, c.isPinned)
-                            }}
-                            hitSlop={8}
-                            style={styles.convMore}
-                            accessibilityLabel={t('common.edit')}
-                          >
-                            <MoreVertical size={14} color={theme.text.muted} />
-                          </Pressable>
-                        </View>
-                      )}
-                    </Pressable>
-                  )
-                })}
-              </View>
+              <Text style={[styles.groupLabel, { color: theme.text.muted }]}>{item.label}</Text>
             )
-          })
-        )}
-      </ScrollView>
+          }
+
+          const c = item.conversation
+          const isActive = c.id === activeId
+          const isSelected = selected.has(c.id)
+          const isStreaming = streams[c.id] !== undefined
+          return (
+            <Pressable
+              onPress={() => handlePick(c.id)}
+              onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
+              style={[
+                styles.convItem,
+                { paddingVertical: theme.density.convPy },
+                isActive && !selectionMode && { backgroundColor: theme.brand.selected },
+                selectionMode && isSelected && { backgroundColor: theme.brand.selected },
+              ]}
+            >
+              {selectionMode ? (
+                isSelected ? (
+                  <CheckSquare size={14} color={brand.solid} />
+                ) : (
+                  <Square size={14} color={theme.text.muted} />
+                )
+              ) : c.isPinned ? (
+                <Pin size={12} color={brand.solid} fill={brand.solid} />
+              ) : (
+                <View style={{ width: 12 }} />
+              )}
+              <Text
+                style={[
+                  styles.convTitle,
+                  { color: theme.text.primary, fontSize: theme.typography.title },
+                  isActive && { color: theme.brand.selectedFg, fontWeight: '600' as const },
+                ]}
+                numberOfLines={1}
+              >
+                {c.title}
+              </Text>
+              {!isStreaming && c.titleSource === 'fallback' ? (
+                <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
+                  <LoaderCircle size={13} color={theme.text.muted} />
+                </View>
+              ) : null}
+              {!selectionMode && isStreaming ? (
+                <View accessibilityLabel={`${c.title} 正在生成`} accessibilityRole="progressbar">
+                  <ActivityIndicator size="small" color={brand.solid} />
+                </View>
+              ) : null}
+              {selectionMode ? (
+                <View style={styles.convMore}>
+                  {isSelected ? <Check size={14} color={brand.solid} /> : null}
+                </View>
+              ) : (
+                <View style={styles.convActions}>
+                  {isStreaming ? (
+                    <Pressable
+                      onPress={(event) => {
+                        event.stopPropagation()
+                        stop(c.id)
+                      }}
+                      hitSlop={8}
+                      style={styles.convMore}
+                      accessibilityLabel={`停止生成：${c.title}`}
+                    >
+                      <Square size={11} color={theme.text.muted} fill={theme.text.muted} />
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    onPress={(event) => {
+                      event.stopPropagation()
+                      openContextMenu(c.id, c.title, c.isPinned)
+                    }}
+                    hitSlop={8}
+                    style={styles.convMore}
+                    accessibilityLabel={t('common.edit')}
+                  >
+                    <MoreVertical size={14} color={theme.text.muted} />
+                  </Pressable>
+                </View>
+              )}
+            </Pressable>
+          )
+        }}
+      />
 
       {selectionMode ? null : (
         <View style={[styles.footer, { borderTopColor: theme.border.default }]}>
@@ -552,6 +538,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  conversationList: { flex: 1 },
+  emptyList: { padding: spacing.lg, alignItems: 'center' },
   header: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,

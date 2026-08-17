@@ -276,6 +276,10 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   const userScrollingRef = useRef(false)
   // 最新行数（渲染期同步写入），供命令式滚动读取，避免 useCallback 闭包读到旧值
   const rowCountRef = useRef(0)
+  // 内容尺寸变化可能在同一帧内连续触发，合并滚动请求避免布局事件风暴。
+  const scrollFrameRef = useRef<number | null>(null)
+  const pendingAnimatedScrollRef = useRef(false)
+  const contentHeightRef = useRef(0)
   // 「回到底部」FAB 的显隐；只在跨越阈值时翻转，避免每个滚动事件都 setState
   const [atBottom, setAtBottom] = useState(true)
 
@@ -293,6 +297,20 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     (animated: boolean) => {
       followRef.current = true
       scrollToTrueEnd(animated)
+    },
+    [scrollToTrueEnd]
+  )
+
+  const scheduleScrollToEnd = useCallback(
+    (animated = false) => {
+      pendingAnimatedScrollRef.current ||= animated
+      if (scrollFrameRef.current !== null) return
+      scrollFrameRef.current = requestAnimationFrame(() => {
+        scrollFrameRef.current = null
+        const shouldAnimate = pendingAnimatedScrollRef.current
+        pendingAnimatedScrollRef.current = false
+        if (followRef.current) scrollToTrueEnd(shouldAnimate)
+      })
     },
     [scrollToTrueEnd]
   )
@@ -414,28 +432,19 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
   }, [editingMsgId])
 
   // 进入会话即落底（用户预期看到最新消息），并在跟随态下持续贴底。
-  // RecyclerListView 的内容总高度是渐进量出来的：长消息分块挂载、文本异步排版，
-  // 高度会在挂载后数秒内持续增长，固定次数的延迟重滚赶不上 —— 这里用低频轮询
-  // 监测内容高度，跟随态下发现变高就重新贴底（250ms 一次的原生只读调用，开销可忽略）。
+  // FlashList 会在异步排版后通过 onContentSizeChange 报告新高度；用帧合并滚动，
+  // 避免旧的 250ms 原生尺寸轮询在长会话中持续唤醒 JS 线程。
   useEffect(() => {
     followRef.current = true
-    const raf = requestAnimationFrame(() => scrollToTrueEnd(false))
-    let lastHeight = 0
-    const timer = setInterval(() => {
-      if (!followRef.current) return
-      const rlv = listRef.current?.recyclerlistview_unsafe
-      if (!rlv) return
-      const h = rlv.getContentDimension().height
-      if (h !== lastHeight) {
-        lastHeight = h
-        scrollToTrueEnd(false)
-      }
-    }, 250)
+    scheduleScrollToEnd(false)
     return () => {
-      cancelAnimationFrame(raf)
-      clearInterval(timer)
+      if (scrollFrameRef.current !== null) {
+        cancelAnimationFrame(scrollFrameRef.current)
+        scrollFrameRef.current = null
+      }
+      pendingAnimatedScrollRef.current = false
     }
-  }, [convId, scrollToTrueEnd])
+  }, [convId, scheduleScrollToEnd])
 
   // 自动滚到底（仅在跟随态下）：
   //  - 行数变化（真实消息到达 / 乐观用户消息 / 流式 AI 占位加入）→ 立即滚
@@ -448,18 +457,18 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     if (rows.length !== lastRowCount.current) {
       lastRowCount.current = rows.length
       if (!followRef.current) return
-      requestAnimationFrame(() => scrollToTrueEnd(true))
+      scheduleScrollToEnd(true)
     }
-  }, [rows.length, scrollToTrueEnd])
+  }, [rows.length, scheduleScrollToEnd])
   useEffect(() => {
     if (!isStreaming) return
     const tick = Math.floor(streamingContent.length / 20)
     if (tick !== lastStreamTick.current) {
       lastStreamTick.current = tick
       if (!followRef.current) return
-      requestAnimationFrame(() => scrollToTrueEnd(false))
+      scheduleScrollToEnd(false)
     }
-  }, [streamingContent, isStreaming, scrollToTrueEnd])
+  }, [streamingContent, isStreaming, scheduleScrollToEnd])
   // 键盘弹起 → 重新贴底。KAV 的收缩动画约 250-300ms，单次 50ms 延迟会在
   // 动画中途取到过期的视口高度（表现为键盘盖住底部回复）；分多个时点重滚，
   // 覆盖不同机型的动画时长。
@@ -486,10 +495,21 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent
     const distanceToBottom = contentSize.height - layoutMeasurement.height - contentOffset.y
     const nowAtBottom = distanceToBottom <= FOLLOW_RESUME_PX
-    setAtBottom(nowAtBottom)
+    setAtBottom((previous) => (previous === nowAtBottom ? previous : nowAtBottom))
     if (!userScrollingRef.current) return
     followRef.current = nowAtBottom
   }, [])
+
+  const handleContentSizeChange = useCallback(
+    (_width: number, height: number) => {
+      if (height === contentHeightRef.current) return
+      contentHeightRef.current = height
+      // Recycler 在回收/补布局时也会报告尺寸变化；用户拖拽期间不能让这类
+      // 回调抢回滚动控制，否则长回复会出现“拖一下才动一下”的假卡顿。
+      if (!userScrollingRef.current && followRef.current) scheduleScrollToEnd(false)
+    },
+    [scheduleScrollToEnd]
+  )
 
   // FlashList 的 cell 只有在 data / extraData 变化时才重渲染；renderItem 闭包
   // 变化不被追踪。凡 renderItem 读到但不在 rows 里的状态都要收进 extraData，
@@ -606,6 +626,7 @@ export const MessageList = forwardRef<MessageListHandle, MessageListProps>(funct
         keyboardDismissMode="on-drag"
         onScrollBeginDrag={handleScrollBeginDrag}
         onScroll={handleScroll}
+        onContentSizeChange={handleContentSizeChange}
         scrollEventThrottle={64}
       />
       <ScrollToBottomFab
