@@ -287,8 +287,11 @@ pnpm --filter @yuanai/desktop build:unpack
 pnpm --filter @yuanai/desktop package:linux
 pnpm --filter @yuanai/desktop package:win
 pnpm --filter @yuanai/desktop package:mac
+pnpm package:desktop
 ```
 
+`pnpm package:desktop` 会根据当前操作系统只列出本机可执行的目标，并复用根目录中
+已有的 `package:desktop:linux`、`package:desktop:win` 或 `package:desktop:mac` 脚本。
 打包结果须在目标操作系统安装验证。当前尚未配置签名证书、生产自动更新源或已发布
 的安装包；这些不是本地开发启动的前置条件。
 

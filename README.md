@@ -93,6 +93,12 @@ pnpm dev:desktop
 pnpm preview:desktop
 ```
 
+根据当前操作系统交互式选择可用安装包：
+
+```bash
+pnpm package:desktop
+```
+
 详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
 [运行指南](RUNNING.md#启动桌面端electron)。
 

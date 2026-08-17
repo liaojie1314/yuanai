@@ -29,6 +29,7 @@
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",
     "build:desktop": "pnpm --filter @yuanai/desktop build",
+    "package:desktop": "node scripts/package-desktop.mjs",
     "package:desktop:linux": "pnpm --filter @yuanai/desktop package:linux",
     "package:desktop:mac": "pnpm --filter @yuanai/desktop package:mac",
     "package:desktop:win": "pnpm --filter @yuanai/desktop package:win",
