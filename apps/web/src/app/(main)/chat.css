@@ -383,17 +383,23 @@
   background: transparent;
   color: var(--fg3);
   cursor: pointer;
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
   transition:
     background 0.12s,
-    color 0.12s;
+    color 0.12s,
+    opacity 0.12s;
 }
 .ch-cv-item:hover .ch-cv-more,
 .ch-cv-item.active .ch-cv-more {
-  display: flex;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 .ch-cv-more:hover {
   background: var(--elevated);

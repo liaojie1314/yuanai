@@ -1091,6 +1091,8 @@ export function App(): ReactElement {
   const [selectedConversationIds, setSelectedConversationIds] = useState<Set<string>>(
     () => new Set()
   )
+  // 新建按钮只打开本地草稿，首条消息发送时才创建后端会话。
+  const [isNewConversationDraft, setIsNewConversationDraft] = useState(false)
   const [conversationMenu, setConversationMenu] = useState<ConversationMenuState | null>(null)
   const [conversationPendingDeletion, setConversationPendingDeletion] =
     useState<Conversation | null>(null)
@@ -1213,6 +1215,7 @@ export function App(): ReactElement {
   useEffect(() => {
     if (isLoggedIn) return
     setActiveConversationId(null)
+    setIsNewConversationDraft(false)
     setRenamingConversationId(null)
     setIsSelectionMode(false)
     setSelectedConversationIds(new Set())
@@ -1280,7 +1283,7 @@ export function App(): ReactElement {
   const userEmail = user?.email ?? ''
 
   useEffect(() => {
-    if (isTemporaryConversation) return
+    if (isTemporaryConversation || isNewConversationDraft) return
     if (
       activeConversationId &&
       conversations.some((conversation) => conversation.id === activeConversationId)
@@ -1288,7 +1291,7 @@ export function App(): ReactElement {
       return
     }
     setActiveConversationId(conversations[0]?.id ?? null)
-  }, [activeConversationId, conversations, isTemporaryConversation])
+  }, [activeConversationId, conversations, isNewConversationDraft, isTemporaryConversation])
 
   useEffect(() => {
     if (availableModels.some((model) => model.id === selectedModelId)) return
@@ -1409,14 +1412,14 @@ export function App(): ReactElement {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'n') {
         event.preventDefault()
-        void handleCreateConversation()
+        handleCreateConversation()
       }
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
   })
 
-  async function handleCreateConversation(): Promise<void> {
+  function handleCreateConversation(): void {
     if (!isLoggedIn || createConversation.isPending || isStreaming) return
     if (isTemporaryConversation) {
       setTemporaryMessages([])
@@ -1424,22 +1427,24 @@ export function App(): ReactElement {
       return
     }
     setActionError('')
-    try {
-      const conversation = await createConversation.mutateAsync({
-        model: selectedModel.id,
-        title: '新对话',
-      })
-      setActiveConversationId(conversation.id)
-      setDraft('')
-    } catch (error: unknown) {
-      setActionError(getErrorMessage(error, '无法创建会话，请稍后重试'))
-    }
+    setIsNewConversationDraft(true)
+    setActiveConversationId(null)
+    setDraft('')
+    setComposerMode('chat')
+    setActionError('')
+    setVersionIndexes({})
+    setFeedbackDialog(null)
+    setAttachments((items) => {
+      revokeAttachmentPreviews(items)
+      return []
+    })
   }
 
   /** 切换临时会话；临时消息仅在当前 renderer 的内存中存活。 */
   function handleToggleTemporaryConversation(): void {
     if (isStreaming) return
     setIsTemporaryConversation((value) => !value)
+    setIsNewConversationDraft(false)
     setTemporaryMessages([])
     setAttachments((items) => {
       revokeAttachmentPreviews(items)
@@ -1616,6 +1621,7 @@ export function App(): ReactElement {
       setTemporaryMessages([])
     }
     setActiveConversationId(conversationId)
+    setIsNewConversationDraft(false)
     if (conversation && availableModels.some((model) => model.id === conversation.model)) {
       setSelectedModelId(conversation.model)
     }
@@ -1988,6 +1994,7 @@ export function App(): ReactElement {
         })
         conversationId = conversation.id
         setActiveConversationId(conversationId)
+        setIsNewConversationDraft(false)
       }
       setIsUploadingAttachments(true)
       const fileIds = await resolveAttachmentIds()

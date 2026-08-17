@@ -867,14 +867,21 @@ describe('desktop chat', () => {
     expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('')
   })
 
-  it('creates a conversation using the selected model', async () => {
+  it('defers conversation creation until the first message is sent', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     await user.click(screen.getByRole('button', { name: '新建会话' }))
+    expect(chat.createConversation).not.toHaveBeenCalled()
+
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '请创建一个测试会话')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
 
     await waitFor(() => {
-      expect(chat.createConversation).toHaveBeenCalledWith({ model: 'gpt-4o', title: '新对话' })
+      expect(chat.createConversation).toHaveBeenCalledWith({
+        model: 'gpt-4o',
+        title: '请创建一个测试会话',
+      })
     })
   })
 
