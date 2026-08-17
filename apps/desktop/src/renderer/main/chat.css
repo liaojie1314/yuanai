@@ -1520,6 +1520,132 @@ textarea:focus-visible {
   background: rgb(185 28 28 / 10%);
 }
 
+.desktop-chat__update-prompt {
+  position: fixed;
+  z-index: 45;
+  top: calc(var(--desktop-titlebar-height, 0px) + 14px);
+  right: 16px;
+  display: flex;
+  width: min(390px, calc(100vw - 32px));
+  align-items: flex-start;
+  gap: 10px;
+  padding: 13px 13px 13px 14px;
+  border: 1px solid var(--desktop-brand-border);
+  border-radius: 8px;
+  color: var(--desktop-fg);
+  background: var(--desktop-surface);
+  box-shadow: 0 12px 30px rgb(15 23 42 / 16%);
+}
+
+.desktop-chat__update-prompt--mandatory {
+  border-color: #f59e0b;
+  box-shadow: 0 12px 30px rgb(146 64 14 / 20%);
+}
+
+.desktop-chat__update-prompt-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--desktop-brand-hover);
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__update-prompt--mandatory .desktop-chat__update-prompt-icon {
+  color: #b45309;
+  background: #fffbeb;
+}
+
+.desktop-chat__update-prompt-content {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.desktop-chat__update-prompt-content h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.desktop-chat__update-prompt-content p {
+  margin: 5px 0 0;
+  color: var(--desktop-fg-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.desktop-chat__update-prompt-progress {
+  height: 5px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--desktop-elevated);
+}
+
+.desktop-chat__update-prompt-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--desktop-brand);
+  transition: width 160ms ease;
+}
+
+.desktop-chat__update-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+
+.desktop-chat__update-prompt-actions button {
+  min-height: 29px;
+  padding: 0 10px;
+  border: 1px solid var(--desktop-brand-border);
+  border-radius: 5px;
+  color: #ffffff;
+  background: var(--desktop-brand);
+  font-size: 12px;
+}
+
+.desktop-chat__update-prompt-actions button:hover,
+.desktop-chat__update-prompt-actions button:focus-visible {
+  background: var(--desktop-brand-hover);
+}
+
+.desktop-chat__update-prompt-actions button.is-secondary {
+  color: var(--desktop-fg-muted);
+  background: transparent;
+}
+
+.desktop-chat__update-prompt-actions button.is-secondary:hover,
+.desktop-chat__update-prompt-actions button.is-secondary:focus-visible {
+  color: var(--desktop-fg);
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__update-prompt-close {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  place-items: center;
+  margin: -3px -3px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--desktop-fg-subtle);
+  background: transparent;
+}
+
+.desktop-chat__update-prompt-close:hover,
+.desktop-chat__update-prompt-close:focus-visible {
+  color: var(--desktop-fg);
+  background: var(--desktop-elevated);
+}
+
 .desktop-chat__share-dialog-actions {
   justify-content: flex-end;
   gap: 8px;

@@ -3,7 +3,7 @@
     "name": "元AI",
     "slug": "yuanai",
     "scheme": "yuanai",
-    "version": "1.0.0",
+    "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -14,7 +14,9 @@
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0
     },
-    "runtimeVersion": { "policy": "appVersion" },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "ios": {
       "bundleIdentifier": "com.yuanai.app",
       "supportsTablet": true,
@@ -53,7 +55,12 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "yuanai.example.com" }],
+          "data": [
+            {
+              "scheme": "https",
+              "host": "yuanai.example.com"
+            }
+          ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
@@ -108,7 +115,9 @@
       ]
     ],
     "extra": {
-      "eas": { "projectId": "PROJECT_ID_PLACEHOLDER" },
+      "eas": {
+        "projectId": "PROJECT_ID_PLACEHOLDER"
+      },
       "apiBaseUrl": "https://api.yuanai.example.com/api/v1",
       "githubOauthUrl": "https://api.yuanai.example.com/api/v1/auth/github/authorize"
     }

@@ -15,6 +15,7 @@ import {
   Tray,
 } from 'electron'
 import { join } from 'node:path'
+import { autoUpdater } from 'electron-updater'
 
 import { readRuntimeConfig } from './config/runtime-config'
 import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './ipc/guards'
@@ -32,6 +33,7 @@ import { IPC } from '../shared/ipc-contract'
 import { parseDeepLink, type ParsedDeepLink } from './protocol/parser'
 import { DesktopSystemService } from './system/desktop-system'
 import { DesktopAppearanceService } from './system/desktop-appearance'
+import { DesktopUpdaterService } from './system/desktop-updater'
 import { createTrayController, type TrayController } from './tray'
 import { installCloseToTrayBehavior } from './windows/close-to-tray'
 
@@ -51,6 +53,7 @@ const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined
 let desktopSystem: DesktopSystemService | undefined
 let desktopAppearance: DesktopAppearanceService | undefined
+let desktopUpdater: DesktopUpdaterService | undefined
 let trayController: TrayController | undefined
 let isQuitting = false
 
@@ -164,6 +167,13 @@ app.whenReady().then(() => {
       ),
   })
   desktopAppearance.start()
+  desktopUpdater = new DesktopUpdaterService({
+    app,
+    updater: autoUpdater,
+    preferencesStorage,
+    onStatus: (status) =>
+      trustedWebContents.forEach((webContents) => webContents.send(IPC.events.updater, status)),
+  })
   trayController = createTrayController({
     createTray: (icon) => new Tray(icon),
     icon: nativeImage.createFromPath(trayIconPath()),
@@ -204,6 +214,7 @@ app.whenReady().then(() => {
     appearanceService: desktopAppearance,
     shell,
     systemService: desktopSystem,
+    updaterService: desktopUpdater,
     windows: {
       openLogin: () => windowManager?.open('login'),
       openRegister: () => windowManager?.open('register'),
@@ -217,6 +228,9 @@ app.whenReady().then(() => {
   })
   void desktopSystem.restore().catch((error: unknown) => {
     console.error('Desktop system preference restore failed', error)
+  })
+  void desktopUpdater.start().catch((error: unknown) => {
+    console.error('Desktop updater startup failed', error)
   })
   void authStorage
     .getItem('yuanai-auth')

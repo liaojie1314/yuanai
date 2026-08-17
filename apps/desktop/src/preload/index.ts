@@ -14,6 +14,7 @@ import type {
   DesktopSelectedFile,
   DesktopThemeChoice,
   DesktopScreenSource,
+  DesktopUpdateStatus,
   ExternalLinkId,
   ShortcutStatus,
 } from '../shared/ipc-contract'
@@ -68,6 +69,12 @@ export interface YuanaiApi {
     setAutoLaunch: (enabled: boolean) => Promise<DesktopPreferences>
     notify: (payload: Omit<DesktopNotificationPayload, 'playSound'>) => Promise<boolean>
   }
+  updater: {
+    check: () => Promise<DesktopUpdateStatus>
+    download: () => Promise<DesktopUpdateStatus>
+    install: () => Promise<DesktopUpdateStatus>
+    skip: () => Promise<DesktopUpdateStatus>
+  }
   shell: {
     openExternal: (link: ExternalLinkId) => Promise<void>
     /** 使用主进程校验后的 HTTPS 来源在默认浏览器中打开。 */
@@ -87,6 +94,7 @@ export interface YuanaiApi {
     onMediaPermissionRequested: (
       listener: (request: DesktopMediaPermissionRequest) => void
     ) => () => void
+    onUpdater: (listener: (status: DesktopUpdateStatus) => void) => () => void
   }
 }
 
@@ -160,6 +168,12 @@ export const api: YuanaiApi = {
     setAutoLaunch: (enabled) => ipcRenderer.invoke(IPC.system.setAutoLaunch, enabled),
     notify: (payload) => ipcRenderer.invoke(IPC.system.notify, payload),
   },
+  updater: {
+    check: () => ipcRenderer.invoke(IPC.updater.check),
+    download: () => ipcRenderer.invoke(IPC.updater.download),
+    install: () => ipcRenderer.invoke(IPC.updater.install),
+    skip: () => ipcRenderer.invoke(IPC.updater.skip),
+  },
   shell: {
     openExternal: (link) => ipcRenderer.invoke(IPC.shell.openExternal, link),
     openExternalUrl: (url) => ipcRenderer.invoke(IPC.shell.openExternalUrl, url),
@@ -208,6 +222,12 @@ export const api: YuanaiApi = {
         listener(request)
       ipcRenderer.on(IPC.events.mediaPermissionRequested, wrappedListener)
       return () => ipcRenderer.removeListener(IPC.events.mediaPermissionRequested, wrappedListener)
+    },
+    onUpdater: (listener) => {
+      const wrappedListener = (_event: unknown, status: DesktopUpdateStatus): void =>
+        listener(status)
+      ipcRenderer.on(IPC.events.updater, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC.events.updater, wrappedListener)
     },
   },
 }

@@ -1,0 +1,184 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '已有的版本 tag，例如 v1.0.0'
+        required: true
+        type: string
+      ref:
+        description: '构建代码的分支或 commit；留空时使用 tag'
+        required: false
+        type: string
+      only:
+        description: '失败后只补跑一个构建 job'
+        required: false
+        default: all
+        type: choice
+        options: [all, web, desktop, mobile]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: 22.21.1
+  PNPM_VERSION: 10.22.0
+
+jobs:
+  web:
+    name: Build Web
+    if: github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'web'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Web
+        run: pnpm --filter @yuanai/web build
+      - name: Archive Web build
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: tar -czf "yuanai-web-${RELEASE_TAG}.tar.gz" -C apps/web .next package.json
+      - name: Upload Web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-${{ inputs.tag || github.ref_name }}
+          path: yuanai-web-*.tar.gz
+          if-no-files-found: error
+          retention-days: 14
+
+  desktop:
+    name: Build Desktop (${{ matrix.target }})
+    if: github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'desktop'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux
+            os: ubuntu-22.04
+          - target: win
+            os: windows-2022
+          - target: mac
+            os: macos-14
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Package Electron app
+        env:
+          # 个人项目可只配置 Windows 自签名证书；其他平台没有对应凭据时保持未签名构建。
+          CSC_LINK: ${{ matrix.target == 'win' && secrets.CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.target == 'win' && secrets.CSC_KEY_PASSWORD || '' }}
+          APPLE_ID: ${{ matrix.target == 'mac' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.target == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.target == 'mac' && secrets.APPLE_TEAM_ID || '' }}
+        run: pnpm package:desktop:${{ matrix.target }}
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.target }}-${{ inputs.tag || github.ref_name }}
+          path: apps/desktop/release/**
+          if-no-files-found: error
+          retention-days: 14
+
+  mobile-android:
+    name: Build Mobile Android
+    if: github.event_name != 'workflow_dispatch' || inputs.only == 'all' || inputs.only == 'mobile'
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify EAS project configuration
+        env:
+          EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          test -n "$EXPO_TOKEN" || { echo "Missing GitHub Secret EXPO_TOKEN"; exit 1; }
+          test -n "$EXPO_PROJECT_ID" || { echo "Missing GitHub Variable EXPO_PROJECT_ID"; exit 1; }
+          test "$EXPO_PROJECT_ID" != "PROJECT_ID_PLACEHOLDER" || { echo "EXPO_PROJECT_ID is still a placeholder"; exit 1; }
+      - name: Build Android bundle with EAS
+        env:
+          EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: pnpm --filter @yuanai/mobile build:android:production > eas-build.json
+      - name: Download Android artifact
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          ARTIFACT_URL=$(node -e "const fs=require('fs'); const value=JSON.parse(fs.readFileSync('eas-build.json','utf8')); const build=Array.isArray(value) ? value[0] : value; const url=build?.artifacts?.buildUrl || build?.artifactUrl; if (!url) process.exit(1); process.stdout.write(url)")
+          curl --fail --location "$ARTIFACT_URL" --output "YuanAI-${RELEASE_TAG}-android.aab"
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-android-${{ inputs.tag || github.ref_name }}
+          path: YuanAI-*-android.aab
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Create GitHub Release
+    if: github.event_name != 'workflow_dispatch' || inputs.only == 'all'
+    needs: [web, desktop, mobile-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: '*-${{ inputs.tag || github.ref_name }}'
+          merge-multiple: true
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/**/*
+          fail_on_unmatched_files: true

@@ -117,6 +117,10 @@ const desktop = vi.hoisted(() => ({
     vi.fn<(response: { requestId: string; granted: boolean }) => Promise<boolean>>(),
   mediaPermissionListener: null as
     ((request: { requestId: string; mediaType: 'audio' | 'video' }) => void) | null,
+  updaterListener: null as ((status: unknown) => void) | null,
+  updaterDownload: vi.fn(),
+  updaterInstall: vi.fn(),
+  updaterSkip: vi.fn(),
 }))
 
 const virtuoso = vi.hoisted(() => ({
@@ -266,7 +270,11 @@ beforeEach(() => {
   voiceInput.onError = null
   voiceInput.onTranscript = null
   desktop.mediaPermissionListener = null
+  desktop.updaterListener = null
   desktop.respondMediaPermission.mockResolvedValue(true)
+  desktop.updaterDownload.mockResolvedValue({ state: 'downloading', currentVersion: '0.1.0' })
+  desktop.updaterInstall.mockResolvedValue({ state: 'downloaded', currentVersion: '0.1.0' })
+  desktop.updaterSkip.mockResolvedValue({ state: 'skipped', currentVersion: '0.1.0' })
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
     value: {
@@ -312,6 +320,18 @@ beforeEach(() => {
             }
           }
         },
+        onUpdater: (listener: typeof desktop.updaterListener) => {
+          desktop.updaterListener = listener
+          return () => {
+            if (desktop.updaterListener === listener) desktop.updaterListener = null
+          }
+        },
+      },
+      updater: {
+        check: vi.fn(),
+        download: desktop.updaterDownload,
+        install: desktop.updaterInstall,
+        skip: desktop.updaterSkip,
       },
     },
   })
@@ -408,6 +428,50 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
+  it('shows an in-app update prompt and lets users skip a minor release', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    act(() => {
+      desktop.updaterListener?.({
+        state: 'available',
+        currentVersion: '0.1.0',
+        info: {
+          currentVersion: '0.1.0',
+          version: '0.1.1',
+          mandatory: false,
+          canSkip: true,
+        },
+      })
+    })
+
+    expect(screen.getByRole('region', { name: '发现新版本 0.1.1' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '跳过此版本' }))
+
+    await waitFor(() => expect(desktop.updaterSkip).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('region', { name: '发现新版本 0.1.1' })).not.toBeInTheDocument()
+  })
+
+  it('keeps a major release prompt actionable without a skip button', () => {
+    render(<App />)
+
+    act(() => {
+      desktop.updaterListener?.({
+        state: 'available',
+        currentVersion: '0.1.0',
+        info: {
+          currentVersion: '0.1.0',
+          version: '1.0.0',
+          mandatory: true,
+          canSkip: false,
+        },
+      })
+    })
+
+    expect(screen.getByRole('alertdialog', { name: '必须更新到 1.0.0' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '跳过此版本' })).not.toBeInTheDocument()
+  })
+
   it('uses all chat-model fallbacks and excludes media-only models until the API is available', async () => {
     const user = userEvent.setup()
     chat.models = []

@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, master]
+  pull_request:
+    branches: [dev, master]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22.21.1
+  PNPM_VERSION: 10.22.0
+  UV_VERSION: 0.11.3
+
+jobs:
+  frontend:
+    name: Frontend quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify runtime versions
+        run: pnpm check:runtime
+      - name: Format check
+        run: pnpm format:check
+      - name: Lint
+        run: pnpm lint
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test:unit
+
+  web-e2e:
+    name: Web E2E smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter @yuanai/web exec playwright install --with-deps chromium
+      - name: Run Web E2E
+        run: pnpm --filter @yuanai/web test:e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-playwright-report
+          path: apps/web/playwright-report
+          if-no-files-found: ignore
+          retention-days: 7
+
+  backend:
+    name: Backend quality
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.14-alpine
+        env:
+          POSTGRES_DB: yuanai_test
+          POSTGRES_USER: yuanai
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U yuanai -d yuanai_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7.4.9-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install backend dependencies
+        working-directory: backend
+        run: uv sync --locked
+      - name: Ruff
+        working-directory: backend
+        run: uv run ruff check .
+      - name: Mypy
+        working-directory: backend
+        run: uv run mypy app/
+      - name: Unit tests
+        working-directory: backend
+        run: uv run pytest tests/unit -x -q
+      - name: Integration tests
+        working-directory: backend
+        run: uv run pytest tests/integration -x -q

@@ -18,12 +18,14 @@ import { registerPreferencesIpcHandlers } from './prefs'
 import type { PreferencesIpcStorage } from './prefs'
 import { registerSystemIpcHandlers } from './system'
 import type { ExternalShell } from './system'
+import { registerUpdaterIpcHandlers } from './updater'
 import { registerWindowIpcHandlers } from './window'
 import type { NamedWindowController } from './window'
 import type { SelectedFileRegistry } from '../protocol/selected-file'
 import type { DesktopSystemService } from '../system/desktop-system'
 import type { DesktopAppearanceService } from '../system/desktop-appearance'
 import type { InAppMediaPermissionPrompt } from '../security/in-app-permission-prompt'
+import type { DesktopUpdaterService } from '../system/desktop-updater'
 
 /** 安装第一批安全 IPC 处理器所需的主进程依赖。 */
 export interface SetupIpcOptions {
@@ -59,6 +61,8 @@ export interface SetupIpcOptions {
   mediaPermissionPrompt: InAppMediaPermissionPrompt
   /** 系统默认浏览器调用能力。 */
   shell: ExternalShell
+  /** 正式安装包的更新服务；开发测试可不提供。 */
+  updaterService?: DesktopUpdaterService
   /** 命名窗口的受限打开能力。 */
   windows: NamedWindowController
 }
@@ -102,6 +106,13 @@ export function setupIpc(options: SetupIpcOptions): void {
   })
   registerPreferencesIpcHandlers(options)
   registerSystemIpcHandlers(options)
+  if (options.updaterService) {
+    registerUpdaterIpcHandlers({
+      ipcMain: options.ipcMain,
+      guard: options.guard,
+      updaterService: options.updaterService,
+    })
+  }
   registerWindowIpcHandlers(
     options.ipcMain,
     options.guard,

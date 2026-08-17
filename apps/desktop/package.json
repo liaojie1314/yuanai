@@ -1,15 +1,51 @@
 {
   "name": "@yuanai/desktop",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "main": "out/main/index.js",
+  "description": "元AI Electron desktop client",
+  "homepage": "https://github.com/liaojie1314/yuanai",
+  "author": {
+    "name": "yuanyuan",
+    "email": "1517438366@qq.com"
+  },
   "build": {
+    "appId": "com.yuanai.desktop",
+    "productName": "YuanAI",
+    "artifactName": "YuanAI-${version}-${arch}.${ext}",
     "extraResources": [
       {
         "from": "../mobile/assets/icon.png",
         "to": "tray-icon.png"
       }
-    ]
+    ],
+    "linux": {
+      "category": "Utility",
+      "maintainer": "YuanAI <1517438366@qq.com>",
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "liaojie1314",
+      "repo": "yuanai",
+      "releaseType": "release"
+    }
   },
   "scripts": {
     "dev": "electron-vite dev",

@@ -295,6 +295,12 @@ pnpm package:desktop
 打包结果须在目标操作系统安装验证。当前尚未配置签名证书、生产自动更新源或已发布
 的安装包；这些不是本地开发启动的前置条件。
 
+### 发版与 CI/CD
+
+版本与跨平台构建流程见 [发版与 CI/CD](release.md)。正式发版前必须先在本地完成
+`pnpm release:dry` 和 Linux 打包，确认后再按维护者授权合并到 `master` 并执行 release-it；
+GitHub Actions 会在 `v*` tag 上构建 Web、Electron 安装包和 Android AAB。
+
 ---
 
 ## 常见问题

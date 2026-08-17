@@ -1,0 +1,28 @@
+{
+  "$schema": "https://unpkg.com/release-it/schema/release-it.json",
+  "git": {
+    "requireBranch": "master",
+    "requireCleanWorkingDir": true,
+    "commitMessage": "chore(release): release v${version}",
+    "tagName": "v${version}",
+    "tagAnnotation": "Release v${version}",
+    "push": true
+  },
+  "github": {
+    "release": false
+  },
+  "npm": {
+    "publish": false
+  },
+  "plugins": {
+    "@release-it/conventional-changelog": {
+      "preset": "angular",
+      "infile": "CHANGELOG.md",
+      "header": "# 更新日志",
+      "ignoreRecommendedBump": true
+    }
+  },
+  "hooks": {
+    "after:bump": "node scripts/sync-version.mjs --native-build && git add -A"
+  }
+}

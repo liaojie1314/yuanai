@@ -79,6 +79,9 @@ pnpm --filter @yuanai/desktop package:all
   旧版本验证下载、重启安装和失败回退。
 - 验证 Linux 桌面协议注册和更新提示；AppImage、deb、rpm 的安装路径均需覆盖。
 
+版本发布由根目录 `release-it` 和 GitHub Actions 负责，签名证书、notarization、Secrets
+生成和本地到 CI 的完整流程见 [发版与 CI/CD](../../docs/release.md)。
+
 ## 安全边界
 
 - renderer 不启用 Node integration，IPC 只通过受信任的 preload bridge 调用。

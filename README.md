@@ -100,7 +100,8 @@ pnpm package:desktop
 ```
 
 详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
-[运行指南](RUNNING.md#启动桌面端electron)。
+[运行指南](RUNNING.md#启动桌面端electron)。发版、签名和 GitHub Actions 说明见
+[发版与 CI/CD](docs/release.md)。
 
 ## 配置 AI 大模型
 
@@ -158,17 +159,18 @@ docker compose up -d searxng
 
 ## 文档
 
-| 文档                                               | 说明                        |
-| -------------------------------------------------- | --------------------------- |
-| [开发运行指南](docs/dev-guide.md)                  | Mock / 全栈模式详细启动步骤 |
-| [AI 大模型接入指南](docs/ai-providers.md)          | API Key 配置与新增模型      |
-| [架构设计](docs/architecture.md)                   | 系统架构与数据流            |
-| [API 设计](docs/api-design.md)                     | 后端接口规范                |
-| [UI 规范](docs/ui-spec.md)                         | 设计系统与组件规范          |
-| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md) | 桌面端实施状态与验收边界    |
-| [桌面端说明](apps/desktop/README.md)               | Electron 启动、测试与打包   |
-| [跨端排障记录](docs/troubleshooting.md)            | 已解决问题和真机调试方法    |
-| [RUNNING.md](RUNNING.md)                           | 完整的从零部署参考手册      |
+| 文档                                               | 说明                           |
+| -------------------------------------------------- | ------------------------------ |
+| [开发运行指南](docs/dev-guide.md)                  | Mock / 全栈模式详细启动步骤    |
+| [AI 大模型接入指南](docs/ai-providers.md)          | API Key 配置与新增模型         |
+| [架构设计](docs/architecture.md)                   | 系统架构与数据流               |
+| [API 设计](docs/api-design.md)                     | 后端接口规范                   |
+| [UI 规范](docs/ui-spec.md)                         | 设计系统与组件规范             |
+| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md) | 桌面端实施状态与验收边界       |
+| [桌面端说明](apps/desktop/README.md)               | Electron 启动、测试与打包      |
+| [发版与 CI/CD](docs/release.md)                    | release-it、Secrets 与 Actions |
+| [跨端排障记录](docs/troubleshooting.md)            | 已解决问题和真机调试方法       |
+| [RUNNING.md](RUNNING.md)                           | 完整的从零部署参考手册         |
 
 ## 目录结构
 

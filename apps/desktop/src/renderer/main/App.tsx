@@ -9,6 +9,7 @@ import {
   CircleAlert,
   Code2,
   Copy,
+  Download,
   Eye,
   EyeOff,
   FileUp,
@@ -87,6 +88,7 @@ import type {
   DesktopMediaPermissionRequest,
   DesktopScreenSource,
   DesktopSelectedFile,
+  DesktopUpdateStatus,
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
 import { MessageList } from './MessageList'
@@ -762,6 +764,150 @@ function ShareDialog({ conversationId, webBaseUrl, onClose }: ShareDialogProps):
         />
       ) : null}
     </div>
+  )
+}
+
+/**
+ * 在主聊天窗口展示桌面更新状态，并将下载和安装操作交给受限 IPC。
+ * 小版本可以稍后处理或跳过，大版本只提供立即更新入口。
+ */
+function DesktopUpdatePrompt(): ReactElement | null {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<DesktopUpdateStatus>({
+    state: 'idle',
+    currentVersion: '',
+  })
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null)
+  const [requestError, setRequestError] = useState('')
+
+  useEffect(() => {
+    const unsubscribe = window.yuanai.events.onUpdater(setStatus)
+    return () => unsubscribe()
+  }, [])
+
+  const info = status.info
+  const version = info?.version ?? ''
+  const hasUpdateState =
+    status.state === 'available' ||
+    status.state === 'downloading' ||
+    status.state === 'downloaded' ||
+    (status.state === 'error' && info !== undefined)
+  const isVisible = Boolean(
+    hasUpdateState && info && (info.mandatory || dismissedVersion !== info.version)
+  )
+  if (!isVisible || !info) return null
+
+  const isMandatory = info.mandatory
+  const isDownloading = status.state === 'downloading'
+  const isDownloaded = status.state === 'downloaded'
+  const isError = status.state === 'error'
+
+  async function downloadUpdate(): Promise<void> {
+    setRequestError('')
+    try {
+      setStatus(await window.yuanai.updater.download())
+    } catch {
+      setRequestError(t('desktop.settings.updateDownloadFailed'))
+    }
+  }
+
+  async function skipUpdate(): Promise<void> {
+    setRequestError('')
+    try {
+      setStatus(await window.yuanai.updater.skip())
+      setDismissedVersion(version)
+    } catch {
+      setRequestError(t('desktop.settings.updateSkipFailed'))
+    }
+  }
+
+  function dismissUpdate(): void {
+    if (isMandatory) return
+    setDismissedVersion(version)
+  }
+
+  return (
+    <section
+      className={
+        isMandatory
+          ? 'desktop-chat__update-prompt desktop-chat__update-prompt--mandatory'
+          : 'desktop-chat__update-prompt'
+      }
+      role={isMandatory ? 'alertdialog' : 'region'}
+      aria-live={isMandatory ? 'assertive' : 'polite'}
+      aria-labelledby="desktop-update-prompt-title"
+    >
+      <div className="desktop-chat__update-prompt-icon" aria-hidden="true">
+        {isError ? (
+          <CircleAlert size={17} />
+        ) : isDownloaded ? (
+          <Check size={17} />
+        ) : (
+          <Download size={17} />
+        )}
+      </div>
+      <div className="desktop-chat__update-prompt-content">
+        <h2 id="desktop-update-prompt-title">
+          {isMandatory
+            ? t('desktop.settings.updateMandatory', { version })
+            : isDownloading
+              ? t('desktop.settings.updateDownloading', {
+                  percent: Math.round(status.percent ?? 0),
+                })
+              : isDownloaded
+                ? t('desktop.settings.updateDownloaded', { version })
+                : isError
+                  ? t('desktop.settings.updateDownloadFailed')
+                  : t('desktop.settings.updateAvailable', { version })}
+        </h2>
+        {isMandatory ? <p>{t('desktop.settings.updateMandatoryDescription')}</p> : null}
+        {isError && requestError ? <p role="alert">{requestError}</p> : null}
+        {isDownloading ? (
+          <div
+            className="desktop-chat__update-prompt-progress"
+            aria-label={`${Math.round(status.percent ?? 0)}%`}
+          >
+            <span style={{ width: `${Math.round(status.percent ?? 0)}%` }} />
+          </div>
+        ) : null}
+        <div className="desktop-chat__update-prompt-actions">
+          {isDownloaded ? (
+            <button type="button" onClick={() => void window.yuanai.updater.install()}>
+              {t('desktop.settings.installUpdate')}
+            </button>
+          ) : isDownloading ? null : (
+            <button type="button" onClick={() => void downloadUpdate()}>
+              {t('desktop.settings.downloadUpdate')}
+            </button>
+          )}
+          {info.canSkip && !isDownloaded ? (
+            <button type="button" className="is-secondary" onClick={() => void skipUpdate()}>
+              {t('desktop.settings.skipUpdate')}
+            </button>
+          ) : null}
+          {!isMandatory && isDownloading ? (
+            <button type="button" className="is-secondary" onClick={dismissUpdate}>
+              {t('common.cancel')}
+            </button>
+          ) : null}
+          {!isMandatory && isDownloaded ? (
+            <button type="button" className="is-secondary" onClick={dismissUpdate}>
+              {t('common.cancel')}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {!isMandatory && !isDownloading && !isDownloaded ? (
+        <button
+          className="desktop-chat__update-prompt-close"
+          type="button"
+          aria-label={t('common.close')}
+          onClick={dismissUpdate}
+        >
+          <X size={15} aria-hidden="true" />
+        </button>
+      ) : null}
+    </section>
   )
 }
 
@@ -2079,6 +2225,7 @@ export function App(): ReactElement {
           </button>
         </div>
       ) : null}
+      <DesktopUpdatePrompt />
       <aside className="desktop-chat__sidebar" aria-label={t('desktop.chat.conversations')}>
         <div className="desktop-chat__sidebar-header">
           <div className="desktop-chat__brand">

@@ -57,6 +57,40 @@ export interface DesktopAppInfo {
   platform: NodeJS.Platform
 }
 
+/** 桌面更新任务的当前状态。 */
+export type DesktopUpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'not-available'
+  | 'downloading'
+  | 'downloaded'
+  | 'skipped'
+  | 'error'
+
+/** 可安全展示给 renderer 的版本更新信息。 */
+export interface DesktopUpdateInfo {
+  /** 当前安装版本。 */
+  currentVersion: string
+  /** 发布源提供的目标版本。 */
+  version: string
+  /** 发布日期，缺失时不展示。 */
+  releaseDate?: string
+  /** 大版本更新必须安装。 */
+  mandatory: boolean
+  /** 非大版本更新允许用户跳过。 */
+  canSkip: boolean
+}
+
+/** 更新服务发送给各 renderer 的状态快照。 */
+export interface DesktopUpdateStatus {
+  state: DesktopUpdateState
+  currentVersion: string
+  info?: DesktopUpdateInfo
+  percent?: number
+  message?: string
+}
+
 /** 由系统文件选择器授予、可一次性读取的本地文件描述。 */
 export interface DesktopSelectedFile {
   /** 不包含本机绝对路径的显示文件名。 */
@@ -193,6 +227,12 @@ export const IPC = {
     setAutoLaunch: 'system:set-auto-launch',
     setGlobalShortcut: 'system:set-global-shortcut',
     notify: 'system:notify',
+  },
+  updater: {
+    check: 'updater:check',
+    download: 'updater:download',
+    install: 'updater:install',
+    skip: 'updater:skip',
   },
   shell: {
     openExternal: 'shell:open-external',

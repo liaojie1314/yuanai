@@ -1,12 +1,15 @@
 {
   "name": "@yuanai/mobile",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
     "dev": "expo start --dev-client",
     "start": "expo start",
     "android": "expo run:android",
+    "build:android:preview": "pnpm dlx eas-cli@12.0.0 build --platform android --profile preview --non-interactive",
+    "build:android:production": "pnpm dlx eas-cli@12.0.0 build --platform android --profile production --non-interactive --wait --json",
+    "package:android:local": "pnpm run prebuild && node ../../scripts/package-mobile-android.mjs",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "prebuild": "expo prebuild && bash scripts/patch-android-mirrors.sh",

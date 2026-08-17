@@ -1,8 +1,18 @@
-import { Check, ChevronDown, Keyboard, MonitorDown, Power, RefreshCw, X } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  Download,
+  Keyboard,
+  MonitorDown,
+  Power,
+  RefreshCw,
+  RotateCw,
+  X,
+} from 'lucide-react'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { DesktopPreferences } from '../../../shared/ipc-contract'
+import type { DesktopPreferences, DesktopUpdateStatus } from '../../../shared/ipc-contract'
 
 import '../../shared/i18n'
 
@@ -66,10 +76,22 @@ export function DesktopSection({
   const [shortcut, setShortcut] = useState(preferences.globalShortcut ?? '')
   const [shortcutError, setShortcutError] = useState('')
   const [isRecordingShortcut, setIsRecordingShortcut] = useState(false)
+  const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus>({
+    state: 'idle',
+    currentVersion: '',
+  })
   const [isUpdateMenuOpen, setIsUpdateMenuOpen] = useState(false)
   const updateMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => setShortcut(preferences.globalShortcut ?? ''), [preferences.globalShortcut])
+
+  useEffect(() => {
+    const updater = window.yuanai?.updater
+    const onUpdater = window.yuanai?.events?.onUpdater
+    if (!updater || !onUpdater) return
+    const unsubscribe = onUpdater(setUpdateStatus)
+    return () => unsubscribe()
+  }, [])
 
   useEffect(() => {
     if (!isUpdateMenuOpen) return
@@ -142,6 +164,65 @@ export function DesktopSection({
     setIsUpdateMenuOpen(false)
     if (channel !== preferences.updateChannel) void onPreferencesChanged({ updateChannel: channel })
   }
+
+  async function checkForUpdates(): Promise<void> {
+    try {
+      setUpdateStatus(await window.yuanai.updater.check())
+    } catch {
+      setUpdateStatus({
+        state: 'error',
+        currentVersion: updateStatus.currentVersion,
+        message: t('desktop.settings.updateCheckFailed'),
+      })
+    }
+  }
+
+  async function downloadUpdate(): Promise<void> {
+    try {
+      setUpdateStatus(await window.yuanai.updater.download())
+    } catch {
+      setUpdateStatus({
+        ...updateStatus,
+        state: 'error',
+        message: t('desktop.settings.updateDownloadFailed'),
+      })
+    }
+  }
+
+  async function skipUpdate(): Promise<void> {
+    try {
+      setUpdateStatus(await window.yuanai.updater.skip())
+    } catch {
+      setUpdateStatus({
+        ...updateStatus,
+        state: 'error',
+        message: t('desktop.settings.updateSkipFailed'),
+      })
+    }
+  }
+
+  const updateInfo = updateStatus.info
+  const updateMessage = updateStatus.message
+  const updateLabel =
+    updateStatus.state === 'checking'
+      ? t('desktop.settings.updateChecking')
+      : updateStatus.state === 'not-available'
+        ? updateMessage === 'DEV_BUILD'
+          ? t('desktop.settings.updateDevBuild')
+          : t('desktop.settings.updateNotAvailable')
+        : updateStatus.state === 'available'
+          ? t('desktop.settings.updateAvailable', { version: updateInfo?.version ?? '' })
+          : updateStatus.state === 'downloading'
+            ? t('desktop.settings.updateDownloading', {
+                percent: Math.round(updateStatus.percent ?? 0),
+              })
+            : updateStatus.state === 'downloaded'
+              ? t('desktop.settings.updateDownloaded', { version: updateInfo?.version ?? '' })
+              : updateStatus.state === 'skipped'
+                ? t('desktop.settings.updateSkipped', { version: updateInfo?.version ?? '' })
+                : updateStatus.state === 'error'
+                  ? updateMessage || t('desktop.settings.updateError')
+                  : t('desktop.settings.updateIdle')
 
   return (
     <div className="settings-section">
@@ -312,6 +393,59 @@ export function DesktopSection({
                 })
               }
             />
+          </div>
+          <div className="settings-update-panel" aria-live="polite">
+            <div className="settings-update-panel__status">
+              <strong>{t('desktop.settings.updateStatus')}</strong>
+              <span>{updateLabel}</span>
+            </div>
+            {updateStatus.state === 'downloading' ? (
+              <progress
+                className="settings-update-panel__progress"
+                max={100}
+                value={updateStatus.percent ?? 0}
+                aria-label={t('desktop.settings.updateDownloading', {
+                  percent: Math.round(updateStatus.percent ?? 0),
+                })}
+              />
+            ) : null}
+            <div className="settings-update-panel__actions">
+              <button
+                type="button"
+                className="settings-button settings-button--secondary"
+                disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
+                onClick={() => void checkForUpdates()}
+              >
+                <RotateCw size={14} aria-hidden="true" /> {t('desktop.settings.checkNow')}
+              </button>
+              {updateStatus.state === 'available' ? (
+                <button
+                  type="button"
+                  className="settings-button settings-button--primary"
+                  onClick={() => void downloadUpdate()}
+                >
+                  <Download size={14} aria-hidden="true" /> {t('desktop.settings.downloadUpdate')}
+                </button>
+              ) : null}
+              {updateStatus.state === 'downloaded' ? (
+                <button
+                  type="button"
+                  className="settings-button settings-button--primary"
+                  onClick={() => void window.yuanai.updater.install()}
+                >
+                  <RefreshCw size={14} aria-hidden="true" /> {t('desktop.settings.installUpdate')}
+                </button>
+              ) : null}
+              {updateInfo?.canSkip && updateStatus.state === 'available' ? (
+                <button
+                  type="button"
+                  className="settings-button settings-button--secondary"
+                  onClick={() => void skipUpdate()}
+                >
+                  {t('desktop.settings.skipUpdate')}
+                </button>
+              ) : null}
+            </div>
           </div>
         </section>
       </div>

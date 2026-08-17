@@ -1,5 +1,6 @@
 {
   "name": "yuanai",
+  "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@10.22.0",
   "engines": {
@@ -34,6 +35,14 @@
     "package:desktop:mac": "pnpm --filter @yuanai/desktop package:mac",
     "package:desktop:win": "pnpm --filter @yuanai/desktop package:win",
     "package:desktop:all": "pnpm --filter @yuanai/desktop package:all",
+    "package:mobile:android": "pnpm --filter @yuanai/mobile package:android:local",
+    "signing:android": "node scripts/generate-android-keystore.mjs",
+    "signing:desktop:windows:test": "node scripts/generate-desktop-test-certificate.mjs",
+    "release": "release-it",
+    "release:patch": "release-it --patch",
+    "release:minor": "release-it --minor",
+    "release:major": "release-it --major",
+    "release:dry": "release-it --dry-run --no-git.requireBranch",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint -- --fix",
     "typecheck": "turbo run typecheck",
@@ -60,6 +69,8 @@
     "lint-staged": "^15.0.0",
     "prettier": "^3.0.0",
     "prettier-plugin-tailwindcss": "^0.6.0",
+    "@release-it/conventional-changelog": "12.0.0",
+    "release-it": "21.0.2",
     "turbo": "2.10.7",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.0.0"
