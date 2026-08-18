@@ -70,7 +70,7 @@ notarization 及安装验收由对应 GitHub runner 执行。Android 本地构�
 
 `.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Web、Electron 和 Android
 先分别上传 artifact，最后由拥有 `contents: write` 权限的 `publish` job 创建 GitHub Release。
-Electron 构建调用 `pnpm package:desktop:linux|win|mac`，Android 构建调用
+Electron 构建调用 `pnpm --filter @yuanai/desktop package:linux|win|mac`，Android 构建调用
 `pnpm --filter @yuanai/mobile build:android:production`，不会把 `GH_TOKEN` 传给构建命令，
 因此构建阶段不会提前发布或覆盖 Release。
 
@@ -109,15 +109,15 @@ Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workfl
 
 本项目的最小配置如下：
 
-| 类型     | 名称                          | 是否必需                | 用途                     |
-| -------- | ----------------------------- | ----------------------- | ------------------------ |
-| Secret   | `EXPO_TOKEN`                  | Android release 必需    | EAS 云构建登录令牌       |
-| Variable | `EXPO_PROJECT_ID`             | Android release 必需    | Expo/EAS 项目 UUID       |
-| Secret   | `CSC_LINK`                    | Windows 签名可选        | 自签名 PFX 的单行 Base64 |
-| Secret   | `CSC_KEY_PASSWORD`            | Windows 签名可选        | PFX 密码                 |
-| Secret   | `APPLE_ID`                    | macOS notarization 可选 | Apple Developer 账号邮箱 |
-| Secret   | `APPLE_APP_SPECIFIC_PASSWORD` | macOS notarization 可选 | Apple ID 生成的专用密码  |
-| Secret   | `APPLE_TEAM_ID`               | macOS notarization 可选 | Apple Developer Team ID  |
+| 类型              | 名称                          | 是否必需                | 用途                                               |
+| ----------------- | ----------------------------- | ----------------------- | -------------------------------------------------- |
+| Secret            | `EXPO_TOKEN`                  | Android release 必需    | EAS 云构建登录令牌                                 |
+| Secret / Variable | `EXPO_PROJECT_ID`             | Android release 必需    | Expo/EAS 项目 UUID；优先读取 Secret，Variable 兼容 |
+| Secret            | `CSC_LINK`                    | Windows 签名可选        | 自签名 PFX 的单行 Base64                           |
+| Secret            | `CSC_KEY_PASSWORD`            | Windows 签名可选        | PFX 密码                                           |
+| Secret            | `APPLE_ID`                    | 后续 macOS notarization | Apple Developer 账号邮箱                           |
+| Secret            | `APPLE_APP_SPECIFIC_PASSWORD` | 后续 macOS notarization | Apple ID 生成的专用密码                            |
+| Secret            | `APPLE_TEAM_ID`               | 后续 macOS notarization | Apple Developer Team ID                            |
 
 `GITHUB_TOKEN` 由 GitHub 自动注入，不要手工创建。当前 workflow 不读取 Android 本地
 keystore，因此不要上传 `ANDROID_KEYSTORE_BASE64` 等自定义 Android 私钥 Secret。
@@ -137,8 +137,9 @@ keystore，因此不要上传 `ANDROID_KEYSTORE_BASE64` 等自定义 Android 私
    按提示选择自己的 Expo 账号和 `yuanai` 项目。命令输出的 `projectId` 是一个 UUID，
    也可以在 Expo 项目页面 `Project settings` → `General` → `Project ID` 复制它。
 
-3. 在 GitHub Actions **Variables** 中创建 `EXPO_PROJECT_ID`，粘贴上一步的 UUID（不是
-   `PROJECT_ID_PLACEHOLDER`，也不是 `https://u.expo.dev/...` 的完整 URL）。
+3. 在 GitHub Actions **Secrets** 中创建 `EXPO_PROJECT_ID`，粘贴上一步的 UUID（不是
+   `PROJECT_ID_PLACEHOLDER`，也不是 `https://u.expo.dev/...` 的完整 URL）。如果已经将
+   同名值放在 **Variables** 中也可以，workflow 会在 Secret 缺失时回退读取 Variable。
 4. 用下面命令确认当前项目读到的值：
 
    ```bash
@@ -146,7 +147,8 @@ keystore，因此不要上传 `ANDROID_KEYSTORE_BASE64` 等自定义 Android 私
    ```
 
    Actions 运行前会主动检查这两个值；缺少任意一个会在 Android job 开始处明确失败。
-   `EXPO_TOKEN` 只用于 CI 登录，不能替代 `EXPO_PROJECT_ID`。
+   `EXPO_TOKEN` 只用于 CI 登录，不能替代 `EXPO_PROJECT_ID`。本项目当前推荐将两者都放在
+   GitHub Actions Secrets 中。
 
 > 安全提示：不要把 token 写入 `app.json`、`.env.example`、EAS 配置或终端截图。若 token
 > 泄露，立即在 Expo 的 Access Tokens 页面撤销并重新创建。
@@ -186,17 +188,21 @@ base64 < ~/.yuanai-secrets/yuanai-windows-test.pfx | tr -d '\\n'
 自签名证书只适合本人电脑和内测，Windows 仍会显示“未知发布者”。不需要 Windows 签名
 时可以不配置这两个 Secret，workflow 仍会构建未签名包。
 
-### macOS：签名与 notarization（可选）
+### macOS：签名与 notarization（后续接入）
 
-macOS 公证需要 Apple Developer 账号。创建 Developer ID Application 证书后，在钥匙串
-中导出带密码的 `.p12`，将它按 Windows PFX 的方式转为 Base64，放入 `CSC_LINK`；导出
-密码放入 `CSC_KEY_PASSWORD`。然后在 [Apple ID 账户](https://appleid.apple.com/) 的
-`Sign-In and Security` → `App-Specific Passwords` 创建专用密码，填入
-`APPLE_APP_SPECIFIC_PASSWORD`；Apple 账号邮箱填 `APPLE_ID`，Team ID 可在
+当前 Release workflow 的 macOS job 只生成未签名 DMG/ZIP，并且不会注入 `CSC_LINK`、
+`CSC_KEY_PASSWORD` 或 `APPLE_*` 环境变量。这样可以避免把 Windows 自签名 PFX 或空的
+签名变量错误传给 macOS。不要将当前的 Windows `CSC_LINK` Secret 复用于 macOS。
+
+后续接入 macOS 签名时，需要 Apple Developer 账号和独立的 Developer ID Application
+证书；在钥匙串中导出带密码的 `.p12`，并按 workflow 新增的 macOS 专用证书 Secret 配置。
+公证还需要在 [Apple ID 账户](https://appleid.apple.com/) 的 `Sign-In and Security` →
+`App-Specific Passwords` 创建专用密码，账号邮箱填 `APPLE_ID`，Team ID 可在
 [Apple Developer Membership](https://developer.apple.com/account) 页面复制到
 `APPLE_TEAM_ID`。
 
-没有这些值时 macOS job 仍可生成未签名安装包；不要用 Apple ID 主密码代替专用密码。
+不要用 Apple ID 主密码代替专用密码；在 macOS 专用证书 workflow 接入前，以上 Apple
+凭据不会影响当前发版构建。
 
 ### Mobile Android/EAS
 
@@ -208,8 +214,8 @@ pnpm dlx eas-cli@12.0.0 login
 pnpm dlx eas-cli@12.0.0 init
 ```
 
-把 EAS 项目的 ID 添加为 GitHub **Variable** `EXPO_PROJECT_ID`，把访问令牌添加为 GitHub
-**Secret** `EXPO_TOKEN`。`apps/mobile/app.config.js` 会在 CI 中注入 project ID，本地
+把 EAS 项目的 ID 和访问令牌都添加为 GitHub **Secrets**：`EXPO_PROJECT_ID`、
+`EXPO_TOKEN`。`apps/mobile/app.config.js` 会在 CI 中注入 project ID，本地
 Expo Go 仍可使用 `app.json` 的占位值。workflow 会上传 EAS 返回的 Android `.aab` 到
 GitHub Release。
 
@@ -235,6 +241,7 @@ pnpm signing:android
 - `pnpm install --frozen-lockfile` 失败：确认 Node `22.21.1`、pnpm `10.22.0`，不要使用
   pnpm 11 重新生成锁文件。
 - Linux 打包失败：先运行 `pnpm --filter @yuanai/desktop build`，再运行
-  `pnpm package:desktop:linux`；不要绕过根 script 直接调用 electron-builder。
+  `pnpm package:desktop:linux`；不要绕过根 script 直接调用 electron-builder。Release
+  workflow 会追加 `--publish never`，避免每个平台 job 自己尝试发布 GitHub Release。
 - Windows/macOS 证书失败：检查 Base64 是否为单行、密码是否匹配，并确认 workflow Secret
   没有被设置为带引号的字符串。

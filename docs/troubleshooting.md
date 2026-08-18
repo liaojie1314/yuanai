@@ -120,3 +120,15 @@ TZ=UTC pnpm --filter @yuanai/desktop exec vitest run \
 pnpm format:check
 pnpm --filter @yuanai/web test:e2e
 ```
+
+## Release artifact CI 记录（2026-08-18）
+
+| 问题                                                                                  | 根因                                                                                                                                   | 解决方法                                                                                                         |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Android job 报 `Missing GitHub Variable EXPO_PROJECT_ID`，但仓库中已配置同名 Secret。 | workflow 只读取 `vars.EXPO_PROJECT_ID`，GitHub Variables 与 Secrets 是两个独立命名空间。                                               | 优先读取 `secrets.EXPO_PROJECT_ID`，缺失时回退到 `vars.EXPO_PROJECT_ID`；错误提示同步说明两种位置。              |
+| Linux/Windows Electron 构建在产物完成后报 `GitHub Personal Access Token is not set`。 | Desktop `package.json` 声明了 GitHub publisher，tag 构建会让每个矩阵 job 自己尝试发布；这些 job 没有发布权限，也不应重复创建 Release。 | 构建命令追加 `--publish never`，由最后拥有 `contents: write` 的 `softprops/action-gh-release` job 统一发布。     |
+| macOS 构建报 `/Users/runner/work/yuanai/yuanai/apps/desktop not a file`。             | workflow 给非 Windows 平台注入空的 `CSC_LINK`；Electron Builder 将空值解析为当前 app 目录路径。                                        | 将桌面步骤拆为签名 Windows 与无签名 Linux/macOS；macOS 不再注入 Windows 证书的空值，同时使用 `--publish never`。 |
+
+这些问题均发生在 GitHub Actions 的发布构建边界，不是应用运行时代码错误。修复后应使用
+Release workflow 的 `workflow_dispatch`，填写已有 tag `v0.1.0`、更新后的 `master` commit，
+并选择 `all` 重新构建；不要移动或覆盖已有 tag。

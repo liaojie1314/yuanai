@@ -97,15 +97,15 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Package Electron app
+      - name: Package Electron app without signing
+        if: matrix.target != 'win'
+        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }} -- --publish never
+      - name: Package Electron app with Windows signing
+        if: matrix.target == 'win'
         env:
-          # 个人项目可只配置 Windows 自签名证书；其他平台没有对应凭据时保持未签名构建。
-          CSC_LINK: ${{ matrix.target == 'win' && secrets.CSC_LINK || '' }}
-          CSC_KEY_PASSWORD: ${{ matrix.target == 'win' && secrets.CSC_KEY_PASSWORD || '' }}
-          APPLE_ID: ${{ matrix.target == 'mac' && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.target == 'mac' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.target == 'mac' && secrets.APPLE_TEAM_ID || '' }}
-        run: pnpm package:desktop:${{ matrix.target }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }} -- --publish never
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -136,15 +136,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Verify EAS project configuration
         env:
-          EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID || vars.EXPO_PROJECT_ID }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           test -n "$EXPO_TOKEN" || { echo "Missing GitHub Secret EXPO_TOKEN"; exit 1; }
-          test -n "$EXPO_PROJECT_ID" || { echo "Missing GitHub Variable EXPO_PROJECT_ID"; exit 1; }
+          test -n "$EXPO_PROJECT_ID" || { echo "Missing GitHub Secret or Variable EXPO_PROJECT_ID"; exit 1; }
           test "$EXPO_PROJECT_ID" != "PROJECT_ID_PLACEHOLDER" || { echo "EXPO_PROJECT_ID is still a placeholder"; exit 1; }
       - name: Build Android bundle with EAS
         env:
-          EXPO_PROJECT_ID: ${{ vars.EXPO_PROJECT_ID }}
+          EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID || vars.EXPO_PROJECT_ID }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: pnpm --filter @yuanai/mobile build:android:production > eas-build.json
       - name: Download Android artifact
