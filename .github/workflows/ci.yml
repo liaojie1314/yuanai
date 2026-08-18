@@ -43,6 +43,7 @@ jobs:
           node --version
           pnpm --version
           pnpm exec prettier --version
+          pnpm list prettier-plugin-tailwindcss --depth 0
           sha256sum docs/phases/phase-2-web.md
       - name: Verify runtime versions
         run: pnpm check:runtime

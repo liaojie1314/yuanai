@@ -9,3 +9,7 @@ coverage/
 pnpm-lock.yaml
 *.min.js
 backend/
+
+# Historical Phase 2 specification contains illustrative Tailwind/TSX snippets;
+# keep it outside the repository-wide formatter gate.
+docs/phases/phase-2-web.md
