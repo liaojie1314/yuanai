@@ -50,6 +50,8 @@ backend/uploads/
 # Expo
 .expo/
 app.json
+apps/mobile/credentials.json
+apps/mobile/*.jks
 
 # Expo prebuild 生成的 native 项目（每次 prebuild --clean 重新生成，不提交）
 apps/mobile/android/

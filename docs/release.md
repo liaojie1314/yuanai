@@ -113,14 +113,19 @@ Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workfl
 | ----------------- | ----------------------------- | ----------------------- | -------------------------------------------------- |
 | Secret            | `EXPO_TOKEN`                  | Android release 必需    | EAS 云构建登录令牌                                 |
 | Secret / Variable | `EXPO_PROJECT_ID`             | Android release 必需    | Expo/EAS 项目 UUID；优先读取 Secret，Variable 兼容 |
+| Secret            | `ANDROID_KEYSTORE_BASE64`     | Android release 必需    | Android keystore 的单行 Base64                     |
+| Secret            | `ANDROID_KEY_ALIAS`           | Android release 必需    | keystore alias                                     |
+| Secret            | `ANDROID_KEYSTORE_PASSWORD`   | Android release 必需    | keystore 密码                                      |
+| Secret            | `ANDROID_KEY_PASSWORD`        | Android release 必需    | signing key 密码                                   |
 | Secret            | `CSC_LINK`                    | Windows 签名可选        | 自签名 PFX 的单行 Base64                           |
 | Secret            | `CSC_KEY_PASSWORD`            | Windows 签名可选        | PFX 密码                                           |
 | Secret            | `APPLE_ID`                    | 后续 macOS notarization | Apple Developer 账号邮箱                           |
 | Secret            | `APPLE_APP_SPECIFIC_PASSWORD` | 后续 macOS notarization | Apple ID 生成的专用密码                            |
 | Secret            | `APPLE_TEAM_ID`               | 后续 macOS notarization | Apple Developer Team ID                            |
 
-`GITHUB_TOKEN` 由 GitHub 自动注入，不要手工创建。当前 workflow 不读取 Android 本地
-keystore，因此不要上传 `ANDROID_KEYSTORE_BASE64` 等自定义 Android 私钥 Secret。
+`GITHUB_TOKEN` 由 GitHub 自动注入，不要手工创建。Android production workflow 会在
+runner 临时目录恢复本地 keystore 和 `credentials.json`，构建结束立即删除；不要把这些
+文件提交到仓库。
 
 ### Android：获取 `EXPO_TOKEN` 和 `EXPO_PROJECT_ID`
 
@@ -206,8 +211,9 @@ base64 < ~/.yuanai-secrets/yuanai-windows-test.pfx | tr -d '\\n'
 
 ### Mobile Android/EAS
 
-Android 使用 EAS 云构建和 EAS 托管的 Android 签名凭据，不需要把本地 keystore 上传到
-GitHub。首次使用前需要在本机登录并创建/关联 EAS 项目：
+Android 使用 EAS 云构建，但 production profile 使用 CI 注入的本地 Android 签名凭据，
+避免 EAS 在非交互模式下尝试生成远程 keystore。首次使用前需要在本机登录并创建/关联
+EAS 项目：
 
 ```bash
 pnpm dlx eas-cli@12.0.0 login
@@ -215,9 +221,11 @@ pnpm dlx eas-cli@12.0.0 init
 ```
 
 把 EAS 项目的 ID 和访问令牌都添加为 GitHub **Secrets**：`EXPO_PROJECT_ID`、
-`EXPO_TOKEN`。`apps/mobile/app.config.js` 会在 CI 中注入 project ID，本地
-Expo Go 仍可使用 `app.json` 的占位值。workflow 会上传 EAS 返回的 Android `.aab` 到
-GitHub Release。
+`EXPO_TOKEN`。然后运行 `pnpm signing:android`，将
+`~/.yuanai-secrets/yuanai-android-github-secrets.txt` 中的四个 Android Secret 逐项添加：
+`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEY_ALIAS`、`ANDROID_KEYSTORE_PASSWORD`、
+`ANDROID_KEY_PASSWORD`。`apps/mobile/app.config.js` 会在 CI 中注入 project ID，workflow
+会临时恢复签名材料并上传 EAS 返回的 Android `.aab` 到 GitHub Release。
 
 `api.yuanai.example.com` 和 `api-staging.yuanai.example.com` 是仓库示例地址，不是可公开
 发布的后端。首次 EAS 公开构建前，必须在 EAS 对应环境配置真实 HTTPS
@@ -225,14 +233,13 @@ GitHub Release。
 执行 `adb reverse tcp:8000 tcp:8000`，让开发包中的 `localhost:8000` 指向电脑后端；这不适用
 于非 USB 或公开发布的安装包。
 
-如果你不使用 EAS 托管凭据，仍可在本机生成独立 keystore，材料只保存在用户目录：
+本地生成 Android keystore 和 GitHub Secret 材料：
 
 ```bash
 pnpm signing:android
 ```
 
-自定义 keystore 暂未接入当前 EAS workflow；不要把 `~/.yuanai-secrets` 下的文件提交或
-上传到普通仓库文件中。
+不要把 `~/.yuanai-secrets` 下的文件提交或上传到普通仓库文件中。
 
 ## 故障排查
 
@@ -241,7 +248,7 @@ pnpm signing:android
 - `pnpm install --frozen-lockfile` 失败：确认 Node `22.21.1`、pnpm `10.22.0`，不要使用
   pnpm 11 重新生成锁文件。
 - Linux 打包失败：先运行 `pnpm --filter @yuanai/desktop build`，再运行
-  `pnpm package:desktop:linux`；不要绕过根 script 直接调用 electron-builder。Release
-  workflow 会追加 `--publish never`，避免每个平台 job 自己尝试发布 GitHub Release。
+  `pnpm package:desktop:linux`；不要绕过根 script 直接调用 electron-builder。桌面 package
+  script 已内置 `--publish never`，GitHub Release 只由最后的 publish job 创建。
 - Windows/macOS 证书失败：检查 Base64 是否为单行、密码是否匹配，并确认 workflow Secret
   没有被设置为带引号的字符串。

@@ -99,13 +99,13 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Package Electron app without signing
         if: matrix.target != 'win'
-        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }} -- --publish never
+        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }}
       - name: Package Electron app with Windows signing
         if: matrix.target == 'win'
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }} -- --publish never
+        run: pnpm --filter @yuanai/desktop package:${{ matrix.target }}
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -142,6 +142,32 @@ jobs:
           test -n "$EXPO_TOKEN" || { echo "Missing GitHub Secret EXPO_TOKEN"; exit 1; }
           test -n "$EXPO_PROJECT_ID" || { echo "Missing GitHub Secret or Variable EXPO_PROJECT_ID"; exit 1; }
           test "$EXPO_PROJECT_ID" != "PROJECT_ID_PLACEHOLDER" || { echo "EXPO_PROJECT_ID is still a placeholder"; exit 1; }
+      - name: Restore Android signing credentials
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing GitHub Secret ANDROID_KEYSTORE_BASE64"; exit 1; }
+          test -n "$ANDROID_KEY_ALIAS" || { echo "Missing GitHub Secret ANDROID_KEY_ALIAS"; exit 1; }
+          test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing GitHub Secret ANDROID_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing GitHub Secret ANDROID_KEY_PASSWORD"; exit 1; }
+          trap 'rm -f apps/mobile/credentials.json apps/mobile/yuanai-android-release.jks' EXIT
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > apps/mobile/yuanai-android-release.jks
+          cat > apps/mobile/credentials.json <<EOF
+          {
+            "android": {
+              "keystore": {
+                "keystorePath": "yuanai-android-release.jks",
+                "keystorePassword": "$ANDROID_KEYSTORE_PASSWORD",
+                "keyAlias": "$ANDROID_KEY_ALIAS",
+                "keyPassword": "$ANDROID_KEY_PASSWORD"
+              }
+            }
+          }
+          EOF
       - name: Build Android bundle with EAS
         env:
           EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID || vars.EXPO_PROJECT_ID }}
