@@ -18,12 +18,17 @@
 5. 读 docs/dev-standards.md + docs/testing-standards.md
 6. 读取 `.codex/progress/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
    必须重新执行本清单再继续运行命令、测试、Git hook 或提交
+7. 遇到非项目代码问题时，立即记录到 `.codex/progress/environment-issues.md`，再继续排查或
+   执行后续操作
 ```
 
 **不得跳过步骤 1-3，不得以"已知项目"为由省略。**
 `.codex/progress/runtime-toolchain.md` 是不提交的本地运行时记录，专门保存 Node.js/pnpm
 版本冲突的根因和固定执行方式；它不能替代项目中的 `.nvmrc`、`.node-version`、`engines`
 和 CI 版本声明。
+所有不属于项目代码本身的环境问题（工具链、权限、网络、代理、数据库服务、浏览器、模拟器、
+USB 真机连接等）都必须在 `.codex/progress/environment-issues.md` 记录时间、症状、证据、
+根因、影响和解决方式；该目录为本地执行记录，不进入 Git。
 
 ---
 
