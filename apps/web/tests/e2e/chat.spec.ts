@@ -84,7 +84,7 @@ test.describe('Chat interface', () => {
     page,
   }) => {
     const composerSearch = page.locator('button[title="联网搜索"]')
-    await composerSearch.click()
+    await expect(composerSearch).toBeEnabled()
     await expect(composerSearch).toHaveAttribute('aria-pressed', 'false')
 
     await page.locator('.ch-cap').filter({ hasText: '联网搜索' }).click()
@@ -191,7 +191,9 @@ test.describe('Chat interface', () => {
     await page.keyboard.press('Enter')
     // Wait for first AI reply
     await expect(page.locator('.ch-msg-ai .md-body').last()).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('.ch-cursor')).not.toBeVisible({ timeout: 5_000 })
+    // AI 内容在流式开始后就会挂载；必须等待停止按钮消失，才能确认整个流已结束。
+    // 不能用光标是否可见判断结束，因为 Virtuoso 可能暂时回收流式行。
+    await expect(page.locator('.ch-send-btn.streaming')).not.toBeVisible({ timeout: 20_000 })
 
     // Input should be cleared
     await expect(page.locator('.ch-input-ta')).toHaveValue('')
@@ -206,7 +208,7 @@ test.describe('Chat interface', () => {
     // Second AI reply appears
     const aiMessages = page.locator('.ch-msg-ai .md-body')
     await expect(aiMessages.nth(1)).toBeVisible({ timeout: 20_000 })
-    await expect(page.locator('.ch-cursor')).not.toBeVisible({ timeout: 5_000 })
+    await expect(page.locator('.ch-send-btn.streaming')).not.toBeVisible({ timeout: 20_000 })
 
     // Total AI messages: at least 2 (original + new from sending)
     const count = await aiMessages.count()

@@ -6,6 +6,7 @@ Expo 通道用 httpx 异步客户端直接 POST Expo Push API。
 未配置 VAPID 密钥时 Web 通道 no-op；Expo 通道无需密钥（Expo 托管 APNs/FCM）。
 推送失败（Web 订阅过期 404/410、Expo DeviceNotRegistered）时自动清理该记录。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -44,9 +45,7 @@ def _send_one(subscription_info: dict[str, object], payload: str) -> None:
     )
 
 
-async def send_to_user(
-    db: AsyncSession, user_id: object, payload: dict[str, object]
-) -> int:
+async def send_to_user(db: AsyncSession, user_id: object, payload: dict[str, object]) -> int:
     """向指定用户的所有订阅推送 `payload`，返回成功发送条数。
 
     同时走两条通道：Web Push（浏览器订阅）+ Expo Push（移动端 token）。
@@ -60,9 +59,7 @@ async def send_to_user(
     return sent
 
 
-async def _send_web(
-    db: AsyncSession, user_id: object, payload: dict[str, object]
-) -> int:
+async def _send_web(db: AsyncSession, user_id: object, payload: dict[str, object]) -> int:
     """Web Push 通道：未配置 VAPID → 直接返回 0（no-op）；404/410 清理订阅。"""
     if not is_configured():
         return 0
@@ -72,10 +69,10 @@ async def _send_web(
     dead_endpoints: list[str] = []
 
     rows = (
-        await db.execute(
-            select(PushSubscription).where(PushSubscription.user_id == user_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(PushSubscription).where(PushSubscription.user_id == user_id)))
+        .scalars()
+        .all()
+    )
 
     for sub in rows:
         subscription_info: dict[str, object] = {
@@ -96,38 +93,31 @@ async def _send_web(
 
     if dead_endpoints:
         await db.execute(
-            delete(PushSubscription).where(
-                PushSubscription.endpoint.in_(dead_endpoints)
-            )
+            delete(PushSubscription).where(PushSubscription.endpoint.in_(dead_endpoints))
         )
         await db.commit()
 
     return sent
 
 
-async def _send_expo(
-    db: AsyncSession, user_id: object, payload: dict[str, object]
-) -> int:
+async def _send_expo(db: AsyncSession, user_id: object, payload: dict[str, object]) -> int:
     """Expo Push 通道：批量 POST Expo Push API；DeviceNotRegistered 清理 token。
 
     Expo 消息格式 `{to, title, body, data}`——payload 的 title/body 直接映射，
     其余键（url/convId 等）整体作为 data 供客户端点击跳转用。
     """
     rows = (
-        await db.execute(
-            select(ExpoPushToken).where(ExpoPushToken.user_id == user_id)
-        )
-    ).scalars().all()
+        (await db.execute(select(ExpoPushToken).where(ExpoPushToken.user_id == user_id)))
+        .scalars()
+        .all()
+    )
     if not rows:
         return 0
 
     title = payload.get("title")
     body = payload.get("body")
     extra = {k: v for k, v in payload.items() if k not in ("title", "body")}
-    messages = [
-        {"to": row.token, "title": title, "body": body, "data": extra}
-        for row in rows
-    ]
+    messages = [{"to": row.token, "title": title, "body": body, "data": extra} for row in rows]
 
     sent = 0
     dead_tokens: list[str] = []
@@ -149,9 +139,7 @@ async def _send_expo(
         logger.warning("expo push 发送异常: %s", e)
 
     if dead_tokens:
-        await db.execute(
-            delete(ExpoPushToken).where(ExpoPushToken.token.in_(dead_tokens))
-        )
+        await db.execute(delete(ExpoPushToken).where(ExpoPushToken.token.in_(dead_tokens)))
         await db.commit()
 
     return sent

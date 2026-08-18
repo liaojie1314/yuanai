@@ -37,7 +37,7 @@ function buildSse(responseText: string, convId: string): string {
     .map((t) => `event: content_delta\ndata: ${JSON.stringify({ token: t })}\n\n`)
     .join('')
   const end = JSON.stringify({ tokensUsed: responseText.length, finishReason: 'stop' })
-  return `event: message_start\ndata: ${start}\n\n${deltas}event: message_end\ndata: ${end}\n\n`
+  return `event: message_start\ndata: ${start}\n\n${deltas}event: message_end\ndata: ${end}\n\ndata: [DONE]\n\n`
 }
 
 type ConvRecord = {
@@ -184,6 +184,17 @@ export async function setupApiMocks(page: Page): Promise<{
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ message: '已退出登录' }),
+    })
+  })
+
+  // ── Chat capabilities ───────────────────────────────────────
+  await page.route(`${BASE}/chat/capabilities**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        webSearch: { enabled: true, provider: 'searxng', reason: null },
+      }),
     })
   })
 

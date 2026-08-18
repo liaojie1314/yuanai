@@ -22,9 +22,7 @@ class TestUpdateProfile:
         assert response.status_code == 200
         assert response.json()["username"] == "new_name_2026"
 
-    async def test_update_bio(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_update_bio(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.patch(
             "/api/v1/auth/me",
             json={"bio": "热爱开源"},
@@ -60,9 +58,7 @@ class TestUpdateProfile:
         )
         assert response.status_code == 409
 
-    async def test_bio_too_long(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_bio_too_long(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.patch(
             "/api/v1/auth/me",
             json={"bio": "x" * 201},
@@ -215,7 +211,5 @@ class TestClearAllConversations:
         # 确认另一个用户的对话仍在
         from sqlalchemy import select
 
-        remaining = await db.execute(
-            select(Conversation).where(Conversation.user_id == other.id)
-        )
+        remaining = await db.execute(select(Conversation).where(Conversation.user_id == other.id))
         assert len(remaining.scalars().all()) == 1

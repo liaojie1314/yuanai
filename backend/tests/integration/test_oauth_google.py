@@ -4,6 +4,7 @@
 `_exchange_google_code_for_token` / `_fetch_google_profile`，避免真的调 Google，
 聚焦业务流程：state 校验、账号创建/关联、错误回跳、解绑。
 """
+
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -173,7 +174,9 @@ class TestCallback:
         assert q["error"][0] == "OAUTH_STATE_INVALID"
 
     async def test_provider_error_forwarded(
-        self, client: AsyncClient, _mock_state: dict[str, str]  # noqa: ARG002
+        self,
+        client: AsyncClient,
+        _mock_state: dict[str, str],  # noqa: ARG002
     ) -> None:
         resp = await client.get(
             "/api/v1/auth/google/callback",

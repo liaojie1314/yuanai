@@ -9,16 +9,16 @@ Create Date: 2026-07-09 16:50:00.000000
 user_id 外键级联删除。
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "b2d5f9a1c8e0"
-down_revision: Union[str, None] = "a1c4e8f0b2d6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "a1c4e8f0b2d6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

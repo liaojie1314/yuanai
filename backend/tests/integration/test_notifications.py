@@ -386,11 +386,7 @@ class TestExpoPushSend:
     async def test_prunes_device_not_registered(
         self, db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        db.add(
-            ExpoPushToken(
-                user_id=test_user.id, token="ExponentPushToken[dead]", platform="ios"
-            )
-        )
+        db.add(ExpoPushToken(user_id=test_user.id, token="ExponentPushToken[dead]", platform="ios"))
         await db.commit()
 
         _fake_expo_client(
@@ -409,9 +405,7 @@ class TestExpoPushSend:
         self, db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db.add(
-            ExpoPushToken(
-                user_id=test_user.id, token="ExponentPushToken[net]", platform="android"
-            )
+            ExpoPushToken(user_id=test_user.id, token="ExponentPushToken[net]", platform="android")
         )
         await db.commit()
 

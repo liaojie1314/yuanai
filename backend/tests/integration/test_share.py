@@ -354,9 +354,7 @@ class TestPublicShareRead:
         )
         token = create_resp.json()["shareToken"]
 
-        unlock_resp = await client.post(
-            f"/api/v1/share/{token}/unlock", json={"password": "wrong"}
-        )
+        unlock_resp = await client.post(f"/api/v1/share/{token}/unlock", json={"password": "wrong"})
         assert unlock_resp.status_code == 403
         assert unlock_resp.json()["detail"]["code"] == "SHARE_PASSWORD_INVALID"
 

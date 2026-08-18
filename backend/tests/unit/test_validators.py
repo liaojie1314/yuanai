@@ -5,11 +5,12 @@ import os
 import pytest
 from pydantic import ValidationError
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
+)
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
 
 from app.schemas.auth import RegisterRequest  # noqa: E402
-
 
 # 单元测试中固定使用一个 6 位数字作为验证码占位；实际校验发生在 auth_service.register
 _VC = "123456"

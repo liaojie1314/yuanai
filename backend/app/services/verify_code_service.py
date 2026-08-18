@@ -8,6 +8,7 @@ Redis 键设计：
 - ``register``：注册前验证邮箱归属
 - ``reset_password``：忘记密码时验证邮箱归属（本轮预留，未接线）
 """
+
 from __future__ import annotations
 
 import secrets

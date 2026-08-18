@@ -59,7 +59,7 @@ _TEXT_TOOL_CALL_PATTERN = re.compile(
 )
 _TEXT_TOOL_CALL_OPEN = "<tool_call>"
 _TEXT_TOOL_CALL_CLOSE = "</tool_call>"
-_DEEPSEEK_DSML_TOKEN = "\uFF5C\uFF5CDSML\uFF5C\uFF5C"
+_DEEPSEEK_DSML_TOKEN = "\uff5c\uff5cDSML\uff5c\uff5c"
 _DEEPSEEK_DSML_TOOL_CALL_OPEN = f"<{_DEEPSEEK_DSML_TOKEN}tool_calls>"
 _DEEPSEEK_DSML_TOOL_CALL_CLOSE = f"</{_DEEPSEEK_DSML_TOKEN}tool_calls>"
 _DEEPSEEK_DSML_TOOL_CALL_BLOCK_PATTERN = re.compile(
@@ -91,9 +91,7 @@ WEB_SEARCH_TOOL = cast(
             ),
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "query": {"type": "string", "minLength": 1, "maxLength": 300}
-                },
+                "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 300}},
                 "required": ["query"],
                 "additionalProperties": False,
             },
@@ -380,7 +378,8 @@ AVAILABLE_MODELS = [
 def get_available_models() -> list[dict[str, object]]:
     """返回已配置 API Key 的模型列表，第一个标记为默认模型。"""
     result = [
-        m for m in AVAILABLE_MODELS
+        m
+        for m in AVAILABLE_MODELS
         if API_KEYS.get(PROVIDER_CONFIG.get(str(m["id"]), {}).get("provider", ""), "")
     ]
     for i, m in enumerate(result):

@@ -26,13 +26,25 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  WIN, log, ok, warn, err, step, banner,
-  run, hasCmd, bg, killProc, capture, freePort,
-  sleep, patchEnvFile,
+  WIN,
+  log,
+  ok,
+  warn,
+  err,
+  step,
+  banner,
+  run,
+  hasCmd,
+  bg,
+  killProc,
+  capture,
+  freePort,
+  sleep,
+  patchEnvFile,
 } from './_utils.mjs'
 
-const ROOT       = join(dirname(fileURLToPath(import.meta.url)), '..')
-const MOBILE     = join(ROOT, 'apps', 'mobile')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const MOBILE = join(ROOT, 'apps', 'mobile')
 const MOBILE_ENV = join(MOBILE, '.env')
 
 const procs = []
@@ -68,15 +80,18 @@ hasCmd('pnpm') || err('未找到 pnpm：npm install -g pnpm')
 
 const ANDROID_HOME = resolveAndroidSdk()
 if (!ANDROID_HOME) {
-  err('未找到 Android SDK。设置 ANDROID_HOME 环境变量，或安装 Android Studio。\n' +
+  err(
+    '未找到 Android SDK。设置 ANDROID_HOME 环境变量，或安装 Android Studio。\n' +
       '   常见路径：\n' +
       '     Linux/macOS: ~/Android/Sdk 或 ~/env/Android/Sdk\n' +
       '     macOS 默认:  ~/Library/Android/sdk\n' +
-      '     Windows:     %LOCALAPPDATA%\\Android\\Sdk')
+      '     Windows:     %LOCALAPPDATA%\\Android\\Sdk'
+  )
 }
 const ADB = join(ANDROID_HOME, 'platform-tools', WIN ? 'adb.exe' : 'adb')
 const EMULATOR = join(ANDROID_HOME, 'emulator', WIN ? 'emulator.exe' : 'emulator')
-_existsSync(EMULATOR) || err(`emulator 命令未找到（${EMULATOR}）\n   请在 Android Studio 里安装 Emulator SDK 组件。`)
+_existsSync(EMULATOR) ||
+  err(`emulator 命令未找到（${EMULATOR}）\n   请在 Android Studio 里安装 Emulator SDK 组件。`)
 
 process.env.ANDROID_HOME = ANDROID_HOME
 process.env.ANDROID_SDK_ROOT = ANDROID_HOME
@@ -101,7 +116,10 @@ step('【3/5】启动 Android 模拟器')
 // ════════════════════════════════════════════════════════════════════════
 
 run(ADB, ['start-server'], { silent: true, ignoreError: true })
-let deviceList = capture(ADB, ['devices']).split(/\r?\n/).slice(1).filter((l) => /\bdevice\b/.test(l))
+let deviceList = capture(ADB, ['devices'])
+  .split(/\r?\n/)
+  .slice(1)
+  .filter((l) => /\bdevice\b/.test(l))
 
 if (deviceList.length === 0) {
   const avds = capture(EMULATOR, ['-list-avds']).split(/\r?\n/).filter(Boolean)
@@ -122,7 +140,10 @@ if (deviceList.length === 0) {
   }
   const boot = capture(ADB, ['shell', 'getprop', 'sys.boot_completed']).trim()
   if (boot !== '1') err('模拟器启动超时（180s）。可尝试手动 `emulator -avd <name>`。')
-  deviceList = capture(ADB, ['devices']).split(/\r?\n/).slice(1).filter((l) => /\bdevice\b/.test(l))
+  deviceList = capture(ADB, ['devices'])
+    .split(/\r?\n/)
+    .slice(1)
+    .filter((l) => /\bdevice\b/.test(l))
 }
 
 ok(`Android 设备：${deviceList.map((l) => l.split(/\s+/)[0]).join(', ')}`)
@@ -135,7 +156,9 @@ step('【4/5】adb reverse 端口（Metro reload / HMR）')
 run(ADB, ['reverse', 'tcp:8081', 'tcp:8081'], { silent: true, ignoreError: true })
 ok('adb reverse tcp:8081 tcp:8081')
 
-const installed = capture(ADB, ['shell', 'pm', 'list', 'packages', 'com.yuanai.app']).includes('com.yuanai.app')
+const installed = capture(ADB, ['shell', 'pm', 'list', 'packages', 'com.yuanai.app']).includes(
+  'com.yuanai.app'
+)
 if (!installed) {
   banner([
     '首次启动：需要构建并安装 dev-client APK',
@@ -173,17 +196,21 @@ banner([
 await freePort(8081, '残留 Metro')
 
 // 前台运行 Metro，阻塞到 Ctrl+C。透传 EXPO_PUBLIC_MOCK 让 Expo 环境变量注入生效。
-const metro = bg('pnpm', [
-  '--filter', '@yuanai/mobile', 'exec',
-  'expo', 'start', '--dev-client', '--port', '8081',
-], { cwd: ROOT })
+const metro = bg(
+  'pnpm',
+  ['--filter', '@yuanai/mobile', 'exec', 'expo', 'start', '--dev-client', '--port', '8081'],
+  { cwd: ROOT }
+)
 procs.push(metro)
 
 // 若 app 已装，等 Metro up 后自动 launch（用 monkey 触发默认 Launcher intent）
 if (installed) {
   setTimeout(() => {
-    run(ADB, ['shell', 'monkey', '-p', 'com.yuanai.app',
-      '-c', 'android.intent.category.LAUNCHER', '1'], { silent: true, ignoreError: true })
+    run(
+      ADB,
+      ['shell', 'monkey', '-p', 'com.yuanai.app', '-c', 'android.intent.category.LAUNCHER', '1'],
+      { silent: true, ignoreError: true }
+    )
   }, 8000)
 }
 

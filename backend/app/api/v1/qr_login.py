@@ -42,9 +42,7 @@ async def create_qr_login_challenge(
     """由 Web 或桌面目标设备创建可扫码的短时挑战。"""
     request_key = request.client.host if request.client is not None else "unknown"
     try:
-        return await qr_login_service.create_challenge(
-            request=req, request_key=request_key, db=db
-        )
+        return await qr_login_service.create_challenge(request=req, request_key=request_key, db=db)
     except QRLoginServiceError as error:
         raise _error_to_http(error) from error
 
@@ -63,9 +61,7 @@ async def inspect_qr_login_challenge(
 
 
 @router.post("/challenges/{challenge}/approve", status_code=204)
-async def approve_qr_login_challenge(
-    challenge: str, current_user: CurrentUser, db: DB
-) -> Response:
+async def approve_qr_login_challenge(challenge: str, current_user: CurrentUser, db: DB) -> Response:
     """由已登录手机明确批准目标设备登录。"""
     try:
         await qr_login_service.approve_challenge(challenge=challenge, user=current_user, db=db)
@@ -75,9 +71,7 @@ async def approve_qr_login_challenge(
 
 
 @router.post("/challenges/{challenge}/deny", status_code=204)
-async def deny_qr_login_challenge(
-    challenge: str, current_user: CurrentUser, db: DB
-) -> Response:
+async def deny_qr_login_challenge(challenge: str, current_user: CurrentUser, db: DB) -> Response:
     """由已登录手机明确拒绝目标设备登录。"""
     try:
         await qr_login_service.deny_challenge(challenge=challenge, user=current_user, db=db)

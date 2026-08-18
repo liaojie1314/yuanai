@@ -208,9 +208,7 @@ async def get_target_status(
     )
 
 
-async def exchange_challenge(
-    *, request: QRLoginExchangeRequest, db: AsyncSession
-) -> AuthResponse:
+async def exchange_challenge(*, request: QRLoginExchangeRequest, db: AsyncSession) -> AuthResponse:
     """消费目标端授权码并签发普通 access/refresh 会话。"""
     stored = await _get_challenge_with_poll_secret(
         challenge=request.challenge,

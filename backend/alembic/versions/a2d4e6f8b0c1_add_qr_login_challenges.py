@@ -5,16 +5,16 @@ Revises: f1a2b3c4d5e6
 Create Date: 2026-08-15 11:40:00.000000
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
 import sqlalchemy as sa
+
 from alembic import op
 
-
 revision: str = "a2d4e6f8b0c1"
-down_revision: Union[str, None] = "f1a2b3c4d5e6"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "f1a2b3c4d5e6"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -39,9 +39,15 @@ def upgrade() -> None:
         sa.UniqueConstraint("challenge_hash"),
         sa.UniqueConstraint("poll_secret_hash"),
     )
-    op.create_index("ix_qr_login_challenges_challenge_hash", "qr_login_challenges", ["challenge_hash"])
-    op.create_index("ix_qr_login_challenges_poll_secret_hash", "qr_login_challenges", ["poll_secret_hash"])
-    op.create_index("ix_qr_login_challenges_approved_user_id", "qr_login_challenges", ["approved_user_id"])
+    op.create_index(
+        "ix_qr_login_challenges_challenge_hash", "qr_login_challenges", ["challenge_hash"]
+    )
+    op.create_index(
+        "ix_qr_login_challenges_poll_secret_hash", "qr_login_challenges", ["poll_secret_hash"]
+    )
+    op.create_index(
+        "ix_qr_login_challenges_approved_user_id", "qr_login_challenges", ["approved_user_id"]
+    )
     op.create_index("ix_qr_login_challenges_expires_at", "qr_login_challenges", ["expires_at"])
 
     op.create_table(

@@ -15,15 +15,31 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
-  WIN, log, ok, warn, err, step, banner, prompt,
-  run, hasCmd, bg, killProc, capture, freePort,
-  waitPort, waitHttp, sleep,
-  existsSync, copyFileSync, patchEnvFile,
+  WIN,
+  log,
+  ok,
+  warn,
+  err,
+  step,
+  banner,
+  prompt,
+  run,
+  hasCmd,
+  bg,
+  killProc,
+  capture,
+  freePort,
+  waitPort,
+  waitHttp,
+  sleep,
+  existsSync,
+  copyFileSync,
+  patchEnvFile,
 } from './_utils.mjs'
 
-const ROOT      = join(dirname(fileURLToPath(import.meta.url)), '..')
-const BACKEND   = join(ROOT, 'backend')
-const MOBILE    = join(ROOT, 'apps', 'mobile')
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
+const BACKEND = join(ROOT, 'backend')
+const MOBILE = join(ROOT, 'apps', 'mobile')
 const MOBILE_ENV = join(MOBILE, '.env')
 
 const procs = []
@@ -56,20 +72,23 @@ step('【1/7】检查先决条件')
 // ════════════════════════════════════════════════════════════════════════
 
 hasCmd('docker') || err('未找到 docker，请先安装 Docker Desktop')
-hasCmd('uv')     || err('未找到 uv：curl -LsSf https://astral.sh/uv/install.sh | sh')
-hasCmd('pnpm')   || err('未找到 pnpm：npm install -g pnpm')
+hasCmd('uv') || err('未找到 uv：curl -LsSf https://astral.sh/uv/install.sh | sh')
+hasCmd('pnpm') || err('未找到 pnpm：npm install -g pnpm')
 
 const ANDROID_HOME = resolveAndroidSdk()
 if (!ANDROID_HOME) {
-  err('未找到 Android SDK。设置 ANDROID_HOME 环境变量，或安装 Android Studio。\n' +
+  err(
+    '未找到 Android SDK。设置 ANDROID_HOME 环境变量，或安装 Android Studio。\n' +
       '   常见路径：\n' +
       '     Linux/macOS: ~/Android/Sdk 或 ~/env/Android/Sdk\n' +
       '     macOS 默认:  ~/Library/Android/sdk\n' +
-      '     Windows:     %LOCALAPPDATA%\\Android\\Sdk')
+      '     Windows:     %LOCALAPPDATA%\\Android\\Sdk'
+  )
 }
 const ADB = join(ANDROID_HOME, 'platform-tools', WIN ? 'adb.exe' : 'adb')
 const EMULATOR = join(ANDROID_HOME, 'emulator', WIN ? 'emulator.exe' : 'emulator')
-_existsSync(EMULATOR) || err(`emulator 命令未找到（${EMULATOR}）\n   请在 Android Studio 里安装 Emulator SDK 组件。`)
+_existsSync(EMULATOR) ||
+  err(`emulator 命令未找到（${EMULATOR}）\n   请在 Android Studio 里安装 Emulator SDK 组件。`)
 
 // 环境变量透传给子进程（Metro / gradle 都需要）
 process.env.ANDROID_HOME = ANDROID_HOME
@@ -124,16 +143,18 @@ ok('数据库迁移完成')
 await freePort(8000, '残留后端')
 
 // --host 0.0.0.0 是给模拟器 10.0.2.2 走宿主机 NAT 用的
-const backend = bg('uv', [
-  'run', 'uvicorn', 'app.main:app',
-  '--host', '0.0.0.0', '--port', '8000', '--reload',
-], { cwd: BACKEND })
+const backend = bg(
+  'uv',
+  ['run', 'uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload'],
+  { cwd: BACKEND }
+)
 procs.push(backend)
 backend.on('exit', (code) => {
   if (code !== null && code !== 0) err(`后端意外退出 (exit ${code})`)
 })
 await waitHttp('http://localhost:8000/docs', 30).catch(() =>
-  warn('后端健康检查超时，但进程仍在，继续启动模拟器...'))
+  warn('后端健康检查超时，但进程仍在，继续启动模拟器...')
+)
 ok('后端就绪  →  http://localhost:8000/docs')
 
 // ════════════════════════════════════════════════════════════════════════
@@ -142,7 +163,10 @@ step('【5/7】启动 Android 模拟器')
 
 // 先看有没有已经跑着的 device / emulator
 run(ADB, ['start-server'], { silent: true, ignoreError: true })
-let deviceList = capture(ADB, ['devices']).split(/\r?\n/).slice(1).filter((l) => /\bdevice\b/.test(l))
+let deviceList = capture(ADB, ['devices'])
+  .split(/\r?\n/)
+  .slice(1)
+  .filter((l) => /\bdevice\b/.test(l))
 
 if (deviceList.length === 0) {
   const avds = capture(EMULATOR, ['-list-avds']).split(/\r?\n/).filter(Boolean)
@@ -163,7 +187,10 @@ if (deviceList.length === 0) {
   }
   const boot = capture(ADB, ['shell', 'getprop', 'sys.boot_completed']).trim()
   if (boot !== '1') err('模拟器启动超时（180s）。可尝试手动 `emulator -avd <name>`。')
-  deviceList = capture(ADB, ['devices']).split(/\r?\n/).slice(1).filter((l) => /\bdevice\b/.test(l))
+  deviceList = capture(ADB, ['devices'])
+    .split(/\r?\n/)
+    .slice(1)
+    .filter((l) => /\bdevice\b/.test(l))
 }
 
 ok(`Android 设备：${deviceList.map((l) => l.split(/\s+/)[0]).join(', ')}`)
@@ -173,7 +200,9 @@ run(ADB, ['reverse', 'tcp:8081', 'tcp:8081'], { silent: true, ignoreError: true 
 run(ADB, ['reverse', 'tcp:8000', 'tcp:8000'], { silent: true, ignoreError: true })
 
 // 检查目标 app 是否已装
-const installed = capture(ADB, ['shell', 'pm', 'list', 'packages', 'com.yuanai.app']).includes('com.yuanai.app')
+const installed = capture(ADB, ['shell', 'pm', 'list', 'packages', 'com.yuanai.app']).includes(
+  'com.yuanai.app'
+)
 if (!installed) {
   banner([
     '首次启动：需要构建并安装 dev-client APK',
@@ -207,10 +236,11 @@ banner([
 await freePort(8081, '残留 Metro')
 
 // 前台运行 Metro，阻塞到 Ctrl+C
-const metro = bg('pnpm', [
-  '--filter', '@yuanai/mobile', 'exec',
-  'expo', 'start', '--dev-client', '--port', '8081',
-], { cwd: ROOT })
+const metro = bg(
+  'pnpm',
+  ['--filter', '@yuanai/mobile', 'exec', 'expo', 'start', '--dev-client', '--port', '8081'],
+  { cwd: ROOT }
+)
 procs.push(metro)
 
 // ════════════════════════════════════════════════════════════════════════
@@ -219,8 +249,11 @@ step('【7/7】等待 Metro 退出')
 // 若 app 已装，等 Metro up 后自动 launch（用 deep link + adb 触发）
 if (installed) {
   setTimeout(() => {
-    run(ADB, ['shell', 'monkey', '-p', 'com.yuanai.app',
-      '-c', 'android.intent.category.LAUNCHER', '1'], { silent: true, ignoreError: true })
+    run(
+      ADB,
+      ['shell', 'monkey', '-p', 'com.yuanai.app', '-c', 'android.intent.category.LAUNCHER', '1'],
+      { silent: true, ignoreError: true }
+    )
   }, 8000)
 }
 

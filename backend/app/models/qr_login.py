@@ -15,9 +15,7 @@ class QRLoginChallenge(Base):
     __tablename__ = "qr_login_challenges"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    challenge_hash: Mapped[str] = mapped_column(
-        String(64), unique=True, index=True, nullable=False
-    )
+    challenge_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
     poll_secret_hash: Mapped[str] = mapped_column(
         String(64), unique=True, index=True, nullable=False
     )

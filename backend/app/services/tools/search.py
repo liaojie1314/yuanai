@@ -188,9 +188,7 @@ class SearxngSearchProvider(_HttpSearchProvider):
 
     name: SearchProviderId = "searxng"
 
-    def __init__(
-        self, base_url: str, *, transport: httpx.AsyncBaseTransport | None = None
-    ) -> None:
+    def __init__(self, base_url: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         super().__init__(transport=transport)
         self._base_url = base_url.rstrip("/")
 
@@ -219,15 +217,19 @@ class SearxngSearchProvider(_HttpSearchProvider):
             },
         )
         raw_results = payload.get("results")
-        candidates = [
-            {
-                "title": item.get("title"),
-                "url": item.get("url"),
-                "snippet": item.get("content"),
-            }
-            for item in raw_results
-            if isinstance(item, dict)
-        ] if isinstance(raw_results, list) else raw_results
+        candidates = (
+            [
+                {
+                    "title": item.get("title"),
+                    "url": item.get("url"),
+                    "snippet": item.get("content"),
+                }
+                for item in raw_results
+                if isinstance(item, dict)
+            ]
+            if isinstance(raw_results, list)
+            else raw_results
+        )
         return _normalize_sources(candidates, provider=self.name, max_results=max_results)
 
 
@@ -236,9 +238,7 @@ class BraveSearchProvider(_HttpSearchProvider):
 
     name: SearchProviderId = "brave"
 
-    def __init__(
-        self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None
-    ) -> None:
+    def __init__(self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         super().__init__(transport=transport)
         self._api_key = api_key
 
@@ -260,9 +260,7 @@ class TavilySearchProvider(_HttpSearchProvider):
 
     name: SearchProviderId = "tavily"
 
-    def __init__(
-        self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None
-    ) -> None:
+    def __init__(self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         super().__init__(transport=transport)
         self._api_key = api_key
 

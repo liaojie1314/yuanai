@@ -86,7 +86,10 @@ test.describe('Authentication', () => {
     await page.fill('input[type="email"]', 'wrong@example.com')
     await page.fill('input[type="password"]', 'WrongPass1!')
     await page.click('button[type="submit"]')
-    await expect(page.locator('.api-err, .ferr.on').first()).toBeVisible({ timeout: 5_000 })
+    await expect(page.getByRole('region', { name: '通知' }).getByRole('alert')).toContainText(
+      '邮箱或密码错误',
+      { timeout: 5_000 }
+    )
   })
 
   // ── Register link ────────────────────────────────────────────

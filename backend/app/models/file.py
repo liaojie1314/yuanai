@@ -17,9 +17,7 @@ class File(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     s3_key: Mapped[str] = mapped_column(String(500), nullable=False)
     file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class MessageFile(Base):

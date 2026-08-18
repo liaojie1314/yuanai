@@ -11,6 +11,7 @@
 
 脚本会加载 backend/.env 中的 SMTP 配置。若 SMTP_USER 或 SMTP_PASSWORD 未填，直接报错退出。
 """
+
 from __future__ import annotations
 
 import asyncio

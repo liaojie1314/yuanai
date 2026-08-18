@@ -58,9 +58,7 @@ self.addEventListener('push', (event) => {
         type: 'window',
         includeUncontrolled: true,
       })
-      const foreground = clientList.some(
-        (c) => c.focused || c.visibilityState === 'visible'
-      )
+      const foreground = clientList.some((c) => c.focused || c.visibilityState === 'visible')
       if (foreground) return
       await self.registration.showNotification(title, options)
     })()

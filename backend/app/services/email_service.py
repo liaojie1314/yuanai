@@ -8,6 +8,7 @@
 - ``EmailNotConfiguredError`` 在缺少 ``SMTP_USER`` / ``SMTP_PASSWORD`` 时抛出，
   由调用方转换为 HTTP 500 让前端提示"邮件服务未配置"，避免暴露内部细节。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -31,8 +32,7 @@ def _send_sync(*, to: str, subject: str, html_body: str) -> None:
     """同步发送邮件。由 ``send_email`` 通过 ``asyncio.to_thread`` 调用。"""
     if not settings.smtp_user or not settings.smtp_password:
         raise EmailNotConfiguredError(
-            "SMTP_USER / SMTP_PASSWORD 未配置，无法发送邮件；"
-            "请参考 backend/.env.example 完成配置"
+            "SMTP_USER / SMTP_PASSWORD 未配置，无法发送邮件；请参考 backend/.env.example 完成配置"
         )
 
     msg = MIMEText(html_body, "html", "utf-8")

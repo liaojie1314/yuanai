@@ -290,9 +290,7 @@ class TestStream:
             "/api/v1/chat/conversations", headers=auth_headers
         )
         conversation = next(
-            item
-            for item in conversations_response.json()["conversations"]
-            if item["id"] == conv_id
+            item for item in conversations_response.json()["conversations"] if item["id"] == conv_id
         )
         assert conversation["title"] == "第一 个 问题"
         assert conversation["titleSource"] == "fallback"
@@ -365,6 +363,7 @@ class TestStream:
                     pass
 
         import asyncio
+
         await asyncio.sleep(0.1)
 
         msg_res = await client.get(
@@ -393,9 +392,7 @@ class TestStream:
         assert upload.status_code == 201
         captured_messages: list[list[dict[str, object]]] = []
 
-        async def mock_stream(
-            _model: str, messages: list[dict[str, object]], **_kwargs: object
-        ):  # type: ignore[misc]
+        async def mock_stream(_model: str, messages: list[dict[str, object]], **_kwargs: object):  # type: ignore[misc]
             captured_messages.append(messages)
             yield ("content", "reply")
 
@@ -439,9 +436,7 @@ class TestStream:
         )
         captured_messages: list[list[dict[str, object]]] = []
 
-        async def mock_stream(
-            _model: str, messages: list[dict[str, object]], **_kwargs: object
-        ):  # type: ignore[misc]
+        async def mock_stream(_model: str, messages: list[dict[str, object]], **_kwargs: object):  # type: ignore[misc]
             captured_messages.append(messages)
             yield ("content", "image reply")
 
@@ -523,9 +518,7 @@ class TestStream:
         )
         conv_id = conv_res.json()["id"]
 
-        async def mock_stream(
-            _model: str, messages: list[dict[str, str]], **_kwargs: object
-        ):  # type: ignore[misc]
+        async def mock_stream(_model: str, messages: list[dict[str, str]], **_kwargs: object):  # type: ignore[misc]
             yield ("content", f"{messages[-1]['content']} 的回答")
 
         with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
@@ -565,9 +558,7 @@ class TestStream:
 
         await asyncio.sleep(0.1)
         messages = (
-            await client.get(
-                f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
-            )
+            await client.get(f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers)
         ).json()["messages"]
         assert len(messages) == 2
         assert messages[0]["id"] == user_message_id
@@ -586,9 +577,7 @@ class TestStream:
         )
         conv_id = conv_res.json()["id"]
 
-        async def mock_stream(
-            _model: str, messages: list[dict[str, str]], **_kwargs: object
-        ):  # type: ignore[misc]
+        async def mock_stream(_model: str, messages: list[dict[str, str]], **_kwargs: object):  # type: ignore[misc]
             yield ("content", f"{messages[-1]['content']} 的回答")
 
         async def send_message(regenerate_from_message_id: str | None = None) -> None:
@@ -617,9 +606,7 @@ class TestStream:
             await send_message(initial_messages[0]["id"])
 
         messages = (
-            await client.get(
-                f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers
-            )
+            await client.get(f"/api/v1/chat/conversations/{conv_id}/messages", headers=auth_headers)
         ).json()["messages"]
         assert [message["role"] for message in messages] == ["user", "assistant"] * 3
         assert messages[2]["regeneratedFromMessageId"] is None
@@ -656,6 +643,7 @@ class TestStream:
                         pass
 
         import asyncio
+
         await asyncio.sleep(0.1)
 
         msg_res = await client.get(
@@ -699,6 +687,7 @@ class TestStream:
                     pass
 
         import asyncio
+
         await asyncio.sleep(0.1)
 
         list_res = await client.get("/api/v1/chat/conversations", headers=auth_headers)
@@ -804,9 +793,9 @@ class TestTemporaryChat:
             yield ("content", "临时")
             yield ("content", "回复")
 
-        conv_before = (
-            await client.get("/api/v1/chat/conversations", headers=auth_headers)
-        ).json()["conversations"]
+        conv_before = (await client.get("/api/v1/chat/conversations", headers=auth_headers)).json()[
+            "conversations"
+        ]
 
         with patch("app.api.v1.chat.stream_chat", side_effect=mock_stream):
             async with client.stream(
@@ -831,9 +820,9 @@ class TestTemporaryChat:
                 assert "temporary" in all_text
 
         # 会话列表数量不变（未落库）
-        conv_after = (
-            await client.get("/api/v1/chat/conversations", headers=auth_headers)
-        ).json()["conversations"]
+        conv_after = (await client.get("/api/v1/chat/conversations", headers=auth_headers)).json()[
+            "conversations"
+        ]
         assert len(conv_after) == len(conv_before)
 
     async def test_stream_temporary_requires_auth(self, client: AsyncClient) -> None:
@@ -849,9 +838,7 @@ class TestModels:
         response = await client.get("/api/v1/models")
         assert response.status_code in (401, 403)
 
-    async def test_list_models(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_list_models(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.get("/api/v1/models", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()

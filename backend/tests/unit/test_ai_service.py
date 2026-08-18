@@ -19,7 +19,9 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import httpx
 import pytest
 
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
+)
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
 
 import app.services.ai_service as ai_svc  # noqa: E402
@@ -107,7 +109,15 @@ def test_exactly_one_default_model() -> None:
 
 
 def test_all_models_have_required_fields() -> None:
-    required = {"id", "name", "provider", "is_default", "supports_vision", "supports_files", "context_length"}  # noqa: E501
+    required = {
+        "id",
+        "name",
+        "provider",
+        "is_default",
+        "supports_vision",
+        "supports_files",
+        "context_length",
+    }  # noqa: E501
     for model in AVAILABLE_MODELS:
         assert required <= model.keys(), f"Model {model.get('id')} missing fields"
 
@@ -131,9 +141,7 @@ def test_public_catalog_only_offers_current_models(monkeypatch: pytest.MonkeyPat
         "agnes-image-2.1-flash",
         "agnes-video-v2.0",
     ]
-    assert all(
-        model["id"] not in {"gpt-4o", "claude-3-5-sonnet-20241022"} for model in models
-    )
+    assert all(model["id"] not in {"gpt-4o", "claude-3-5-sonnet-20241022"} for model in models)
     assert models[0]["is_default"] is True
 
 
@@ -617,15 +625,15 @@ async def test_stream_chat_executes_deepseek_dsml_search_tool_call_without_leaki
         result.choices = [MagicMock(delta=delta)]
         return result
 
-    dsml = "\uFF5C\uFF5CDSML\uFF5C\uFF5C"
+    dsml = "\uff5c\uff5cDSML\uff5c\uff5c"
 
     async def text_tool_call_stream() -> AsyncGenerator[MagicMock, None]:
         yield chunk(f'<{dsml}tool_calls><{dsml}invoke name="search_')
         yield chunk(f'web"><{dsml}parameter name="query" string="true">最新 AI 行业')
-        yield chunk(f'</{dsml}parameter></{dsml}invoke></{dsml}tool_calls>')
+        yield chunk(f"</{dsml}parameter></{dsml}invoke></{dsml}tool_calls>")
 
     async def answer_stream() -> AsyncGenerator[MagicMock, None]:
-        yield chunk(f'<{dsml}tool_calls>unexpected</{dsml}tool_calls>这是联网回答')
+        yield chunk(f"<{dsml}tool_calls>unexpected</{dsml}tool_calls>这是联网回答")
 
     first_stream = MagicMock()
     first_stream.__aiter__ = lambda _self: text_tool_call_stream()

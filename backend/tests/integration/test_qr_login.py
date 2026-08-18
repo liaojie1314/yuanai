@@ -88,8 +88,10 @@ async def test_mobile_approval_logs_target_in_once(
     assert replay.json()["detail"]["code"] == "QR_LOGIN_CONSUMED"
 
     actions = (
-        await db.execute(select(QRLoginEvent.action).order_by(QRLoginEvent.created_at))
-    ).scalars().all()
+        (await db.execute(select(QRLoginEvent.action).order_by(QRLoginEvent.created_at)))
+        .scalars()
+        .all()
+    )
     assert actions == ["created", "inspected", "approved", "consumed"]
 
 

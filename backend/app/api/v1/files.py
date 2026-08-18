@@ -132,9 +132,7 @@ def _is_expired(session: FileUploadSession) -> bool:
 
 
 @router.post("/check-hash", response_model=FileResponse)
-async def check_hash(
-    req: CheckHashRequest, current_user: CurrentUser, db: DB
-) -> FileResponse:
+async def check_hash(req: CheckHashRequest, current_user: CurrentUser, db: DB) -> FileResponse:
     """秒传：若当前用户已上传过相同 hash 的文件，直接返回既有记录。"""
     result = await db.execute(
         select(File).where(
@@ -144,9 +142,7 @@ async def check_hash(
     )
     file = result.scalar_one_or_none()
     if not file:
-        raise HTTPException(
-            404, {"code": "FILE_NOT_FOUND", "message": "未找到匹配的文件"}
-        )
+        raise HTTPException(404, {"code": "FILE_NOT_FOUND", "message": "未找到匹配的文件"})
     return _build_file_response(file)
 
 
@@ -248,8 +244,7 @@ async def create_upload_session(
             {
                 "code": "FILE_TOO_LARGE",
                 "message": (
-                    f"文件大小超过上限 "
-                    f"{settings.max_upload_size_bytes // (1024 * 1024)} MB"
+                    f"文件大小超过上限 {settings.max_upload_size_bytes // (1024 * 1024)} MB"
                 ),
             },
         )
@@ -270,10 +265,7 @@ async def create_upload_session(
         session = existing.scalar_one_or_none()
         if session and not _is_expired(session):
             # 元数据必须一致，防止用户误用同 hash 上传不同文件（极小概率）
-            if (
-                session.size_bytes == req.size_bytes
-                and session.total_chunks == req.total_chunks
-            ):
+            if session.size_bytes == req.size_bytes and session.total_chunks == req.total_chunks:
                 return _session_response(session)
             # 元数据不一致：中止旧会话，重新创建
             if session.s3_upload_id and session.s3_key:
@@ -325,21 +317,13 @@ async def upload_chunk(
     """上传单个分片 — body 直接转发到 ``s3.upload_part``，仅在内存中短暂持有。"""
     session = await _load_session(session_id, current_user, db)
     if session.status != "pending":
-        raise HTTPException(
-            400, {"code": "SESSION_NOT_PENDING", "message": "会话已完成或已中止"}
-        )
+        raise HTTPException(400, {"code": "SESSION_NOT_PENDING", "message": "会话已完成或已中止"})
     if _is_expired(session):
-        raise HTTPException(
-            410, {"code": "SESSION_EXPIRED", "message": "会话已过期，请重新创建"}
-        )
+        raise HTTPException(410, {"code": "SESSION_EXPIRED", "message": "会话已过期，请重新创建"})
     if chunk_index < 0 or chunk_index >= session.total_chunks:
-        raise HTTPException(
-            400, {"code": "INVALID_CHUNK_INDEX", "message": "分片序号超出范围"}
-        )
+        raise HTTPException(400, {"code": "INVALID_CHUNK_INDEX", "message": "分片序号超出范围"})
     if not session.s3_upload_id or not session.s3_key:
-        raise HTTPException(
-            500, {"code": "SESSION_CORRUPT", "message": "会话缺少存储 upload_id"}
-        )
+        raise HTTPException(500, {"code": "SESSION_CORRUPT", "message": "会话缺少存储 upload_id"})
 
     data = await chunk.read()
     if not data:
@@ -347,9 +331,7 @@ async def upload_chunk(
 
     # S3 分片编号从 1 开始
     part_number = chunk_index + 1
-    etag = await storage.upload_part(
-        session.s3_key, session.s3_upload_id, part_number, data
-    )
+    etag = await storage.upload_part(session.s3_key, session.s3_upload_id, part_number, data)
 
     # 幂等：若客户端重传同一个分片，覆盖既有 ETag 记录
     uploaded: list[int] = list(session.uploaded_chunks or [])
@@ -375,17 +357,11 @@ async def complete_upload_session(
     """通知后端所有分片已上传，触发 S3 合并并落库 File。"""
     session = await _load_session(session_id, current_user, db)
     if session.status != "pending":
-        raise HTTPException(
-            400, {"code": "SESSION_NOT_PENDING", "message": "会话已完成或已中止"}
-        )
+        raise HTTPException(400, {"code": "SESSION_NOT_PENDING", "message": "会话已完成或已中止"})
     if _is_expired(session):
-        raise HTTPException(
-            410, {"code": "SESSION_EXPIRED", "message": "会话已过期，请重新上传"}
-        )
+        raise HTTPException(410, {"code": "SESSION_EXPIRED", "message": "会话已过期，请重新上传"})
     if not session.s3_upload_id or not session.s3_key:
-        raise HTTPException(
-            500, {"code": "SESSION_CORRUPT", "message": "会话缺少存储 upload_id"}
-        )
+        raise HTTPException(500, {"code": "SESSION_CORRUPT", "message": "会话缺少存储 upload_id"})
 
     uploaded = sorted(session.uploaded_chunks or [])
     expected = list(range(session.total_chunks))
@@ -420,9 +396,7 @@ async def complete_upload_session(
 
 
 @router.delete("/upload-session/{session_id}", status_code=204)
-async def abort_upload_session(
-    session_id: uuid.UUID, current_user: CurrentUser, db: DB
-) -> None:
+async def abort_upload_session(session_id: uuid.UUID, current_user: CurrentUser, db: DB) -> None:
     """中止分片上传 — 用户取消或前端不再需要该会话时调用，同时清理 S3 已上传分片。"""
     session = await _load_session(session_id, current_user, db)
     if session.status == "pending" and session.s3_upload_id and session.s3_key:
@@ -437,16 +411,10 @@ async def abort_upload_session(
 async def _load_session(
     session_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> FileUploadSession:
-    result = await db.execute(
-        select(FileUploadSession).where(FileUploadSession.id == session_id)
-    )
+    result = await db.execute(select(FileUploadSession).where(FileUploadSession.id == session_id))
     session = result.scalar_one_or_none()
     if not session:
-        raise HTTPException(
-            404, {"code": "SESSION_NOT_FOUND", "message": "上传会话不存在"}
-        )
+        raise HTTPException(404, {"code": "SESSION_NOT_FOUND", "message": "上传会话不存在"})
     if session.user_id != current_user.id:
-        raise HTTPException(
-            403, {"code": "FORBIDDEN", "message": "无权访问此会话"}
-        )
+        raise HTTPException(403, {"code": "FORBIDDEN", "message": "无权访问此会话"})
     return session

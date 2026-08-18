@@ -20,14 +20,7 @@ const RESUME_KEY_PREFIX = 'yuanai:upload-session:'
 
 /** 上传任务生命周期状态。 */
 export type UploadStatus =
-  | 'idle'
-  | 'hashing'
-  | 'checking'
-  | 'uploading'
-  | 'finalizing'
-  | 'done'
-  | 'error'
-  | 'canceled'
+  'idle' | 'hashing' | 'checking' | 'uploading' | 'finalizing' | 'done' | 'error' | 'canceled'
 
 /** 上传过程中的进度快照（供 UI 订阅）。 */
 export interface UploadProgress {

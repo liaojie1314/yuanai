@@ -47,12 +47,7 @@ import { ensurePushSubscribed, removePushSubscription } from '@/lib/push'
 // ── Types ──────────────────────────────────────────────────────
 type Section = 'profile' | 'security' | 'appearance' | 'notifications' | 'language' | 'about'
 type SubModal =
-  | 'change-email'
-  | 'change-pw'
-  | 'delete-account'
-  | 'clear-conversations'
-  | 'unlink-third'
-  | null
+  'change-email' | 'change-pw' | 'delete-account' | 'clear-conversations' | 'unlink-third' | null
 
 interface Toast {
   id: number

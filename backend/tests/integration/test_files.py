@@ -110,13 +110,13 @@ class TestDirectUpload:
         assert response.status_code == 200
         assert response.content == b"download content"
         assert response.headers["content-disposition"].startswith("attachment;")
-        assert "UTF-8%20note.txt" in response.headers["content-disposition"]
+        disposition = response.headers["content-disposition"]
+        assert "filename*=UTF-8''" in disposition
+        assert "%20note.txt" in disposition
 
 
 class TestCheckHash:
-    async def test_check_hash_miss(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_check_hash_miss(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         response = await client.post(
             "/api/v1/files/check-hash",
             headers=auth_headers,
@@ -207,9 +207,7 @@ class TestChunkedUpload:
         assert response.status_code == 201, response.text
         return response.json()
 
-    async def test_create_session(
-        self, client: AsyncClient, auth_headers: dict[str, str]
-    ) -> None:
+    async def test_create_session(self, client: AsyncClient, auth_headers: dict[str, str]) -> None:
         session = await self._create_session(client, auth_headers)
         assert "sessionId" in session
         assert session["uploadedChunks"] == []
@@ -236,12 +234,8 @@ class TestChunkedUpload:
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:
         h = _hash(b"my file content marker")
-        first = await self._create_session(
-            client, auth_headers, filename="x.bin", file_hash=h
-        )
-        second = await self._create_session(
-            client, auth_headers, filename="x.bin", file_hash=h
-        )
+        first = await self._create_session(client, auth_headers, filename="x.bin", file_hash=h)
+        second = await self._create_session(client, auth_headers, filename="x.bin", file_hash=h)
         # 同一 hash / 同一元数据 → 返回同一 sessionId
         assert first["sessionId"] == second["sessionId"]
 
@@ -272,9 +266,7 @@ class TestChunkedUpload:
         )
         db.add(other)
         await db.commit()
-        other_headers = {
-            "Authorization": f"Bearer {create_access_token(str(other.id))}"
-        }
+        other_headers = {"Authorization": f"Bearer {create_access_token(str(other.id))}"}
         resp = await client.get(
             f"/api/v1/files/upload-session/{session['sessionId']}",
             headers=other_headers,
@@ -285,9 +277,7 @@ class TestChunkedUpload:
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:
         # 每片 5 MB（LocalStorageService 无 S3 最小分片限制，可用小分片测）
-        session = await self._create_session(
-            client, auth_headers, size_bytes=15, total_chunks=3
-        )
+        session = await self._create_session(client, auth_headers, size_bytes=15, total_chunks=3)
         for idx, chunk in enumerate([b"aaaaa", b"bbbbb", b"ccccc"]):
             resp = await client.put(
                 f"/api/v1/files/upload-session/{session['sessionId']}/chunk/{idx}",
@@ -388,9 +378,7 @@ class TestChunkedUpload:
         from sqlalchemy import select
 
         row = await db.execute(
-            select(FileUploadSession).where(
-                FileUploadSession.id == uuid.UUID(session["sessionId"])
-            )
+            select(FileUploadSession).where(FileUploadSession.id == uuid.UUID(session["sessionId"]))
         )
         record = row.scalar_one()
         assert record.status == "aborted"
@@ -425,9 +413,7 @@ class TestUploadIsolation:
         )
         db.add(other)
         await db.commit()
-        other_headers = {
-            "Authorization": f"Bearer {create_access_token(str(other.id))}"
-        }
+        other_headers = {"Authorization": f"Bearer {create_access_token(str(other.id))}"}
         resp = await client.put(
             f"/api/v1/files/upload-session/{session_id}/chunk/0",
             headers=other_headers,

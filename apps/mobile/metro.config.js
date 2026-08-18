@@ -61,10 +61,7 @@ const coreExports = {
 const singletons = {
   react: path.resolve(projectRoot, 'node_modules/react'),
   'react-native': path.resolve(projectRoot, 'node_modules/react-native'),
-  '@tanstack/react-query': path.resolve(
-    projectRoot,
-    'node_modules/@tanstack/react-query'
-  ),
+  '@tanstack/react-query': path.resolve(projectRoot, 'node_modules/@tanstack/react-query'),
 }
 
 const defaultResolveRequest = config.resolver.resolveRequest

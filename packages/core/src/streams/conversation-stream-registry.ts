@@ -236,6 +236,12 @@ export class ConversationStreamRegistry {
 
     const entry = this.createEntry(queryClient, params.convId)
     this.active.set(params.convId, entry)
+    // 上一条流结束后的后台校准可能仍在飞行中；取消它，防止旧响应覆盖本次流
+    // 写入的乐观消息或最终缓存。查询会在本次流正常结束后重新校准。
+    void Promise.all([
+      queryClient.cancelQueries({ queryKey: ['messages', params.convId] }),
+      queryClient.cancelQueries({ queryKey: ['conversations'] }),
+    ])
     useChatStore
       .getState()
       .startStreaming(
@@ -501,14 +507,14 @@ export class ConversationStreamRegistry {
             // 先把已完成流的正文、思考和工具来源写入缓存，再用后端历史刷新确认最终状态。
             // 这样网络刷新存在短暂延迟时，来源仍会立即留在思考区。
             this.persistPartial(entry)
+            // 流协议已经正常结束，必须立即释放会话的发送状态；历史刷新属于后台缓存维护，
+            // 不能让网络延迟阻塞输入框，也不能阻止用户继续发送下一条消息。
+            this.finishEntry(entry)
+            settle('completed')
             void Promise.all([
               entry.queryClient.refetchQueries({ queryKey: ['messages', entry.conversationId] }),
               entry.queryClient.refetchQueries({ queryKey: ['conversations'] }),
-            ]).finally(() => {
-              if (!isCurrentAttempt()) return
-              this.finishEntry(entry)
-              settle('completed')
-            })
+            ]).catch(() => undefined)
           },
         }
       )

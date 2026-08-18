@@ -46,9 +46,7 @@ def _to_share_link(share: ConversationShare) -> ShareLinkResponse:
     )
 
 
-async def _get_user_conv(
-    conv_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
-) -> Conversation:
+async def _get_user_conv(conv_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> Conversation:
     result = await db.execute(select(Conversation).where(Conversation.id == conv_id))
     conv = result.scalar_one_or_none()
     if not conv:
@@ -128,9 +126,7 @@ async def get_share_link(
 
 
 @router.delete("/chat/conversations/{conv_id}/share", status_code=204)
-async def revoke_share_link(
-    conv_id: uuid.UUID, current_user: CurrentUser, db: DB
-) -> None:
+async def revoke_share_link(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -> None:
     """撤销会话的所有活跃分享链接（不可再访问）。"""
     await _get_user_conv(conv_id, current_user.id, db)
 

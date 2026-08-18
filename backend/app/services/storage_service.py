@@ -38,9 +38,7 @@ class StorageService(Protocol):
     async def create_multipart(self, key: str, content_type: str) -> str:
         """创建多段上传会话，返回后端存储的 upload_id。"""
 
-    async def upload_part(
-        self, key: str, upload_id: str, part_number: int, data: bytes
-    ) -> str:
+    async def upload_part(self, key: str, upload_id: str, part_number: int, data: bytes) -> str:
         """上传单个分片（part_number 从 1 开始）。返回该分片的 ETag。"""
 
     async def complete_multipart(
@@ -100,8 +98,7 @@ class S3StorageService:
                     "Principal": {"AWS": ["*"]},
                     "Action": ["s3:GetObject"],
                     "Resource": [
-                        f"arn:aws:s3:::{self.bucket}/{prefix}"
-                        for prefix in _PUBLIC_READ_PREFIXES
+                        f"arn:aws:s3:::{self.bucket}/{prefix}" for prefix in _PUBLIC_READ_PREFIXES
                     ],
                 }
             ],
@@ -127,9 +124,7 @@ class S3StorageService:
         return self.get_url(key)
 
     async def get_object(self, key: str) -> bytes:
-        response = await asyncio.to_thread(
-            self._client.get_object, Bucket=self.bucket, Key=key
-        )
+        response = await asyncio.to_thread(self._client.get_object, Bucket=self.bucket, Key=key)
         return await asyncio.to_thread(response["Body"].read)
 
     async def create_multipart(self, key: str, content_type: str) -> str:
@@ -141,9 +136,7 @@ class S3StorageService:
         )
         return str(resp["UploadId"])
 
-    async def upload_part(
-        self, key: str, upload_id: str, part_number: int, data: bytes
-    ) -> str:
+    async def upload_part(self, key: str, upload_id: str, part_number: int, data: bytes) -> str:
         resp = await asyncio.to_thread(
             self._client.upload_part,
             Bucket=self.bucket,
@@ -182,9 +175,7 @@ class S3StorageService:
 
     async def delete(self, key: str) -> None:
         try:
-            await asyncio.to_thread(
-                self._client.delete_object, Bucket=self.bucket, Key=key
-            )
+            await asyncio.to_thread(self._client.delete_object, Bucket=self.bucket, Key=key)
         except ClientError:
             pass
 
@@ -248,9 +239,7 @@ class LocalStorageService:
             await f.write(f"{key}\n{content_type}\n")
         return upload_id
 
-    async def upload_part(
-        self, key: str, upload_id: str, part_number: int, data: bytes
-    ) -> str:
+    async def upload_part(self, key: str, upload_id: str, part_number: int, data: bytes) -> str:
         session_dir = self._session_dir(upload_id)
         session_dir.mkdir(parents=True, exist_ok=True)
         part_path = session_dir / f"part_{part_number:04d}"

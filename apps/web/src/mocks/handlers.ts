@@ -321,6 +321,12 @@ export const handlers = [
 
   http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockUser)),
 
+  http.get(`${BASE}/chat/capabilities`, () =>
+    HttpResponse.json({
+      webSearch: { enabled: true, provider: 'searxng', reason: null },
+    })
+  ),
+
   http.patch(`${BASE}/auth/me`, async ({ request }) => {
     const body = (await request.json()) as { username?: string; avatarUrl?: string }
     return HttpResponse.json({ ...mockUser, ...body })

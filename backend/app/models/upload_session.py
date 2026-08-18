@@ -54,7 +54,5 @@ class FileUploadSession(Base):
     # 已上传分片的 S3 ETag 记录：[{"PartNumber": 1, "ETag": "..."}]
     s3_parts: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="pending")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

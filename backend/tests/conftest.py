@@ -45,6 +45,7 @@ _TRUNCATE_SQL = text(
 
 def pytest_sessionstart(session: pytest.Session) -> None:
     """同步钩子：所有测试开始前创建数据库表（独立 asyncio.run，不影响测试 event loop）。"""
+
     async def _create():
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
@@ -57,6 +58,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     """同步钩子：所有测试结束后删除数据库表。"""
+
     async def _drop():
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
@@ -131,6 +133,7 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 async def client(db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """注入测试 DB 的 HTTP 客户端，覆盖 get_db 依赖。"""
+
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
         yield db
 

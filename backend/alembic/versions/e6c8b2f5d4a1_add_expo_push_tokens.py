@@ -7,16 +7,17 @@ Create Date: 2026-07-21 10:00:00.000000
 新增 expo_push_tokens 表：移动端 Expo Push token 落库，与 Web 的
 push_subscriptions 并列作为第二条推送通道（Step 9）。
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 
+from alembic import op
 
 revision: str = "e6c8b2f5d4a1"
-down_revision: Union[str, None] = "b2d5f9a1c8e0"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "b2d5f9a1c8e0"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:

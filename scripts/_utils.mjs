@@ -16,12 +16,12 @@ const c = COLOR
   ? { R: '\x1b[0m', B: '\x1b[1m', r: '\x1b[31m', g: '\x1b[32m', y: '\x1b[33m', b: '\x1b[34m' }
   : { R: '', B: '', r: '', g: '', y: '', b: '' }
 
-export const log  = (...s) => console.log(`${c.b}▸${c.R}`, ...s)
-export const ok   = (...s) => console.log(`${c.g}✓${c.R}`, ...s)
+export const log = (...s) => console.log(`${c.b}▸${c.R}`, ...s)
+export const ok = (...s) => console.log(`${c.g}✓${c.R}`, ...s)
 export const warn = (...s) => console.warn(`${c.y}⚠${c.R} `, ...s)
-export const step = (s)    => console.log(`\n${c.B}${s}${c.R}`)
-export const dot  = ()     => process.stdout.write('.')
-export const nl   = ()     => process.stdout.write('\n')
+export const step = (s) => console.log(`\n${c.B}${s}${c.R}`)
+export const dot = () => process.stdout.write('.')
+export const nl = () => process.stdout.write('\n')
 
 export function err(s) {
   console.error(`\n${c.r}✗${c.R}  ${s}`)
@@ -99,7 +99,8 @@ export function killProc(proc) {
     if (WIN) {
       // taskkill /T 同时终止子进程树
       spawnSync('taskkill', ['/pid', String(proc.pid), '/f', '/t'], {
-        shell: true, stdio: 'pipe',
+        shell: true,
+        stdio: 'pipe',
       })
     } else {
       proc.kill('SIGTERM')
@@ -111,15 +112,18 @@ export function killProc(proc) {
 export function pidsOnPort(port) {
   if (WIN) {
     const out = capture('netstat', ['-ano', '-p', 'tcp'])
-    return [...new Set(
-      out.split(/\r?\n/)
-        .filter((l) => l.includes(`:${port}`) && /LISTENING/i.test(l))
-        .map((l) => l.trim().split(/\s+/).at(-1))
-        .filter((p) => p && p !== '0')
-    )]
+    return [
+      ...new Set(
+        out
+          .split(/\r?\n/)
+          .filter((l) => l.includes(`:${port}`) && /LISTENING/i.test(l))
+          .map((l) => l.trim().split(/\s+/).at(-1))
+          .filter((p) => p && p !== '0')
+      ),
+    ]
   }
-  const out = capture('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN']) ||
-              capture('fuser', [`${port}/tcp`])
+  const out =
+    capture('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN']) || capture('fuser', [`${port}/tcp`])
   return out.split(/\s+/).filter(Boolean)
 }
 
@@ -133,13 +137,17 @@ export async function freePort(port, label = '') {
   if (pids.length === 0) return
   warn(`端口 ${port} 被占用（${label || '残留进程'}: pid ${pids.join(', ')}），正在清理...`)
   for (const pid of pids) {
-    try { process.kill(Number(pid), 'SIGTERM') } catch {}
+    try {
+      process.kill(Number(pid), 'SIGTERM')
+    } catch {}
   }
   // 给 SIGTERM 2s 优雅退出窗口，仍占着就 SIGKILL
   await sleep(2000)
   pids = pidsOnPort(port)
   for (const pid of pids) {
-    try { process.kill(Number(pid), 'SIGKILL') } catch {}
+    try {
+      process.kill(Number(pid), 'SIGKILL')
+    } catch {}
   }
   if (pids.length > 0) await sleep(500)
   if (pidsOnPort(port).length > 0) {
@@ -156,13 +164,19 @@ export function waitPort(port, host = '127.0.0.1', timeoutSec = 60) {
     const deadline = Date.now() + timeoutSec * 1000
     const attempt = () => {
       const sock = createConnection({ port, host })
-      sock.once('connect', () => { sock.destroy(); nl(); resolve() })
+      sock.once('connect', () => {
+        sock.destroy()
+        nl()
+        resolve()
+      })
       sock.once('error', () => {
         sock.destroy()
         if (Date.now() >= deadline) {
-          nl(); reject(new Error(`等待 ${host}:${port} 超时（${timeoutSec}s）`))
+          nl()
+          reject(new Error(`等待 ${host}:${port} 超时（${timeoutSec}s）`))
         } else {
-          dot(); setTimeout(attempt, 1000)
+          dot()
+          setTimeout(attempt, 1000)
         }
       })
     }
@@ -176,7 +190,10 @@ export async function waitHttp(url, timeoutSec = 30) {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(2000) })
-      if (res.ok) { nl(); return }
+      if (res.ok) {
+        nl()
+        return
+      }
     } catch {}
     dot()
     await sleep(1000)
@@ -185,15 +202,18 @@ export async function waitHttp(url, timeoutSec = 30) {
   throw new Error(`等待 ${url} 超时（${timeoutSec}s）`)
 }
 
-export const sleep = (ms) => new Promise(r => setTimeout(r, ms))
+export const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 // ── 交互 ──────────────────────────────────────────────────────────────
 
 /** 等待用户按回车 */
 export function prompt(question) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const rl = createInterface({ input: process.stdin, output: process.stdout })
-    rl.question(question, ans => { rl.close(); resolve(ans) })
+    rl.question(question, (ans) => {
+      rl.close()
+      resolve(ans)
+    })
   })
 }
 
@@ -207,8 +227,11 @@ export function readEnvFile(filePath) {
   return Object.fromEntries(
     readFileSync(filePath, 'utf8')
       .split(/\r?\n/)
-      .filter(l => l.includes('=') && !l.trimStart().startsWith('#'))
-      .map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] })
+      .filter((l) => l.includes('=') && !l.trimStart().startsWith('#'))
+      .map((l) => {
+        const i = l.indexOf('=')
+        return [l.slice(0, i).trim(), l.slice(i + 1).trim()]
+      })
   )
 }
 
