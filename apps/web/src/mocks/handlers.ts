@@ -260,6 +260,10 @@ const MOCK_RESPONSES = [
   '明白了。基于你的需求，我有以下几点建议：\n\n首先，这个问题的关键在于理解底层原理。\n\n下面是一段 JavaScript 演示：\n\n```javascript\nconst app = document.getElementById("app")\napp.innerHTML = "<h2>元AI 沙箱运行示例</h2><p>此段脚本运行在 iframe 沙箱内。</p>"\nconsole.log("Hello from sandbox")\n```\n',
 ]
 
+// Keep the mock stream visibly incremental without exceeding Mobile Safari's
+// default Playwright timeout when a full response is emitted character by character.
+const MOCK_STREAM_INTERVAL_MS = 10
+
 /** 思考过程模板 */
 const MOCK_THINK_SEGMENTS = [
   '需要拆解用户诉求：先确定要输出的核心信息，再规划展示形式。',
@@ -587,7 +591,7 @@ export const handlers = [
           }
           enqueue('message_end', { tokensUsed: full.length, finishReason: 'stop' })
           controller.close()
-        }, 25)
+        }, MOCK_STREAM_INTERVAL_MS)
       },
     })
 
