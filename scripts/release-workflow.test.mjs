@@ -50,5 +50,17 @@ test('Android release restores local EAS credentials from GitHub secrets', () =>
   }
   assert.match(workflow, /base64 --decode/)
   assert.match(workflow, /apps\/mobile\/credentials\.json/)
-  assert.match(workflow, /rm -f apps\/mobile\/credentials\.json/)
+  assert.match(workflow, /- name: Clean up Android signing credentials[\s\S]*?if: always\(\)/)
+  assert.match(
+    workflow,
+    /Build Android bundle with EAS[\s\S]*?Clean up Android signing credentials/
+  )
+  assert.doesNotMatch(
+    workflow,
+    /trap 'rm -f apps\/mobile\/credentials\.json apps\/mobile\/yuanai-android-release\.jks' EXIT/
+  )
+  assert.match(
+    workflow,
+    /rm -f apps\/mobile\/credentials\.json apps\/mobile\/yuanai-android-release\.jks/
+  )
 })

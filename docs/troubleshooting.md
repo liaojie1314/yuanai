@@ -130,6 +130,7 @@ pnpm --filter @yuanai/web test:e2e
 | macOS 构建报 `/Users/runner/work/yuanai/yuanai/apps/desktop not a file`。               | workflow 给非 Windows 平台注入空的 `CSC_LINK`；Electron Builder 将空值解析为当前 app 目录路径。                                        | 将桌面步骤拆为签名 Windows 与无签名 Linux/macOS；macOS 不再注入 Windows 证书的空值，同时使用 `--publish never`。                 |
 | Linux/macOS 仍显示 `artifacts will be published if draft release exists`。              | workflow 通过 pnpm 参数转发 `-- --publish never`，桌面 package script 最终把额外的 `--` 传给 Electron Builder，未可靠关闭发布检测。    | 将 `--publish never` 固定写入 `apps/desktop/package.json` 的所有 package script，workflow 只调用 script 名称。                   |
 | Android EAS 报 `Generating a new Keystore is not supported in --non-interactive mode`。 | `apps/mobile/eas.json` 默认使用 remote credentials，EAS 项目尚未初始化远程 Android keystore；CI 无法交互生成。                         | production 改用 `credentialsSource: local`；workflow 从四个 GitHub Secrets 临时恢复 `credentials.json` 和 keystore，构建后清理。 |
+| Android EAS 报 `credentials.json does not exist in the project root directory`。        | 恢复步骤中的 `trap ... EXIT` 在该步骤结束时提前删除了凭据，EAS 构建步骤无法复用。                                                      | 移除恢复步骤的 trap，改为 EAS 构建后的独立 `if: always()` 清理步骤，确保构建成功或失败后都清理签名材料。                         |
 
 这些问题均发生在 GitHub Actions 的发布构建边界，不是应用运行时代码错误。修复后应使用
 Release workflow 的 `workflow_dispatch`，填写已有 tag `v0.1.0`、更新后的 `master` commit，

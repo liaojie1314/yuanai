@@ -154,7 +154,6 @@ jobs:
           test -n "$ANDROID_KEY_ALIAS" || { echo "Missing GitHub Secret ANDROID_KEY_ALIAS"; exit 1; }
           test -n "$ANDROID_KEYSTORE_PASSWORD" || { echo "Missing GitHub Secret ANDROID_KEYSTORE_PASSWORD"; exit 1; }
           test -n "$ANDROID_KEY_PASSWORD" || { echo "Missing GitHub Secret ANDROID_KEY_PASSWORD"; exit 1; }
-          trap 'rm -f apps/mobile/credentials.json apps/mobile/yuanai-android-release.jks' EXIT
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > apps/mobile/yuanai-android-release.jks
           cat > apps/mobile/credentials.json <<EOF
           {
@@ -173,6 +172,9 @@ jobs:
           EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID || vars.EXPO_PROJECT_ID }}
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: pnpm --filter @yuanai/mobile build:android:production > eas-build.json
+      - name: Clean up Android signing credentials
+        if: always()
+        run: rm -f apps/mobile/credentials.json apps/mobile/yuanai-android-release.jks
       - name: Download Android artifact
         env:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
