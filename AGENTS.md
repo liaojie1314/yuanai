@@ -16,18 +16,18 @@
 3. 用 codebase-memory-mcp 加载知识图谱（见下节）
 4. 确认当前任务所属 Phase，读对应 Phase 文档
 5. 读 docs/dev-standards.md + docs/testing-standards.md
-6. 读取 `.codex/progress/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
+6. 读取 `.codex/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
    必须重新执行本清单再继续运行命令、测试、Git hook 或提交
-7. 遇到非项目代码问题时，立即记录到 `.codex/progress/environment-issues.md`，再继续排查或
+7. 遇到非项目代码问题时，立即记录到 `.codex/environment-issues.md`，再继续排查或
    执行后续操作
 ```
 
 **不得跳过步骤 1-3，不得以"已知项目"为由省略。**
-`.codex/progress/runtime-toolchain.md` 是不提交的本地运行时记录，专门保存 Node.js/pnpm
+`.codex/runtime-toolchain.md` 是不提交的本地运行时记录，专门保存 Node.js/pnpm
 版本冲突的根因和固定执行方式；它不能替代项目中的 `.nvmrc`、`.node-version`、`engines`
 和 CI 版本声明。
 所有不属于项目代码本身的环境问题（工具链、权限、网络、代理、数据库服务、浏览器、模拟器、
-USB 真机连接等）都必须在 `.codex/progress/environment-issues.md` 记录时间、症状、证据、
+USB 真机连接等）都必须在 `.codex/environment-issues.md` 记录时间、症状、证据、
 根因、影响和解决方式；该目录为本地执行记录，不进入 Git。
 
 ---
@@ -621,7 +621,7 @@ Phase 规格的产品范围变更仍须由用户明确决定。
 
 ---
 
-## 十五、用户工作流与 Phase 4 决策记忆
+## 十五、用户工作流约束
 
 ### 持久工作流约束
 
@@ -631,21 +631,5 @@ Phase 规格的产品范围变更仍须由用户明确决定。
 - `.codex/` 仅用于本地计划与执行记录，禁止纳入 commit。
 - 项目启动、构建和桌面安装包生成必须调用对应 `package.json` script，禁止绕过 script 直接调用底层 CLI。
 - `docker-compose*.yml` / `docker-compose*.yaml` 中所有镜像必须使用明确版本，禁止 `latest`、仅 major 版本等浮动标签。
-
-### Phase 4 已确认决策（2026-08-07）
-
-- 开发分支按用户明确要求使用 `feature/phase-4-desktop`；这是对 Phase 文档 `feat/phase-4-desktop` 的有意覆盖。
-- UI 采用桌面薄壳方案：复用 `packages/core` hooks/stores/API 与 `packages/ui` tokens，桌面组件在 `apps/desktop` 独立实现；本 Phase 不先重构 Web 的大型组件。
-- OAuth 自定义协议只传递短时、一次性 authorization code；桌面端通过后端交换 access/refresh token，禁止把长期 token 放入 URI、argv 或系统日志。
-- 桌面通知使用 Electron 原生通知；服务端完成事件使用鉴权 SSE fallback，不依赖 `file://` 下不可用的 Service Worker/Web Push。
-- 设置窗口在 Web 现有六分区基础上增加独立的“桌面设置”分区，承载关闭到托盘、全局快捷键、开机自启和更新设置。
-- 本轮以现有 Web 功能对齐为主；Web 尚未交付的后端语音转写和桌面语音输入暂缓，不计入本轮验收。
-- 桌面图标以 `apps/mobile/assets/icon.png` 为源生成 `.ico`、`.icns`、Linux PNG 与平台托盘资源。
-- Compose 镜像同时固定完整版本标签与多架构 digest，确保版本清晰且内容不可漂移。
-- 执行计划时每完成一个独立功能，必须先通过对应测试并创建本地 commit，然后直接继续下一功能；仅在遇到需要用户决策或无法自行解决的阻塞时暂停。
-- Phase 4 已于 2026-08-13 合入 `dev`。Ubuntu 开发环境已覆盖真实 API、托盘与生产
-  预览；Windows/macOS 原生安装、签名、更新源和跨平台验收仍不能宣称完成。
-
----
 
 _本文件由 AI 代理生成并维护。如项目规范有变更，请同步更新本文件。_
