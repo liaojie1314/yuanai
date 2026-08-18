@@ -58,7 +58,8 @@ notarization 及安装验收由对应 GitHub runner 执行。Android 本地构�
 
 ## GitHub Actions
 
-`.github/workflows/ci.yml` 在 `dev`/`master` 的 push 和 PR 上执行：
+`.github/workflows/ci.yml` 在 `dev` push 和指向 `dev`/`master` 的 PR 上执行；直接 push 到
+`master` 不再重复运行同一套 CI，发布前必须通过 `dev` 到 `master` 的 PR 门禁：
 
 - 固定 Node/pnpm，`pnpm install --frozen-lockfile`；
 - format、lint、typecheck、前端单元测试和 Web Playwright smoke test；
@@ -73,6 +74,19 @@ Electron 构建调用 `pnpm package:desktop:linux|win|mac`，Android 构建调�
 手动补跑时，在 Actions 页面选择 Release，填写已有 tag；`ref` 可指定构建分支或 commit，
 `only` 可在单个平台失败后只重建 `web`、`desktop` 或 `mobile`。`only` 不是正式发版授权，正式 tag 仍
 需先经过本地验证和维护者确认。
+
+### v0.1.0 产物矩阵
+
+| 端              | Runner/方式    | 产物                       |
+| --------------- | -------------- | -------------------------- |
+| Web             | Ubuntu         | `yuanai-web-v0.1.0.tar.gz` |
+| Desktop Linux   | Ubuntu 22.04   | AppImage、deb、rpm         |
+| Desktop Windows | Windows 2022   | NSIS installer、portable   |
+| Desktop macOS   | macOS 14       | DMG、ZIP                   |
+| Mobile Android  | EAS production | Android `.aab`             |
+
+当前 Release workflow 不构建 iOS；iOS 需要 Apple runner、证书和签名配置，后续单独接入。
+Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workflow 会从该目录上传。
 
 ## Secrets 与证书
 
