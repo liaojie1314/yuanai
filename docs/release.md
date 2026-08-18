@@ -181,58 +181,6 @@ macOS 公证需要 Apple Developer 账号。创建 Developer ID Application 证�
 
 没有这些值时 macOS job 仍可生成未签名安装包；不要用 Apple ID 主密码代替专用密码。
 
-### Electron Windows 自签名（个人项目可选）
-
-个人项目可以使用仓库脚本生成自签名 `.pfx`，但 Windows 不会默认信任它，其他用户会看到
-“未知发布者”提示。它适合个人设备、内测和 GitHub Actions 打包验证；公开分发仍应换成受信任
-的代码签名证书。先在本机生成：
-
-```bash
-pnpm signing:desktop:windows:test
-```
-
-脚本只在 `~/.yuanai-secrets/yuanai-windows-test.pfx` 和同目录 JSON 中保存私钥、密码。
-把证书转成单行 Base64 后，在仓库 `Settings → Secrets and variables → Actions` 添加：
-
-```bash
-# GNU/Linux
-base64 -w0 signing.pfx
-# macOS
-base64 < signing.pfx | tr -d '\n'
-```
-
-| Secret             | 内容                                                  |
-| ------------------ | ----------------------------------------------------- |
-| `CSC_LINK`         | `.pfx` 的 Base64 内容（electron-builder 支持 Base64） |
-| `CSC_KEY_PASSWORD` | PFX 导出密码                                          |
-
-```bash
-base64 -w0 ~/.yuanai-secrets/yuanai-windows-test.pfx
-```
-
-`CSC_LINK` 和 `CSC_KEY_PASSWORD` 只会注入 Windows release job；不会把 Windows 证书传给
-macOS job。不要把 `yuanai-windows-test.pfx`、JSON 或密码提交到仓库。
-
-### Electron macOS 签名与 notarization（可选）
-
-从 Apple Developer 申请 Developer ID Application 证书，在钥匙串中导出 `.p12`，然后用
-上面的 Base64 方法生成 `CSC_LINK`。再创建 App-specific password（Apple ID → Sign-In and
-Security → App-Specific Passwords），添加：
-
-| Secret                        | 内容                                      |
-| ----------------------------- | ----------------------------------------- |
-| `CSC_LINK`                    | Developer ID `.p12` 的 Base64 内容        |
-| `CSC_KEY_PASSWORD`            | `.p12` 导出密码                           |
-| `APPLE_ID`                    | Apple Developer 账号邮箱                  |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password，不是 Apple ID 密码 |
-| `APPLE_TEAM_ID`               | Apple Developer Team ID                   |
-
-没有这些 Secrets 时 workflow 仍会生成未签名安装包，便于先验证跨平台构建；不能把未签名包
-宣称为可公开分发版本。
-
-个人项目不需要为了 macOS 强行添加这些 Secrets；当前 Linux 本地和 GitHub Actions 均可先生成
-未签名 macOS 包，之后再决定是否购买 Apple Developer 签名与 notarization。
-
 ### Mobile Android/EAS
 
 Android 使用 EAS 云构建和 EAS 托管的 Android 签名凭据，不需要把本地 keystore 上传到

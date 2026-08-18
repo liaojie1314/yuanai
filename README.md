@@ -71,7 +71,6 @@ pnpm dev:real
 首次运行若 `backend/.env` 不存在，会暂停并提示填写 API Key。  
 兼容 macOS / Linux / Windows（使用 Node.js 脚本，无需 bash）。
 
-> **推荐 AI 提供商**：[DeepSeek](https://platform.deepseek.com/api_keys)（有免费额度，注册即用）  
 > 详见 [AI 大模型接入指南](docs/ai-providers.md)
 
 ### 方式四：分步手动启动
