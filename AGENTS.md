@@ -16,9 +16,14 @@
 3. 用 codebase-memory-mcp 加载知识图谱（见下节）
 4. 确认当前任务所属 Phase，读对应 Phase 文档
 5. 读 docs/dev-standards.md + docs/testing-standards.md
+6. 读取 `.codex/progress/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
+   必须重新执行本清单再继续运行命令、测试、Git hook 或提交
 ```
 
 **不得跳过步骤 1-3，不得以"已知项目"为由省略。**
+`.codex/progress/runtime-toolchain.md` 是不提交的本地运行时记录，专门保存 Node.js/pnpm
+版本冲突的根因和固定执行方式；它不能替代项目中的 `.nvmrc`、`.node-version`、`engines`
+和 CI 版本声明。
 
 ---
 
