@@ -8,7 +8,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "updates": {
       "url": "https://u.expo.dev/PROJECT_ID_PLACEHOLDER",
       "checkAutomatically": "ON_LOAD",
@@ -20,7 +22,7 @@
     "ios": {
       "bundleIdentifier": "com.yuanai.app",
       "supportsTablet": true,
-      "buildNumber": "1",
+      "buildNumber": "1000",
       "infoPlist": {
         "NSCameraUsageDescription": "元AI 需要访问相机以拍照上传和扫描登录二维码",
         "NSPhotoLibraryUsageDescription": "元AI 需要访问相册以上传图片",
@@ -29,14 +31,16 @@
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleAllowMixedLocalizations": true
       },
-      "associatedDomains": ["applinks:yuanai.example.com"],
+      "associatedDomains": [
+        "applinks:yuanai.example.com"
+      ],
       "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.yuanai.app",
-      "versionCode": 1,
+      "versionCode": 1000,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#3b82f6"
@@ -61,7 +65,10 @@
               "host": "yuanai.example.com"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
