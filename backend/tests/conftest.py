@@ -19,6 +19,10 @@ os.environ["DATABASE_URL"] = "postgresql+asyncpg://yuanai:password@localhost:543
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["QR_LOGIN_API_BASE_URL"] = "http://127.0.0.1:8000/api/v1"
+# 模型目录集成测试使用虚拟凭据，避免 CI 因没有真实 provider key 而返回空目录。
+# 真实 provider 调用仍由各测试显式 mock，不会向外部 API 发起请求。
+os.environ["DEEPSEEK_API_KEY"] = "test-deepseek-key"
+os.environ["AGNES_API_KEY"] = "test-agnes-key"
 # 邮箱验证码：测试环境统一启用调试后门 "888888"，跳过真实 SMTP 发送与 Redis 校验
 os.environ["VERIFY_CODE_DEBUG_BYPASS"] = "888888"
 # 存储后端：测试环境走本地文件系统，无需 MinIO

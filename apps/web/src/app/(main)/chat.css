@@ -1732,10 +1732,12 @@
   background: rgba(0, 0, 0, 0.4);
   z-index: 18;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.22s;
 }
 .ch-overlay.open {
   opacity: 1;
+  pointer-events: auto;
 }
 
 /* ── Scroll FAB ──────────────────────────────────── */
