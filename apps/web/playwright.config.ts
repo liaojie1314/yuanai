@@ -9,7 +9,7 @@ export default defineConfig({
   ...(process.env['CI'] ? { workers: 1 } : {}),
   reporter: [['html'], ['list']],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://127.0.0.1:3000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'NEXT_PUBLIC_MOCK=true pnpm dev',
-    url: 'http://localhost:3000',
+    url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env['CI'],
     env: { NEXT_PUBLIC_MOCK: 'true' },
   },
