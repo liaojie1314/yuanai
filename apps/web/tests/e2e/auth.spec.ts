@@ -76,9 +76,13 @@ test.describe('Authentication', () => {
     await page.click('.a-tab:nth-child(2)')
     await page.fill('input[type="email"]', DEMO_EMAIL)
     await page.fill('input[type="password"]', DEMO_PASS)
+    const loginResponse = page.waitForResponse(
+      (response) => response.url().endsWith('/auth/login') && response.status() === 200,
+      { timeout: 20_000 }
+    )
     await page.click('button[type="submit"]')
-    await page.waitForURL('**/chat', { timeout: 10_000 })
-    await expect(page).toHaveURL(/\/chat/)
+    await loginResponse
+    await expect(page).toHaveURL(/\/chat/, { timeout: 20_000 })
   })
 
   test('email+password: wrong credentials show error message', async ({ page }) => {
