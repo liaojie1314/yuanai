@@ -28,6 +28,9 @@ pnpm release:dry
 会同步所有 workspace 和 Expo 版本，更新 `CHANGELOG.md`，创建 `v<version>` tag 并 push。
 本项目明确关闭 release-it 自己的 GitHub Release，由 tag 触发的 Actions 统一上传产物。
 
+首次发布已经预同步版本号时，使用 `pnpm run release --ci 0.1.0`；release-it 已配置允许
+`npm version` 保持同版本，并使用符合 commitlint 的 `chore(config):` release commit。
+
 ```bash
 # 用户确认后才执行；命令会 push commit 与 tag
 pnpm release:patch

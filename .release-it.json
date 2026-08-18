@@ -3,7 +3,7 @@
   "git": {
     "requireBranch": "master",
     "requireCleanWorkingDir": true,
-    "commitMessage": "chore(release): release v${version}",
+    "commitMessage": "chore(config): release v${version}",
     "tagName": "v${version}",
     "tagAnnotation": "Release v${version}",
     "push": true
