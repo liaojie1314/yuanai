@@ -1,46 +1,34 @@
 import { test, expect, type Page } from '@playwright/test'
-import { setupApiMocks, loginViaForm, MOCK_TOKEN } from './api-mock'
+import { loginViaForm } from './api-mock'
 
-/** Set Zustand auth state + cookie so middleware allows /chat without the form login flow. */
+/** 通过真实登录表单建立认证状态，覆盖中间件和客户端持久化链路。 */
 async function setupAuth(page: Page): Promise<void> {
-  // Cookie for Next.js middleware (Edge runtime)
-  await page.context().addCookies([
-    {
-      name: 'yuanai-auth',
-      value: encodeURIComponent(MOCK_TOKEN),
-      domain: 'localhost',
-      path: '/',
-      httpOnly: false,
-      secure: false,
-      sameSite: 'Lax',
-    },
-  ])
-  // Set up route mocks before any page navigation
-  await setupApiMocks(page)
-  // Navigate to login page (PUBLIC) to initialize localStorage on the domain
-  await page.goto('/login')
-  // Write Zustand persist state to localStorage
-  await page.evaluate((token) => {
-    localStorage.setItem(
-      'yuanai-auth',
-      JSON.stringify({
-        state: {
-          user: {
-            id: 'user-e2e-001',
-            email: 'demo@yuanai.dev',
-            username: 'demo',
-            avatarUrl: null,
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-          accessToken: token,
-          refreshToken: 'e2e-mock-refresh-token',
-        },
-        version: 0,
-      })
-    )
-  }, MOCK_TOKEN)
-  // Now navigate to /chat — cookie lets middleware pass
-  await page.goto('/chat')
+  // Use the same browser login path as a user. This avoids WebKit-specific
+  // cookie timing races when navigating from the public login route.
+  await loginViaForm(page)
+}
+
+/** 移动端会话列表位于抽屉内，点击会话前确保抽屉已打开。 */
+async function openConversationSidebar(page: Page): Promise<void> {
+  const hamburger = page.locator('.ch-hamburger')
+  if (await hamburger.isVisible()) {
+    // openSidebar is idempotent; always click so a stale transformed sidebar
+    // cannot make the test believe the drawer is already open.
+    await hamburger.click({ force: true })
+    await expect(page.locator('.ch-sidebar.open')).toBeVisible()
+  }
+}
+
+async function conversationItem(page: Page, index = 0) {
+  await openConversationSidebar(page)
+  const item = page.locator('.ch-cv-item').nth(index)
+  await expect(item).toBeInViewport()
+  return item
+}
+
+async function clickConversation(page: Page, index = 0): Promise<void> {
+  const item = await conversationItem(page, index)
+  await item.click()
 }
 
 /** Helper: wait for the custom confirm dialog and click the confirm (danger) button. */
@@ -103,13 +91,13 @@ test.describe('Chat interface', () => {
   // ── Loading messages ─────────────────────────────────────────
 
   test('loads existing messages when clicking a conversation', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await expect(page.locator('.ch-msg').first()).toBeVisible({ timeout: 8_000 })
   })
 
   test('existing AI messages render as markdown', async ({ page }) => {
     // conv-001 has markdown content with **bold** text
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await expect(page.locator('.ch-msg-ai .md-body').first()).toBeVisible({ timeout: 8_000 })
     // Mock data has **阻断不必要的渲染触发** → <strong>
     await expect(page.locator('.ch-msg-ai .md-body strong').first()).toBeVisible()
@@ -118,7 +106,7 @@ test.describe('Chat interface', () => {
   // ── Sending messages ─────────────────────────────────────────
 
   test('sends a message via Enter key', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await page.locator('.ch-input-ta').fill('What is React?')
     await page.keyboard.press('Enter')
     await expect(
@@ -127,7 +115,7 @@ test.describe('Chat interface', () => {
   })
 
   test('sends a message via send button', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await page.locator('.ch-input-ta').fill('Test send button')
     await page.locator('.ch-send-btn.on').click()
     await expect(
@@ -138,7 +126,7 @@ test.describe('Chat interface', () => {
   // ── AI reply — markdown rendering ─────────────────────────────
 
   test('AI reply renders with markdown after streaming completes', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await page.locator('.ch-input-ta').fill('Explain React hooks')
     await page.keyboard.press('Enter')
 
@@ -152,7 +140,7 @@ test.describe('Chat interface', () => {
   })
 
   test('AI reply action buttons appear after streaming', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     await page.locator('.ch-input-ta').fill('Show me actions')
     await page.keyboard.press('Enter')
 
@@ -167,7 +155,7 @@ test.describe('Chat interface', () => {
   // ── Duplicate message prevention ─────────────────────────────
 
   test('user message appears exactly once after send', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     const testMsg = `No duplicate ${Date.now()}`
     await page.locator('.ch-input-ta').fill(testMsg)
     await page.keyboard.press('Enter')
@@ -184,7 +172,7 @@ test.describe('Chat interface', () => {
   // ── Second message in same conversation ──────────────────────
 
   test('second message receives AI reply', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
 
     // First message
     await page.locator('.ch-input-ta').fill('First question')
@@ -222,8 +210,9 @@ test.describe('Chat interface', () => {
     const convCount = await page.locator('.ch-cv-item').count()
 
     // Open context menu on first conversation
-    await page.locator('.ch-cv-item').first().hover()
-    await page.locator('.ch-cv-item').first().locator('.ch-cv-more').click()
+    const firstItem = await conversationItem(page)
+    await firstItem.hover()
+    await firstItem.locator('.ch-cv-more').click()
     await expect(page.locator('.ch-cvmenu.open')).toBeVisible()
 
     // Click delete → custom dialog appears → cancel
@@ -244,8 +233,9 @@ test.describe('Chat interface', () => {
       .textContent()
 
     // Open context menu and confirm delete
-    await page.locator('.ch-cv-item').first().hover()
-    await page.locator('.ch-cv-item').first().locator('.ch-cv-more').click()
+    const firstItem = await conversationItem(page)
+    await firstItem.hover()
+    await firstItem.locator('.ch-cv-more').click()
     await expect(page.locator('.ch-cvmenu.open')).toBeVisible()
     await page.locator('.ch-cvm-row.danger').click()
     await acceptConfirmDialog(page)
@@ -260,12 +250,15 @@ test.describe('Chat interface', () => {
 
   test('deleting the active conversation redirects to welcome page', async ({ page }) => {
     // Navigate into the second conversation to make it active
-    await page.locator('.ch-cv-item').nth(1).click()
+    await clickConversation(page, 1)
     await page.waitForURL('**/chat/**', { timeout: 5_000 })
 
     // Delete that conversation (it's active)
-    await page.locator('.ch-cv-item.active').hover()
-    await page.locator('.ch-cv-item.active').locator('.ch-cv-more').click()
+    await openConversationSidebar(page)
+    const activeItem = page.locator('.ch-cv-item.active')
+    await expect(activeItem).toBeInViewport()
+    await activeItem.hover()
+    await activeItem.locator('.ch-cv-more').click()
     await expect(page.locator('.ch-cvmenu.open')).toBeVisible()
     await page.locator('.ch-cvm-row.danger').click()
     await acceptConfirmDialog(page)
@@ -278,7 +271,7 @@ test.describe('Chat interface', () => {
   // ── Toolbar ──────────────────────────────────────────────────
 
   test('top right toolbar has only the share button', async ({ page }) => {
-    await page.locator('.ch-cv-item').first().click()
+    await clickConversation(page)
     const rightToolbar = page.locator('.ch-tb-r')
     await expect(rightToolbar).toBeVisible()
     const buttons = rightToolbar.locator('button')
