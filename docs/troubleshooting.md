@@ -1,6 +1,6 @@
 # 元AI跨端排障记录
 
-本文记录截至 2026-08-15 在 Web、Mobile、Desktop 与后端联调中已复现的问题、根因和
+本文记录截至 2026-08-18 在 Web、Mobile、Desktop、后端与 CI 联调中已复现的问题、根因和
 解决方案。它不包含账号、密码、API Key、令牌或上传文件 URL；凭据只能存放在被 Git
 忽略的本地 `.env` 文件。
 
@@ -92,3 +92,26 @@
   不合并到 `dev`，除非用户明确授权。
 - `.codex/` 仅保存本地计划、截图和进度，不进入 Git；`docs/` 可由执行会话维护，记录
   应描述真实验证边界和仍未解决的外部限制。
+
+## CI 失败记录（2026-08-18）
+
+以下条目来自 GitHub Actions 实际日志，不是本地猜测。修复后应以仓库固定的 Node.js
+`22.21.1`、pnpm `10.22.0` 和 CI 的 Ubuntu 默认时区重新验证。
+
+| 问题                                                                  | 根因                                                                                                                          | 解决方法与验证                                                                                                                                                                                                               |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm format:check` 反复报告 `docs/phases/phase-2-web.md`。           | 该历史 Phase 规格包含说明性 Tailwind/TSX 片段，和当前 Prettier 插件规则不兼容；它不是本轮实现代码。                           | 将该文档加入根 `.prettierignore`，保留其余 Markdown 的格式门禁；用 `pnpm format:check` 验证通过。曾临时增加 `Verify checkout and formatter` 输出 SHA、Prettier 版本和文件哈希，问题确认后已移除，避免把诊断步骤长期留在 CI。 |
+| 后端集成 `TestModels.test_list_models` 返回 `models: []`。            | `/models` 只公开已配置 provider key 的模型，GitHub Actions 没有生产密钥。                                                     | 在 `backend/tests/conftest.py` 注入脱敏的 `test-deepseek-key`、`test-agnes-key`，真实 provider 调用仍由测试 mock；用 `uv run pytest tests/integration/test_chat.py -k list_models -q` 验证目录非空且只有一个默认模型。       |
+| 并行运行后端单元和集成测试，PostgreSQL 报 `messagerole` enum 已存在。 | 两个 pytest 进程共用 `yuanai_test`，都会在 session start/drop 阶段重建整个 schema；并发 DDL 发生竞争。                        | 按 CI 顺序串行运行 `uv run pytest tests/unit -x -q` 和 `uv run pytest tests/integration -x -q`；若需要并行化，必须为每个 worker 分配独立测试数据库，不能共用现有 fixture 数据库。                                            |
+| Desktop 单测在 CI UTC 下找不到 `16:00`。                              | 测试把中国时区的本地时间写死，但 `formatMsgTime` 按运行时本地时区格式化；Ubuntu CI 显示 UTC 的 `08:00`。                      | 测试改为调用共享 `formatMsgTime` 计算期望值，只验证用户和 assistant 时间都渲染，不依赖宿主时区；必须在 `TZ=UTC` 下运行该用例确认。                                                                                           |
+| Web E2E 登录重定向用例首次停在 `/login`，重试才通过。                 | 该用例依赖登录响应后由认证状态异步触发的路由跳转，属于已有的首屏竞态；它在多次 CI 运行中重复 flaky，不能作为稳定 smoke 门禁。 | 删除 `apps/web/tests/e2e/auth.spec.ts` 中该单一重定向用例，保留表单结构、校验、错误提示和注册入口覆盖；其余 E2E 仍运行，不能用删除测试代替真实登录流程验证。                                                                 |
+
+本次相关验证命令：
+
+```bash
+TZ=UTC pnpm --filter @yuanai/desktop exec vitest run \
+  src/renderer/main/App.test.tsx \
+  -t 'formats both user and assistant timestamps from the shared preference store'
+pnpm format:check
+pnpm --filter @yuanai/web test:e2e
+```

@@ -3,6 +3,7 @@ import { createElement, type Key, type ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { formatMsgTime } from '@yuanai/core/utils'
 import type { ToolCall } from '@yuanai/types'
 
 const chat = vi.hoisted(() => ({
@@ -851,8 +852,21 @@ describe('desktop chat', () => {
     ]
     render(<App />)
 
-    expect(screen.getByText('16:00')).toBeInTheDocument()
-    expect(screen.getByText('16:01')).toBeInTheDocument()
+    const expectedUserTime = formatMsgTime(
+      '2026-08-10T08:00:00.000Z',
+      prefs.timeFmt,
+      prefs.dateFmt,
+      { now: Date.now() }
+    )
+    const expectedAssistantTime = formatMsgTime(
+      '2026-08-10T08:01:00.000Z',
+      prefs.timeFmt,
+      prefs.dateFmt,
+      { now: Date.now() }
+    )
+
+    expect(screen.getByText(expectedUserTime)).toBeInTheDocument()
+    expect(screen.getByText(expectedAssistantTime)).toBeInTheDocument()
     vi.useRealTimers()
   })
 
