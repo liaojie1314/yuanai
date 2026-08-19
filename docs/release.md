@@ -69,12 +69,18 @@ notarization 及安装验收由对应 GitHub runner 执行。Android 本地构�
 - format、lint、typecheck、前端单元测试和 Web Playwright smoke test；
 - PostgreSQL `16.14-alpine`、Redis `7.4.9-alpine` 服务上的 Ruff、mypy、后端单元/集成测试。
 
-`.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Release 描述由目标版本的 Git
-提交信息生成：`prepare` job 使用目标 ref 自上一个版本 tag 以来的 Conventional Commit 信息创建
-或更新 GitHub Release。Web 和每一个 Electron 矩阵 job 在自身构建成功后直接向该 Release 上传产物；重跑会
+`.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Release 描述取目标版本的
+`CHANGELOG.md` 小节：`prepare` job 会定位当前版本标题，去掉标题行后创建或更新 GitHub Release。
+Web 和每一个 Electron 矩阵 job 在自身构建成功后直接向该 Release 上传产物；重跑会
 替换同名文件，因此单独补跑 `web` 或 `desktop` 有实际作用。Electron 构建仍只调用
 `pnpm --filter @yuanai/desktop package:linux|win|mac`，package script 内置 `--publish never`，
 不会让 Electron Builder 自行发布。
+
+桌面端自动更新使用 `electron-updater` 的 GitHub provider，不使用 Tauri/minisign 的 `.sig`
+文件。Windows Release 必须同时上传 NSIS 安装包、`*.exe.blockmap` 和 `latest.yml`；macOS
+必须上传 ZIP、`*.zip.blockmap` 和 `latest-mac.yml`；Linux AppImage 更新必须上传
+AppImage 和 `latest-linux.yml`（Linux 的 block map 大小写在 YAML 元数据中，不是独立文件）。这些 YAML 文件是客户端定位版本和下载地址的
+更新源元数据；Windows 的 Authenticode 签名嵌入 `.exe`，不会生成独立 `.sig`。
 
 Android 不再在 GitHub Actions 或 EAS 云端构建。使用本机 `pnpm package:mobile:android` 生成、
 验证 APK 后，再以 `pnpm release:upload:android -- v<version>` 上传到已有 Release。
@@ -85,13 +91,13 @@ Android 不再在 GitHub Actions 或 EAS 云端构建。使用本机 `pnpm packa
 
 ### v0.1.0 产物矩阵
 
-| 端              | Runner/方式         | 产物                        |
-| --------------- | ------------------- | --------------------------- |
-| Web             | GitHub Ubuntu       | `yuanai-web-v0.1.0.tar.gz`  |
-| Desktop Linux   | GitHub Ubuntu 22.04 | AppImage、deb、rpm          |
-| Desktop Windows | GitHub Windows 2022 | NSIS installer、portable    |
-| Desktop macOS   | GitHub macOS 14     | DMG、ZIP                    |
-| Mobile Android  | 本机 Gradle + `gh`  | `YuanAI-v0.1.0-android.apk` |
+| 端              | Runner/方式         | 产物                                         |
+| --------------- | ------------------- | -------------------------------------------- |
+| Web             | GitHub Ubuntu       | `yuanai-web-v0.1.0.tar.gz`                   |
+| Desktop Windows | GitHub Windows 2022 | NSIS setup、portable、`latest.yml`、blockmap |
+| Desktop macOS   | GitHub macOS 14     | DMG、ZIP、`latest-mac.yml`、blockmap         |
+| Desktop Linux   | GitHub Ubuntu 22.04 | AppImage、deb、rpm、`latest-linux.yml`       |
+| Mobile Android  | 本机 Gradle + `gh`  | `YuanAI-v0.1.0-android.apk`                  |
 
 当前 Release workflow 不构建 iOS；iOS 需要 Apple runner、证书和签名配置，后续单独接入。
 Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workflow 会从该目录上传。

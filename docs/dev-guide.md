@@ -292,14 +292,17 @@ pnpm package:desktop
 
 `pnpm package:desktop` 会根据当前操作系统只列出本机可执行的目标，并复用根目录中
 已有的 `package:desktop:linux`、`package:desktop:win` 或 `package:desktop:mac` 脚本。
-打包结果须在目标操作系统安装验证。当前尚未配置签名证书、生产自动更新源或已发布
-的安装包；这些不是本地开发启动的前置条件。
+打包结果须在目标操作系统安装验证。Electron 发布包会随安装包上传对应的更新源元数据：
+Windows 为 `latest.yml` 与 NSIS `.exe.blockmap`，macOS 为 `latest-mac.yml`，Linux
+AppImage 为 `latest-linux.yml`。Windows 的签名嵌入 `.exe`，不会生成独立 `.sig`；签名证书
+和目标平台安装验收不是本地开发启动的前置条件。
 
 ### 发版与 CI/CD
 
 版本与跨平台构建流程见 [发版与 CI/CD](release.md)。正式发版前必须先在本地完成
 `pnpm release:dry` 和 Linux 打包，确认后再按维护者授权合并到 `master` 并执行 release-it；
-GitHub Actions 会在 `v*` tag 上构建 Web、Electron 安装包和 Android AAB。
+GitHub Actions 会在 `v*` tag 上构建 Web 与 Electron 安装包，Android 使用本机
+`pnpm package:mobile:android` 构建后通过 `pnpm release:upload:android -- v<version>` 上传。
 
 ---
 

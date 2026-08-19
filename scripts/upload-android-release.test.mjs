@@ -8,8 +8,14 @@ import {
   getAndroidReleaseAssetName,
   getAndroidReleaseArtifactPath,
   getReleaseUploadArgs,
+  parseCliArgs,
   uploadAndroidRelease,
 } from './upload-android-release.mjs'
+
+test('accepts pnpm argument separator before the release tag', () => {
+  assert.deepEqual(parseCliArgs(['--', 'v0.1.0']), ['v0.1.0'])
+  assert.deepEqual(parseCliArgs(['v0.1.0']), ['v0.1.0'])
+})
 
 test('returns the local Android APK and descriptive release asset name', () => {
   assert.match(
@@ -44,4 +50,5 @@ test('copies the local APK to the release asset name before invoking gh', () => 
   assert.equal(status, 0)
   assert.equal(calls[0].command, 'gh')
   assert.match(calls[0].args[3], /YuanAI-v0\.1\.0-android\.apk$/)
+  assert.match(calls[0].args[3], /yuanai-release-upload-/)
 })

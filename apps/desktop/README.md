@@ -71,12 +71,15 @@ pnpm --filter @yuanai/desktop package:all
 ```
 
 这些命令调用 electron-builder；实际安装包格式由当前平台和 electron-builder
-配置决定。当前仓库尚未发布签名安装包或配置生产更新源。发布前必须完成以下外部验收：
+配置决定。Windows 会分别生成 NSIS setup 和 portable 两个文件，NSIS 更新源还会生成
+`latest.yml` 与 `.exe.blockmap`；macOS 生成 `latest-mac.yml`，Linux AppImage 生成
+`latest-linux.yml`。发布前必须完成以下外部验收：
 
 - Windows、macOS 和 Ubuntu 分别运行对应的 `package:*` 脚本并安装，验证认证、真实
   聊天、系统托盘、全局快捷键、深链接和 Artifact 预览。
 - 配置 Windows 代码签名、macOS notarization 与 GitHub Releases 更新源；用已发布的
-  旧版本验证下载、重启安装和失败回退。
+  旧版本验证下载、重启安装和失败回退。Windows 不生成 Tauri 风格的独立 `.sig`，签名
+  嵌入 `.exe`。
 - 验证 Linux 桌面协议注册和更新提示；AppImage、deb、rpm 的安装路径均需覆盖。
 
 版本发布由根目录 `release-it` 和 GitHub Actions 负责，签名证书、notarization、Secrets
@@ -94,6 +97,7 @@ pnpm --filter @yuanai/desktop package:all
 ## 当前验收状态
 
 Ubuntu 开发环境已完成真实后端聊天与认证联调、托盘人工验证，以及单元、集成、
-类型检查、lint、构建和生产预览验证。Windows/macOS 原生安装包、代码签名、
-自动更新发布源及三平台安装验收仍是发布前工作，详见
+类型检查、lint、构建和生产预览验证。v0.1.0 已通过 GitHub Actions 生成 Web、Linux、
+Windows、macOS 产物，Android APK 由本机 Gradle 构建并上传；Windows/macOS 代码签名和
+三平台安装验收仍需对应系统执行，详见
 [Phase 4 文档](../../docs/phases/phase-4-desktop.md)。

@@ -4,7 +4,8 @@
  * 用法：pnpm release:upload:android -- v1.0.0 [APK 路径]
  */
 import { spawnSync } from 'node:child_process'
-import { copyFileSync, existsSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -37,6 +38,11 @@ export function getReleaseUploadArgs(tag, artifactPath) {
   return ['release', 'upload', tag, artifactPath, '--clobber']
 }
 
+/** 兼容 pnpm script 传递的分隔符参数。 */
+export function parseCliArgs(args) {
+  return args[0] === '--' ? args.slice(1) : args
+}
+
 function printUsage() {
   console.error('用法：pnpm release:upload:android -- v<version> [APK 路径]')
 }
@@ -52,7 +58,8 @@ export function uploadAndroidRelease(tag, sourcePath, options = {}) {
     return 1
   }
 
-  const assetPath = join(ROOT, getAndroidReleaseAssetName(tag))
+  const temporaryDirectory = mkdtempSync(join(tmpdir(), 'yuanai-release-upload-'))
+  const assetPath = join(temporaryDirectory, getAndroidReleaseAssetName(tag))
   const runner = options.spawn ?? spawnSync
   copyFileSync(sourcePath, assetPath)
   try {
@@ -68,12 +75,12 @@ export function uploadAndroidRelease(tag, sourcePath, options = {}) {
     }
     return result.status ?? 1
   } finally {
-    rmSync(assetPath, { force: true })
+    rmSync(temporaryDirectory, { recursive: true, force: true })
   }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const [tag, suppliedArtifactPath] = process.argv.slice(2)
+  const [tag, suppliedArtifactPath] = parseCliArgs(process.argv.slice(2))
   if (!tag) {
     printUsage()
     process.exitCode = 1
