@@ -17,6 +17,8 @@ test('release workflow prepares a commit-based release before build jobs', () =>
   assert.match(workflow, /gh release create "\$RELEASE_TAG"/)
   assert.match(workflow, /gh api --method PATCH/)
   assert.match(workflow, /--notes-file release-notes\.md/)
+  assert.match(workflow, /RELEASE_REF=\$\(git rev-parse HEAD\)/)
+  assert.doesNotMatch(workflow, /RELEASE_REF: \$\{\{ inputs\.ref \|\| inputs\.tag/)
   assert.match(releaseDocs, /Release 描述由目标版本的 Git\s*提交信息生成/)
 })
 

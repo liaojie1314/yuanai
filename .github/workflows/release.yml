@@ -60,8 +60,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-          RELEASE_REF: ${{ inputs.ref || inputs.tag || github.ref_name }}
         run: |
+          RELEASE_REF=$(git rev-parse HEAD)
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             RELEASE_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq '.id')
             RELEASE_NOTES=$(cat release-notes.md)

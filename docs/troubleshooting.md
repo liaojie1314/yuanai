@@ -123,14 +123,16 @@ pnpm --filter @yuanai/web test:e2e
 
 ## Release artifact CI 记录（2026-08-18）
 
-| 问题                                                                                  | 根因                                                                                                                                   | 解决方法                                                                                                         |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Linux/Windows Electron 构建在产物完成后报 `GitHub Personal Access Token is not set`。 | Desktop `package.json` 声明了 GitHub publisher，tag 构建会让每个矩阵 job 自己尝试发布；这些 job 没有发布权限，也不应重复创建 Release。 | 构建命令追加 `--publish never`，由最后拥有 `contents: write` 的 `softprops/action-gh-release` job 统一发布。     |
-| macOS 构建报 `/Users/runner/work/yuanai/yuanai/apps/desktop not a file`。             | workflow 给非 Windows 平台注入空的 `CSC_LINK`；Electron Builder 将空值解析为当前 app 目录路径。                                        | 将桌面步骤拆为签名 Windows 与无签名 Linux/macOS；macOS 不再注入 Windows 证书的空值，同时使用 `--publish never`。 |
-| Linux/macOS 仍显示 `artifacts will be published if draft release exists`。            | workflow 通过 pnpm 参数转发 `-- --publish never`，桌面 package script 最终把额外的 `--` 传给 Electron Builder，未可靠关闭发布检测。    | 将 `--publish never` 固定写入 `apps/desktop/package.json` 的所有 package script，workflow 只调用 script 名称。   |
-| Android EAS 云构建报 Node `v20.19.2`、pnpm `9.15.5` 不满足项目固定版本。              | EAS 免费云构建镜像的运行时低于项目所需 Node `22.21.1`、pnpm `10.22.0`，且队列时间不可控。                                              | 移除 Android Actions/EAS Release job；只使用本机 Gradle release 构建，再用 GitHub CLI 上传 APK。                 |
-| 单独重跑 Web/桌面 job 后 Release 没有对应新产物。                                     | 旧 workflow 仅上传临时 artifact，等待所有 job 成功后才由最终 publish job 创建 Release。                                                | prepare job 先建立 Release 并从提交信息生成描述；Web 与每个桌面矩阵 job 构建成功后直接上传并覆盖同名资产。       |
+| 问题                                                                                  | 根因                                                                                                                                   | 解决方法                                                                                                                |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Linux/Windows Electron 构建在产物完成后报 `GitHub Personal Access Token is not set`。 | Desktop `package.json` 声明了 GitHub publisher，tag 构建会让每个矩阵 job 自己尝试发布；这些 job 没有发布权限，也不应重复创建 Release。 | 构建命令追加 `--publish never`，由最后拥有 `contents: write` 的 `softprops/action-gh-release` job 统一发布。            |
+| macOS 构建报 `/Users/runner/work/yuanai/yuanai/apps/desktop not a file`。             | workflow 给非 Windows 平台注入空的 `CSC_LINK`；Electron Builder 将空值解析为当前 app 目录路径。                                        | 将桌面步骤拆为签名 Windows 与无签名 Linux/macOS；macOS 不再注入 Windows 证书的空值，同时使用 `--publish never`。        |
+| Linux/macOS 仍显示 `artifacts will be published if draft release exists`。            | workflow 通过 pnpm 参数转发 `-- --publish never`，桌面 package script 最终把额外的 `--` 传给 Electron Builder，未可靠关闭发布检测。    | 将 `--publish never` 固定写入 `apps/desktop/package.json` 的所有 package script，workflow 只调用 script 名称。          |
+| Android EAS 云构建报 Node `v20.19.2`、pnpm `9.15.5` 不满足项目固定版本。              | EAS 免费云构建镜像的运行时低于项目所需 Node `22.21.1`、pnpm `10.22.0`，且队列时间不可控。                                              | 移除 Android Actions/EAS Release job；只使用本机 Gradle release 构建，再用 GitHub CLI 上传 APK。                        |
+| 单独重跑 Web/桌面 job 后 Release 没有对应新产物。                                     | 旧 workflow 仅上传临时 artifact，等待所有 job 成功后才由最终 publish job 创建 Release。                                                | prepare job 先建立 Release 并从提交信息生成描述；Web 与每个桌面矩阵 job 构建成功后直接上传并覆盖同名资产。              |
+| Release prepare 报 `HTTP 422: Release.target_commitish is invalid`。                  | workflow 把 tag 名（例如 `v0.1.0`）直接传给 `gh release create --target`；GitHub API 要求可解析的分支或 commit。                       | 在已 checkout 的发布源码中执行 `git rev-parse HEAD`，将 commit SHA 传给 `--target`；tag 只用于 Release 名称和资产关联。 |
 
 这些问题均发生在 GitHub Actions 的发布构建边界，不是应用运行时代码错误。修复后应使用
 Release workflow 的 `workflow_dispatch`，填写已有 tag `v0.1.0`、更新后的 `master` commit，
-并选择 `all` 重新构建；不要移动或覆盖已有 tag。
+并选择 `all` 重新构建。若 tag 尚未有可用 Release，可将 tag 指向本次已验证 commit 后重新触发，
+再上传本地 Android APK；不要把旧 APK 或旧构建产物误认为新版本。
