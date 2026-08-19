@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
           fetch-depth: 0
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
       - name: Setup pnpm
@@ -111,13 +111,16 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: tar -czf "yuanai-web-${RELEASE_TAG}.tar.gz" -C apps/web .next package.json
       - name: Upload Web artifact to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: yuanai-web-*.tar.gz
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          token: ${{ github.token }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(yuanai-web-*.tar.gz)
+          ((${#files[@]} > 0)) || { echo "No Web release archive found" >&2; exit 1; }
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
 
   desktop:
     name: Build Desktop (${{ matrix.target }})
@@ -136,7 +139,7 @@ jobs:
             os: macos-14
     steps:
       - name: Checkout release source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.ref || inputs.tag || github.ref_name }}
       - name: Setup pnpm
@@ -161,39 +164,51 @@ jobs:
         run: pnpm --filter @yuanai/desktop package:${{ matrix.target }}
       - name: Upload Linux artifacts to GitHub Release
         if: matrix.target == 'linux'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(
             apps/desktop/dist/*.AppImage
             apps/desktop/dist/*.deb
             apps/desktop/dist/*.rpm
             apps/desktop/dist/latest-linux.yml
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          token: ${{ github.token }}
+          )
+          ((${#files[@]} == 4)) || { echo "Linux release artifacts are incomplete" >&2; exit 1; }
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
       - name: Upload Windows artifacts to GitHub Release
         if: matrix.target == 'win'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(
             apps/desktop/dist/*.exe
             apps/desktop/dist/*.exe.blockmap
             apps/desktop/dist/latest.yml
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          token: ${{ github.token }}
+          )
+          ((${#files[@]} >= 4)) || { echo "Windows release artifacts are incomplete" >&2; exit 1; }
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
       - name: Upload macOS artifacts to GitHub Release
         if: matrix.target == 'mac'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: |
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(
             apps/desktop/dist/*.dmg
             apps/desktop/dist/*.zip
             apps/desktop/dist/*.zip.blockmap
             apps/desktop/dist/latest-mac.yml
-          fail_on_unmatched_files: true
-          overwrite_files: true
-          token: ${{ github.token }}
+          )
+          ((${#files[@]} == 4)) || { echo "macOS release artifacts are incomplete" >&2; exit 1; }
+          gh release upload "$RELEASE_TAG" "${files[@]}" --clobber

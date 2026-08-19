@@ -72,7 +72,9 @@ notarization 及安装验收由对应 GitHub runner 执行。Android 本地构�
 `.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Release 描述取目标版本的
 `CHANGELOG.md` 小节：`prepare` job 会定位当前版本标题，去掉标题行后创建或更新 GitHub Release。
 Web 和每一个 Electron 矩阵 job 在自身构建成功后直接向该 Release 上传产物；重跑会
-替换同名文件，因此单独补跑 `web` 或 `desktop` 有实际作用。Electron 构建仍只调用
+使用 `gh release upload --clobber` 替换同名文件，因此单独补跑 `web` 或 `desktop` 有实际作用。
+这样上传步骤不会再次调用第三方 action 的 Release 更新接口，也不会受手动触发时
+`github.ref=refs/heads/<branch>` 的影响。Electron 构建仍只调用
 `pnpm --filter @yuanai/desktop package:linux|win|mac`，package script 内置 `--publish never`，
 不会让 Electron Builder 自行发布。
 
