@@ -10,15 +10,27 @@ const releaseDocs = await readFile(new URL('../docs/release.md', import.meta.url
 const desktopPackage = JSON.parse(
   await readFile(new URL('../apps/desktop/package.json', import.meta.url), 'utf8')
 )
-const mobileEas = JSON.parse(
-  await readFile(new URL('../apps/mobile/eas.json', import.meta.url), 'utf8')
-)
 
-test('release workflow accepts Expo project id from a variable or secret', () => {
-  const expression = 'EXPO_PROJECT_ID: ${{ secrets.EXPO_PROJECT_ID || vars.EXPO_PROJECT_ID }}'
-  assert.equal(workflow.split(expression).length - 1, 2)
-  assert.match(releaseDocs, /GitHub Actions \*\*Secrets\*\*.*EXPO_PROJECT_ID/s)
-  assert.match(releaseDocs, /Secret 缺失时回退读取 Variable/)
+test('release workflow prepares a commit-based release before build jobs', () => {
+  assert.match(workflow, /^  prepare:/m)
+  assert.match(workflow, /git log --no-merges --pretty=format:/)
+  assert.match(workflow, /gh release create "\$RELEASE_TAG"/)
+  assert.match(workflow, /gh api --method PATCH/)
+  assert.match(workflow, /--notes-file release-notes\.md/)
+  assert.match(releaseDocs, /Release 描述由目标版本的 Git\s*提交信息生成/)
+})
+
+test('web and desktop jobs upload directly to the prepared GitHub release', () => {
+  assert.match(workflow, /needs: prepare/)
+  assert.match(workflow, /uses: softprops\/action-gh-release@v2/)
+  assert.match(workflow, /files: yuanai-web-\*\.tar\.gz/)
+  assert.match(workflow, /apps\/desktop\/dist\/\*\.AppImage/)
+  assert.match(workflow, /apps\/desktop\/dist\/\*\.deb/)
+  assert.match(workflow, /apps\/desktop\/dist\/\*\.rpm/)
+  assert.match(workflow, /files: apps\/desktop\/dist\/\*\.exe/)
+  assert.match(workflow, /apps\/desktop\/dist\/\*\.dmg/)
+  assert.match(workflow, /apps\/desktop\/dist\/\*\.zip/)
+  assert.doesNotMatch(workflow, /^  publish:/m)
 })
 
 test('desktop release packages never let electron-builder publish from matrix jobs', () => {
@@ -27,40 +39,15 @@ test('desktop release packages never let electron-builder publish from matrix jo
   }
   assert.match(workflow, /run: pnpm --filter @yuanai\/desktop package:\$\{\{ matrix\.target \}\}$/m)
   assert.doesNotMatch(workflow, /package:\$\{\{ matrix\.target \}\} -- --publish never/)
-  assert.doesNotMatch(
-    workflow,
-    /CSC_LINK: \$\{\{ matrix\.target == 'win' && secrets\.CSC_LINK \|\| '' \}\}/
-  )
   assert.match(workflow, /if: matrix\.target == 'win'/)
   assert.match(workflow, /if: matrix\.target != 'win'/)
   assert.match(releaseDocs, /`--publish never`/)
 })
 
-test('Android release restores local EAS credentials from GitHub secrets', () => {
-  assert.equal(mobileEas.build.production.credentialsSource, 'local')
-  assert.match(workflow, /Restore Android signing credentials/)
-  for (const secret of [
-    'ANDROID_KEYSTORE_BASE64',
-    'ANDROID_KEY_ALIAS',
-    'ANDROID_KEYSTORE_PASSWORD',
-    'ANDROID_KEY_PASSWORD',
-  ]) {
-    assert.match(workflow, new RegExp(`\\$\\{\\{ secrets\\.${secret} \\}\\}`))
-    assert.match(releaseDocs, new RegExp('`' + secret + '`'))
-  }
-  assert.match(workflow, /base64 --decode/)
-  assert.match(workflow, /apps\/mobile\/credentials\.json/)
-  assert.match(workflow, /- name: Clean up Android signing credentials[\s\S]*?if: always\(\)/)
-  assert.match(
-    workflow,
-    /Build Android bundle with EAS[\s\S]*?Clean up Android signing credentials/
-  )
-  assert.doesNotMatch(
-    workflow,
-    /trap 'rm -f apps\/mobile\/credentials\.json apps\/mobile\/yuanai-android-release\.jks' EXIT/
-  )
-  assert.match(
-    workflow,
-    /rm -f apps\/mobile\/credentials\.json apps\/mobile\/yuanai-android-release\.jks/
-  )
+test('Android is packaged and uploaded locally instead of through EAS Actions', () => {
+  assert.doesNotMatch(workflow, /mobile-android/)
+  assert.doesNotMatch(workflow, /eas-build|EXPO_TOKEN|EXPO_PROJECT_ID|credentials\.json/)
+  assert.doesNotMatch(workflow, /options: \[all, web, desktop, mobile\]/)
+  assert.match(releaseDocs, /pnpm package:mobile:android/)
+  assert.match(releaseDocs, /pnpm release:upload:android -- v0\.1\.0/)
 })

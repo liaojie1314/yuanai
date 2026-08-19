@@ -52,6 +52,7 @@ backend/uploads/
 app.json
 apps/mobile/credentials.json
 apps/mobile/*.jks
+YuanAI-v*-android.apk
 
 # Expo prebuild 生成的 native 项目（每次 prebuild --clean 重新生成，不提交）
 apps/mobile/android/

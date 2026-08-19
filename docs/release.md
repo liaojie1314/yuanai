@@ -1,8 +1,9 @@
 # 发版与 CI/CD
 
-本项目使用 `release-it` 管理版本、CHANGELOG 和 Git tag，使用 GitHub Actions 在
-Linux、Windows、macOS runner 上构建 Web 与 Electron 安装包，并通过 EAS 构建 Android
-`.aab`。iOS 原生包仍需 Apple runner 和 Apple 凭据，当前 workflow 不伪造 iOS 发布。
+本项目使用 `release-it` 管理版本、CHANGELOG 和 Git tag。GitHub Actions 在 Linux、Windows、
+macOS runner 上构建并直接上传 Web 与 Electron 安装包；Android 由本机 Gradle 构建、签名并
+上传到同一 GitHub Release，避免 EAS 免费队列和云端固定运行时与项目工具链不一致的问题。iOS
+原生包仍需 Apple runner 和 Apple 凭据，当前 workflow 不伪造 iOS 发布。
 
 ## 固定版本
 
@@ -68,25 +69,29 @@ notarization 及安装验收由对应 GitHub runner 执行。Android 本地构�
 - format、lint、typecheck、前端单元测试和 Web Playwright smoke test；
 - PostgreSQL `16.14-alpine`、Redis `7.4.9-alpine` 服务上的 Ruff、mypy、后端单元/集成测试。
 
-`.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Web、Electron 和 Android
-先分别上传 artifact，最后由拥有 `contents: write` 权限的 `publish` job 创建 GitHub Release。
-Electron 构建调用 `pnpm --filter @yuanai/desktop package:linux|win|mac`，Android 构建调用
-`pnpm --filter @yuanai/mobile build:android:production`，不会把 `GH_TOKEN` 传给构建命令，
-因此构建阶段不会提前发布或覆盖 Release。
+`.github/workflows/release.yml` 只在 `v*` tag 或手动补跑时执行。Release 描述由目标版本的 Git
+提交信息生成：`prepare` job 使用目标 ref 自上一个版本 tag 以来的 Conventional Commit 信息创建
+或更新 GitHub Release。Web 和每一个 Electron 矩阵 job 在自身构建成功后直接向该 Release 上传产物；重跑会
+替换同名文件，因此单独补跑 `web` 或 `desktop` 有实际作用。Electron 构建仍只调用
+`pnpm --filter @yuanai/desktop package:linux|win|mac`，package script 内置 `--publish never`，
+不会让 Electron Builder 自行发布。
+
+Android 不再在 GitHub Actions 或 EAS 云端构建。使用本机 `pnpm package:mobile:android` 生成、
+验证 APK 后，再以 `pnpm release:upload:android -- v<version>` 上传到已有 Release。
 
 手动补跑时，在 Actions 页面选择 Release，填写已有 tag；`ref` 可指定构建分支或 commit，
-`only` 可在单个平台失败后只重建 `web`、`desktop` 或 `mobile`。`only` 不是正式发版授权，正式 tag 仍
-需先经过本地验证和维护者确认。
+`only` 可在失败后只重建 `web` 或 `desktop`；Android 为本地上传，不属于此 workflow。`only`
+不是正式发版授权，正式 tag 仍需先经过本地验证和维护者确认。
 
 ### v0.1.0 产物矩阵
 
-| 端              | Runner/方式    | 产物                       |
-| --------------- | -------------- | -------------------------- |
-| Web             | Ubuntu         | `yuanai-web-v0.1.0.tar.gz` |
-| Desktop Linux   | Ubuntu 22.04   | AppImage、deb、rpm         |
-| Desktop Windows | Windows 2022   | NSIS installer、portable   |
-| Desktop macOS   | macOS 14       | DMG、ZIP                   |
-| Mobile Android  | EAS production | Android `.aab`             |
+| 端              | Runner/方式         | 产物                        |
+| --------------- | ------------------- | --------------------------- |
+| Web             | GitHub Ubuntu       | `yuanai-web-v0.1.0.tar.gz`  |
+| Desktop Linux   | GitHub Ubuntu 22.04 | AppImage、deb、rpm          |
+| Desktop Windows | GitHub Windows 2022 | NSIS installer、portable    |
+| Desktop macOS   | GitHub macOS 14     | DMG、ZIP                    |
+| Mobile Android  | 本机 Gradle + `gh`  | `YuanAI-v0.1.0-android.apk` |
 
 当前 Release workflow 不构建 iOS；iOS 需要 Apple runner、证书和签名配置，后续单独接入。
 Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workflow 会从该目录上传。
@@ -94,8 +99,9 @@ Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workfl
 ## Secrets 与证书
 
 普通 CI 和未签名构建不需要手工生成 token。GitHub Actions 自动提供的
-`GITHUB_TOKEN` 只在 `publish` job 使用，不需要添加到仓库 Secrets。不要把 API key、私钥或
-个人访问 token 写进仓库、workflow、`.env.example` 或日志。
+`GITHUB_TOKEN` 由 Actions 自动注入到 `prepare`、Web 和桌面上传步骤，不需要添加到仓库
+Secrets。本地 Android 上传使用已认证的 GitHub CLI。不要把 API key、私钥或个人访问 token
+写进仓库、workflow、`.env.example` 或日志。
 
 ### 第一次配置：GitHub 页面位置
 
@@ -109,54 +115,17 @@ Electron 构建产物由 `electron-builder` 写入 `apps/desktop/dist/`，workfl
 
 本项目的最小配置如下：
 
-| 类型              | 名称                          | 是否必需                | 用途                                               |
-| ----------------- | ----------------------------- | ----------------------- | -------------------------------------------------- |
-| Secret            | `EXPO_TOKEN`                  | Android release 必需    | EAS 云构建登录令牌                                 |
-| Secret / Variable | `EXPO_PROJECT_ID`             | Android release 必需    | Expo/EAS 项目 UUID；优先读取 Secret，Variable 兼容 |
-| Secret            | `ANDROID_KEYSTORE_BASE64`     | Android release 必需    | Android keystore 的单行 Base64                     |
-| Secret            | `ANDROID_KEY_ALIAS`           | Android release 必需    | keystore alias                                     |
-| Secret            | `ANDROID_KEYSTORE_PASSWORD`   | Android release 必需    | keystore 密码                                      |
-| Secret            | `ANDROID_KEY_PASSWORD`        | Android release 必需    | signing key 密码                                   |
-| Secret            | `CSC_LINK`                    | Windows 签名可选        | 自签名 PFX 的单行 Base64                           |
-| Secret            | `CSC_KEY_PASSWORD`            | Windows 签名可选        | PFX 密码                                           |
-| Secret            | `APPLE_ID`                    | 后续 macOS notarization | Apple Developer 账号邮箱                           |
-| Secret            | `APPLE_APP_SPECIFIC_PASSWORD` | 后续 macOS notarization | Apple ID 生成的专用密码                            |
-| Secret            | `APPLE_TEAM_ID`               | 后续 macOS notarization | Apple Developer Team ID                            |
+| 类型   | 名称                          | 是否必需                | 用途                     |
+| ------ | ----------------------------- | ----------------------- | ------------------------ |
+| Secret | `CSC_LINK`                    | Windows 签名可选        | 自签名 PFX 的单行 Base64 |
+| Secret | `CSC_KEY_PASSWORD`            | Windows 签名可选        | PFX 密码                 |
+| Secret | `APPLE_ID`                    | 后续 macOS notarization | Apple Developer 账号邮箱 |
+| Secret | `APPLE_APP_SPECIFIC_PASSWORD` | 后续 macOS notarization | Apple ID 生成的专用密码  |
+| Secret | `APPLE_TEAM_ID`               | 后续 macOS notarization | Apple Developer Team ID  |
 
-`GITHUB_TOKEN` 由 GitHub 自动注入，不要手工创建。Android production workflow 会在
-runner 临时目录恢复本地 keystore 和 `credentials.json`，构建结束立即删除；不要把这些
-文件提交到仓库。
-
-### Android：获取 `EXPO_TOKEN` 和 `EXPO_PROJECT_ID`
-
-1. 在 [Expo Access Tokens](https://expo.dev/accounts/%5Baccount%5D/settings/access-tokens)
-   登录自己的 Expo 账号，点击 `Create token`，名称可填 `yuanai-github-actions`，复制
-   只显示一次的 token。在 GitHub Actions Secrets 中创建 `EXPO_TOKEN`，粘贴这串 token。
-2. 在本机仓库根目录执行：
-
-   ```bash
-   pnpm dlx eas-cli@12.0.0 login
-   pnpm dlx eas-cli@12.0.0 init
-   ```
-
-   按提示选择自己的 Expo 账号和 `yuanai` 项目。命令输出的 `projectId` 是一个 UUID，
-   也可以在 Expo 项目页面 `Project settings` → `General` → `Project ID` 复制它。
-
-3. 在 GitHub Actions **Secrets** 中创建 `EXPO_PROJECT_ID`，粘贴上一步的 UUID（不是
-   `PROJECT_ID_PLACEHOLDER`，也不是 `https://u.expo.dev/...` 的完整 URL）。如果已经将
-   同名值放在 **Variables** 中也可以，workflow 会在 Secret 缺失时回退读取 Variable。
-4. 用下面命令确认当前项目读到的值：
-
-   ```bash
-   EXPO_PROJECT_ID=<复制的 UUID> pnpm dlx eas-cli@12.0.0 project:info
-   ```
-
-   Actions 运行前会主动检查这两个值；缺少任意一个会在 Android job 开始处明确失败。
-   `EXPO_TOKEN` 只用于 CI 登录，不能替代 `EXPO_PROJECT_ID`。本项目当前推荐将两者都放在
-   GitHub Actions Secrets 中。
-
-> 安全提示：不要把 token 写入 `app.json`、`.env.example`、EAS 配置或终端截图。若 token
-> 泄露，立即在 Expo 的 Access Tokens 页面撤销并重新创建。
+`GITHUB_TOKEN` 不需要手工创建。旧的 `EXPO_TOKEN`、`EXPO_PROJECT_ID` 及四个
+`ANDROID_KEYSTORE_*` GitHub Secrets 不再被 Release workflow 读取，可在确认没有其他
+workflow 使用后从仓库 Secrets 删除；本地 Android 私钥仍只保留在 `~/.yuanai-secrets/`。
 
 ### Windows：生成 `CSC_LINK` 和 `CSC_KEY_PASSWORD`
 
@@ -209,37 +178,38 @@ base64 < ~/.yuanai-secrets/yuanai-windows-test.pfx | tr -d '\\n'
 不要用 Apple ID 主密码代替专用密码；在 macOS 专用证书 workflow 接入前，以上 Apple
 凭据不会影响当前发版构建。
 
-### Mobile Android/EAS
+### Mobile Android：本地构建与上传
 
-Android 使用 EAS 云构建，但 production profile 使用 CI 注入的本地 Android 签名凭据，
-避免 EAS 在非交互模式下尝试生成远程 keystore。首次使用前需要在本机登录并创建/关联
-EAS 项目：
-
-```bash
-pnpm dlx eas-cli@12.0.0 login
-pnpm dlx eas-cli@12.0.0 init
-```
-
-把 EAS 项目的 ID 和访问令牌都添加为 GitHub **Secrets**：`EXPO_PROJECT_ID`、
-`EXPO_TOKEN`。然后运行 `pnpm signing:android`，将
-`~/.yuanai-secrets/yuanai-android-github-secrets.txt` 中的四个 Android Secret 逐项添加：
-`ANDROID_KEYSTORE_BASE64`、`ANDROID_KEY_ALIAS`、`ANDROID_KEYSTORE_PASSWORD`、
-`ANDROID_KEY_PASSWORD`。`apps/mobile/app.config.js` 会在 CI 中注入 project ID，workflow
-会临时恢复签名材料并上传 EAS 返回的 Android `.aab` 到 GitHub Release。
-
-`api.yuanai.example.com` 和 `api-staging.yuanai.example.com` 是仓库示例地址，不是可公开
-发布的后端。首次 EAS 公开构建前，必须在 EAS 对应环境配置真实 HTTPS
-`EXPO_PUBLIC_API_URL`，并替换 `apps/mobile/eas.json` 的示例值。真机本地测试可通过 USB
-执行 `adb reverse tcp:8000 tcp:8000`，让开发包中的 `localhost:8000` 指向电脑后端；这不适用
-于非 USB 或公开发布的安装包。
-
-本地生成 Android keystore 和 GitHub Secret 材料：
+Android release 不经过 EAS 云构建。先在本机生成一次自签名 keystore：
 
 ```bash
 pnpm signing:android
 ```
 
-不要把 `~/.yuanai-secrets` 下的文件提交或上传到普通仓库文件中。
+签名材料保存在 `~/.yuanai-secrets/`，不会写进仓库。设置 Android SDK、JDK 17 后构建：
+
+```bash
+pnpm package:mobile:android
+```
+
+该脚本通过 Expo prebuild 和 Gradle wrapper 创建签名 APK：
+`apps/mobile/android/app/build/outputs/apk/release/app-release.apk`。先在真机安装验证，再
+上传到已由 Release workflow 创建的 GitHub Release：
+
+```bash
+gh auth status
+pnpm release:upload:android -- v0.1.0
+```
+
+`gh` 必须已登录具有私有仓库写权限的账号；`repo` scope 足够上传 Release 资产，`workflow`
+scope 只用于从本机读取或触发 GitHub Actions。上传脚本会以
+`YuanAI-v0.1.0-android.apk` 命名资产，并在重复上传时替换同名 APK。不要把
+`~/.yuanai-secrets` 下的私钥、旧 GitHub Secret 导出文本或 APK 提交到仓库。
+
+`api.yuanai.example.com` 和 `api-staging.yuanai.example.com` 是仓库示例地址，不是可公开
+发布的后端。公开 Android 包之前，必须在实际应用配置中使用真实 HTTPS
+`EXPO_PUBLIC_API_URL`。真机本地测试可通过 USB 执行 `adb reverse tcp:8000 tcp:8000`，让
+开发包中的 `localhost:8000` 指向电脑后端；这不适用于非 USB 或公开发布的安装包。
 
 ## 故障排查
 
@@ -249,6 +219,10 @@ pnpm signing:android
   pnpm 11 重新生成锁文件。
 - Linux 打包失败：先运行 `pnpm --filter @yuanai/desktop build`，再运行
   `pnpm package:desktop:linux`；不要绕过根 script 直接调用 electron-builder。桌面 package
-  script 已内置 `--publish never`，GitHub Release 只由最后的 publish job 创建。
+  script 已内置 `--publish never`，构建完成后由对应矩阵 job 上传到已准备的 GitHub Release。
 - Windows/macOS 证书失败：检查 Base64 是否为单行、密码是否匹配，并确认 workflow Secret
   没有被设置为带引号的字符串。
+- Android 本地构建提示找不到 SDK 或 JDK：设置 `ANDROID_HOME`、`ANDROID_SDK_ROOT` 与
+  `JAVA_HOME` 后重试；不要改用 EAS Actions 绕过本机工具链。
+- Android 上传提示 `gh: command not found`：安装 GitHub CLI 并执行 `gh auth login`；提示
+  认证失败时执行 `gh auth refresh --hostname github.com --scopes repo` 后重试。

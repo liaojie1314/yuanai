@@ -1,7 +1,11 @@
 import { strict as assert } from 'node:assert'
 import test from 'node:test'
 
-import { getAndroidArtifactPath, getAndroidSigningArgs } from './package-mobile-android.mjs'
+import {
+  getAndroidArtifactPath,
+  getAndroidBuildEnvironment,
+  getAndroidSigningArgs,
+} from './package-mobile-android.mjs'
 
 test('returns the ignored Android release APK path', () => {
   assert.match(
@@ -26,4 +30,9 @@ test('passes local release signing material only to Gradle', () => {
       '-Pandroid.injected.signing.store.type=PKCS12',
     ]
   )
+})
+
+test('sets production mode when the local shell has no NODE_ENV', () => {
+  assert.equal(getAndroidBuildEnvironment({}).NODE_ENV, 'production')
+  assert.equal(getAndroidBuildEnvironment({ NODE_ENV: 'staging' }).NODE_ENV, 'staging')
 })

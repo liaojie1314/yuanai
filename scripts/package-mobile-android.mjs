@@ -35,6 +35,11 @@ export function getAndroidSigningArgs(credentials) {
   ]
 }
 
+/** 为 Gradle release 构建提供稳定的 Expo 环境模式。 */
+export function getAndroidBuildEnvironment(environment) {
+  return { ...environment, NODE_ENV: environment.NODE_ENV ?? 'production' }
+}
+
 function readLocalSigningCredentials() {
   const credentialsPath = process.env.YUANAI_ANDROID_KEYSTORE_CONFIG ?? DEFAULT_CREDENTIALS_PATH
   if (!existsSync(credentialsPath)) {
@@ -78,7 +83,7 @@ export function buildAndroidRelease() {
 
   const result = spawnSync(GRADLE, ['assembleRelease', ...getAndroidSigningArgs(credentials)], {
     cwd: ANDROID_DIR,
-    env: process.env,
+    env: getAndroidBuildEnvironment(process.env),
     shell: process.platform === 'win32',
     stdio: 'inherit',
   })

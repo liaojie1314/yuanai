@@ -36,6 +36,7 @@
     "package:desktop:win": "pnpm --filter @yuanai/desktop package:win",
     "package:desktop:all": "pnpm --filter @yuanai/desktop package:all",
     "package:mobile:android": "pnpm --filter @yuanai/mobile package:android:local",
+    "release:upload:android": "node scripts/upload-android-release.mjs",
     "signing:android": "node scripts/generate-android-keystore.mjs",
     "signing:desktop:windows:test": "node scripts/generate-desktop-test-certificate.mjs",
     "release": "release-it",

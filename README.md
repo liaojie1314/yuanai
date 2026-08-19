@@ -100,7 +100,9 @@ pnpm package:desktop
 
 详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
 [运行指南](RUNNING.md#启动桌面端electron)。发版、签名和 GitHub Actions 说明见
-[发版与 CI/CD](docs/release.md)。
+[发版与 CI/CD](docs/release.md)。Android release 在本机运行 `pnpm package:mobile:android`
+构建后，通过 `pnpm release:upload:android -- v<version>` 上传到 GitHub Release，不走 EAS
+云端构建。
 
 ## 配置 AI 大模型
 
@@ -141,20 +143,22 @@ docker compose up -d searxng
 
 ## 常用命令
 
-| 命令                   | 说明                               |
-| ---------------------- | ---------------------------------- |
-| `pnpm setup`           | 首次初始化（安装依赖 + 复制 .env） |
-| `pnpm check:runtime`   | 验证锁定的 Node.js 与 pnpm 版本    |
-| `pnpm dev:mock`        | 纯前端 Mock 模式（无需后端）       |
-| `pnpm dev:real`        | 一键全栈启动（真实 AI 接口）       |
-| `pnpm dev:desktop`     | 启动 Electron 开发窗口             |
-| `pnpm dev:mobile`      | 启动 Expo 真机/模拟器开发服务      |
-| `pnpm setup:search`    | 生成本地 SearXNG 必需的随机密钥    |
-| `pnpm build`           | 构建全部应用                       |
-| `pnpm lint`            | ESLint 检查                        |
-| `pnpm typecheck`       | TypeScript 类型检查                |
-| `pnpm test:unit`       | 运行单元测试                       |
-| `pnpm preview:desktop` | 预览生产构建的 Electron 应用       |
+| 命令                                        | 说明                               |
+| ------------------------------------------- | ---------------------------------- |
+| `pnpm setup`                                | 首次初始化（安装依赖 + 复制 .env） |
+| `pnpm check:runtime`                        | 验证锁定的 Node.js 与 pnpm 版本    |
+| `pnpm dev:mock`                             | 纯前端 Mock 模式（无需后端）       |
+| `pnpm dev:real`                             | 一键全栈启动（真实 AI 接口）       |
+| `pnpm dev:desktop`                          | 启动 Electron 开发窗口             |
+| `pnpm dev:mobile`                           | 启动 Expo 真机/模拟器开发服务      |
+| `pnpm setup:search`                         | 生成本地 SearXNG 必需的随机密钥    |
+| `pnpm build`                                | 构建全部应用                       |
+| `pnpm package:mobile:android`               | 本机构建签名 Android release APK   |
+| `pnpm release:upload:android -- v<version>` | 上传本地 APK 到 GitHub Release     |
+| `pnpm lint`                                 | ESLint 检查                        |
+| `pnpm typecheck`                            | TypeScript 类型检查                |
+| `pnpm test:unit`                            | 运行单元测试                       |
+| `pnpm preview:desktop`                      | 预览生产构建的 Electron 应用       |
 
 ## 文档
 
