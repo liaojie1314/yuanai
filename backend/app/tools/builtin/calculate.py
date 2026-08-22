@@ -50,6 +50,8 @@ _UNARY_OPERATORS: dict[type[ast.unaryop], NumberUnaryOperator] = {
     ast.USub: operator.neg,
 }
 _MAX_ABS_RESULT = 10**12
+_MAX_POWER_BASE = 10**6
+_MAX_AST_NODES = 128
 
 
 def _evaluate(node: ast.AST) -> int | float:
@@ -58,8 +60,12 @@ def _evaluate(node: ast.AST) -> int | float:
     if isinstance(node, ast.Expression):
         return _evaluate(node.body)
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        if isinstance(node.value, bool) or not math.isfinite(float(node.value)):
+        if isinstance(node.value, bool):
             raise ValueError("non-finite number")
+        if isinstance(node.value, float) and not math.isfinite(node.value):
+            raise ValueError("non-finite number")
+        if abs(node.value) > _MAX_ABS_RESULT:
+            raise ValueError("number out of bounds")
         return node.value
     if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARY_OPERATORS:
         unary_operation = _UNARY_OPERATORS[type(node.op)]
@@ -71,10 +77,14 @@ def _evaluate(node: ast.AST) -> int | float:
         right = _evaluate(node.right)
         if isinstance(node.op, ast.Pow) and abs(right) > 100:
             raise ValueError("exponent too large")
+        if isinstance(node.op, ast.Pow) and abs(left) > _MAX_POWER_BASE and abs(right) > 1:
+            raise ValueError("power base too large")
         result = binary_operation(left, right)
     else:
         raise ValueError("unsupported expression")
-    if not math.isfinite(float(result)) or abs(float(result)) > _MAX_ABS_RESULT:
+    if isinstance(result, float) and not math.isfinite(result):
+        raise ValueError("result out of bounds")
+    if abs(result) > _MAX_ABS_RESULT:
         raise ValueError("result out of bounds")
     return result
 
@@ -87,6 +97,8 @@ async def calculate(arguments: dict[str, object], _context: ToolContext) -> Tool
         raise ToolError(ToolErrorCode.CALCULATION_FAILED)
     try:
         tree = ast.parse(expression, mode="eval")
+        if sum(1 for _ in ast.walk(tree)) > _MAX_AST_NODES:
+            raise ValueError("expression too complex")
         result = _evaluate(tree)
     except (ArithmeticError, SyntaxError, ValueError, TypeError) as error:
         raise ToolError(ToolErrorCode.CALCULATION_FAILED) from error

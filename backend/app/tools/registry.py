@@ -139,7 +139,15 @@ class ToolRegistry:
         handler = self._handlers[name]
         execution_context = context or ToolContext()
         try:
-            result = handler(arguments_dict, execution_context)
+            if inspect.iscoroutinefunction(handler):
+                result = await asyncio.wait_for(
+                    handler(arguments_dict, execution_context), timeout=spec.timeout_seconds
+                )
+            else:
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(handler, arguments_dict, execution_context),
+                    timeout=spec.timeout_seconds,
+                )
             if inspect.isawaitable(result):
                 result = await asyncio.wait_for(result, timeout=spec.timeout_seconds)
         except TimeoutError as error:

@@ -82,6 +82,16 @@ async def test_registry_wraps_timeout_and_handler_errors() -> None:
         await registry.execute("broken", {"value": "ok"})
     assert "private provider detail" not in str(error.value)
 
+    def sync_slow(_arguments: dict[str, object], _context: ToolContext) -> dict[str, object]:
+        import time
+
+        time.sleep(0.05)
+        return {"ok": True}
+
+    registry.register(_spec("sync_slow", timeout_seconds=0), sync_slow)
+    with pytest.raises(RuntimeError, match=ToolErrorCode.TIMEOUT.value):
+        await registry.execute("sync_slow", {"value": "ok"})
+
 
 @pytest.mark.asyncio
 async def test_registry_rejects_unknown_tool_and_oversized_output() -> None:
@@ -119,6 +129,10 @@ async def test_calculate_accepts_bounded_arithmetic_only() -> None:
 
     with pytest.raises(RuntimeError, match=ToolErrorCode.CALCULATION_FAILED.value):
         await registry.execute("calculate", {"expression": "__import__('os').getcwd()"})
+    with pytest.raises(RuntimeError, match=ToolErrorCode.CALCULATION_FAILED.value):
+        await registry.execute("calculate", {"expression": "9" * 256})
+    with pytest.raises(RuntimeError, match=ToolErrorCode.CALCULATION_FAILED.value):
+        await registry.execute("calculate", {"expression": "1000000000 ** 2"})
 
 
 @pytest.mark.asyncio
