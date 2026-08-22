@@ -23,12 +23,12 @@ RequeueRun = Callable[[uuid.UUID, uuid.UUID], Awaitable[None]]
 
 
 async def _list_running_runs() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID, AgentRunStatus]]:
-    """从 PostgreSQL 读取当前仍处于 running 的 Run。"""
+    """从 PostgreSQL 读取需要检查租约与队列的 Run。"""
 
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(AgentRun.user_id, AgentRun.id, AgentRun.status).where(
-                AgentRun.status == AgentRunStatus.running
+                AgentRun.status.in_([AgentRunStatus.running, AgentRunStatus.queued])
             )
         )
         for tenant_id, run_id, status in result.all():
@@ -81,11 +81,13 @@ class RecoveryWorker:
             await self._requeue(item.tenant_id, item.run_id)
             recovered += 1
         async for tenant_id, run_id, status in self._list_running():
-            if status is not AgentRunStatus.running:
-                continue
             if await self._queue.lease_owner(tenant_id, run_id) is not None:
                 continue
             if await self._queue.is_cancelled(tenant_id, run_id):
+                continue
+            if status is AgentRunStatus.queued and await self._queue.is_pending(tenant_id, run_id):
+                continue
+            if status not in {AgentRunStatus.running, AgentRunStatus.queued}:
                 continue
             await self._requeue(tenant_id, run_id)
             recovered += 1

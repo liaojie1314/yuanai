@@ -52,6 +52,8 @@ class AsyncRedisLike(Protocol):
 
     async def sadd(self, key: str, value: str) -> int: ...
 
+    async def scard(self, key: str) -> int: ...
+
     async def set(
         self,
         key: str,
@@ -174,6 +176,11 @@ class AgentQueue:
             self.pending_key(item.tenant_id, item.run_id),
             f"{_identifier(item.tenant_id)}:{_identifier(item.run_id)}",
         )
+
+    async def is_pending(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> bool:
+        """返回 Run 是否仍有主队列或 processing delivery。"""
+
+        return (await self._redis.scard(self.pending_key(tenant_id, run_id))) > 0
 
     async def recover_inflight(self) -> list[QueueItem]:
         """返回没有租约的 processing delivery，并从暂存列表移除。"""

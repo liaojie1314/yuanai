@@ -91,6 +91,9 @@ class FakeRedis:
         values.add(value)
         return int(len(values) > before)
 
+    async def scard(self, key: str) -> int:
+        return len(self.sets.get(key, set()))
+
     async def srem(self, key: str, value: str) -> int:
         values = self.sets.setdefault(key, set())
         existed = value in values
@@ -381,6 +384,26 @@ async def test_recovery_requeues_running_run_without_lease() -> None:
     recovery = RecoveryWorker(queue, list_running=list_running, requeue=requeue)
     assert await recovery.recover_once() == 1
     assert statuses[run_id] is AgentRunStatus.queued
+    assert await queue.dequeue(tenant_id) == QueueItem(tenant_id, run_id)
+
+
+@pytest.mark.asyncio
+async def test_recovery_requeues_queued_run_without_pending_marker() -> None:
+    """queued 状态但入队失败的 Run 会被恢复 worker 补投。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+
+    async def list_recoverable() -> AsyncIterator[tuple[uuid.UUID, uuid.UUID, AgentRunStatus]]:
+        yield tenant_id, run_id, AgentRunStatus.queued
+
+    async def requeue(_tenant_id: uuid.UUID, _run_id: uuid.UUID) -> None:
+        await queue.enqueue(_tenant_id, _run_id)
+
+    recovery = RecoveryWorker(queue, list_running=list_recoverable, requeue=requeue)
+    assert await recovery.recover_once() == 1
     assert await queue.dequeue(tenant_id) == QueueItem(tenant_id, run_id)
 
 
