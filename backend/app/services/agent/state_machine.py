@@ -68,6 +68,16 @@ class RunStateMachine:
         self._status = target_status
         return self._status
 
+    def recover(self) -> AgentRunStatus:
+        """将租约丢失的 running Run 安全恢复到 queued。"""
+
+        if self._status is not AgentRunStatus.running:
+            raise InvalidRunTransitionError(
+                f"只允许从 running 恢复 Run，当前状态为 {self._status.value}"
+            )
+        self._status = AgentRunStatus.queued
+        return self._status
+
 
 # 兼容调用方使用的简短异常名。
 InvalidRunTransition = InvalidRunTransitionError
