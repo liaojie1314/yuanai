@@ -180,6 +180,31 @@ async def test_stream_agent_normalizes_provider_events() -> None:
         UsageDelta(input_tokens=12, output_tokens=7, total_tokens=19),
         ModelCompleted(finish_reason="tool_calls"),
     ]
+    assert client.chat.completions.create.await_args.kwargs["stream_options"] == {
+        "include_usage": True
+    }
+
+
+async def test_stream_agent_rejects_tool_arguments_before_tool_name() -> None:
+    """工具名缺失时不得先向 coordinator 发出参数增量。"""
+    tool_delta = SimpleNamespace(
+        index=0,
+        id="call-1",
+        function=SimpleNamespace(name=None, arguments='{"a": 1}'),
+    )
+    client = _build_mock_client([])
+    client.chat.completions.create = AsyncMock(
+        return_value=_agent_stream([_agent_chunk(tool_calls=[tool_delta])])
+    )
+    with patch.object(ai_svc, "_get_client", return_value=client):
+        events = [
+            event
+            async for event in stream_agent("gpt-4o", [{"role": "user", "content": "算一下"}], [])
+        ]
+
+    assert events == [
+        ModelFailed(code="MODEL_EVENT_MALFORMED", message="模型返回了无效事件", retryable=False)
+    ]
 
 
 async def test_stream_agent_maps_malformed_provider_event_to_stable_failure() -> None:

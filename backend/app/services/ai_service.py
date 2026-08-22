@@ -12,6 +12,7 @@ from openai import AsyncOpenAI, AsyncStream, OpenAIError
 from openai.types.chat import (
     ChatCompletionChunk,
     ChatCompletionMessageParam,
+    ChatCompletionStreamOptionsParam,
     ChatCompletionToolParam,
 )
 
@@ -832,6 +833,7 @@ async def _create_chat_stream(
     messages: list[ChatCompletionMessageParam],
     extra_body: dict[str, object] | None,
     tools: list[ChatCompletionToolParam] | None = None,
+    stream_options: ChatCompletionStreamOptionsParam | None = None,
 ) -> AsyncStream[ChatCompletionChunk]:
     """在保持 provider 思考参数的同时创建 OpenAI-compatible SSE 流。"""
     if tools is None and extra_body is None:
@@ -843,12 +845,21 @@ async def _create_chat_stream(
             stream=True,
             extra_body=extra_body,
         )
+    if stream_options is None:
+        return await client.chat.completions.create(
+            model=model,
+            messages=messages,
+            stream=True,
+            extra_body=extra_body,
+            tools=tools,
+        )
     return await client.chat.completions.create(
         model=model,
         messages=messages,
         stream=True,
         extra_body=extra_body,
         tools=tools,
+        stream_options=stream_options,
     )
 
 
@@ -949,6 +960,8 @@ async def _normalize_agent_stream(
                 if arguments is not None and not isinstance(arguments, str):
                     raise _MalformedModelEventError()
                 if isinstance(arguments, str) and arguments:
+                    if not state.started:
+                        raise _MalformedModelEventError()
                     yield ToolCallArgumentsDelta(
                         tool_call_id=state.tool_call_id,
                         args_chunk=arguments,
@@ -1009,6 +1022,10 @@ async def stream_agent(
                     messages=provider_messages,
                     extra_body=extra_body,
                     tools=provider_tools,
+                    stream_options=cast(
+                        ChatCompletionStreamOptionsParam,
+                        {"include_usage": True},
+                    ),
                 )
                 normalized_stream = cast(AsyncGenerator[object, None], stream)
                 async for event in _normalize_agent_stream(normalized_stream):
