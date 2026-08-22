@@ -32,6 +32,7 @@ from app.schemas.chat import (
 )
 from app.schemas.media_generation import MediaGenerationTaskResponse
 from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
+from app.services.chat_service import stream_chat_response
 from app.services.conversation_title_service import (
     ConversationTitleResult,
     fallback_title,
@@ -186,8 +187,7 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     }
 
 
-@router.post("/stream")
-async def stream_chat_endpoint(
+async def _legacy_stream_chat_endpoint(
     req: SendMessageRequest, current_user: CurrentUser, db: DB
 ) -> StreamingResponse:
     conv = await _get_user_conv(req.conversation_id, current_user.id, db)
@@ -387,6 +387,20 @@ async def stream_chat_endpoint(
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/stream")
+async def stream_chat_endpoint(
+    req: SendMessageRequest, current_user: CurrentUser, db: DB
+) -> StreamingResponse:
+    """认证、参数解析和响应编排；聊天事务由 chat_service 负责。"""
+    return await stream_chat_response(
+        req,
+        user_id=current_user.id,
+        db=db,
+        sse_generator=_generate_sse,
+        title_generator=generate_and_store_title,
     )
 
 
