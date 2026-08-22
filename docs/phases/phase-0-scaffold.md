@@ -1,5 +1,9 @@
 # Phase 0 — Monorepo 脚手架搭建
 
+> 本文是早期脚手架设计记录。当前仓库运行时已固定为 Node.js `22.21.1`、pnpm `10.22.0`
+> 和 Turborepo `2.10.7`；安装、启动和验证请以 [开发运行指南](../dev-guide.md) 与根
+> `package.json` 为准。
+
 **前置条件**: 已安装 Node.js 22+、pnpm 9+、Python 3.12+、Git  
 **预计耗时**: 2-3 小时  
 **执行会话**: 独立会话，执行完毕后提交到 `feat/phase-0-scaffold` 分支

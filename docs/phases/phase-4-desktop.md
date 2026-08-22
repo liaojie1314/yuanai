@@ -1,7 +1,10 @@
 # Phase 4 — 桌面端开发（Electron）
 
+> 本文保留 Phase 4 的设计推导和实施记录。当前实现以 `apps/desktop/README.md`、
+> `apps/desktop/package.json`、`docs/release.md` 及实际代码为准；下方示例代码只用于说明
+> 设计意图，不能覆盖当前安全协议、IPC 契约或打包配置。
+
 **前置条件**：Phase 0 完成，Phase 1 完成（后端），Phase 2 完成（web 端 + `packages/core`、`packages/ui`、`packages/types`）
-**实施分支**：`feature/phase-4-desktop`（已于 2026-08-13 快进合入 `dev`）
 **执行范围**：`apps/desktop/`；同时对 `packages/core`、`packages/types` 做**最小侵入式**改动；`backend/` 补 OAuth desktop 回调 URI 与语音转写接口
 **测试目标**：Windows、Linux（Ubuntu）为用户主测平台；macOS 通过 CI + 逻辑保证适配无回归
 
@@ -12,12 +15,12 @@
 1. 基于 **Electron 33 + electron-vite + React 19** 实现桌面端，与 web 端功能对齐
 2. 通过 `packages/core` + `packages/ui` **最大化复用** web 端逻辑与 UI，桌面端仅承担平台适配层
 3. 交付桌面原生体验：多窗口、系统托盘、全局快捷键、原生菜单栏、深链接、自动更新、开机自启
-4. 打包为 Windows（NSIS + Portable + MSI）、macOS（DMG + ZIP）、Linux（AppImage + deb + rpm）
+4. 打包为 Windows（NSIS + Portable）、macOS（DMG + ZIP）、Linux（AppImage + deb + rpm）
 5. 令牌通过 Electron `safeStorage` 加密存盘，替代 web 端 localStorage 明文方案
 
-## 实施状态（2026-08-13）
+## 实施状态（2026-08-22）
 
-Phase 4 的实现已合入 `dev`，实现分支最后一个功能提交为 `09f7dec`。实际目录采用桌面薄壳方案：
+Phase 4 的实现采用桌面薄壳方案：
 `apps/desktop` 实现 Electron 主进程、preload 和多 renderer UI，复用
 `@yuanai/core` 的 API、认证、会话和 SSE 能力，不跨端直接导入 Next.js 组件。
 
@@ -29,6 +32,8 @@ Phase 4 的实现已合入 `dev`，实现分支最后一个功能提交为 `09f7
   分享、文件/截图附件和消息操作。
 - 代码高亮、Markdown/数学公式、JSON/CSV 数据预览、代码运行预览和单一 Artifact
   窗口；长会话虚拟列表与滚动期间高亮降级。
+- 语音输入优先使用 Chromium 本地识别；不可用时录制音频并调用后端
+  `/api/v1/voice/transcriptions`，由统一 AI 服务接入 AssemblyAI Pre-recorded STT。
 - 用户显示偏好同步、主题和原生标题栏适配；关闭到托盘、托盘菜单、全局快捷键、
   开机自启和 AI 回复原生通知。
 - 安全 IPC、`safeStorage` 会话保存、`yuanai-app://` 打包资源协议和受控
@@ -36,7 +41,8 @@ Phase 4 的实现已合入 `dev`，实现分支最后一个功能提交为 `09f7
 
 已经通过桌面单元与集成测试、类型检查、lint、生产构建和 `preview` 启动验证。真实
 聊天、认证和托盘已在 Ubuntu 本地环境人工验证。Windows/macOS 原生安装、代码签名、
-生产自动更新源和三平台打包验收仍是发布前工作；语音转写按已确认范围暂缓。
+生产自动更新源和三平台打包验收仍是发布前工作；语音转写的 provider、权限和真实设备
+流程仍需按目标环境单独验收。
 
 当前命令、环境变量和打包边界以 [桌面端说明](../../apps/desktop/README.md) 为准。
 
@@ -44,22 +50,22 @@ Phase 4 的实现已合入 `dev`，实现分支最后一个功能提交为 `09f7
 
 ## 关键决策记录（本文档定稿依据）
 
-| #   | 议题         | 决策                                                                                        |
-| --- | ------------ | ------------------------------------------------------------------------------------------- |
-| D1  | OAuth 回传   | 系统默认浏览器 + 自定义协议 `yuanai://oauth/callback`                                       |
-| D2  | 窗口拓扑     | 登录 / 注册 / 忘记密码 / 设置 / 关于 / Artifact / OAuth 中间态 均为独立 BrowserWindow       |
-| D3  | 托盘与关闭   | 有托盘；关闭按钮默认最小化到托盘（设置里可切换为"直接退出"）                                |
-| D4  | Token 存储   | Electron `safeStorage`（macOS Keychain / Windows DPAPI / Linux Secret Service）加密后写文件 |
-| D5  | 语音输入     | MediaRecorder 录制 → 后端 `POST /files/transcribe` → Whisper 转写                           |
-| D6  | 分享链接     | `shell.openExternal` 打开系统默认浏览器                                                     |
-| D7  | 服务端推送   | 优先复用 Web Push（renderer 轻量 SW）；不可用时 fallback 到 SSE `/events`                   |
-| D8  | 自动更新     | `electron-updater` + GitHub Releases，`autoDownload = false` 由用户确认                     |
-| D9  | 开机自启     | 支持，默认关，设置页可切换                                                                  |
-| D10 | 启动自动登录 | 支持，从 safeStorage 读回上次会话直接进 `/chat`                                             |
-| D11 | 深链接范围   | `yuanai://oauth/callback`、`yuanai://chat/{conversationId}`                                 |
-| D12 | 快捷键       | 应用内快捷键（Cmd/Ctrl+N/,/K/Enter） + 系统全局唤起 `Ctrl+Alt+Y`（可自定义）                |
-| D13 | 菜单栏       | 三端均提供完整原生菜单栏；macOS 强制                                                        |
-| D14 | 打包 target  | Win: NSIS + Portable + MSI；macOS: DMG + ZIP；Linux: AppImage + deb + rpm                   |
+| #   | 议题         | 决策                                                                                                                |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------------------- |
+| D1  | OAuth 回传   | 系统默认浏览器 + 自定义协议 `yuanai://oauth/callback`                                                               |
+| D2  | 窗口拓扑     | 登录 / 注册 / 忘记密码 / 设置 / 关于 / Artifact / OAuth 中间态 均为独立 BrowserWindow                               |
+| D3  | 托盘与关闭   | 有托盘；关闭按钮默认最小化到托盘（设置里可切换为"直接退出"）                                                        |
+| D4  | Token 存储   | Electron `safeStorage`（macOS Keychain / Windows DPAPI / Linux Secret Service）加密后写文件                         |
+| D5  | 语音输入     | Chromium SpeechRecognition 优先；回退为 MediaRecorder → `POST /voice/transcriptions` → AssemblyAI Pre-recorded STT  |
+| D6  | 分享链接     | `shell.openExternal` 打开系统默认浏览器                                                                             |
+| D7  | 回复通知     | 流完成后由 renderer 通过受信任 IPC 请求主进程显示 Electron 原生 Notification；不依赖 Web Push 或 `/events` fallback |
+| D8  | 自动更新     | `electron-updater` + GitHub Releases，`autoDownload = false` 由用户确认                                             |
+| D9  | 开机自启     | 支持，默认关，设置页可切换                                                                                          |
+| D10 | 启动自动登录 | 支持，从 safeStorage 读回上次会话直接进 `/chat`                                                                     |
+| D11 | 深链接范围   | `yuanai://oauth/callback`、`yuanai://chat/{conversationId}`                                                         |
+| D12 | 快捷键       | 应用内快捷键（Cmd/Ctrl+N/,/K/Enter） + 系统全局唤起 `Ctrl+Alt+Y`（可自定义）                                        |
+| D13 | 菜单栏       | 三端均提供完整原生菜单栏；macOS 强制                                                                                |
+| D14 | 打包 target  | Win: NSIS + Portable；macOS: DMG + ZIP；Linux: AppImage + deb + rpm                                                 |
 
 ---
 
@@ -374,7 +380,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'", // Tailwind runtime & KaTeX 需要
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  "connect-src 'self' https: wss:", // 允许连接后端 API 与 Web Push
+  "connect-src 'self' https: wss:", // 允许连接后端 API 与 SSE
   "media-src 'self' blob:", // 语音回放
   "worker-src 'self' blob:", // Service Worker + Web Worker
 ].join('; ')
@@ -736,18 +742,18 @@ export function setupAuthIpc(): void {
 }
 ```
 
-**注意**：Linux 上 safeStorage 默认走 `Secret Service`（gnome-keyring / kwallet），无桌面钥匙串时会退化为明文 base64（Electron 已在 `isEncryptionAvailable` 中体现）。在 UI 层：`isEncryptionAvailable = false` 时提示用户"未检测到系统钥匙串，登录状态无法持久化，请手动登录"，且**拒绝**保存以免落盘明文。
+**注意**：Linux 上 safeStorage 通常走 `Secret Service`（gnome-keyring / kwallet）。当前
+实现会在加密不可用或选择 `basic_text` 时拒绝保存，并提示用户登录状态无法持久化，避免
+把认证状态落盘为明文。
 
 ### 3.3 协议处理（`src/main/protocol/handler.ts`）
 
 ```typescript
-import { BrowserWindow } from 'electron'
-import { openMainWindow, openOAuthLoadingWindow, closeOAuthLoadingWindow } from '../windows/manager'
 import { IPC } from '../../shared/ipc-contract'
 
 /**
  * 深链形态：
- *   yuanai://oauth/callback?access_token=xxx&refresh_token=yyy
+ *   yuanai://oauth/callback?code=<short-lived-one-time-code>
  *   yuanai://oauth/callback?error=xxx&error_description=yyy
  *   yuanai://chat/{conversationId}
  */
@@ -769,20 +775,16 @@ export function handleProtocolUrl(rawUrl: string): void {
 }
 
 function handleOAuthCallback(url: URL): void {
-  const accessToken = url.searchParams.get('access_token')
-  const refreshToken = url.searchParams.get('refresh_token')
+  const code = url.searchParams.get('code')
   const error = url.searchParams.get('error')
-
-  // 关闭 loading 窗（若尚未打开则忽略）
-  closeOAuthLoadingWindow()
-
-  const target = openMainWindow({ focus: true })
-  target.webContents.send(IPC.oauth.tokenReady, {
-    accessToken,
-    refreshToken,
-    error,
-    errorDescription: url.searchParams.get('error_description'),
-  })
+  const result = {
+    ...(code ? { type: 'oauth', code } : {}),
+    ...(error
+      ? { type: 'oauth-error', error, description: url.searchParams.get('error_description') }
+      : {}),
+  }
+  // 当前实现由 WindowManager 在 renderer 就绪后投递事件。
+  windowManager.sendWhenReady('oauth', IPC.events.oauthResult, result)
 }
 
 function broadcastDeepLink(payload: { type: 'chat'; conversationId: string }): void {
@@ -1013,12 +1015,11 @@ Web 端组件目前放在 `apps/web/src/components/**`，桌面端**不**跨 mon
 
 用户在 LoginWindow 点击"用 GitHub 登录"：
 
-1. Renderer 调 `window.yuanai.shell.openExternal(oauthAuthorizeUrl)` 打开系统浏览器
-2. 同时 Renderer 调 `window.yuanai.window.openOAuthLoading()` 弹出 OAuth 中间态窗口（loading spinner）
-3. 用户在浏览器完成授权后，后端 302 到 `yuanai://oauth/callback?access_token=…`
-4. 系统拉起 Electron（可能启动新实例，通过 single instance lock 转发到已有实例）
-5. `handleProtocolUrl` 解析 → 关闭 OAuth loading 窗 → 主窗口 `webContents.send(IPC.oauth.tokenReady, ...)`
-6. Renderer 收到后写入 auth store → 主进程通过 safeStorage 落盘 → 跳转 `/chat`
+1. Renderer 调受控的 `window.yuanai.oauth.start(provider)`，由主进程校验 provider 后打开系统浏览器并显示 OAuth 窗口。
+2. 用户在浏览器完成授权后，后端 302 到 `yuanai://oauth/callback?code=…`。
+3. 系统拉起 Electron（可能启动新实例，通过 single instance lock 转发到已有实例）。
+4. `handleProtocolUrl` 解析 → OAuth renderer 收到短时 code → 调用 `/auth/desktop/exchange`。
+5. 交换成功后写入 auth store，由 desktop adapter 通过 safeStorage 持久化，再进入主聊天窗口。
 
 ### 4.6 深链接（chat）
 
@@ -1030,27 +1031,19 @@ window.yuanai.deepLink.onNavigate(({ type, conversationId }) => {
 })
 ```
 
-### 4.7 通知与 Web Push
+### 4.7 回复完成通知
 
-Electron 默认支持 Web Push（Chromium 内置），但 FCM/APNs 需要 `applicationServerKey`。方案：
-
-1. 先按 web 端相同逻辑走 Web Push（`ensurePushSubscribed`）
-2. 主进程在 `session.defaultSession` 上启用 Push（Electron ≥33 已默认开启）
-3. renderer 的 SW 逻辑与 web 完全一致（复用 `apps/web/public/sw.js` 拷贝一份到 `apps/desktop/src/renderer/public/sw.js`）
-4. 若 subscribe 失败（endpoint 拿不到），fallback 到 SSE `/events`（需后端新增，见 Step 6）
-
-前台通知走 Electron 原生 `new Notification()`（在 renderer 内可直接调用，Electron 内会转成原生系统通知）。
+桌面端不新增 Web Push 或 `/events` 长连接。持久会话流正常完成后，renderer 通过受信任
+IPC 发送标题、正文和可选会话 ID；主进程读取已保存的桌面通知偏好并显示 Electron 原生
+`Notification`，点击后聚焦主窗口。
 
 ### 4.8 语音输入
 
-复用 web 端 `useSpeechRecognition` 抽象**不可行**（依赖 Web Speech）。桌面端在 `apps/desktop/src/renderer/main/hooks/useDesktopVoice.ts` 内：
+桌面端在 `apps/desktop/src/renderer/main/useVoiceInput.ts` 内优先使用 Chromium 的 SpeechRecognition，失败时再走录音上传：
 
-- `navigator.mediaDevices.getUserMedia({ audio: true })` 拿 MediaStream
-- `MediaRecorder` 录制为 webm/opus
-- 停止时 POST FormData 到 `POST /files/transcribe`（后端新增）
-- 返回文本插入输入框
-
-同一交互（按住说话 / 点击说话）由 UI 层抽象为 `useVoiceInput`（放 `packages/core/hooks`），桌面端和 web 端各自提供实现。
+- `navigator.mediaDevices.getUserMedia({ audio: true })` 获取 MediaStream。
+- `MediaRecorder` 录制为 webm/opus；停止时 POST FormData 到 `POST /voice/transcriptions`。
+- 后端校验音频后经统一 AI service 调用 AssemblyAI Pre-recorded STT，返回文本插入输入框；不会自动发送聊天消息。
 
 ### 4.9 文件上传
 
@@ -1098,8 +1091,6 @@ win:
       arch: [x64, arm64]
     - target: portable
       arch: [x64]
-    - target: msi
-      arch: [x64]
   icon: resources/icon.ico
   requestedExecutionLevel: asInvoker
   signAndEditExecutable: false # 待接入代码签名证书后置 true
@@ -1118,10 +1109,6 @@ nsis:
 
 portable:
   artifactName: yuanai-${version}-portable-${arch}.${ext}
-
-msi:
-  oneClick: false
-  perMachine: true
 
 mac:
   target:
@@ -1296,19 +1283,16 @@ export function setupUpdater(): void {
 
 ## Step 6：后端配合的新增/调整
 
-以下改动写入 `backend/` 但不属于本 Phase 主线；建议在 Phase 4 开始时同步 kick off，避免联调阻塞：
+当前后端配合状态：
 
-1. **OAuth desktop 回调 URI**
-   - GitHub: 允许 `yuanai://oauth/callback` 作为白名单
-   - Google: 桌面 OAuth 走 `loopback` 或 `custom URI scheme`；本项目选后者，`Authorized redirect URIs` 加入 `yuanai://oauth/callback`
-   - 后端在 `/auth/{provider}/authorize` 支持 `?redirect=desktop` 参数（区分 web 与 desktop 回调），最终 302 到 `yuanai://oauth/callback?access_token=…`
-2. **语音转写**
-   - 新增 `POST /files/transcribe`，multipart（audio/webm 或 audio/wav），走 `openai.audio.transcriptions`（Whisper） 或本地 provider
-   - 返回 `{ text: string, durationMs: number }`
-   - `packages/types` 追加 `TranscribeResponse`
-3. **推送 fallback（SSE）**
-   - 若 Web Push 在桌面端不可用，新增 `GET /events` SSE，事件类型 `ai_reply_completed`；桌面 renderer 建立长连接
-   - 首版可先不做，观察 Web Push 在 Electron 33 的表现
+1. **OAuth desktop 回调 URI（已落地）**
+   - GitHub/Google OAuth state 标记为 desktop，后端完成 provider 登录后写入 60 秒 Redis 一次性 code。
+   - 回调只 302 到 `yuanai://oauth/callback?code=…`；桌面端再调用 `POST /auth/desktop/exchange` 原子消费 code。
+2. **语音转写（已落地）**
+   - `POST /voice/transcriptions` 接收受限音频 multipart，校验 MIME、大小和时长后调用统一 AI service。
+   - 当前 provider 为 AssemblyAI Pre-recorded STT；响应包含 `text`、`language` 和 `durationSeconds`。
+3. **桌面通知（已落地）**
+   - 回复完成通知由桌面 renderer 通过受信任 IPC 请求主进程显示；不新增桌面 Web Push 或 `/events` SSE fallback。
 
 ---
 
@@ -1325,7 +1309,7 @@ export function setupUpdater(): void {
 - [ ] 关闭主窗口后应用隐藏到托盘；托盘图标 + 右键菜单可显示/退出；单击（Win/Linux）或菜单（macOS）唤起
 - [ ] 设置里切换"关闭时直接退出" 后关闭主窗口应用真正退出
 - [ ] Ctrl+Alt+Y 从任意应用唤起 yuanai 主窗口；快捷键冲突时设置里可改
-- [ ] 麦克风首次使用弹出系统权限对话框；授权后语音输入走 MediaRecorder → 后端转写
+- [ ] 麦克风首次使用弹出系统权限对话框；授权后语音输入按“本地识别优先、MediaRecorder → `/voice/transcriptions` 回退”验证
 - [ ] AI 回复完成弹出系统通知；点击通知唤起窗口并聚焦到对应会话
 - [ ] Artifact 点"分离到独立窗口" 可开一个专属预览窗口，关闭不影响主聊天
 - [ ] Cmd+Q / 主菜单退出 → 真正退出（不进托盘）
@@ -1338,7 +1322,7 @@ export function setupUpdater(): void {
 
 **打包**
 
-- [ ] `pnpm --filter @yuanai/desktop package:win` 产出 NSIS installer + Portable + MSI，安装、启动、卸载全流程无错
+- [ ] `pnpm --filter @yuanai/desktop package:win` 产出 NSIS installer + Portable，安装、启动、卸载全流程无错
 - [ ] `pnpm --filter @yuanai/desktop package:linux` 产出 AppImage + deb + rpm；AppImage 双击可跑；deb 在 Ubuntu 22.04 可 `sudo dpkg -i` 安装
 - [ ] `pnpm --filter @yuanai/desktop package:mac` 产出 DMG + ZIP；DMG 拖入 Applications 可运行（未签名时需手动允许）
 

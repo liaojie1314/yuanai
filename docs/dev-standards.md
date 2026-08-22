@@ -516,7 +516,7 @@ echo "✅ All checks passed. Pushing..."
 
 - `pre-push` 只跑**单元测试**（秒级完成），集成测试和 E2E 交由 CI 执行
 - `-x` 参数：第一个失败就停止，快速反馈
-- 若需临时跳过（紧急情况）：`git push --no-verify`，但必须在 PR 说明中注明原因
+- 禁止使用 `--no-verify` 跳过 hook；若确有紧急情况，必须先取得明确授权，并在 PR 中记录原因、风险和补做的验证
 
 ---
 
