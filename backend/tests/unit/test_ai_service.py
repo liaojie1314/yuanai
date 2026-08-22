@@ -11,9 +11,11 @@
 - stream_chat 在 API 异常时正确传播异常
 """
 
+import asyncio
 import os
 import uuid
 from collections.abc import AsyncGenerator
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import httpx
@@ -30,8 +32,16 @@ from app.services.ai_service import (  # noqa: E402
     PROVIDER_CONFIG,
     AgnesImageResult,
     AgnesVideoSnapshot,
+    ContentDelta,
     MediaProviderUnavailableError,
+    ModelCompleted,
+    ModelFailed,
     ModelVisionUnsupportedError,
+    ThinkingDelta,
+    ToolCallArgumentsDelta,
+    ToolCallEnd,
+    ToolCallStart,
+    UsageDelta,
     VoiceTranscriptionProviderError,
     VoiceTranscriptionUnavailableError,
     _get_client,
@@ -39,6 +49,7 @@ from app.services.ai_service import (  # noqa: E402
     generate_conversation_title,
     get_agnes_video,
     get_available_models,
+    stream_agent,
     stream_chat,
     transcribe_audio,
 )
@@ -92,6 +103,182 @@ def _build_mock_client(
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_stream)
     return mock_client
+
+
+def _agent_chunk(
+    *,
+    content: str | None = None,
+    reasoning: str | None = None,
+    tool_calls: list[object] | None = None,
+    finish_reason: str | None = None,
+    usage: object | None = None,
+) -> SimpleNamespace:
+    """构造 provider-neutral 测试使用的 OpenAI-compatible chunk。"""
+    delta = SimpleNamespace(
+        content=content,
+        reasoning_content=reasoning,
+        tool_calls=tool_calls,
+    )
+    choices = (
+        []
+        if usage is not None and content is None and reasoning is None
+        else [SimpleNamespace(delta=delta, finish_reason=finish_reason)]
+    )
+    return SimpleNamespace(choices=choices, usage=usage)
+
+
+def _agent_stream(chunks: list[object]) -> MagicMock:
+    async def _aiter() -> AsyncGenerator[object, None]:
+        for chunk in chunks:
+            yield chunk
+
+    stream = MagicMock()
+    stream.__aiter__ = lambda self: _aiter()
+    return stream
+
+
+async def test_stream_agent_normalizes_provider_events() -> None:
+    """Agent 流必须只向调用方暴露 provider-neutral 事件。"""
+    tool_delta = SimpleNamespace(
+        index=0,
+        id="call-1",
+        function=SimpleNamespace(name="calculate", arguments='{"a":'),
+    )
+    second_tool_delta = SimpleNamespace(
+        index=0,
+        id=None,
+        function=SimpleNamespace(name=None, arguments="1}"),
+    )
+    usage = SimpleNamespace(prompt_tokens=12, completion_tokens=7, total_tokens=19)
+    client = _build_mock_client([])
+    stream = _agent_stream(
+        [
+            _agent_chunk(reasoning="先计算"),
+            _agent_chunk(tool_calls=[tool_delta]),
+            _agent_chunk(tool_calls=[second_tool_delta], finish_reason="tool_calls"),
+            _agent_chunk(usage=usage),
+        ]
+    )
+    client.chat.completions.create = AsyncMock(return_value=stream)
+    with patch.object(ai_svc, "_get_client", return_value=client):
+        events = [
+            event
+            async for event in stream_agent(
+                "gpt-4o",
+                [{"role": "user", "content": "算一下"}],
+                [{"type": "function", "function": {"name": "calculate"}}],
+                enable_thinking=True,
+            )
+        ]
+
+    assert events == [
+        ThinkingDelta(token="先计算"),
+        ToolCallStart(tool_call_id="call-1", name="calculate"),
+        ToolCallArgumentsDelta(tool_call_id="call-1", args_chunk='{"a":'),
+        ToolCallArgumentsDelta(tool_call_id="call-1", args_chunk="1}"),
+        ToolCallEnd(tool_call_id="call-1", status="done"),
+        UsageDelta(input_tokens=12, output_tokens=7, total_tokens=19),
+        ModelCompleted(finish_reason="tool_calls"),
+    ]
+
+
+async def test_stream_agent_maps_malformed_provider_event_to_stable_failure() -> None:
+    """缺失 choices 的 provider 事件必须转换为稳定失败事件。"""
+    client = _build_mock_client([])
+    client.chat.completions.create = AsyncMock(
+        return_value=_agent_stream([SimpleNamespace(choices=[], usage=None)])
+    )
+    with patch.object(ai_svc, "_get_client", return_value=client):
+        events = [
+            event
+            async for event in stream_agent("gpt-4o", [{"role": "user", "content": "hello"}], [])
+        ]
+
+    assert events == [
+        ModelFailed(code="MODEL_EVENT_MALFORMED", message="模型返回了无效事件", retryable=False)
+    ]
+
+
+async def test_stream_agent_retries_transient_provider_failure() -> None:
+    """瞬时 provider 故障最多重试有限次数并在成功后继续输出。"""
+    attempts = 0
+    client = _build_mock_client(["done"])
+
+    async def _create_stream(*_args: object, **_kwargs: object) -> MagicMock:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise RuntimeError("temporary provider failure")
+        return _agent_stream([_agent_chunk(content="done", finish_reason="stop")])
+
+    with (
+        patch.object(ai_svc, "_get_client", return_value=client),
+        patch.object(ai_svc, "_create_chat_stream", new=_create_stream),
+    ):
+        events = [
+            event
+            async for event in stream_agent("gpt-4o", [{"role": "user", "content": "hello"}], [])
+        ]
+
+    assert attempts == 3
+    assert events == [ContentDelta(token="done"), ModelCompleted(finish_reason="stop")]
+
+
+async def test_stream_agent_maps_terminal_provider_failure_after_retries() -> None:
+    """provider 故障耗尽有限重试后必须转换为稳定终止失败。"""
+    attempts = 0
+    client = _build_mock_client([])
+
+    async def _create_stream(*_args: object, **_kwargs: object) -> MagicMock:
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("provider is unavailable")
+
+    with (
+        patch.object(ai_svc, "_get_client", return_value=client),
+        patch.object(ai_svc, "_create_chat_stream", new=_create_stream),
+    ):
+        events = [
+            event
+            async for event in stream_agent("gpt-4o", [{"role": "user", "content": "hello"}], [])
+        ]
+
+    assert attempts == 3
+    assert events == [
+        ModelFailed(code="MODEL_PROVIDER_ERROR", message="模型提供商调用失败", retryable=False)
+    ]
+
+
+async def test_stream_agent_maps_timeout_after_retries_to_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型调用超时经过有限重试后必须输出终止失败事件。"""
+    attempts = 0
+    monkeypatch.setattr(ai_svc, "MODEL_STREAM_TIMEOUT_SECONDS", 0.01)
+    client = _build_mock_client([])
+
+    async def _hanging_stream() -> AsyncGenerator[object, None]:
+        await asyncio.sleep(1)
+        yield _agent_chunk(content="never")
+
+    async def _create_stream(*_args: object, **_kwargs: object) -> MagicMock:
+        nonlocal attempts
+        attempts += 1
+        stream = MagicMock()
+        stream.__aiter__ = lambda self: _hanging_stream()
+        return stream
+
+    with (
+        patch.object(ai_svc, "_get_client", return_value=client),
+        patch.object(ai_svc, "_create_chat_stream", new=_create_stream),
+    ):
+        events = [
+            event
+            async for event in stream_agent("gpt-4o", [{"role": "user", "content": "hello"}], [])
+        ]
+
+    assert attempts == 3
+    assert events == [ModelFailed(code="MODEL_TIMEOUT", message="模型调用超时", retryable=False)]
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@ import html
 import json
 import re
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from dataclasses import asdict, dataclass
 from typing import cast
 
@@ -51,6 +51,8 @@ TITLE_GENERATION_PROMPT = (
 )
 TITLE_GENERATION_TOKEN_BUDGETS = (128, 256)
 MAX_TOOL_CALLS = 2
+MODEL_STREAM_TIMEOUT_SECONDS = 60.0
+MODEL_STREAM_MAX_RETRIES = 2
 _TEXT_TOOL_CALL_PATTERN = re.compile(
     r"<tool_call>\s*<function=(?P<name>[A-Za-z_][\w-]*)>\s*"
     r"<parameter=(?P<parameter>[A-Za-z_][\w-]*)>(?P<value>.*?)</parameter>\s*"
@@ -198,6 +200,99 @@ class AgnesVideoSnapshot:
     width: int | None
     height: int | None
     duration_seconds: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class ThinkingDelta:
+    """Provider-neutral reasoning/thinking text increment."""
+
+    token: str
+
+
+@dataclass(frozen=True, slots=True)
+class ContentDelta:
+    """Provider-neutral answer text increment."""
+
+    token: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallStart:
+    """Provider-neutral start of a model tool call."""
+
+    tool_call_id: str
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallArgumentsDelta:
+    """Provider-neutral incremental tool arguments."""
+
+    tool_call_id: str
+    args_chunk: str
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallEnd:
+    """Provider-neutral end of a model tool call."""
+
+    tool_call_id: str
+    status: str = "done"
+
+
+@dataclass(frozen=True, slots=True)
+class UsageDelta:
+    """Provider-neutral token usage update."""
+
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
+class ModelCompleted:
+    """Provider-neutral successful model completion."""
+
+    finish_reason: str = "stop"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelFailed:
+    """Provider-neutral terminal model failure with a stable application code."""
+
+    code: str
+    message: str
+    retryable: bool = False
+
+
+type ModelMessage = dict[str, object]
+type ToolDefinition = dict[str, object]
+type ModelEvent = (
+    ThinkingDelta
+    | ContentDelta
+    | ToolCallStart
+    | ToolCallArgumentsDelta
+    | ToolCallEnd
+    | UsageDelta
+    | ModelCompleted
+    | ModelFailed
+)
+
+
+class _MalformedModelEventError(ValueError):
+    """Raised internally when a provider stream cannot be safely normalized."""
+
+    def __init__(self) -> None:
+        super().__init__("MODEL_EVENT_MALFORMED")
+
+
+@dataclass
+class _AgentToolCallState:
+    """Internal aggregation state for one provider tool-call index."""
+
+    tool_call_id: str
+    started: bool = False
+    ended: bool = False
 
 
 @dataclass
@@ -755,6 +850,190 @@ async def _create_chat_stream(
         extra_body=extra_body,
         tools=tools,
     )
+
+
+def _provider_value(value: object, field: str, default: object = None) -> object:
+    """读取 OpenAI-compatible 对象或映射中的字段，不把 provider 类型外泄。"""
+    if isinstance(value, Mapping):
+        return value.get(field, default)
+    return getattr(value, field, default)
+
+
+def _provider_non_negative_int(value: object) -> int | None:
+    """把 provider usage 字段收敛为非负整数。"""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _normalize_usage(value: object) -> UsageDelta | None:
+    """把 provider usage 对象转换为稳定的 token 计数事件。"""
+    if value is None:
+        return None
+    input_tokens = _provider_non_negative_int(_provider_value(value, "prompt_tokens"))
+    output_tokens = _provider_non_negative_int(_provider_value(value, "completion_tokens"))
+    total_tokens = _provider_non_negative_int(_provider_value(value, "total_tokens"))
+    if input_tokens is None and output_tokens is None and total_tokens is None:
+        return None
+    input_count = input_tokens or 0
+    output_count = output_tokens or 0
+    total_count = total_tokens if total_tokens is not None else input_count + output_count
+    return UsageDelta(
+        input_tokens=input_count,
+        output_tokens=output_count,
+        total_tokens=total_count,
+    )
+
+
+async def _normalize_agent_stream(
+    stream: AsyncGenerator[object, None],
+) -> AsyncGenerator[ModelEvent, None]:
+    """将一个 provider 流转换成不含 SDK 对象的 Agent 事件流。"""
+    pending: dict[int, _AgentToolCallState] = {}
+    finish_reason = "stop"
+    observed_event = False
+
+    async for chunk in stream:
+        choices_value = _provider_value(chunk, "choices")
+        usage_event = _normalize_usage(_provider_value(chunk, "usage"))
+        if not isinstance(choices_value, (list, tuple)):
+            raise _MalformedModelEventError()
+        if not choices_value:
+            if usage_event is None:
+                raise _MalformedModelEventError()
+            observed_event = True
+            yield usage_event
+            continue
+
+        choice = choices_value[0]
+        delta = _provider_value(choice, "delta")
+        if delta is None:
+            raise _MalformedModelEventError()
+        observed_event = True
+
+        reasoning = _provider_value(delta, "reasoning_content")
+        if reasoning is None:
+            reasoning = _provider_value(delta, "thinking")
+        if isinstance(reasoning, str) and reasoning:
+            yield ThinkingDelta(token=reasoning)
+
+        content = _provider_value(delta, "content")
+        if isinstance(content, str) and content:
+            yield ContentDelta(token=content)
+
+        tool_deltas = _provider_value(delta, "tool_calls")
+        if tool_deltas is not None:
+            if not isinstance(tool_deltas, (list, tuple)):
+                raise _MalformedModelEventError()
+            for tool_delta in tool_deltas:
+                function = _provider_value(tool_delta, "function")
+                if function is None:
+                    raise _MalformedModelEventError()
+                index_value = _provider_value(tool_delta, "index", 0)
+                index = index_value if isinstance(index_value, int) else 0
+                call_id_value = _provider_value(tool_delta, "id")
+                call_id = (
+                    call_id_value
+                    if isinstance(call_id_value, str) and call_id_value
+                    else f"tool-{index}"
+                )
+                state = pending.get(index)
+                if state is None:
+                    state = _AgentToolCallState(tool_call_id=call_id)
+                    pending[index] = state
+                name = _provider_value(function, "name")
+                if isinstance(name, str) and name and not state.started:
+                    state.started = True
+                    yield ToolCallStart(tool_call_id=state.tool_call_id, name=name)
+                arguments = _provider_value(function, "arguments")
+                if arguments is not None and not isinstance(arguments, str):
+                    raise _MalformedModelEventError()
+                if isinstance(arguments, str) and arguments:
+                    yield ToolCallArgumentsDelta(
+                        tool_call_id=state.tool_call_id,
+                        args_chunk=arguments,
+                    )
+
+        chunk_finish_reason = _provider_value(choice, "finish_reason")
+        if isinstance(chunk_finish_reason, str) and chunk_finish_reason:
+            finish_reason = chunk_finish_reason
+            if chunk_finish_reason == "tool_calls":
+                for state in pending.values():
+                    if state.started and not state.ended:
+                        state.ended = True
+                        yield ToolCallEnd(tool_call_id=state.tool_call_id)
+        if usage_event is not None:
+            yield usage_event
+
+    if not observed_event:
+        raise _MalformedModelEventError()
+    for state in pending.values():
+        if state.started and not state.ended:
+            yield ToolCallEnd(tool_call_id=state.tool_call_id)
+    yield ModelCompleted(finish_reason=finish_reason)
+
+
+async def stream_agent(
+    model: str,
+    messages: list[ModelMessage],
+    tools: list[ToolDefinition],
+    *,
+    enable_thinking: bool = False,
+) -> AsyncGenerator[ModelEvent, None]:
+    """发送 Agent 模型流，并把 provider 事件归一化为稳定领域事件。
+
+    Provider SDK 类型只存在于本模块内部；调用方只能接收 ``ModelEvent`` 联合中的
+    不可变数据类。初始请求和尚未产生事件的 provider 故障最多重试两次，超时或
+    重试耗尽则输出稳定的 ``ModelFailed`` 事件。
+    """
+    config = PROVIDER_CONFIG.get(model)
+    if not config:
+        raise ValueError(f"Unsupported model: {model}")
+    if config.get("kind", "chat") != "chat":
+        raise ValueError(f"Model {model} is not a chat model")
+    if _has_image_input(messages) and not _model_supports_vision(model):
+        raise ModelVisionUnsupportedError()
+
+    client = _get_client(config["provider"], config["base_url"])
+    provider_messages = cast(list[ChatCompletionMessageParam], messages)
+    provider_tools = cast(list[ChatCompletionToolParam], tools)
+    extra_body = _chat_extra_body(config["provider"], enable_thinking)
+
+    for attempt in range(MODEL_STREAM_MAX_RETRIES + 1):
+        emitted_event = False
+        try:
+            async with asyncio.timeout(MODEL_STREAM_TIMEOUT_SECONDS):
+                stream = await _create_chat_stream(
+                    client,
+                    model=model,
+                    messages=provider_messages,
+                    extra_body=extra_body,
+                    tools=provider_tools,
+                )
+                normalized_stream = cast(AsyncGenerator[object, None], stream)
+                async for event in _normalize_agent_stream(normalized_stream):
+                    emitted_event = True
+                    yield event
+            return
+        except _MalformedModelEventError:
+            yield ModelFailed(
+                code="MODEL_EVENT_MALFORMED",
+                message="模型返回了无效事件",
+            )
+            return
+        except TimeoutError:
+            if not emitted_event and attempt < MODEL_STREAM_MAX_RETRIES:
+                continue
+            yield ModelFailed(code="MODEL_TIMEOUT", message="模型调用超时")
+            return
+        except (OpenAIError, httpx.HTTPError, RuntimeError, TypeError, ValueError):
+            if not emitted_event and attempt < MODEL_STREAM_MAX_RETRIES:
+                continue
+            yield ModelFailed(
+                code="MODEL_PROVIDER_ERROR",
+                message="模型提供商调用失败",
+            )
+            return
 
 
 async def _stream_web_search_round(
