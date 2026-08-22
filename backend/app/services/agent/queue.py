@@ -40,6 +40,12 @@ class AsyncRedisLike(Protocol):
 
     async def lpop(self, key: str) -> str | None: ...
 
+    async def lrem(self, key: str, count: int, value: str) -> int: ...
+
+    async def lrange(self, key: str, start: int, end: int) -> list[str]: ...
+
+    async def rpoplpush(self, source: str, destination: str) -> str | None: ...
+
     async def publish(self, channel: str, message: str) -> int: ...
 
     async def rpush(self, key: str, value: str) -> int: ...
@@ -85,6 +91,12 @@ class AgentQueue:
         return "agent:queue"
 
     @staticmethod
+    def processing_key() -> str:
+        """返回 worker delivery 的暂存列表。"""
+
+        return "agent:processing"
+
+    @staticmethod
     def pending_key(tenant_id: uuid.UUID, run_id: uuid.UUID) -> str:
         """返回租户与 Run 隔离的去重集合键。"""
 
@@ -116,10 +128,7 @@ class AgentQueue:
         added = await self._redis.sadd(pending_key, item_key)
         if added == 0:
             return False
-        payload = json.dumps(
-            {"tenant_id": _identifier(tenant_id), "run_id": _identifier(run_id)},
-            separators=(",", ":"),
-        )
+        payload = self._encode_item(QueueItem(tenant_id=tenant_id, run_id=run_id))
         try:
             await self._redis.rpush(self.queue_key(), payload)
         except (RedisError, OSError):
@@ -129,6 +138,16 @@ class AgentQueue:
 
     async def dequeue(self, tenant_id: uuid.UUID | None = None) -> QueueItem | None:
         """取出一个 Run；指定租户时不会交付其他租户的队列项。"""
+
+        if tenant_id is None:
+            payload = await self._redis.rpoplpush(self.queue_key(), self.processing_key())
+            if payload is None:
+                return None
+            try:
+                return self._decode_item(payload)
+            except ValueError:
+                await self._redis.lrem(self.processing_key(), 1, payload)
+                raise
 
         skipped: list[str] = []
         item: QueueItem | None = None
@@ -145,11 +164,44 @@ class AgentQueue:
             await self._redis.rpush(self.queue_key(), payload)
         if item is None:
             return None
+        return item
+
+    async def acknowledge(self, item: QueueItem) -> None:
+        """确认 worker 已取得租约并移除 processing delivery。"""
+
+        await self._redis.lrem(self.processing_key(), 1, self._encode_item(item))
         await self._redis.srem(
             self.pending_key(item.tenant_id, item.run_id),
             f"{_identifier(item.tenant_id)}:{_identifier(item.run_id)}",
         )
-        return item
+
+    async def recover_inflight(self) -> list[QueueItem]:
+        """返回没有租约的 processing delivery，并从暂存列表移除。"""
+
+        recovered: list[QueueItem] = []
+        for payload in await self._redis.lrange(self.processing_key(), 0, -1):
+            item = self._decode_item(payload)
+            if await self.lease_owner(item.tenant_id, item.run_id) is not None:
+                continue
+            if await self.is_cancelled(item.tenant_id, item.run_id):
+                await self.acknowledge(item)
+                continue
+            await self._redis.lrem(self.processing_key(), 1, payload)
+            await self._redis.srem(
+                self.pending_key(item.tenant_id, item.run_id),
+                f"{_identifier(item.tenant_id)}:{_identifier(item.run_id)}",
+            )
+            recovered.append(item)
+        return recovered
+
+    @staticmethod
+    def _encode_item(item: QueueItem) -> str:
+        """编码队列项，保证 processing ack 使用稳定字节序列。"""
+
+        return json.dumps(
+            {"tenant_id": _identifier(item.tenant_id), "run_id": _identifier(item.run_id)},
+            separators=(",", ":"),
+        )
 
     @staticmethod
     def _decode_item(payload: str) -> QueueItem:

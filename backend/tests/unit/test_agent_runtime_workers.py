@@ -64,6 +64,27 @@ class FakeRedis:
         values = self.lists.get(key, [])
         return values.pop(0) if values else None
 
+    async def rpoplpush(self, source: str, destination: str) -> str | None:
+        values = self.lists.get(source, [])
+        if not values:
+            return None
+        payload = values.pop()
+        self.lists.setdefault(destination, []).insert(0, payload)
+        return payload
+
+    async def lrem(self, key: str, count: int, value: str) -> int:
+        values = self.lists.get(key, [])
+        removed = 0
+        while value in values and (count == 0 or removed < count):
+            values.remove(value)
+            removed += 1
+        return removed
+
+    async def lrange(self, key: str, start: int, end: int) -> list[str]:
+        values = self.lists.get(key, [])
+        stop = None if end == -1 else end + 1
+        return list(values[start:stop])
+
     async def sadd(self, key: str, value: str) -> int:
         values = self.sets.setdefault(key, set())
         before = len(values)
@@ -164,6 +185,40 @@ async def test_queue_enqueue_and_dequeue_are_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_worker_delivery_is_recovered_before_lease_ack() -> None:
+    """worker 在获取租约前崩溃时，processing delivery 不会丢失。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    await queue.enqueue(tenant_id, run_id)
+
+    item = await queue.dequeue()
+    assert item == QueueItem(tenant_id, run_id)
+    assert await queue.recover_inflight() == [item]
+
+    await queue.enqueue(tenant_id, run_id)
+    assert await queue.dequeue() == item
+
+
+@pytest.mark.asyncio
+async def test_worker_ack_removes_processing_delivery() -> None:
+    """取得租约后 ack，后续恢复扫描不会重复投递。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    await queue.enqueue(tenant_id, run_id)
+    item = await queue.dequeue()
+    assert item is not None
+    assert await queue.acquire_lease(tenant_id, run_id, "worker-a") is True
+    await queue.acknowledge(item)
+    assert await queue.recover_inflight() == []
+
+
+@pytest.mark.asyncio
 async def test_queue_dequeue_respects_tenant_filter() -> None:
     """按租户消费时不会交付另一租户的 Run。"""
 
@@ -195,6 +250,32 @@ async def test_lease_renewal_and_cancellation_token() -> None:
     assert await queue.renew_lease(tenant_id, run_id, "worker-a") is True
     await queue.cancel(tenant_id, run_id)
     assert await queue.is_cancelled(tenant_id, run_id) is True
+
+
+class EvalFakeRedis(FakeRedis):
+    """模拟真实 Redis eval 的租约脚本返回值。"""
+
+    async def eval(self, _script: str, _numkeys: int, key: str, owner: str, *args: str) -> int:
+        if self.values.get(key) != owner:
+            return 0
+        if args:
+            await self.expire(key, int(args[0]))
+            return 1
+        return await self.delete(key)
+
+
+@pytest.mark.asyncio
+async def test_lease_renewal_and_release_use_eval_when_available() -> None:
+    """Redis 原子租约路径只允许原 owner 续租和释放。"""
+
+    redis = EvalFakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    assert await queue.acquire_lease(tenant_id, run_id, "worker-a") is True
+    assert await queue.renew_lease(tenant_id, run_id, "worker-a") is True
+    assert await queue.release_lease(tenant_id, run_id, "worker-b") is False
+    assert await queue.release_lease(tenant_id, run_id, "worker-a") is True
 
 
 @pytest.mark.asyncio
@@ -250,6 +331,34 @@ async def test_worker_shutdown_cancels_cooperative_handler() -> None:
 
     assert handler_stopped.is_set()
     assert await queue.lease_owner(tenant_id, run_id) is None
+
+
+@pytest.mark.asyncio
+async def test_worker_stops_cooperative_handler_after_lease_loss() -> None:
+    """租约丢失后，续租任务会让执行器停止后续副作用。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    await queue.enqueue(tenant_id, run_id)
+    handler_started = asyncio.Event()
+    handler_stopped = asyncio.Event()
+
+    async def handler(_item: QueueItem, token: CancellationToken) -> None:
+        handler_started.set()
+        while True:
+            await token.raise_if_cancelled()
+            await asyncio.sleep(0)
+
+    worker = AgentWorker(queue, handler, worker_id="worker-c", renewal_interval=0.001)
+    task = asyncio.create_task(worker.run_once(asyncio.Event()))
+    await handler_started.wait()
+    await redis.delete(queue.lease_key(tenant_id, run_id))
+    await task
+    handler_stopped.set()
+
+    assert handler_stopped.is_set()
 
 
 @pytest.mark.asyncio

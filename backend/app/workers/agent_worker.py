@@ -99,10 +99,14 @@ class AgentWorker:
         if item is None:
             return False
         if stop_event.is_set() or await self._queue.is_cancelled(item.tenant_id, item.run_id):
+            await self._queue.acknowledge(item)
             return True
         acquired = await self._queue.acquire_lease(item.tenant_id, item.run_id, self._worker_id)
         if not acquired:
+            await self._queue.acknowledge(item)
             return True
+
+        await self._queue.acknowledge(item)
 
         token = CancellationToken(self._queue, item, stop_event)
         finished = asyncio.Event()

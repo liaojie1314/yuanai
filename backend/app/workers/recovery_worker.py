@@ -46,10 +46,14 @@ async def _requeue_run(tenant_id: uuid.UUID, run_id: uuid.UUID) -> None:
                 .with_for_update()
             )
             run = result.scalar_one_or_none()
-            if run is None or run.status is not AgentRunStatus.running:
+            if run is None or run.status not in {
+                AgentRunStatus.running,
+                AgentRunStatus.queued,
+            }:
                 return
-            machine = RunStateMachine(run.status)
-            run.status = machine.recover()
+            if run.status is AgentRunStatus.running:
+                machine = RunStateMachine(run.status)
+                run.status = machine.recover()
     await AgentQueue(redis_client).enqueue(tenant_id, run_id)
 
 
@@ -73,6 +77,9 @@ class RecoveryWorker:
         """恢复所有租约不存在且仍可执行的 Run，返回恢复数量。"""
 
         recovered = 0
+        for item in await self._queue.recover_inflight():
+            await self._requeue(item.tenant_id, item.run_id)
+            recovered += 1
         async for tenant_id, run_id, status in self._list_running():
             if status is not AgentRunStatus.running:
                 continue
