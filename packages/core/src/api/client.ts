@@ -121,6 +121,11 @@ let tokenGetter: (() => string | null) | null = null
 let refreshTokenGetter: (() => string | null) | null = null
 let authFailureCallback: (() => void) | null = null
 let onTokenRefreshed: ((accessToken: string) => void) | null = null
+
+/** 返回当前 access token，供非 Axios 的 SSE 通道构造鉴权请求。 */
+export function getAccessToken(): string | null {
+  return tokenGetter?.() ?? null
+}
 let refreshPromise: Promise<string> | null = null
 
 /** 调用 /auth/refresh 换取新 access token；进行中的刷新请求会被并发的 401 复用，避免重复调用 */

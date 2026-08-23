@@ -121,6 +121,7 @@ function webStream(req: StreamRequest, handlers: StreamHandlers): StreamHandle {
       const decoder = new TextDecoder()
       let buffer = ''
       let currentEvent = ''
+      let currentId: string | undefined
 
       while (true) {
         const { done, value } = await reader.read()
@@ -129,14 +130,22 @@ function webStream(req: StreamRequest, handlers: StreamHandlers): StreamHandle {
         const lines = buffer.split('\n')
         buffer = lines.pop() ?? ''
         for (const line of lines) {
-          if (line.startsWith('event: ')) {
+          if (line.startsWith('id: ')) {
+            currentId = line.slice(4).trim()
+          } else if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim()
           } else if (line.startsWith('data: ') && currentEvent) {
-            handlers.onMessage({ event: currentEvent, data: line.slice(6) })
+            handlers.onMessage({
+              event: currentEvent,
+              data: line.slice(6),
+              ...(currentId === undefined ? {} : { id: currentId }),
+            })
             currentEvent = ''
+            currentId = undefined
           } else if (line === '' && currentEvent) {
             // 有 event 但空 data 行，视为结束该事件，避免残留
             currentEvent = ''
+            currentId = undefined
           }
         }
       }
