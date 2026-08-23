@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -22,6 +23,11 @@ from app.models.agent_run import (
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.services import ai_service
+from app.services.agent.approval_service import (
+    ApprovalError,
+    ApprovalPayloadMismatchError,
+    ApprovalService,
+)
 from app.services.agent.context_builder import AgentContextBuilder
 from app.services.agent.errors import AgentCoordinatorError, AgentErrorCode
 from app.services.agent.event_service import EventStore
@@ -107,6 +113,7 @@ class AgentCoordinator:
         max_model_retries: int = 2,
         model_timeout_seconds: float = MODEL_TIMEOUT_SECONDS,
         tool_timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
+        approval_service: ApprovalService | None = None,
     ) -> None:
         if max_model_retries < 0:
             raise ValueError("max_model_retries must be non-negative")
@@ -119,6 +126,7 @@ class AgentCoordinator:
         self._max_model_retries = max_model_retries
         self._model_timeout_seconds = model_timeout_seconds
         self._tool_timeout_seconds = tool_timeout_seconds
+        self._approval_service = approval_service or ApprovalService()
 
     async def run(
         self,
@@ -129,6 +137,7 @@ class AgentCoordinator:
         history: Sequence[dict[str, object]] = (),
         cancellation: asyncio.Event | Callable[[], Awaitable[bool]] | None = None,
         enable_thinking: bool = False,
+        approval_id: uuid.UUID | None = None,
     ) -> CoordinatorResult:
         """运行一次 bounded loop，并按需写回兼容的 assistant Message。"""
 
@@ -288,11 +297,56 @@ class AgentCoordinator:
                     return self._failure(run, AgentErrorCode.TOOL_FAILED, error.code.value, error)
                 decision = self._policy.decide(spec)
                 if not decision.allowed:
-                    return self._failure(
-                        run,
-                        AgentErrorCode.TOOL_FAILED,
-                        decision.reason or "工具不允许执行",
-                    )
+                    if approval_id is None:
+                        approval_step = AgentStep(
+                            id=uuid.uuid4(),
+                            run_id=run.id,
+                            sequence=run.current_step + 1,
+                            kind=AgentStepKind.approval,
+                            status=AgentStepStatus.waiting,
+                            input_json={
+                                "name": call.name,
+                                "execution_location": spec.execution_location,
+                            },
+                        )
+                        run.current_step += 1
+                        run.steps.append(approval_step)
+                        await self._approval_service.create_request(
+                            run=run,
+                            step=approval_step,
+                            tool_name=call.name,
+                            arguments=arguments,
+                            risk_level=spec.risk_level,
+                            execution_location=spec.execution_location,
+                            action_summary=f"执行工具 {call.name}",
+                            db=db,
+                        )
+                        run.status = AgentRunStatus.waiting_approval
+                        await self._emit(
+                            run,
+                            "approval_required",
+                            {"tool_name": call.name, "execution_location": spec.execution_location},
+                        )
+                        return CoordinatorResult(
+                            status=AgentRunStatus.waiting_approval,
+                            error_code=AgentErrorCode.TOOL_APPROVAL_REQUIRED,
+                            error_message="工具执行需要审批",
+                        )
+                    try:
+                        await self._approval_service.authorize_execution(
+                            approval_id,
+                            user_id=run.user_id,
+                            tool_name=call.name,
+                            arguments=arguments,
+                            execution_location=spec.execution_location,
+                            db=db,
+                        )
+                    except ApprovalPayloadMismatchError as error:
+                        return self._failure(
+                            run, AgentErrorCode.APPROVAL_PAYLOAD_MISMATCH, str(error), error
+                        )
+                    except ApprovalError as error:
+                        return self._failure(run, AgentErrorCode.APPROVAL_DENIED, str(error), error)
                 run.current_step += 1
                 self._add_step(run, AgentStepKind.tool, {"name": call.name, "arguments": arguments})
                 await self._emit(
