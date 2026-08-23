@@ -45,7 +45,7 @@ class RunStateMachine:
 
     @staticmethod
     def can_transition(source: AgentRunStatus | str, target: AgentRunStatus | str) -> bool:
-        """判断状态迁移是否符合 Phase 5 协议。"""
+        """判断状态迁移是否符合当前运行协议。"""
 
         try:
             source_status = AgentRunStatus(source)

@@ -58,7 +58,7 @@ class AgentRunCancelledError(RuntimeError):
 
 
 async def _noop_handler(_item: QueueItem, _token: CancellationToken) -> None:
-    """Task 6 coordinator 接入前的安全空处理器。"""
+    """在 coordinator 接入前保持 worker 的安全空处理行为。"""
 
 
 class AgentWorker:

@@ -28,7 +28,7 @@ def _schema_error() -> ToolValidationError:
 
 
 def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
-    """验证 Phase 5 使用到的有限 JSON Schema 子集。"""
+    """验证工具使用到的有限 JSON Schema 子集。"""
 
     expected_type = schema.get("type")
     if expected_type == "object":

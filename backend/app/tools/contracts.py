@@ -1,4 +1,4 @@
-"""Phase 5 内置工具的稳定契约与错误码。"""
+"""内置工具的稳定契约与错误码。"""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class ToolRisk(StrEnum):
-    """工具风险等级；Phase 5 内置工具均为只读。"""
+    """工具风险等级；内置工具均为只读。"""
 
     read = "read"
     low = "read"
@@ -78,7 +78,7 @@ class ToolExecutionError(ToolError):
 
 
 class ToolSpec(BaseModel):
-    """描述一个可由代码显式注册的 Phase 5 工具。"""
+    """描述一个可由代码显式注册的工具。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

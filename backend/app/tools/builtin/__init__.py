@@ -1,4 +1,4 @@
-"""Phase 5 三个无副作用内置工具。"""
+"""三个无副作用内置工具。"""
 
 from app.tools.builtin.calculate import CALCULATE_SPEC, calculate
 from app.tools.builtin.current_time import CURRENT_TIME_SPEC, get_current_time
@@ -10,7 +10,7 @@ from app.tools.registry import ToolRegistry
 
 
 def build_builtin_registry() -> ToolRegistry:
-    """构造只包含 Phase 5 三个内置工具的新注册表。"""
+    """构造只包含三个内置工具的新注册表。"""
 
     registry = ToolRegistry()
     registry.register(CALCULATE_SPEC, calculate)

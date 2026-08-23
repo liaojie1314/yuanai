@@ -1,4 +1,4 @@
-"""Phase 5 受限工具目录。"""
+"""受限工具目录。"""
 
 from app.tools.contracts import (
     ExecutionLocation,
