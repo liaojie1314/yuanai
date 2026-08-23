@@ -9,7 +9,7 @@ from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.models.agent_run import AgentRun
 
-router = APIRouter(prefix="/admin/agent", tags=["admin-agent"])
+router = APIRouter(prefix="/admin/agent-runs", tags=["admin-agent"])
 
 
 def _require_admin(user_id: uuid.UUID) -> None:
@@ -28,14 +28,15 @@ async def list_agent_run_summaries(current_user: CurrentUser, db: DB) -> list[di
             "id": str(run.id),
             "status": run.status.value,
             "model": run.model,
-            "created_at": run.created_at,
-            "current_step": run.current_step,
+            "createdAt": run.created_at,
+            "currentStep": run.current_step,
+            "errorCode": run.error_code,
         }
         for run in rows
     ]
 
 
-@router.get("/runs/{run_id}")
+@router.get("/{run_id}")
 async def get_agent_run_summary(
     run_id: uuid.UUID, current_user: CurrentUser, db: DB
 ) -> dict[str, object]:
@@ -48,8 +49,8 @@ async def get_agent_run_summary(
         "user_id": str(run.user_id),
         "status": run.status.value,
         "model": run.model,
-        "current_step": run.current_step,
-        "error_code": run.error_code,
-        "created_at": run.created_at,
-        "updated_at": run.updated_at,
+        "currentStep": run.current_step,
+        "errorCode": run.error_code,
+        "createdAt": run.created_at,
+        "updatedAt": run.updated_at,
     }

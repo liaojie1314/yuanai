@@ -1,4 +1,11 @@
-import type { AgentEvent, AgentRun, AgentStep, ApprovalRequest, Assistant } from '@yuanai/types'
+import type {
+  AdminAgentRun,
+  AgentEvent,
+  AgentRun,
+  AgentStep,
+  ApprovalRequest,
+  Assistant,
+} from '@yuanai/types'
 
 import { getPlatformAdapter, type StreamHandle } from '../platform/index.js'
 import { apiClient, getAccessToken, getApiBaseUrl } from './client.js'
@@ -62,6 +69,16 @@ export async function createAgentRun(input: AgentRunInput): Promise<AgentRun> {
 /** 列出当前用户的 Agent Run。 */
 export async function listAgentRuns(): Promise<AgentRun[]> {
   return (await apiClient.get<AgentRun[]>('/agent/runs')).data
+}
+
+/** 列出当前用户可见的审批请求。 */
+export async function listAgentApprovals(): Promise<ApprovalRequest[]> {
+  return (await apiClient.get<ApprovalRequest[]>('/agent/approvals')).data
+}
+
+/** 列出管理员可见的已脱敏 Agent Run 摘要。 */
+export async function listAdminAgentRuns(): Promise<AdminAgentRun[]> {
+  return (await apiClient.get<AdminAgentRun[]>('/admin/agent-runs')).data
 }
 
 /** 获取 Agent Run 详情。 */

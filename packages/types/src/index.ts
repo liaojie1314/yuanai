@@ -561,6 +561,16 @@ export interface AgentRun {
   createdAt: string
   updatedAt: string
 }
+/** 运营侧脱敏 Agent Run 摘要。 */
+export interface AdminAgentRun {
+  id: string
+  status: AgentRunStatus
+  model: string
+  currentStep: number
+  errorCode: string | null
+  createdAt: string
+  updatedAt?: string
+}
 /** Agent Run 内的一步执行记录。 */
 export interface AgentStep {
   id: string

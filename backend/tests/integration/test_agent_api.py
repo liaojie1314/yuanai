@@ -117,5 +117,5 @@ async def test_admin_summary_requires_allowlisted_user(
     client: AsyncClient, auth_headers: dict[str, str]
 ) -> None:
     """普通登录用户不能访问运营摘要。"""
-    response = await client.get("/api/v1/admin/agent", headers=auth_headers)
+    response = await client.get("/api/v1/admin/agent-runs", headers=auth_headers)
     assert response.status_code == 403

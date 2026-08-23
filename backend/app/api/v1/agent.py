@@ -283,3 +283,17 @@ async def decide_approval(
         raise HTTPException(status_code=409, detail=str(error)) from error
     await db.commit()
     return item
+
+
+@router.get("/approvals", response_model=list[ApprovalRequestResponse])
+async def list_approvals(current_user: CurrentUser, db: DB) -> list[ApprovalRequest]:
+    """列出当前用户的审批请求，参数字段只返回脱敏预览。"""
+    return list(
+        (
+            await db.scalars(
+                select(ApprovalRequest)
+                .where(ApprovalRequest.user_id == current_user.id)
+                .order_by(ApprovalRequest.created_at.desc())
+            )
+        ).all()
+    )
