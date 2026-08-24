@@ -131,5 +131,14 @@ class Settings(BaseSettings):
     # VAPID subject：mailto: 或站点 URL，推送服务用它联系发送方
     vapid_subject: str = "mailto:admin@yuanai.example"
 
+    # 运营 Agent 摘要接口允许访问的用户 ID，逗号分隔；为空时默认拒绝。
+    agent_admin_user_ids: str = ""
+
+    # Agent 默认关闭；灰度时可通过显式开关或用户 ID allowlist 开启。
+    agent_enabled: bool = False
+    agent_allowlist_user_ids: str = ""
+    # 指标哈希盐只用于避免在日志中写入用户原始标识。
+    agent_metrics_hash_salt: str = "yuanai-agent-metrics"
+
 
 settings = Settings()  # type: ignore[call-arg]

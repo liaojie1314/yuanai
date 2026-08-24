@@ -7,7 +7,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import auth, chat, media, models, notifications, qr_login, share, voice
+from app.api.v1 import (
+    admin_agent,
+    agent,
+    auth,
+    chat,
+    media,
+    models,
+    notifications,
+    qr_login,
+    share,
+    voice,
+)
 from app.api.v1 import files as files_router
 from app.core.config import settings
 
@@ -80,6 +91,8 @@ app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(share.router, prefix="/api/v1")
 app.include_router(files_router.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
+app.include_router(agent.router, prefix="/api/v1")
+app.include_router(admin_agent.router, prefix="/api/v1")
 
 
 @app.get("/health")

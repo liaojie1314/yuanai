@@ -22,6 +22,7 @@ export default defineConfig({
     command: 'NEXT_PUBLIC_MOCK=true pnpm dev',
     url: 'http://127.0.0.1:3000',
     reuseExistingServer: !process.env['CI'],
+    timeout: 120_000,
     env: { NEXT_PUBLIC_MOCK: 'true' },
   },
 })

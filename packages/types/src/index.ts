@@ -520,3 +520,95 @@ export type SSEEvent =
   | SSEConversationTitle
   | SSEMessageEnd
   | SSEError
+
+/** Agent Run 生命周期状态。 */
+export type AgentRunStatus =
+  'queued' | 'running' | 'waiting_approval' | 'waiting_input' | 'succeeded' | 'failed' | 'cancelled'
+/** 用户拥有的 Agent 助理。 */
+export interface Assistant {
+  id: string
+  userId: string
+  name: string
+  description: string
+  instructions: string
+  defaultModel: string
+  autonomyLevel: string
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+/** Agent Run 摘要。 */
+export interface AgentRun {
+  id: string
+  userId: string
+  assistantId: string
+  conversationId: string | null
+  parentRunId: string | null
+  goal: string
+  status: AgentRunStatus
+  model: string
+  maxSteps: number
+  currentStep: number
+  idempotencyKey: string | null
+  inputTokens: number
+  outputTokens: number
+  estimatedCostUsd: string
+  errorCode: string | null
+  errorMessage: string | null
+  queuedAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+/** 运营侧脱敏 Agent Run 摘要。 */
+export interface AdminAgentRun {
+  id: string
+  status: AgentRunStatus
+  model: string
+  currentStep: number
+  errorCode: string | null
+  createdAt: string
+  updatedAt?: string
+}
+/** Agent Run 内的一步执行记录。 */
+export interface AgentStep {
+  id: string
+  runId: string
+  sequence: number
+  kind: string
+  status: string
+  inputJson: Record<string, unknown> | null
+  outputJson: Record<string, unknown> | null
+  errorCode: string | null
+  errorMessage: string | null
+  startedAt: string | null
+  finishedAt: string | null
+}
+/** 可通过 SSE 重放的 Agent 事件。 */
+export interface AgentEvent {
+  id: number
+  runId: string
+  sequence: number
+  eventType: string
+  payload: Record<string, unknown>
+  createdAt: string
+}
+/** 脱敏审批请求。 */
+export interface ApprovalRequest {
+  id: string
+  runId: string
+  stepId: string
+  userId: string
+  toolName: string
+  executionLocation: string
+  riskLevel: string
+  actionSummary: string
+  argumentsPreview: Record<string, unknown>
+  payloadHash: string
+  status: string
+  expiresAt: string
+  decidedAt: string | null
+  decisionNote: string | null
+  createdAt: string
+}

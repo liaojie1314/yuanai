@@ -1,6 +1,7 @@
 export {
   apiClient,
   setTokenGetter,
+  getAccessToken,
   setRefreshTokenGetter,
   setOnAuthFailure,
   setOnTokenRefreshed,
@@ -17,3 +18,4 @@ export * from './files.js'
 export * from './media.js'
 export * from './voice.js'
 export * from './qr-login.js'
+export * from './agent.js'

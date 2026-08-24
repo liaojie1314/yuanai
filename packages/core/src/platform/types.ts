@@ -8,6 +8,8 @@ import type { StateStorage } from 'zustand/middleware'
  * 这样上层 `useStream` 不需要关心传输层格式。
  */
 export interface SseMessage {
+  /** SSE `id:` 游标，用于 Agent 事件去重和断线重连。 */
+  id?: string
   /** SSE event 名，例如 `content_delta`、`thinking_delta`、`tool_call_start` */
   event: string
   /** SSE data 原始字符串（通常是 JSON 序列化的 payload） */

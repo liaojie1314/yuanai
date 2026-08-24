@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo, startTransition, type JSX } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import SettingsModal from '@/components/settings/SettingsModal'
@@ -78,6 +79,7 @@ import {
   Ghost,
   Image,
   Video,
+  Bot,
 } from 'lucide-react'
 
 import { triggerAIReplyNotification } from '@/lib/notifications'
@@ -85,6 +87,7 @@ import { useToast } from '@/hooks/useToast'
 import { useVoiceInput } from '@/hooks/useVoiceInput'
 import { captureScreenshot, isCameraSupported, isScreenCaptureSupported } from '@/lib/mediaCapture'
 import { CameraModal } from '@/components/chat/CameraModal'
+import { createAgentRun, listAssistants } from '@yuanai/core/api'
 
 // ── Types ────────────────────────────────────────────
 interface Model {
@@ -117,7 +120,7 @@ interface AttachFile {
   error?: string
 }
 
-type ComposerMode = 'chat' | 'image' | 'video'
+type ComposerMode = 'chat' | 'agent' | 'image' | 'video'
 
 const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
 const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
@@ -324,6 +327,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const { mutate: deleteConvs } = useDeleteConversations()
   const { mutate: updateConv } = useUpdateConversation()
   const modelsQuery = useModels()
+  const assistantsQuery = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
   const webSearchAvailable = webSearchCapability?.enabled === true
@@ -345,6 +349,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       setActiveConv('')
     }
   }, [initialConvId])
+
+  useEffect(() => {
+    setAgentEnabled(window.localStorage.getItem('yuanai-agent-enabled') === '1')
+  }, [])
 
   // ── Messages for active conv ──
   // isLoading（而非 isFetching）：只在这个会话从未取到过数据时为 true——
@@ -382,6 +390,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const openFilePreview = useArtifactStore((s) => s.openFilePreview)
   const [webSearch, setWebSearch] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
+  const [agentEnabled, setAgentEnabled] = useState(false)
   const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
   const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
   const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
@@ -726,6 +735,27 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     if (!inputValue.trim() || isThisStreaming || uploading) return
 
     const text = inputValue.trim()
+    if (composerMode === 'agent') {
+      const assistant =
+        assistantsQuery.data?.find((item) => item.isDefault) ?? assistantsQuery.data?.[0]
+      if (!assistant) {
+        toast.error('暂无可用 Agent 助理，请先在 Agent 设置中配置')
+        return
+      }
+      try {
+        const run = await createAgentRun({
+          assistantId: assistant.id,
+          goal: text,
+          model: assistant.defaultModel || activeModel.id,
+          ...(activeConv ? { conversationId: activeConv } : {}),
+        })
+        setInputValue('')
+        router.push(`/agent/runs?run=${run.id}`)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '创建 Agent 任务失败')
+      }
+      return
+    }
     const hasImageAttachment = files.some((file) => file.type === 'image')
     const isMediaMode = composerMode !== 'chat'
     if (isMediaMode && temporary) {
@@ -1862,11 +1892,27 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   </>
                 ) : null}
                 <button
+                  className={`ch-in-btn ${composerMode === 'agent' ? 'on' : ''}`}
+                  title={composerMode === 'agent' ? '退出 Agent 模式' : 'Agent 模式'}
+                  aria-label={composerMode === 'agent' ? '退出 Agent 模式' : 'Agent 模式'}
+                  aria-pressed={composerMode === 'agent'}
+                  disabled={!isLoggedIn || temporary || uploading || !agentEnabled}
+                  onClick={() => setComposerMode((mode) => (mode === 'agent' ? 'chat' : 'agent'))}
+                >
+                  <Bot size={18} />
+                </button>
+                <button
                   className={`ch-in-btn ${composerMode === 'image' ? 'on' : ''}`}
                   title={composerMode === 'image' ? '退出图片生成' : '图片生成'}
                   aria-label={composerMode === 'image' ? '退出图片生成' : '图片生成'}
                   aria-pressed={composerMode === 'image'}
-                  disabled={!isLoggedIn || temporary || uploading || createMediaTask.isPending}
+                  disabled={
+                    !isLoggedIn ||
+                    temporary ||
+                    uploading ||
+                    createMediaTask.isPending ||
+                    composerMode === 'agent'
+                  }
                   onClick={() => setComposerMode((mode) => (mode === 'image' ? 'chat' : 'image'))}
                 >
                   <Image size={18} />
@@ -1876,7 +1922,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   title={composerMode === 'video' ? '退出视频生成' : '视频生成'}
                   aria-label={composerMode === 'video' ? '退出视频生成' : '视频生成'}
                   aria-pressed={composerMode === 'video'}
-                  disabled={!isLoggedIn || temporary || uploading || createMediaTask.isPending}
+                  disabled={
+                    !isLoggedIn ||
+                    temporary ||
+                    uploading ||
+                    createMediaTask.isPending ||
+                    composerMode === 'agent'
+                  }
                   onClick={() => setComposerMode((mode) => (mode === 'video' ? 'chat' : 'video'))}
                 >
                   <Video size={18} />
@@ -1893,6 +1945,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       </div>
                       {activeModel.name}
                     </button>
+                  ) : composerMode === 'agent' ? (
+                    <span className="ch-media-model">Agent</span>
                   ) : (
                     <span className="ch-media-model">
                       {composerMode === 'image' ? 'Agnes Image 2.1 Flash' : 'Agnes Video V2.0'}

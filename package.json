@@ -26,6 +26,8 @@
     "dev:mobile": "node scripts/dev-mobile.mjs",
     "dev:mobile:mock": "node scripts/dev-mobile-mock.mjs",
     "setup:search": "node scripts/ensure-searxng-secret.mjs",
+    "agent:worker": "uv --directory backend run python -m app.workers.agent_worker",
+    "agent:recovery-worker": "uv --directory backend run python -m app.workers.recovery_worker",
     "preview:desktop": "pnpm --filter @yuanai/desktop preview",
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",

@@ -1,11 +1,10 @@
 import asyncio
-import base64
 import json
 import logging
 import time
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -13,7 +12,6 @@ from sqlalchemy import case, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
-from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
@@ -32,14 +30,12 @@ from app.schemas.chat import (
 )
 from app.schemas.media_generation import MediaGenerationTaskResponse
 from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
+from app.services.chat_service import stream_chat_response
 from app.services.conversation_title_service import (
     ConversationTitleResult,
-    fallback_title,
     generate_and_store_title,
 )
-from app.services.file_extract_service import extract_preview, preview_context
 from app.services.push_service import send_to_user
-from app.services.storage_service import storage
 from app.services.tools.search import get_search_capability
 
 logger = logging.getLogger(__name__)
@@ -186,207 +182,19 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     }
 
 
+
+
 @router.post("/stream")
 async def stream_chat_endpoint(
     req: SendMessageRequest, current_user: CurrentUser, db: DB
 ) -> StreamingResponse:
-    conv = await _get_user_conv(req.conversation_id, current_user.id, db)
-
-    if req.replace_message_id is not None and req.regenerate_from_message_id is not None:
-        raise HTTPException(
-            422,
-            {
-                "code": "INVALID_MESSAGE_OPERATION",
-                "message": "编辑消息和重新生成不能同时执行",
-            },
-        )
-
-    regenerated_from_message_id: uuid.UUID | None = None
-    if req.regenerate_from_message_id is not None:
-        source_result = await db.execute(
-            select(Message.id)
-            .where(Message.id == req.regenerate_from_message_id)
-            .where(Message.conv_id == conv.id)
-            .where(Message.role == MessageRole.user)
-        )
-        regenerated_from_message_id = source_result.scalar_one_or_none()
-        if regenerated_from_message_id is None:
-            raise HTTPException(404, {"code": "MESSAGE_NOT_FOUND", "message": "消息不存在"})
-
-    now = datetime.now(UTC)
-    is_first_user_message = False
-    if req.replace_message_id is None and conv.title_source == "default":
-        existing_user_message = await db.execute(
-            select(Message.id)
-            .where(Message.conv_id == conv.id)
-            .where(Message.role == MessageRole.user)
-            .limit(1)
-        )
-        is_first_user_message = existing_user_message.scalar_one_or_none() is None
-
-    title_fallback: dict[str, str] | None = None
-    if req.replace_message_id is None:
-        # 用显式时间戳强制 user 早于 assistant，避免同一事务下 server_default=func.now()
-        # 让两条记录拿到完全相同的 created_at，导致 order_by(created_at) 顺序不确定，
-        # 进而在前端 buildPairs 中把 assistant 归到上一个用户消息下（表现为回复错位/丢失）。
-        user_msg = Message(
-            conv_id=conv.id,
-            role=MessageRole.user,
-            content=req.message.content,
-            regenerated_from_message_id=regenerated_from_message_id,
-            created_at=now,
-        )
-        db.add(user_msg)
-    else:
-        result = await db.execute(
-            select(Message)
-            .where(Message.id == req.replace_message_id)
-            .where(Message.conv_id == conv.id)
-            .where(Message.role == MessageRole.user)
-            .with_for_update()
-        )
-        existing_user_msg = result.scalar_one_or_none()
-        if existing_user_msg is None:
-            raise HTTPException(404, {"code": "MESSAGE_NOT_FOUND", "message": "消息不存在"})
-        user_msg = existing_user_msg
-        # 编辑历史问题会使后续上下文失效，因此保留编辑消息本身，删除其后的旧分支。
-        await db.execute(
-            delete(Message)
-            .where(Message.conv_id == conv.id)
-            .where(Message.created_at > user_msg.created_at)
-        )
-        user_msg.content = req.message.content
-
-    # 创建 assistant 消息占位（流式填充内容）
-    assistant_msg = Message(
-        conv_id=conv.id,
-        role=MessageRole.assistant,
-        content="",
-        model=req.model,
-        created_at=now + timedelta(microseconds=1),
-    )
-    db.add(assistant_msg)
-    # 同步推进会话活跃时间：前端分组/排序以 last_message_at 为准；
-    # 取 assistant 占位的 created_at，与 list_messages 里的最新一条一致。
-    conv.last_message_at = assistant_msg.created_at
-    if is_first_user_message:
-        conv.title = fallback_title(req.message.content)
-        conv.title_source = "fallback"
-        conv.title_generated_at = now
-        title_fallback = {
-            "conversation_id": str(conv.id),
-            "title": conv.title,
-            "title_source": conv.title_source,
-            "title_generated_at": now.isoformat(),
-        }
-    await db.commit()
-    await db.refresh(user_msg)
-    await db.refresh(assistant_msg)
-
-    title_task: asyncio.Task[ConversationTitleResult | None] | None = None
-    if is_first_user_message:
-        title_task = asyncio.create_task(generate_and_store_title(conv.id, req.message.content))
-
-    # 新消息关联上传文件；编辑既有消息时保留其原附件。
-    attached_files: list[File] = []
-    if req.message.file_ids and req.replace_message_id is None:
-        file_results = await db.execute(
-            select(File)
-            .where(File.id.in_(req.message.file_ids))
-            .where(File.user_id == current_user.id)
-        )
-        attached_files = list(file_results.scalars().all())
-        for i, f in enumerate(attached_files):
-            db.add(MessageFile(message_id=user_msg.id, file_id=f.id, sort_order=i))
-        await db.commit()
-    elif req.replace_message_id is not None:
-        file_results = await db.execute(
-            select(File)
-            .join(MessageFile, MessageFile.file_id == File.id)
-            .where(MessageFile.message_id == user_msg.id)
-        )
-        attached_files = list(file_results.scalars().all())
-
-    # 构建历史消息（最多 50 条，排除刚创建的空 assistant 占位）
-    history_result = await db.execute(
-        select(Message)
-        .where(Message.conv_id == conv.id)
-        .where(Message.id != assistant_msg.id)  # 排除空占位，避免模型误以为已回复
-        .order_by(Message.created_at, Message.id)
-        .limit(50)
-    )
-    history = history_result.scalars().all()
-
-    files_by_message_id: dict[uuid.UUID, list[File]] = {}
-    if history:
-        history_file_result = await db.execute(
-            select(MessageFile, File)
-            .join(File, File.id == MessageFile.file_id)
-            .where(MessageFile.message_id.in_([message.id for message in history]))
-            .order_by(MessageFile.message_id, MessageFile.sort_order)
-        )
-        for message_file, file in history_file_result.all():
-            files_by_message_id.setdefault(message_file.message_id, []).append(file)
-
-    # 构造 OpenAI 格式消息列表；每条带附件的历史用户消息均保留文件上下文。
-    openai_messages: list[dict[str, object]] = []
-    for m in history:
-        message_files = files_by_message_id.get(m.id, [])
-        if message_files:
-            # 带附件的用户消息：组装内容数组，避免后续追问丢失文件上下文。
-            content_parts: list[dict[str, object]] = [{"type": "text", "text": m.content}]
-            for af in message_files:
-                if af.mime_type.startswith("image/"):
-                    image_data = await storage.get_object(af.s3_key)
-                    if len(image_data) <= settings.ai_inline_image_max_bytes:
-                        encoded = base64.b64encode(image_data).decode("ascii")
-                        content_parts.append(
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{af.mime_type};base64,{encoded}",
-                                },
-                            }
-                        )
-                    else:
-                        content_parts.append(
-                            {
-                                "type": "text",
-                                "text": (
-                                    f"\n[{af.filename}] 图片已上传，但超过 "
-                                    "视觉识别大小限制，无法发送给当前模型。"
-                                ),
-                            }
-                        )
-                else:
-                    extracted = extract_preview(
-                        await storage.get_object(af.s3_key), af.mime_type, af.filename
-                    )
-                    context = preview_context(extracted)
-                    if context:
-                        content_parts.append(
-                            {"type": "text", "text": f"\n[{af.filename}]\n{context}"}
-                        )
-            openai_messages.append({"role": m.role.value, "content": content_parts})
-        else:
-            openai_messages.append({"role": m.role.value, "content": m.content})
-
-    return StreamingResponse(
-        _generate_sse(
-            openai_messages,
-            req.model,
-            assistant_msg.id,
-            user_msg.id,
-            db,
-            enable_thinking=req.enable_thinking,
-            enable_web_search=req.enable_web_search,
-            user_id=current_user.id,
-            conv_id=conv.id,
-            initial_title_update=title_fallback,
-            title_task=title_task,
-        ),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    """认证、参数解析和响应编排；聊天事务由 chat_service 负责。"""
+    return await stream_chat_response(
+        req,
+        user_id=current_user.id,
+        db=db,
+        sse_generator=_generate_sse,
+        title_generator=generate_and_store_title,
     )
 
 

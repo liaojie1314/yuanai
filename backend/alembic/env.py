@@ -17,6 +17,11 @@ if config.config_file_name is not None:
 # 导入所有模型以触发 SQLAlchemy 注册，autogenerate 才能检测到表变更
 from app.core.database import Base  # noqa: E402
 from app.models import (  # noqa: F401, E402
+    AgentEvent,
+    AgentRun,
+    AgentStep,
+    ApprovalRequest,
+    Assistant,
     Conversation,
     ConversationShare,
     File,

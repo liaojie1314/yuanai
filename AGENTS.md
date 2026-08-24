@@ -361,14 +361,14 @@ MSW handler 位于 `apps/web/src/mocks/handlers.ts`（开发）和 `tests/mocks/
 
 | 类型     | 格式                  | 示例                        |
 | -------- | --------------------- | --------------------------- |
-| 新功能   | `feat/<简短描述>`     | `feat/streaming-chat`       |
+| 新功能   | `feature/<简短描述>`  | `feature/streaming-chat`    |
 | Bug 修复 | `fix/<简短描述>`      | `fix/token-refresh-race`    |
 | 测试补充 | `test/<简短描述>`     | `test/chat-api-integration` |
 | 文档     | `docs/<简短描述>`     | `docs/api-design-update`    |
 | 重构     | `refactor/<简短描述>` | `refactor/ai-service-layer` |
 | 工程配置 | `chore/<简短描述>`    | `chore/upgrade-expo-sdk`    |
 
-**禁止直接 push 到 `main` 或 `dev` 分支。**
+**禁止直接 push 到 `main` 或 `dev` 分支。所有功能分支使用 `feature/<简短描述>`。**
 
 ### Commit 格式（Conventional Commits，commitlint 强制）
 
