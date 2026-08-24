@@ -90,6 +90,57 @@ async def test_image_worker_persists_output_and_notifies(
     notify.assert_awaited_once()
 
 
+async def test_music_worker_persists_mp3_output_and_notifies(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """音乐任务保存 MP3 到用户隔离的 generated 前缀并完成通知。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.music)
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    monkeypatch.setattr(
+        media_service,
+        "generate_elevenlabs_music",
+        AsyncMock(return_value=(b"mp3-bytes", "audio/mpeg")),
+    )
+    put_object = AsyncMock()
+    notify = AsyncMock()
+    monkeypatch.setattr(media_service.storage, "put_object", put_object)
+    monkeypatch.setattr(media_service, "send_to_user", notify)
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    completed = await _load_task(db, task.id)
+    assert completed.status is MediaGenerationStatus.succeeded
+    assert completed.result_s3_key == f"generated/{task.user_id}/{task.id}.mp3"
+    assert completed.result_mime_type == "audio/mpeg"
+    assert completed.result_duration_seconds == 30
+    assert await _message_content(db, completed) == "音乐生成完成"
+    put_object.assert_awaited_once_with(completed.result_s3_key, b"mp3-bytes", "audio/mpeg")
+    notify.assert_awaited_once()
+
+
+async def test_music_task_rejects_provider_options_and_source_files(
+    db: AsyncSession, test_user: User
+) -> None:
+    """音乐仅接受固定时长，且不能携带图片/视频参数或附件。"""
+    conversation = Conversation(user_id=test_user.id, title="音乐参数测试", model="agnes-2.5-flash")
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+    with pytest.raises(media_service.MediaGenerationValidationError):
+        await media_service.create_media_task(
+            user_id=test_user.id,
+            conversation_id=conversation.id,
+            request=CreateMediaGenerationRequest(
+                conversation_id=conversation.id,
+                type=MediaGenerationType.music,
+                prompt="测试",
+                options={"durationSeconds": 5},
+            ),
+            db=db,
+        )
+
+
 async def test_video_output_persists_optional_poster_without_blocking_result(
     db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:

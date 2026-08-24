@@ -43,6 +43,7 @@ _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
 ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
 AGNES_VIDEO_API_BASE_URL = "https://apihub.agnes-ai.com/v1"
+ELEVENLABS_MUSIC_API_BASE_URL = "https://api.elevenlabs.io"
 TITLE_GENERATION_TIMEOUT_SECONDS = 12
 TITLE_GENERATION_PROMPT = (
     "Summarize the user's first question as a concise sidebar title in the same language. "
@@ -169,14 +170,14 @@ class VoiceTranscriptionProviderError(RuntimeError):
 
 
 class MediaProviderUnavailableError(RuntimeError):
-    """未配置 Agnes 凭据时媒体生成请求不可用。"""
+    """未配置媒体 provider 凭据时媒体生成请求不可用。"""
 
     def __init__(self) -> None:
         super().__init__("Media generation provider is unavailable")
 
 
 class MediaProviderError(RuntimeError):
-    """Agnes 媒体请求失败时向任务 worker 暴露的脱敏错误。"""
+    """媒体 provider 请求失败时向任务 worker 暴露的脱敏错误。"""
 
     def __init__(self) -> None:
         super().__init__("Media generation provider failed")
@@ -626,6 +627,43 @@ async def generate_agnes_image(
     if not isinstance(url, str) or not url.strip():
         raise MediaProviderError()
     return AgnesImageResult(url=url.strip())
+
+
+async def generate_elevenlabs_music(prompt: str, *, duration_ms: int = 30_000) -> tuple[bytes, str]:
+    """调用 ElevenLabs Music API，返回待写入对象存储的 MP3 字节。"""
+    api_key = settings.elevenlabs_api_key
+    if not api_key:
+        raise MediaProviderUnavailableError()
+    if duration_ms != 30_000:
+        raise MediaProviderError()
+
+    try:
+        async with asyncio.timeout(settings.media_music_timeout_seconds):
+            async with httpx.AsyncClient(
+                base_url=ELEVENLABS_MUSIC_API_BASE_URL,
+                timeout=settings.media_music_timeout_seconds,
+            ) as client:
+                response = await client.post(
+                    "/v1/music",
+                    params={"output_format": "mp3_44100_128"},
+                    headers={"xi-api-key": api_key},
+                    json={
+                        "prompt": prompt,
+                        "music_length_ms": duration_ms,
+                        "model_id": "music_v1",
+                        "force_instrumental": True,
+                    },
+                )
+                response.raise_for_status()
+    except TimeoutError as error:
+        raise MediaProviderError() from error
+    except (httpx.HTTPError, TypeError, ValueError) as error:
+        raise MediaProviderError() from error
+
+    mime_type = response.headers.get("content-type", "").split(";", 1)[0].lower()
+    if mime_type != "audio/mpeg" or not response.content:
+        raise MediaProviderError()
+    return response.content, mime_type
 
 
 async def _agnes_video_request(

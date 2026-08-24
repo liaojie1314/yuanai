@@ -33,6 +33,7 @@ from app.services.ai_service import (  # noqa: E402
     AgnesImageResult,
     AgnesVideoSnapshot,
     ContentDelta,
+    MediaProviderError,
     MediaProviderUnavailableError,
     ModelCompleted,
     ModelFailed,
@@ -47,6 +48,7 @@ from app.services.ai_service import (  # noqa: E402
     _get_client,
     generate_agnes_image,
     generate_conversation_title,
+    generate_elevenlabs_music,
     get_agnes_video,
     get_available_models,
     stream_agent,
@@ -489,6 +491,58 @@ async def test_media_provider_requires_agnes_key(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(MediaProviderUnavailableError):
         await generate_agnes_image("一只红色风筝", size="1K", ratio="1:1")
+
+
+async def test_elevenlabs_music_sends_fixed_instrumental_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """音乐 provider 请求必须固定为 30 秒、纯音乐和 MP3。"""
+    monkeypatch.setattr(ai_svc.settings, "elevenlabs_api_key", "test-eleven-key")
+    request = httpx.Request("POST", "https://api.elevenlabs.io/v1/music")
+    response = httpx.Response(
+        200,
+        headers={"content-type": "audio/mpeg"},
+        content=b"mp3-bytes",
+        request=request,
+    )
+    client = MagicMock()
+    client.post = AsyncMock(return_value=response)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **kwargs: client)
+
+    result = await generate_elevenlabs_music("夜晚的钢琴与弦乐")
+
+    assert result == (b"mp3-bytes", "audio/mpeg")
+    client.post.assert_awaited_once_with(
+        "/v1/music",
+        params={"output_format": "mp3_44100_128"},
+        headers={"xi-api-key": "test-eleven-key"},
+        json={
+            "prompt": "夜晚的钢琴与弦乐",
+            "music_length_ms": 30_000,
+            "model_id": "music_v1",
+            "force_instrumental": True,
+        },
+    )
+
+
+async def test_elevenlabs_music_hides_provider_failures(monkeypatch: pytest.MonkeyPatch) -> None:
+    """音乐 provider 的凭据、响应体和 URL 不得泄漏给业务层。"""
+    monkeypatch.setattr(ai_svc.settings, "elevenlabs_api_key", "")
+    with pytest.raises(MediaProviderUnavailableError):
+        await generate_elevenlabs_music("测试")
+
+    monkeypatch.setattr(ai_svc.settings, "elevenlabs_api_key", "test-eleven-key")
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=httpx.TimeoutException("secret provider detail"))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **kwargs: client)
+    with pytest.raises(MediaProviderError) as error:
+        await generate_elevenlabs_music("测试")
+    assert "secret" not in str(error.value)
+    assert "elevenlabs" not in str(error.value).lower()
 
 
 def test_deepseek_v4_official_metadata() -> None:

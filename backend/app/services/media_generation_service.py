@@ -33,6 +33,7 @@ from app.services.ai_service import (
     MediaProviderUnavailableError,
     create_agnes_video,
     generate_agnes_image,
+    generate_elevenlabs_music,
     get_agnes_video,
 )
 from app.services.push_service import send_to_user
@@ -46,6 +47,7 @@ VIDEO_DEFAULT_OPTIONS: dict[str, str | int] = {
     "resolution": "720p",
     "durationSeconds": 5,
 }
+MUSIC_DEFAULT_OPTIONS: dict[str, str | int] = {"durationSeconds": 30}
 _IMAGE_OPTION_VALUES: dict[str, set[str | int]] = {
     "size": {"1K", "2K", "3K", "4K"},
     "ratio": {"1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"},
@@ -55,6 +57,7 @@ _VIDEO_OPTION_VALUES: dict[str, set[str | int]] = {
     "resolution": {"480p", "720p", "1080p"},
     "durationSeconds": {3, 5, 10, 18},
 }
+_MUSIC_OPTION_VALUES: dict[str, set[str | int]] = {"durationSeconds": {30}}
 _VIDEO_SIZE_PRESETS: dict[str, dict[str, tuple[int, int]]] = {
     "3:2": {"480p": (720, 480), "720p": (1152, 768), "1080p": (1620, 1080)},
     "16:9": {"480p": (832, 448), "720p": (1280, 720), "1080p": (1920, 1080)},
@@ -71,6 +74,7 @@ _MEDIA_EXTENSIONS = {
     "image/webp": "webp",
     "image/gif": "gif",
     "video/mp4": "mp4",
+    "audio/mpeg": "mp3",
 }
 _VIDEO_POSTER_MIME_TYPE = "image/jpeg"
 
@@ -96,9 +100,11 @@ class MediaGenerationOutputError(RuntimeError):
 
 
 def _task_model(kind: MediaGenerationType) -> str:
-    """返回只允许由专用任务 API 调用的 Agnes 模型 ID。"""
+    """返回只允许由专用任务 API 调用的媒体模型 ID。"""
     if kind is MediaGenerationType.image:
         return "agnes-image-2.1-flash"
+    if kind is MediaGenerationType.music:
+        return "elevenlabs-music-v1"
     return "agnes-video-v2.0"
 
 
@@ -106,6 +112,8 @@ def _placeholder_content(kind: MediaGenerationType) -> str:
     """返回 provider 无关的 assistant 任务卡占位文案。"""
     if kind is MediaGenerationType.image:
         return "正在生成图片"
+    if kind is MediaGenerationType.music:
+        return "正在生成音乐"
     return "正在生成视频"
 
 
@@ -113,6 +121,8 @@ def _completed_content(kind: MediaGenerationType) -> str:
     """返回媒体任务成功后的简洁 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "图片生成完成"
+    if kind is MediaGenerationType.music:
+        return "音乐生成完成"
     return "视频生成完成"
 
 
@@ -120,6 +130,8 @@ def _failed_content(kind: MediaGenerationType) -> str:
     """返回媒体任务失败后的 provider 无关 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "图片生成失败"
+    if kind is MediaGenerationType.music:
+        return "音乐生成失败"
     return "视频生成失败"
 
 
@@ -127,6 +139,8 @@ def _canceled_content(kind: MediaGenerationType) -> str:
     """返回用户取消媒体任务后的 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "已取消图片生成"
+    if kind is MediaGenerationType.music:
+        return "已取消音乐生成"
     return "已取消视频生成"
 
 
@@ -138,6 +152,11 @@ def _normalized_options(request: CreateMediaGenerationRequest) -> dict[str, str 
     if request.type is MediaGenerationType.image:
         defaults = IMAGE_DEFAULT_OPTIONS
         allowed_values = _IMAGE_OPTION_VALUES
+    elif request.type is MediaGenerationType.music:
+        if request.source_file_ids:
+            raise MediaGenerationValidationError("音乐生成不支持参考图片")
+        defaults = MUSIC_DEFAULT_OPTIONS
+        allowed_values = _MUSIC_OPTION_VALUES
     else:
         defaults = VIDEO_DEFAULT_OPTIONS
         allowed_values = _VIDEO_OPTION_VALUES
@@ -384,12 +403,12 @@ async def _claim_next_task() -> uuid.UUID | None:
         if task is None:
             return None
 
-        was_interrupted_image = (
+        was_interrupted_task = (
             task.status is MediaGenerationStatus.running
-            and task.kind is MediaGenerationType.image
+            and task.kind in {MediaGenerationType.image, MediaGenerationType.music}
             and task.provider_task_id is None
         )
-        if was_interrupted_image and task.attempt_count >= 2:
+        if was_interrupted_task and task.attempt_count >= 2:
             task.status = MediaGenerationStatus.failed
             task.error_code = "MEDIA_WORKER_RECOVERY_EXHAUSTED"
             task.error_message = "生成任务恢复失败，请重试"
@@ -398,7 +417,7 @@ async def _claim_next_task() -> uuid.UUID | None:
             await db.commit()
             return None
 
-        if task.status is MediaGenerationStatus.queued or was_interrupted_image:
+        if task.status is MediaGenerationStatus.queued or was_interrupted_task:
             task.attempt_count += 1
         task.status = MediaGenerationStatus.running
         task.lease_expires_at = now + timedelta(seconds=settings.media_worker_lease_seconds)
@@ -453,6 +472,22 @@ async def _persist_provider_output(task: MediaGenerationTask, url: str) -> None:
     task.result_poster_s3_key = None
     if mime_type == "video/mp4":
         await _persist_video_poster(task, data)
+
+
+async def _persist_audio_output(
+    task: MediaGenerationTask, data: bytes, mime_type: str, duration_seconds: float
+) -> None:
+    """保存已由 provider 校验的音乐字节，不持久化 provider 临时地址。"""
+    if mime_type != "audio/mpeg" or not data:
+        raise MediaGenerationOutputError()
+    if len(data) > settings.media_max_output_bytes:
+        raise MediaGenerationOutputError()
+    key = f"generated/{task.user_id}/{task.id}.mp3"
+    await storage.put_object(key, data, mime_type)
+    task.result_s3_key = key
+    task.result_mime_type = mime_type
+    task.result_duration_seconds = duration_seconds
+    task.result_poster_s3_key = None
 
 
 async def _extract_video_poster(video_data: bytes) -> bytes | None:
@@ -557,7 +592,13 @@ async def _discard_canceled_result(db: AsyncSession, task: MediaGenerationTask) 
 
 def _failure_message(kind: MediaGenerationType, code: str) -> str:
     """将媒体领域错误码映射为不暴露 provider 细节的用户可读提示。"""
-    label = "图片" if kind is MediaGenerationType.image else "视频"
+    label = (
+        "图片"
+        if kind is MediaGenerationType.image
+        else "音乐"
+        if kind is MediaGenerationType.music
+        else "视频"
+    )
     messages = {
         "MEDIA_PROVIDER_UNAVAILABLE": "媒体生成服务尚未配置，请稍后重试",
         "MEDIA_PROVIDER_CREATE_FAILED": f"暂时无法创建{label}任务，请稍后重试",
@@ -625,7 +666,13 @@ async def _complete_task(db: AsyncSession, task: MediaGenerationTask) -> None:
     locked_task.error_message = None
     await _set_message_content(db, locked_task, _completed_content(locked_task.kind))
     await db.commit()
-    title = "图片生成完成" if locked_task.kind is MediaGenerationType.image else "视频生成完成"
+    title = (
+        "图片生成完成"
+        if locked_task.kind is MediaGenerationType.image
+        else "音乐生成完成"
+        if locked_task.kind is MediaGenerationType.music
+        else "视频生成完成"
+    )
     await send_to_user(
         db,
         locked_task.user_id,
@@ -639,7 +686,7 @@ async def _complete_task(db: AsyncSession, task: MediaGenerationTask) -> None:
 
 
 async def _process_claimed_task(task_id: uuid.UUID) -> None:
-    """执行已租约认领任务的一次图片生成或视频轮询。"""
+    """执行已租约认领任务的一次图片、音乐生成或视频轮询。"""
     async with AsyncSessionLocal() as db:
         task = await db.get(MediaGenerationTask, task_id)
         if task is None or task.status is MediaGenerationStatus.canceled:
@@ -654,6 +701,21 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                     image_urls=image_urls,
                 )
                 await _persist_provider_output(task, result.url)
+                await _complete_task(db, task)
+                return
+
+            if task.kind is MediaGenerationType.music:
+                duration_seconds = _option_int(task, "durationSeconds")
+                music_data, mime_type = await generate_elevenlabs_music(
+                    task.prompt,
+                    duration_ms=duration_seconds * 1_000,
+                )
+                await _persist_audio_output(
+                    task,
+                    music_data,
+                    mime_type,
+                    float(duration_seconds),
+                )
                 await _complete_task(db, task)
                 return
 

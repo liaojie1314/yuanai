@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     agnes_api_key: str = ""
     # AssemblyAI 语音转写 key，使用 ASSEMBLYAI_API_KEY 环境变量注入，不提交到仓库
     assemblyai_api_key: str = ""
+    # ElevenLabs Music key，使用 ELEVENLABS_API_KEY 环境变量注入，不提交到仓库
+    elevenlabs_api_key: str = ""
     # 视觉模型以内联 data URL 接收图片，避免云端模型无法访问内网对象存储 URL。
     ai_inline_image_max_bytes: int = 10 * 1024 * 1024
 
@@ -68,6 +70,7 @@ class Settings(BaseSettings):
     media_worker_poll_interval_seconds: float = 1.0
     media_worker_lease_seconds: int = 60
     media_image_timeout_seconds: int = 90
+    media_music_timeout_seconds: int = 120
     media_video_poll_timeout_seconds: int = 20
     media_video_poll_interval_seconds: float = 5.0
     media_video_max_poll_failures: int = 5

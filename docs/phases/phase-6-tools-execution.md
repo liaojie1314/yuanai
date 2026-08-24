@@ -2,8 +2,8 @@
 
 - **前置条件**：Phase 5 Agent Run、审批暂停/恢复、事件重放和租户隔离全部通过
 - **桌面依赖**：云端工具可先实现；桌面执行节点依赖 Phase 4 Electron 的主进程、安全存储和自动更新
-- **建议分支**：`feat/phase-6-tools-execution`
-- **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`
+- **建议分支**：`feature/tools-execution`
+- **执行范围**：按 Wave 分批修改 `backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`；Mobile 仅保持共享协议兼容，不实现本阶段的工具控制中心或本地执行节点。
 - **阶段定位**：让 Agent 从“会规划”升级为“能在受控边界内执行真实数字动作”
 
 ---
@@ -52,6 +52,13 @@
 - PolicyEngine：判断是否允许、是否审批、允许在哪执行
 - ToolRouter：按数据位置、节点能力、延迟和策略选择执行位置
 - ToolExecutor：具体执行，不参与产品授权判断
+
+### 2.1 平台边界
+
+- Backend 保存 ToolRegistry、Policy、审批、执行、Artifact 和审计事实，并负责调度云端 Worker。
+- Web 提供工具目录、连接管理、审批、执行时间线和 Artifact 控制中心。
+- Desktop 是受配对和签名保护的本地执行节点，负责本机资源授权、任务接收和结果回传，不重复实现完整 Web 控制中心。
+- Mobile 继续支持普通聊天和共享 Agent 协议；本阶段不实现 MCP 管理、工具控制中心、Desktop Node 或任意本地工具执行。
 
 ---
 
@@ -414,18 +421,45 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 ---
 
-## 14. 交付顺序
+## 14. 分 Wave 交付顺序
 
-1. 扩展 ToolSpec、ToolResult、ToolExecution 和 Artifact
-2. 完成 PolicyEngine 风险/作用域模型
-3. 实现 SecretStore 与 ToolConnection
-4. 实现 Cloud Tool Worker 和 rootless 沙箱
-5. 交付 Wave 1 工具及契约测试
-6. 实现 MCP discovery、schema 快照和调用适配
-7. 实现 ToolRouter 与执行位置选择
-8. 实现 Desktop Node 配对、WSS、Job 协议和首批本地工具
-9. 实现用户控制中心与 Agent 工具时间线
-10. 完成安全测试、故障注入和灰度
+每个 Wave 都必须有独立的后端契约、前端行为、测试和本地 Conventional Commit；通过该 Wave 的入口/出口条件后才能进入下一 Wave。
+
+### Wave 1：共享契约与安全基础
+
+- 实现 ToolSpec、ToolResult、ToolExecution、Artifact、PolicyEngine、SecretStore 和 ToolConnection。
+- 入口：Phase 5 Run、审批暂停/恢复、事件重放和租户隔离测试通过。
+- 出口：schema、风险/作用域、脱敏、幂等、取消和 Artifact 契约测试通过。
+
+### Wave 2：云端只读与产出工具
+
+- 实现 Web 搜索、网页提取、上传文件解析、隔离 Python 执行和工作区文件生成。
+- 云端代码只能在 rootless Worker 中运行，不能进入 FastAPI 请求进程。
+- 出口：完成一条“搜索 -> 提取 -> 分析 -> 报告 Artifact”链路，且沙箱隔离测试通过。
+
+### Wave 3：MCP 连接与路由
+
+- 实现远程 HTTP MCP、隔离 Worker/配对节点中的 stdio MCP、schema 快照和 ToolRouter。
+- 首次连接只启用用户明确选择的工具；schema、证书、域名或启动命令变化时自动暂停。
+- 出口：MCP schema 变化、凭证隔离、审批和跨租户测试通过。
+
+### Wave 4：Desktop 执行节点
+
+- 实现配对、safeStorage 密钥、WSS 心跳、Job ACK、断线恢复、取消、节点撤销和资源授权。
+- 首批本地能力限于用户显式选择的文件/目录、Agent 工作区文件和系统默认浏览器打开 URL。
+- 出口：配对 -> 审批 -> 执行 -> 签名结果 -> ACK，以及断线恢复和旧节点失效 E2E 通过。
+
+### Wave 5：Web 控制中心
+
+- 实现工具目录、连接/MCP/节点管理、审批卡、执行时间线和 Artifact 预览下载。
+- 控制中心只呈现 Backend 的事实，不在前端复制策略判断。
+- 出口：Web 核心 Agent 工具链和节点执行链 E2E 通过。
+
+### Wave 6：浏览器自动化与安全灰度
+
+- 实现 DOM/无障碍树优先的浏览器动作、域名/SSRF/下载策略、人工接管和故障注入。
+- 坐标点击、CAPTCHA 绕过和无人确认的高风险副作用不作为本阶段默认能力。
+- 出口：安全测试无高危问题，纯云端链路和云端编排 + Desktop 执行链在故障注入下稳定通过。
 
 ---
 
@@ -441,4 +475,4 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 - [ ] 大结果通过 Artifact 返回，不撑爆模型上下文和 SSE
 - [ ] Tool Contract Suite、安全集成测试和 Desktop E2E 全部通过
 
-**进入 Phase 7 的许可证**：至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
+**进入 Phase 7 的许可证**：Wave 1-6 的出口条件全部满足，至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。

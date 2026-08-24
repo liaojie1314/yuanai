@@ -1,4 +1,4 @@
-"""持久化图片与视频生成任务的数据模型。"""
+"""持久化图片、视频与音乐生成任务的数据模型。"""
 
 import uuid
 from datetime import datetime
@@ -25,6 +25,7 @@ class MediaGenerationType(StrEnum):
 
     image = "image"
     video = "video"
+    music = "music"
 
 
 class MediaGenerationStatus(StrEnum):
@@ -42,6 +43,10 @@ class MediaGenerationTask(Base):
 
     __tablename__ = "media_generation_tasks"
     __table_args__ = (
+        CheckConstraint(
+            "kind IN ('image', 'video', 'music')",
+            name="ck_media_generation_kind",
+        ),
         CheckConstraint("progress >= 0 AND progress <= 100", name="ck_media_generation_progress"),
     )
 
