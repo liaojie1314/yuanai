@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus
 from app.models.assistant import Assistant
@@ -40,6 +41,26 @@ async def test_run_creation_is_accepted_and_idempotent(
     assert first.status_code == 202, first.text
     assert second.status_code == 202, second.text
     assert first.json()["id"] == second.json()["id"]
+
+
+@pytest.mark.asyncio
+async def test_run_creation_is_disabled_without_internal_rollout(
+    client: AsyncClient,
+    db: AsyncSession,
+    test_user: User,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """默认关闭时，未在内部灰度范围内的用户不能创建 Run。"""
+    assistant = await _assistant(db, test_user)
+    monkeypatch.setattr(settings, "agent_enabled", False)
+    monkeypatch.setattr(settings, "agent_allowlist_user_ids", "")
+    response = await client.post(
+        "/api/v1/agent/runs",
+        headers=auth_headers,
+        json={"assistantId": str(assistant.id), "goal": "被关闭的任务"},
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -119,3 +140,34 @@ async def test_admin_summary_requires_allowlisted_user(
     """普通登录用户不能访问运营摘要。"""
     response = await client.get("/api/v1/admin/agent-runs", headers=auth_headers)
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_detail_redacts_user_identity_and_goal(
+    client: AsyncClient,
+    db: AsyncSession,
+    test_user: User,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """运营详情只返回哈希用户标识，不返回目标或原始用户 UUID。"""
+    assistant = await _assistant(db, test_user)
+    run = AgentRun(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        goal="包含不应暴露的用户目标",
+        model="test-model",
+        status=AgentRunStatus.queued,
+    )
+    db.add(run)
+    await db.commit()
+    monkeypatch.setattr(settings, "agent_admin_user_ids", str(test_user.id))
+
+    response = await client.get(f"/api/v1/admin/agent-runs/{run.id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["userIdHash"] != str(test_user.id)
+    assert "user_id" not in payload
+    assert "goal" not in payload
+    assert "包含不应暴露的用户目标" not in response.text

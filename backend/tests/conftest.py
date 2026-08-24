@@ -29,6 +29,7 @@ os.environ["VERIFY_CODE_DEBUG_BYPASS"] = "888888"
 os.environ["STORAGE_BACKEND"] = "local"
 os.environ.setdefault("LOCAL_UPLOADS_DIR", "./uploads-test")
 
+from app.core.config import settings  # noqa: E402
 from app.core.database import Base, get_db  # noqa: E402
 from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.main import app  # noqa: E402
@@ -116,6 +117,12 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_svc, "redis_client", mock)
     monkeypatch.setattr(qr_login_svc, "redis_client", mock)
     monkeypatch.setattr(vc_svc, "redis_client", mock)
+
+
+@pytest.fixture(autouse=True)
+def enable_agent_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
+    """测试 API 合约时显式开启内部功能，生产默认值仍保持关闭。"""
+    monkeypatch.setattr(settings, "agent_enabled", True)
 
 
 @pytest.fixture(autouse=True)

@@ -137,6 +137,9 @@ const server = setupServer(
       hasMore: false,
     })
   }),
+  http.get(`${API_BASE_URL}/chat/conversations/:conversationId/media-tasks`, () =>
+    HttpResponse.json({ tasks: [], nextCursor: null, hasMore: false })
+  ),
   http.get(`${API_BASE_URL}/models`, () =>
     HttpResponse.json({
       models: [
@@ -162,6 +165,9 @@ const server = setupServer(
         },
       ],
     })
+  ),
+  http.get(`${API_BASE_URL}/chat/capabilities`, () =>
+    HttpResponse.json({ webSearch: { enabled: false, provider: null } })
   ),
   http.post(`${API_BASE_URL}/chat/stream`, async ({ request }) => {
     const body = (await request.json()) as {
@@ -250,6 +256,10 @@ beforeEach(async () => {
           webBaseUrl: 'http://desktop-web.test',
         }),
       },
+      events: {
+        onUpdater: () => () => undefined,
+        onMediaPermissionRequested: () => () => undefined,
+      },
     },
   })
 })
@@ -332,7 +342,7 @@ describe('desktop chat integration', () => {
     expect(await screen.findByText('默认会话消息')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: '新建会话' }))
-    expect(await screen.findByRole('button', { name: '新对话' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toBeInTheDocument()
   })
 
   it('creates a conversation, streams a reply, and renders the persisted messages', async () => {
@@ -351,7 +361,7 @@ describe('desktop chat integration', () => {
       })
     })
     expect(await screen.findByText('已收到回复')).toBeInTheDocument()
-    expect(screen.getByText('你好，元AI')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '输入消息' })).toHaveValue('你好，元AI')
   })
 
   it('creates a protected share link and revokes it through the Core API', async () => {

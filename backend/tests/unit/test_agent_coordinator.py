@@ -318,6 +318,52 @@ def test_policy_rejects_non_read_tools_without_execution() -> None:
 
 
 @pytest.mark.asyncio
+async def test_high_risk_tool_waits_for_approval_without_execution() -> None:
+    """未审批的高风险工具只创建等待状态，不调用 handler。"""
+    calls = 0
+    registry = ToolRegistry()
+
+    def handler(_args: dict[str, object], _context: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {"unexpected": True}
+
+    registry.register(
+        ToolSpec(
+            name="external_write",
+            description="模拟外部副作用",
+            input_schema={"type": "object"},
+            risk_level=ToolRisk.external_side_effect,
+            execution_location="cloud",
+        ),
+        handler,
+    )
+    model = ModelScript(
+        [
+            [
+                ToolCallStart(tool_call_id="call-risk", name="external_write"),
+                ToolCallArgumentsDelta(tool_call_id="call-risk", args_chunk="{}"),
+                ToolCallEnd(tool_call_id="call-risk"),
+                ModelCompleted(finish_reason="tool_calls"),
+            ]
+        ]
+    )
+    coordinator = AgentCoordinator(model_stream=model, tool_registry=registry)
+    run = AgentRun(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        assistant_id=uuid.uuid4(),
+        goal="需要审批",
+        model="test-model",
+    )
+
+    result = await coordinator.run(run)
+
+    assert result.status is AgentRunStatus.waiting_approval
+    assert calls == 0
+
+
+@pytest.mark.asyncio
 async def test_coordinator_writes_compatible_assistant_message(db, test_user: User) -> None:
     """绑定会话时最终答案写为现有 Message，未绑定时不创建消息。"""
 

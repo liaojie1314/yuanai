@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.models.agent_run import AgentRun
+from app.services.agent.metrics import hash_user_id
 
 router = APIRouter(prefix="/admin/agent-runs", tags=["admin-agent"])
 
@@ -46,7 +47,7 @@ async def get_agent_run_summary(
         raise HTTPException(status_code=404, detail="Agent run not found")
     return {
         "id": str(run.id),
-        "user_id": str(run.user_id),
+        "userIdHash": hash_user_id(run.user_id),
         "status": run.status.value,
         "model": run.model,
         "currentStep": run.current_step,

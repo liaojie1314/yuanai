@@ -20,6 +20,7 @@ from app.models.agent_run import (
     AgentStepKind,
     AgentStepStatus,
 )
+from app.models.approval import ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.services import ai_service
@@ -31,6 +32,7 @@ from app.services.agent.approval_service import (
 from app.services.agent.context_builder import AgentContextBuilder
 from app.services.agent.errors import AgentCoordinatorError, AgentErrorCode
 from app.services.agent.event_service import EventStore
+from app.services.agent.metrics import AgentMetrics
 from app.services.agent.policy import PolicyEngine
 from app.services.ai_service import (
     ContentDelta,
@@ -46,6 +48,7 @@ from app.tools.contracts import (
     ToolError,
     ToolErrorCode,
     ToolRegistrationError,
+    ToolRisk,
     ToolSpec,
 )
 from app.tools.registry import ToolRegistry
@@ -114,6 +117,7 @@ class AgentCoordinator:
         model_timeout_seconds: float = MODEL_TIMEOUT_SECONDS,
         tool_timeout_seconds: float = DEFAULT_TOOL_TIMEOUT_SECONDS,
         approval_service: ApprovalService | None = None,
+        metrics: AgentMetrics | None = None,
     ) -> None:
         if max_model_retries < 0:
             raise ValueError("max_model_retries must be non-negative")
@@ -127,6 +131,7 @@ class AgentCoordinator:
         self._model_timeout_seconds = model_timeout_seconds
         self._tool_timeout_seconds = tool_timeout_seconds
         self._approval_service = approval_service or ApprovalService()
+        self._metrics = metrics or AgentMetrics()
 
     async def run(
         self,
@@ -316,7 +321,7 @@ class AgentCoordinator:
                             step=approval_step,
                             tool_name=call.name,
                             arguments=arguments,
-                            risk_level=spec.risk_level,
+                            risk_level=self._approval_risk(spec.risk_level),
                             execution_location=spec.execution_location,
                             action_summary=f"执行工具 {call.name}",
                             db=db,
@@ -397,6 +402,14 @@ class AgentCoordinator:
     async def _emit(self, run: AgentRun, event_type: str, payload: dict[str, object]) -> None:
         """通过可选 EventStore 持久化脱敏的运行事件。"""
 
+        step_id = run.steps[-1].id if run.steps else None
+        self._metrics.emit(
+            event_type,
+            run_id=run.id,
+            step_id=step_id,
+            user_id=run.user_id,
+        )
+
         if self._event_store is not None:
             await self._event_store.append(
                 run.id,
@@ -456,6 +469,18 @@ class AgentCoordinator:
                 "parameters": spec.input_schema,
             },
         }
+
+    @staticmethod
+    def _approval_risk(risk: ToolRisk) -> ApprovalRiskLevel:
+        """将工具风险归一为审批模型可持久化的等级。"""
+        value = risk.value
+        if value in {ToolRisk.read.value, ToolRisk.low.value}:
+            return ApprovalRiskLevel.low
+        if value in {ToolRisk.local_write.value, ToolRisk.reversible_write.value}:
+            return ApprovalRiskLevel.medium
+        if value == ToolRisk.external_side_effect.value:
+            return ApprovalRiskLevel.high
+        return ApprovalRiskLevel.critical
 
     @staticmethod
     def _add_step(run: AgentRun, kind: AgentStepKind, input_json: dict[str, object]) -> None:

@@ -1,4 +1,4 @@
-"""Task 4 的事件存储、队列、租约和 worker 契约测试。"""
+"""事件存储、队列、租约和 worker 契约测试。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from app.workers.recovery_worker import RecoveryWorker
 
 
 class FakeRedis:
-    """提供 Task 4 所需的最小异步 Redis 语义。"""
+    """提供测试所需的最小异步 Redis 语义。"""
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
@@ -169,6 +169,18 @@ async def test_event_store_replays_after_broadcast_failure() -> None:
     replay = await store.replay(run_id, after_sequence=0)
     assert [event.sequence for event in replay] == [1]
     assert len(persisted) == 1
+
+
+@pytest.mark.asyncio
+async def test_event_store_replays_events_after_long_disconnect_window() -> None:
+    """事件持久化后，长时间断线仍按游标完整恢复。"""
+    run_id = uuid.uuid4()
+    store = EventStore(persist=_persist_event)
+    for sequence in range(1, 8):
+        await store.append(run_id, "step_completed", {"sequence": sequence})
+
+    replay = await store.replay_after(run_id, after_sequence=2)
+    assert [event.sequence for event in replay] == list(range(3, 8))
 
 
 @pytest.mark.asyncio

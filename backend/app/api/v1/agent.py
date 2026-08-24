@@ -12,6 +12,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
 from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus, AgentStep
 from app.models.approval import ApprovalRequest
 from app.models.assistant import Assistant
@@ -40,6 +41,16 @@ from app.services.agent.queue import AgentQueue
 router = APIRouter(prefix="/agent", tags=["agent"])
 _approvals = ApprovalService()
 _events = EventStore()
+
+
+def _agent_enabled_for(user_id: uuid.UUID) -> bool:
+    """返回当前用户是否被允许创建 Agent Run。"""
+    if settings.agent_enabled:
+        return True
+    allowed = {
+        item.strip() for item in settings.agent_allowlist_user_ids.split(",") if item.strip()
+    }
+    return str(user_id) in allowed
 
 
 async def _assistant(assistant_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> Assistant:
@@ -111,6 +122,8 @@ async def delete_assistant(assistant_id: uuid.UUID, current_user: CurrentUser, d
 
 @router.post("/runs", response_model=AgentRunResponse, status_code=202)
 async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: DB) -> AgentRun:
+    if not _agent_enabled_for(current_user.id):
+        raise HTTPException(status_code=404, detail="Agent is unavailable")
     assistant = await _assistant(req.assistant_id, current_user.id, db)
     if req.conversation_id is not None:
         conversation = await db.scalar(
