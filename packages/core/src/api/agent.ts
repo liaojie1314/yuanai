@@ -131,6 +131,14 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
   let handle: StreamHandle | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  const terminalStatuses = new Set<AgentRun['status']>(['succeeded', 'failed', 'cancelled'])
+  const scheduleReconnect = (): void => {
+    if (closed || reconnectTimer !== undefined) return
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined
+      connect()
+    }, 1000)
+  }
   const connect = (): void => {
     if (closed) return
     const token = getAccessToken()
@@ -147,7 +155,22 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
       },
       {
         onMessage: (message) => {
-          if (message.data === '[DONE]') return
+          if (message.data === '[DONE]') {
+            void getAgentRun(id)
+              .then((run) => {
+                if (terminalStatuses.has(run.status)) {
+                  handlers.onTerminal?.(run)
+                } else {
+                  scheduleReconnect()
+                }
+              })
+              .catch((error: unknown) => {
+                const normalized = error instanceof Error ? error : new Error(String(error))
+                handlers.onError?.(normalized)
+                scheduleReconnect()
+              })
+            return
+          }
           try {
             const payload = JSON.parse(message.data) as Record<string, unknown>
             const sequence = Number(message.id ?? payload.sequence)
@@ -175,12 +198,7 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
         },
         onError: (error) => {
           handlers.onError?.(error)
-          if (!closed && reconnectTimer === undefined) {
-            reconnectTimer = setTimeout(() => {
-              reconnectTimer = undefined
-              connect()
-            }, 1000)
-          }
+          scheduleReconnect()
         },
       }
     )
