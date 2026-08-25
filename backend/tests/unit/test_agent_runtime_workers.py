@@ -9,11 +9,11 @@ from dataclasses import dataclass
 
 import pytest
 
+import app.workers.agent_worker as agent_worker_module
 from app.models.agent_run import AgentRunStatus
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue, QueueItem
 from app.workers.agent_worker import AgentWorker, CancellationToken
-import app.workers.agent_worker as agent_worker_module
 from app.workers.recovery_worker import RecoveryWorker
 
 

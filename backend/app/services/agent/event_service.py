@@ -7,7 +7,7 @@ import json
 import logging
 import uuid
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Protocol
+from typing import Protocol, cast
 
 from redis.exceptions import RedisError
 from sqlalchemy import func, select
@@ -142,7 +142,7 @@ class EventStore:
             query = select(AgentRun.status).where(AgentRun.id == run_id)
             if tenant_id is not None:
                 query = query.where(AgentRun.user_id == tenant_id)
-            return await session.scalar(query)
+            return cast(AgentRunStatus | None, await session.scalar(query))
 
     async def _persist_database(
         self,

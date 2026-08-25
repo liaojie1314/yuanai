@@ -6,12 +6,12 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.api.v1.agent as agent_api
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
 from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus
 from app.models.assistant import Assistant
 from app.models.user import User
-import app.api.v1.agent as agent_api
 
 
 async def _assistant(db: AsyncSession, user: User) -> Assistant:
