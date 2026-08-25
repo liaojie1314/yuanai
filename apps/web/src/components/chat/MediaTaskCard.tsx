@@ -4,6 +4,7 @@ import {
   Download,
   Image as ImageIcon,
   LoaderCircle,
+  Music,
   Play,
   RotateCcw,
   Square,
@@ -17,7 +18,7 @@ import type { MediaGenerationTask } from '@yuanai/types'
 
 /** 生成任务的结果类型到可展示标题的映射。 */
 function taskLabel(task: MediaGenerationTask): string {
-  return task.type === 'image' ? '图片生成' : '视频生成'
+  return task.type === 'image' ? '图片生成' : task.type === 'music' ? '音乐生成' : '视频生成'
 }
 
 /** 会话内图片或视频任务的可恢复卡片。 */
@@ -27,7 +28,7 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
   const retry = useCreateMediaTask()
   const active = task.status === 'queued' || task.status === 'running'
   const title = taskLabel(task)
-  const outputName = `${title}-${task.id.slice(0, 8)}${task.type === 'image' ? '.png' : '.mp4'}`
+  const outputName = `${title}-${task.id.slice(0, 8)}${task.type === 'image' ? '.png' : task.type === 'music' ? '.mp3' : '.mp4'}`
   const requestedRatio = task.type === 'image' ? task.options.ratio : task.options.aspectRatio
   const resultStyle = {
     aspectRatio: requestedRatio
@@ -50,7 +51,13 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
     <section className="ch-media-task" aria-label={`${title}任务`}>
       <div className="ch-media-task__head">
         <span className="ch-media-task__icon" aria-hidden="true">
-          {task.type === 'image' ? <ImageIcon size={16} /> : <Play size={16} />}
+          {task.type === 'image' ? (
+            <ImageIcon size={16} />
+          ) : task.type === 'music' ? (
+            <Music size={16} />
+          ) : (
+            <Play size={16} />
+          )}
         </span>
         <div>
           <strong>{title}</strong>
@@ -60,12 +67,23 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
       </div>
 
       {active ? (
-        <div className="ch-media-task__progress" aria-label={`生成进度 ${task.progress}%`}>
+        <div
+          className="ch-media-task__progress"
+          aria-label={`生成进度 ${task.progress}%`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={task.progress}
+          role="progressbar"
+        >
           <span style={{ width: `${Math.max(4, task.progress)}%` }} />
         </div>
       ) : null}
 
-      {task.status === 'succeeded' && task.resultUrl ? (
+      {task.status === 'succeeded' && task.resultUrl && task.type === 'music' ? (
+        <audio controls preload="metadata" src={task.resultUrl} aria-label={`${title}音频`} />
+      ) : null}
+
+      {task.status === 'succeeded' && task.resultUrl && task.type !== 'music' ? (
         <button
           className={`ch-media-task__result${task.type === 'video' ? 'ch-media-task__result--video' : ''}`}
           type="button"

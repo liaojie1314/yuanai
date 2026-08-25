@@ -9,8 +9,8 @@ import { useAuthStore } from '../stores/auth.store.js'
 const ACTIVE_MEDIA_STATUSES = new Set<MediaGenerationTask['status']>(['queued', 'running'])
 
 /** 将任务当前状态翻译为消息时间线中的稳定占位文案。 */
-function mediaTaskContent(task: MediaGenerationTask): string {
-  const label = task.type === 'image' ? '图片' : '视频'
+export function mediaTaskContent(task: MediaGenerationTask): string {
+  const label = task.type === 'image' ? '图片' : task.type === 'music' ? '音乐' : '视频'
   if (task.status === 'succeeded') return `${label}生成完成`
   if (task.status === 'failed') return `${label}生成失败`
   if (task.status === 'canceled') return `已取消${label}生成`

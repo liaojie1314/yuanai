@@ -184,7 +184,7 @@ export interface MessageFile {
 }
 
 /** 可恢复媒体生成任务的类型。 */
-export type MediaGenerationType = 'image' | 'video'
+export type MediaGenerationType = 'image' | 'video' | 'music'
 
 /** 可恢复媒体生成任务的稳定生命周期状态。 */
 export type MediaGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
@@ -204,13 +204,16 @@ export type MediaVideoResolution = '480p' | '720p' | '1080p'
 /** Agnes Video V2.0 的受限时长预设，后端会转换为有效的 `8n + 1` 帧数。 */
 export type MediaVideoDurationSeconds = 3 | 5 | 10 | 18
 
+/** ElevenLabs Music 在本应用固定使用的音乐时长。 */
+export const MediaMusicDurationSeconds = 30 as const
+
 /** 媒体任务的已校验规格，字段由任务类型决定。 */
 export interface MediaGenerationOptions {
   size?: MediaImageSize
   ratio?: MediaImageRatio
   aspectRatio?: MediaVideoAspectRatio
   resolution?: MediaVideoResolution
-  durationSeconds?: MediaVideoDurationSeconds
+  durationSeconds?: MediaVideoDurationSeconds | typeof MediaMusicDurationSeconds
 }
 
 /** 创建媒体任务所需的跨端输入，不包含任何 provider URL 或本地路径。 */
@@ -231,7 +234,7 @@ export interface MediaGenerationTask {
   /** 发起此任务的用户消息；旧任务迁移失败时可为空。 */
   sourceMessageId: string | null
   type: MediaGenerationType
-  model: 'agnes-image-2.1-flash' | 'agnes-video-v2.0'
+  model: 'agnes-image-2.1-flash' | 'agnes-video-v2.0' | 'elevenlabs-music-v1'
   prompt: string
   options: MediaGenerationOptions
   /** 仅用于恢复任务的引用标识，不包含对象存储路径。 */
