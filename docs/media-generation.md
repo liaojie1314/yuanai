@@ -23,7 +23,8 @@
 1. 注册或登录 [ElevenLabs](https://elevenlabs.io/)。
 2. 打开官方 [API Keys 页面](https://elevenlabs.io/app/developers/api-keys)。如果页面要求重新登录，先完成登录。
 3. 创建一个 API Key，复制后立即保存到本机密码管理器。不要把 Key 写入 Git、截图、聊天记录或前端环境变量。
-4. 根据账户的套餐和余额确认 Music API 可用额度。套餐、免费额度和计费规则可能变化，以 [ElevenLabs Pricing](https://elevenlabs.io/pricing) 页面为准；本项目不把免费额度当作长期保证。
+4. 创建 Key 时只授予 `Music Generation` 的 `Access` 权限，其他不需要的 endpoint 保持 `No Access`。
+5. 根据账户的套餐和余额确认 Music API 可用额度。官方当前价格页显示 Free 计划为 `$0/月`、每月 `10k credits`，能力列表包含 Music；但没有按本项目 30 秒任务承诺固定可生成首数，实际消耗以控制台为准。免费计划也不等同于商业授权，商用前必须核对当前套餐条款；套餐和计费规则可能变化，以 [ElevenLabs Pricing](https://elevenlabs.io/pricing) 页面为准。
 
 ## 本地配置
 
