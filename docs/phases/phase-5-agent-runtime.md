@@ -5,6 +5,11 @@
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`；Mobile/Desktop 本阶段只保持协议兼容
 - **阶段定位**：在不破坏现有聊天功能的前提下，建立可持久化、可恢复、可审批的 Agent 最小闭环
 
+> **当前验收状态（2026-08-25）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
+> Worker、Web Agent UI 和测试。逐项实现契约记录见
+> [Phase 5 实施清单](./phase-5-agent-runtime-implementation-todo.md)。本页的验收复选框
+> 只有在对应测试或真实运行证据明确存在时才勾选；不能用构建成功替代恢复、审批或租户隔离证据。
+
 ---
 
 ## 1. 已确认的产品与技术决策
@@ -527,3 +532,18 @@ backend/app/
 - [ ] `ruff`、`mypy`、ESLint、TypeScript typecheck 和相关测试全部通过
 
 **进入 Phase 6 的许可证**：上述验收全部通过，尤其是审批暂停/恢复、SSE 重放、崩溃恢复和租户隔离集成测试。
+
+### 当前证据索引
+
+| 验收域                                    | 证据                                                                                            | 状态   |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------- | ------ |
+| Run 创建、幂等、功能开关                  | `backend/tests/integration/test_agent_api.py`                                                   | 已覆盖 |
+| SSE 事件持久化与 `Last-Event-ID` 重放     | `backend/tests/integration/test_agent_api.py`、`backend/app/services/agent/event_service.py`    | 已覆盖 |
+| 审批参数绑定、单次决定、过期与租户隔离    | `backend/tests/integration/test_agent_approval.py`、`backend/tests/unit/test_agent_approval.py` | 已覆盖 |
+| 队列 lease、取消、恢复和幂等              | `backend/tests/unit/test_agent_runtime_workers.py`                                              | 已覆盖 |
+| Web Agent 页面与 Chat 回归                | `apps/web/src`、`apps/web/tests`、根目录前端测试脚本                                            | 已覆盖 |
+| 真实模型驱动的完整 Agent 两工具链         | 当前未配置可用模型 Key 的实跑证据                                                               | 未验证 |
+| 强制退出后的真实进程恢复与 5 分钟断线演练 | 当前测试为组件/集成级模拟                                                                       | 未验证 |
+
+因此，Phase 5 的代码合同和自动化测试门槛已具备，但“真实外部模型两工具链”和“真实进程
+故障演练”仍须在配置对应服务后单独完成，不能仅凭本地单元测试宣称全部运行时验收通过。

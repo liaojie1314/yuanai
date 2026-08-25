@@ -68,6 +68,7 @@ pnpm dev:mock
 
 - Docker Desktop 已安装并运行
 - 已在 `backend/.env` 中配置至少一个 AI 提供商的 API Key → 详见 [AI 大模型接入指南](ai-providers.md)
+- 如需音乐生成，另需配置后端 `ELEVENLABS_API_KEY` → 详见 [媒体生成与音乐配置](media-generation.md)
 
 ### 启动步骤
 

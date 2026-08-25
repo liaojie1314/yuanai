@@ -5,6 +5,10 @@
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`，Mobile/Desktop 补对应控制界面
 - **阶段定位**：让 Agent 从“一次性执行器”成长为了解用户、复用经验并能主动工作的长期助理
 
+> **阶段入口状态（2026-08-25）**：Phase 7 暂未获准开工。其前置条件是 Phase 6 六个
+> Wave 的出口条件全部通过，包括至少一条纯云端多工具链、一条云端编排加 Desktop 执行链、
+> 故障注入稳定性和无高危安全问题。当前状态见 [Phase 6 工具与执行](./phase-6-tools-execution.md)。
+
 ---
 
 ## 1. 产品目标

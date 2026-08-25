@@ -11,6 +11,9 @@
 | `gpt-4o`                     | GPT-4o            | OpenAI    | [platform.openai.com](https://platform.openai.com/api-keys)          |
 | `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet | Anthropic | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 
+音乐生成不属于文本模型列表，使用独立的 ElevenLabs Music API。获取 Key、配置、三端使用
+方式和真实验收边界见[媒体生成与音乐配置](media-generation.md)。
+
 ---
 
 ## 快速配置（以 DeepSeek 为例）
