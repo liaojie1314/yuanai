@@ -2709,6 +2709,21 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
+.desktop-chat__media-status {
+  min-height: 24px;
+  gap: 5px;
+  padding-bottom: 2px;
+  color: var(--desktop-brand-hover);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.desktop-chat__media-status > span {
+  color: var(--desktop-fg-subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .desktop-chat__media-options > button {
   min-height: 24px;
   padding: 3px 6px;

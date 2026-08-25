@@ -3686,6 +3686,19 @@
   gap: 6px 12px;
   padding: 0 4px 4px;
 }
+.ch-media-status {
+  min-height: 24px;
+  gap: 5px;
+  padding-bottom: 2px;
+  color: var(--brand);
+  font-size: 11px;
+  line-height: 1;
+}
+.ch-media-status span {
+  color: var(--fg3);
+  font-size: 11px;
+  white-space: nowrap;
+}
 .ch-media-option-group {
   gap: 6px;
 }

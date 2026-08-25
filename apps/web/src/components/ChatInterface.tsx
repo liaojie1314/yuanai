@@ -1758,9 +1758,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           ) : null}
           {composerMode === 'music' ? (
             <div className="ch-media-options-wrap" aria-label="音乐生成规格">
-              <div className="ch-media-options">
-                <span>时长 {MediaMusicDurationSeconds} 秒</span>
-                <span>音乐模式不支持附件</span>
+              <div className="ch-media-options ch-media-status" role="status">
+                <Music size={13} strokeWidth={2} aria-hidden="true" />
+                <span>音乐生成 · {MediaMusicDurationSeconds} 秒</span>
               </div>
             </div>
           ) : null}

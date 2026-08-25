@@ -365,10 +365,11 @@ export function ChatInput({
                 />
               </>
             ) : (
-              <View style={styles.mediaOptionGroup}>
-                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>时长</Text>
-                <Text style={[styles.mediaOptionText, { color: theme.text.secondary }]}>30 秒</Text>
-                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>纯音乐</Text>
+              <View style={styles.mediaStatus} accessibilityRole="text">
+                <Music size={13} color={theme.brand.selected} strokeWidth={2} />
+                <Text style={[styles.mediaStatusText, { color: theme.text.muted }]}>
+                  音乐生成 · {MediaMusicDurationSeconds} 秒
+                </Text>
               </View>
             )}
           </ScrollView>
@@ -625,6 +626,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   mediaOptionGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mediaStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  mediaStatusText: { fontSize: 11 },
   mediaOptionLabel: { fontSize: 11 },
   mediaOption: {
     minHeight: 26,

@@ -2745,9 +2745,13 @@ export function App(): ReactElement {
             </div>
           ) : null}
           {composerMode === 'music' ? (
-            <div className="desktop-chat__media-options" aria-label="音乐生成规格">
-              <span>时长 {MediaMusicDurationSeconds} 秒</span>
-              <span>音乐模式不支持附件</span>
+            <div
+              className="desktop-chat__media-options desktop-chat__media-status"
+              aria-label="音乐生成规格"
+              role="status"
+            >
+              <Music size={13} strokeWidth={2} aria-hidden="true" />
+              <span>音乐生成 · {MediaMusicDurationSeconds} 秒</span>
             </div>
           ) : null}
           <form
