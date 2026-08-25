@@ -44,7 +44,7 @@ const musicTask: MediaGenerationTask = {
   ...task,
   id: 'music-task-12345678',
   type: 'music',
-  model: 'elevenlabs-music-v1',
+  model: 'musicgen-small-local',
   prompt: '舒缓钢琴',
   options: { durationSeconds: 30 },
   resultUrl: 'http://localhost:9000/generated/music.mp3',
@@ -73,17 +73,22 @@ describe('MediaTaskCard', () => {
     expect(container.querySelector('.ch-media-task__play')).not.toBeNull()
   })
 
-  it('renders music as a controlled audio element without autoplay', () => {
+  it('renders music in a compact player without autoplay', () => {
     const { container } = render(<MediaTaskCard task={musicTask} />)
 
     const audio = container.querySelector('audio')
     expect(audio).toHaveAttribute('src', musicTask.resultUrl)
-    expect(audio).toHaveAttribute('controls')
     expect(audio).toHaveAttribute('preload', 'metadata')
     expect(audio).not.toHaveAttribute('autoplay')
+    expect(container.querySelector('.ch-media-task__music')).not.toBeNull()
+    expect(container.querySelector('input[type="range"]')).toHaveAttribute(
+      'aria-label',
+      '音乐播放进度'
+    )
+    expect(container.querySelector('.ch-media-task__music-download')).toHaveAttribute('download')
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('video')).toBeNull()
-    expect(container.querySelector('a[download]')).toHaveAttribute('download')
+    expect(container.querySelector('.ch-media-task__actions a[download]')).toBeNull()
   })
 
   it('keeps cancel controls for running tasks', () => {
@@ -91,6 +96,20 @@ describe('MediaTaskCard', () => {
 
     expect(getByRole('button', { name: /停止/ })).toBeInTheDocument()
     expect(getByRole('progressbar', { name: /生成进度/ })).toBeInTheDocument()
+  })
+
+  it('shows an indeterminate progress bar while a task has no provider percentage', () => {
+    const activeMusicTask: MediaGenerationTask = {
+      ...musicTask,
+      status: 'running',
+      progress: 0,
+      resultUrl: null,
+      resultMimeType: null,
+    }
+    const { getByRole } = render(<MediaTaskCard task={activeMusicTask} />)
+
+    expect(getByRole('progressbar')).toHaveClass('ch-media-task__progress--indeterminate')
+    expect(getByRole('progressbar')).toHaveAttribute('aria-valuetext', '正在生成')
   })
 
   it('keeps the error and retry controls for failed tasks', () => {
