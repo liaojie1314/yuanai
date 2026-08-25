@@ -183,13 +183,16 @@ git commit -m "feat(web): add music generation composer and player"
 
 **Files:**
 
+- Modify: `apps/desktop/src/renderer/main/App.tsx`
 - Modify: `apps/desktop/src/renderer/main/MessageContent.tsx`
 - Modify: the colocated Desktop chat styles if required
+- Test: `apps/desktop/src/renderer/main/App.test.tsx`
 - Test: `apps/desktop/src/renderer/main/MessageContent.test.tsx`
 
+- [ ] Add a mutually exclusive Music mode beside the existing Image and Video composer modes; submit through the existing `createMediaTask` path with `{ type: "music", options: { durationSeconds: 30 } }`, disable image/video-only attachments and controls, and show the ElevenLabs Music model label.
 - [ ] Add a music branch to the existing `MediaTaskCard` with native audio controls, stable layout dimensions, download behavior, failure/retry, cancel, and accessible labels.
 - [ ] Keep Desktop artifact opening behavior for image/video and do not add a Phase 6 control center or local tool execution UI.
-- [ ] Test succeeded, running, failed, canceled, download, and image/video regression states.
+- [ ] Test music mode payload and attachment boundary, succeeded/running/failed/canceled/download states, and image/video regression states.
 - [ ] Run:
 
 ```bash
