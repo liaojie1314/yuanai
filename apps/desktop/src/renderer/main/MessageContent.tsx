@@ -747,7 +747,10 @@ function MediaTaskCard({
   const cancel = useCancelMediaTask()
   const retry = useCreateMediaTask()
   const active = task.status === 'queued' || task.status === 'running'
-  const label = task.type === 'image' ? '图片生成' : '视频生成'
+  const label = task.type === 'image' ? '图片生成' : task.type === 'music' ? '音乐生成' : '视频生成'
+  const outputName = `${label}-${task.id.slice(0, 8)}${
+    task.type === 'image' ? '.png' : task.type === 'music' ? '.mp3' : '.mp4'
+  }`
   const requestedRatio = task.type === 'image' ? task.options.ratio : task.options.aspectRatio
   const mediaStyle = {
     aspectRatio: requestedRatio
@@ -772,7 +775,30 @@ function MediaTaskCard({
           <span style={{ width: `${Math.max(4, task.progress)}%` }} />
         </div>
       ) : null}
-      {task.status === 'succeeded' && task.resultUrl && task.resultMimeType ? (
+      {task.status === 'succeeded' && task.resultUrl && task.type === 'music' ? (
+        <div className="desktop-chat__media-audio-shell">
+          <audio
+            className="desktop-chat__media-audio"
+            controls
+            preload="metadata"
+            src={task.resultUrl}
+            aria-label={`${label}音频`}
+          />
+          <a
+            className="desktop-chat__media-audio-download"
+            href={task.resultUrl}
+            download={outputName}
+            aria-label={`下载${label}`}
+            title={`下载${label}`}
+          >
+            <Download size={16} aria-hidden="true" />
+          </a>
+        </div>
+      ) : null}
+      {task.status === 'succeeded' &&
+      task.resultUrl &&
+      task.resultMimeType &&
+      task.type !== 'music' ? (
         <div className="desktop-chat__media-result-shell" style={mediaStyle}>
           <button
             type="button"

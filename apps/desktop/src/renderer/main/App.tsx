@@ -24,6 +24,7 @@ import {
   LogOut,
   Lock,
   Mic,
+  Music,
   MoreVertical,
   Monitor,
   PanelLeftClose,
@@ -80,7 +81,7 @@ import {
   usePrefsStore,
 } from '@yuanai/core/stores'
 import { buildMessagePairs, filterChatModels } from '@yuanai/core/utils'
-import { Role } from '@yuanai/types'
+import { MediaMusicDurationSeconds, Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
 import type {
@@ -134,7 +135,7 @@ const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9']
 const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const
 const VIDEO_DURATIONS = [3, 5, 10, 18] as const
-type ComposerMode = 'chat' | 'image' | 'video'
+type ComposerMode = 'chat' | 'image' | 'video' | 'music'
 const EMPTY_CONVERSATIONS: Conversation[] = []
 const EMPTY_MESSAGES: Message[] = []
 const SHARE_EXPIRY_OPTIONS = [
@@ -2063,7 +2064,7 @@ export function App(): ReactElement {
     setActionError('')
     const isMediaMode = composerMode !== 'chat'
     if (isMediaMode && isTemporaryConversation) {
-      setActionError('临时对话不支持图片或视频生成')
+      setActionError('临时对话不支持图片、视频或音乐生成')
       return
     }
     if (
@@ -2143,22 +2144,24 @@ export function App(): ReactElement {
         setIsNewConversationDraft(false)
       }
       setIsUploadingAttachments(true)
-      const fileIds = await resolveAttachmentIds()
+      const fileIds = composerMode === 'music' ? [] : await resolveAttachmentIds()
       const targetConversationId = conversationId
       if (isMediaMode) {
         await createMediaTask.mutateAsync({
           conversationId: targetConversationId,
-          type: composerMode === 'image' ? 'image' : 'video',
+          type: composerMode === 'image' ? 'image' : composerMode === 'video' ? 'video' : 'music',
           prompt: content,
           options:
             composerMode === 'image'
               ? { size: imageSize, ratio: imageRatio }
-              : {
-                  aspectRatio: videoRatio,
-                  resolution: videoResolution,
-                  durationSeconds: videoDuration,
-                },
-          sourceFileIds: fileIds,
+              : composerMode === 'video'
+                ? {
+                    aspectRatio: videoRatio,
+                    resolution: videoResolution,
+                    durationSeconds: videoDuration,
+                  }
+                : { durationSeconds: MediaMusicDurationSeconds },
+          sourceFileIds: composerMode === 'music' ? [] : fileIds,
         })
         revokeAttachmentPreviews(attachments)
         setAttachments([])
@@ -2741,6 +2744,12 @@ export function App(): ReactElement {
               ))}
             </div>
           ) : null}
+          {composerMode === 'music' ? (
+            <div className="desktop-chat__media-options" aria-label="音乐生成规格">
+              <span>时长 {MediaMusicDurationSeconds} 秒</span>
+              <span>音乐模式不支持附件</span>
+            </div>
+          ) : null}
           <form
             className="desktop-chat__composer"
             onSubmit={(event) => void handleSendMessage(event)}
@@ -2817,7 +2826,7 @@ export function App(): ReactElement {
                   data-testid="attachment-input"
                   type="file"
                   multiple
-                  disabled={isTemporaryConversation}
+                  disabled={isTemporaryConversation || composerMode === 'music'}
                   onChange={handleAttachmentChange}
                 />
                 <button
@@ -2825,12 +2834,22 @@ export function App(): ReactElement {
                     attachments.length > 0 || isAttachmentMenuOpen ? 'is-active' : undefined
                   }
                   type="button"
-                  aria-label="添加附件"
+                  aria-label={composerMode === 'music' ? '音乐模式不支持附件' : '添加附件'}
                   aria-expanded={isAttachmentMenuOpen}
                   aria-haspopup="menu"
-                  title={isTemporaryConversation ? '临时对话不支持附件' : '添加附件'}
+                  title={
+                    composerMode === 'music'
+                      ? '音乐模式不支持附件'
+                      : isTemporaryConversation
+                        ? '临时对话不支持附件'
+                        : '添加附件'
+                  }
                   disabled={
-                    !isLoggedIn || isTemporaryConversation || isStreaming || isUploadingAttachments
+                    !isLoggedIn ||
+                    isTemporaryConversation ||
+                    composerMode === 'music' ||
+                    isStreaming ||
+                    isUploadingAttachments
                   }
                   onClick={() => setIsAttachmentMenuOpen((value) => !value)}
                 >
@@ -2997,6 +3016,32 @@ export function App(): ReactElement {
                 >
                   <Play size={18} aria-hidden="true" />
                 </button>
+                <button
+                  className={composerMode === 'music' ? 'is-active' : undefined}
+                  type="button"
+                  aria-label={composerMode === 'music' ? '退出音乐生成' : '音乐生成'}
+                  title={composerMode === 'music' ? '退出音乐生成' : '音乐生成'}
+                  aria-pressed={composerMode === 'music'}
+                  disabled={
+                    !isLoggedIn ||
+                    isTemporaryConversation ||
+                    isStreaming ||
+                    isUploadingAttachments ||
+                    createMediaTask.isPending
+                  }
+                  onClick={() => {
+                    setComposerMode((mode) => (mode === 'music' ? 'chat' : 'music'))
+                    if (composerMode !== 'music') {
+                      setAttachments((items) => {
+                        revokeAttachmentPreviews(items)
+                        return []
+                      })
+                      setIsAttachmentMenuOpen(false)
+                    }
+                  }}
+                >
+                  <Music size={18} aria-hidden="true" />
+                </button>
               </div>
               <div className="desktop-chat__composer-actions">
                 {composerMode === 'chat' ? (
@@ -3014,7 +3059,11 @@ export function App(): ReactElement {
                   </button>
                 ) : (
                   <span className="desktop-chat__composer-media-model">
-                    {composerMode === 'image' ? 'Agnes Image 2.1 Flash' : 'Agnes Video V2.0'}
+                    {composerMode === 'image'
+                      ? 'Agnes Image 2.1 Flash'
+                      : composerMode === 'video'
+                        ? 'Agnes Video V2.0'
+                        : 'ElevenLabs Music'}
                   </span>
                 )}
                 {isStreaming ? (

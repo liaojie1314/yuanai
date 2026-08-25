@@ -2901,6 +2901,36 @@ textarea:focus-visible {
   width: 100%;
   max-height: 380px;
 }
+.desktop-chat__media-audio-shell {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.desktop-chat__media-audio {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 40px;
+}
+.desktop-chat__media-audio-download {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  color: var(--desktop-fg-muted);
+  background: var(--desktop-bg-muted);
+}
+.desktop-chat__media-audio-download:hover,
+.desktop-chat__media-audio-download:focus-visible {
+  color: var(--desktop-brand-hover);
+  border-color: var(--desktop-brand-border);
+  background: var(--desktop-brand-light);
+}
 .desktop-chat__media-result {
   display: block;
   width: 100%;

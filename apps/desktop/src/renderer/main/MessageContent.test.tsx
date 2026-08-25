@@ -39,6 +39,19 @@ const mediaTask: MediaGenerationTask = {
   updatedAt: '2026-08-16T00:00:00Z',
 }
 
+const musicTask: MediaGenerationTask = {
+  ...mediaTask,
+  id: 'music-task-12345678',
+  type: 'music',
+  model: 'elevenlabs-music-v1',
+  prompt: '生成一段轻快的器乐音乐',
+  options: { durationSeconds: 30 },
+  resultUrl: 'http://localhost:9000/generated/music.mp3',
+  resultPosterUrl: null,
+  resultMimeType: 'audio/mpeg',
+  resultDurationSeconds: 30,
+}
+
 const message: Message = {
   id: 'message-1',
   role: Role.Assistant,
@@ -91,11 +104,44 @@ const searchedMessage: Message = {
 }
 
 describe('ChatMessage media task', () => {
-  it('uses a poster image in the timeline and exposes a download action', () => {
+  it('uses a poster image, exposes a download action, and keeps video Artifact preview', () => {
+    const onOpenArtifact = vi.fn()
     const { container } = render(
       <ChatMessage
         user={null}
         message={message}
+        isStreaming={false}
+        canRegenerate={false}
+        timeFmt="24h"
+        dateFmt="ymd"
+        onEditMessage={vi.fn()}
+        onRegenerate={vi.fn()}
+        onOpenArtifact={onOpenArtifact}
+        onFeedback={vi.fn()}
+      />
+    )
+
+    expect(container.querySelector('video')).toBeNull()
+    expect(container.querySelector('img')).toHaveAttribute('src', mediaTask.resultPosterUrl)
+    expect(screen.getByRole('link', { name: '下载视频生成' })).toHaveAttribute(
+      'href',
+      mediaTask.resultUrl
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: '预览视频生成' }))
+    expect(onOpenArtifact).toHaveBeenCalledWith({
+      kind: 'file-preview',
+      title: '视频生成-task-123',
+      sourceUrl: mediaTask.resultUrl,
+      mimeType: mediaTask.resultMimeType,
+    })
+  })
+
+  it('renders non-autoplaying native audio and a media URL download for music', () => {
+    const { container } = render(
+      <ChatMessage
+        user={null}
+        message={{ ...message, mediaTask: musicTask }}
         isStreaming={false}
         canRegenerate={false}
         timeFmt="24h"
@@ -107,12 +153,19 @@ describe('ChatMessage media task', () => {
       />
     )
 
-    expect(container.querySelector('video')).toBeNull()
-    expect(container.querySelector('img')).toHaveAttribute('src', mediaTask.resultPosterUrl)
-    expect(screen.getByRole('link', { name: '下载视频生成' })).toHaveAttribute(
+    const audio = container.querySelector('audio')
+    expect(audio).not.toBeNull()
+    if (!audio) throw new Error('Expected music audio element')
+    expect(audio).toHaveAttribute('controls')
+    expect(audio).toHaveAttribute('preload', 'metadata')
+    expect(audio).not.toHaveAttribute('autoplay')
+    expect(audio).toHaveAttribute('src', musicTask.resultUrl)
+    expect(screen.getByRole('link', { name: '下载音乐生成' })).toHaveAttribute(
       'href',
-      mediaTask.resultUrl
+      musicTask.resultUrl
     )
+    expect(container.querySelector('img')).toBeNull()
+    expect(screen.queryByRole('button', { name: '预览音乐生成' })).not.toBeInTheDocument()
   })
 
   it('exposes a download action for an uploaded image attachment', () => {
