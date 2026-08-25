@@ -612,10 +612,16 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   wrap: {
+    position: 'relative',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
   mediaOptions: {
+    position: 'absolute',
+    right: 0,
+    bottom: '100%',
+    left: 0,
+    zIndex: 2,
     marginBottom: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -638,6 +644,7 @@ const styles = StyleSheet.create({
   },
   mediaOptionText: { fontSize: 11, fontWeight: '600' },
   card: {
+    position: 'relative',
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,

@@ -1382,11 +1382,18 @@
 
 /* ── Input area ──────────────────────────────────── */
 .ch-composer-shell {
+  position: relative;
   flex-shrink: 0;
   background: var(--bg);
 }
 .ch-media-options-wrap {
-  padding: 0 20px 2px;
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  z-index: 2;
+  padding: 0 20px 4px;
+  pointer-events: none;
 }
 .ch-input-wrap {
   padding: 4px 20px 12px;
@@ -3685,6 +3692,7 @@
   flex-wrap: wrap;
   gap: 6px 12px;
   padding: 0 4px 4px;
+  pointer-events: auto;
 }
 .ch-media-status {
   min-height: 24px;

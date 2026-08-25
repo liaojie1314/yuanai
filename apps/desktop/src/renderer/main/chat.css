@@ -2650,6 +2650,7 @@ textarea:focus-visible {
 }
 
 .desktop-chat__composer-shell {
+  position: relative;
   width: min(calc(100% - 40px), 800px);
   flex: 0 0 auto;
   margin: 0 auto 12px;
@@ -2695,12 +2696,17 @@ textarea:focus-visible {
 
 /* 媒体规格置于输入卡上方，模式由底部工具栏图标切换。 */
 .desktop-chat__media-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 2;
   display: flex;
-  min-height: 30px;
+  min-height: 24px;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 0 4px 5px;
+  padding: 0 4px 2px;
 }
 
 .desktop-chat__media-options > span {
