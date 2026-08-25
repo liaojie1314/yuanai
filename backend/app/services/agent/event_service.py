@@ -14,7 +14,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
-from app.models.agent_run import AgentEvent, AgentRun
+from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus
 from app.services.agent.queue import AgentQueue
 
 logger = logging.getLogger(__name__)
@@ -130,6 +130,19 @@ class EventStore:
         """返回指定 sequence 之后的事件，供 Last-Event-ID 使用。"""
 
         return await self.replay(run_id, after_sequence=after_sequence, limit=limit)
+
+    async def get_run_status(
+        self, run_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+    ) -> AgentRunStatus | None:
+        """查询 Run 状态，供长连接判断是否可以结束。"""
+
+        if self._persist_override is not None:
+            return None
+        async with self._session_factory() as session:
+            query = select(AgentRun.status).where(AgentRun.id == run_id)
+            if tenant_id is not None:
+                query = query.where(AgentRun.user_id == tenant_id)
+            return await session.scalar(query)
 
     async def _persist_database(
         self,

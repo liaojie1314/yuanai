@@ -13,6 +13,7 @@ from app.models.agent_run import AgentRunStatus
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue, QueueItem
 from app.workers.agent_worker import AgentWorker, CancellationToken
+import app.workers.agent_worker as agent_worker_module
 from app.workers.recovery_worker import RecoveryWorker
 
 
@@ -316,6 +317,27 @@ async def test_worker_stops_on_cancellation_and_releases_lease() -> None:
 
     assert calls == []
     assert await queue.lease_owner(tenant_id, run_id) is None
+
+
+@pytest.mark.asyncio
+async def test_default_worker_handler_executes_agent_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """未注入 handler 时，生产 worker 必须调用 Agent Run 执行器。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    await queue.enqueue(tenant_id, run_id)
+    calls: list[QueueItem] = []
+
+    async def execute(item: QueueItem, _token: CancellationToken) -> None:
+        calls.append(item)
+
+    monkeypatch.setattr(agent_worker_module, "execute_agent_run", execute)
+    worker = AgentWorker(queue)
+
+    assert await worker.run_once(asyncio.Event()) is True
+    assert calls == [QueueItem(tenant_id, run_id)]
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -205,17 +206,31 @@ async def stream_events(
     last_event_id: int = Header(default=0, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     await _run(run_id, current_user.id, db)
-    events = await _events.replay_after(run_id, last_event_id)
 
     async def generate() -> AsyncGenerator[str, None]:
         seen: set[int] = set()
-        for event in events:
-            if event.sequence in seen:
-                continue
-            seen.add(event.sequence)
-            data = json.dumps(event.payload, ensure_ascii=False)
-            yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {data}\n\n"
-        yield "data: [DONE]\n\n"
+        cursor = last_event_id
+        while True:
+            events = await _events.replay_after(run_id, cursor)
+            for event in events:
+                if event.sequence <= cursor or event.sequence in seen:
+                    continue
+                seen.add(event.sequence)
+                cursor = event.sequence
+                data = json.dumps(event.payload, ensure_ascii=False)
+                yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {data}\n\n"
+                if event.event_type in {"run_completed", "run_failed", "run_cancelled"}:
+                    yield "data: [DONE]\n\n"
+                    return
+            status = await _events.get_run_status(run_id, tenant_id=current_user.id)
+            if status in {
+                AgentRunStatus.succeeded,
+                AgentRunStatus.failed,
+                AgentRunStatus.cancelled,
+            }:
+                yield "data: [DONE]\n\n"
+                return
+            await asyncio.sleep(0.25)
 
     return StreamingResponse(
         generate(),

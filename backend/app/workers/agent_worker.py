@@ -8,12 +8,20 @@ import signal
 import uuid
 from collections.abc import Awaitable, Callable
 
+from sqlalchemy import select
+
+from app.core.database import AsyncSessionLocal
 from app.core.redis import redis_client
+from app.models.agent_run import AgentRun
+from app.models.assistant import Assistant
+from app.services.agent.coordinator import AgentCoordinator
+from app.services.agent.event_service import EventStore
 from app.services.agent.queue import (
     LEASE_RENEW_INTERVAL_SECONDS,
     AgentQueue,
     QueueItem,
 )
+from app.tools.builtin import build_builtin_registry
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +65,41 @@ class AgentRunCancelledError(RuntimeError):
     """表示 Agent Run 已取消或 Worker 正在关闭。"""
 
 
-async def _noop_handler(_item: QueueItem, _token: CancellationToken) -> None:
-    """在 coordinator 接入前保持 worker 的安全空处理行为。"""
+async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
+    """加载租户 Run 并通过 AgentCoordinator 执行一次有界 Agent 任务。"""
+
+    async with AsyncSessionLocal() as db:
+        run = await db.scalar(
+            select(AgentRun).where(
+                AgentRun.id == item.run_id,
+                AgentRun.user_id == item.tenant_id,
+            )
+        )
+        if run is None:
+            logger.warning("Agent Run %s no longer exists", item.run_id)
+            return
+        assistant = await db.scalar(
+            select(Assistant).where(
+                Assistant.id == run.assistant_id,
+                Assistant.user_id == item.tenant_id,
+            )
+        )
+        if assistant is None:
+            run.error_code = "ASSISTANT_NOT_FOUND"
+            run.error_message = "Agent assistant is unavailable"
+            await db.commit()
+            return
+        coordinator = AgentCoordinator(
+            tool_registry=build_builtin_registry(),
+            event_store=EventStore(queue=AgentQueue(redis_client)),
+        )
+        await coordinator.run(
+            run,
+            db=db,
+            user_instructions=assistant.instructions,
+            cancellation=token.is_cancelled,
+        )
+        await db.commit()
 
 
 class AgentWorker:
@@ -74,7 +115,7 @@ class AgentWorker:
         renewal_interval: float = LEASE_RENEW_INTERVAL_SECONDS,
     ) -> None:
         self._queue = queue or AgentQueue()
-        self._handler = handler or _noop_handler
+        self._handler = handler or execute_agent_run
         self._worker_id = worker_id or str(uuid.uuid4())
         self._poll_interval = poll_interval
         self._renewal_interval = renewal_interval

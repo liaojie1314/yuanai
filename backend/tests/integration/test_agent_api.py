@@ -11,6 +11,7 @@ from app.core.security import create_access_token, hash_password
 from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus
 from app.models.assistant import Assistant
 from app.models.user import User
+import app.api.v1.agent as agent_api
 
 
 async def _assistant(db: AsyncSession, user: User) -> Assistant:
@@ -131,6 +132,62 @@ async def test_event_stream_replays_after_last_event_id(
     assert "id: 2" in response.text
     assert '"n": 1' not in response.text
     assert "data: [DONE]" in response.text
+
+
+@pytest.mark.asyncio
+async def test_event_stream_waits_for_events_created_after_connection(
+    client: AsyncClient,
+    db: AsyncSession,
+    test_user: User,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SSE 连接建立后仍应接收后续持久化事件，而不是立即结束。"""
+
+    assistant = await _assistant(db, test_user)
+    run = AgentRun(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        goal="持续事件测试",
+        model="test-model",
+        status=AgentRunStatus.running,
+    )
+    db.add(run)
+    await db.commit()
+
+    class FakeEvent:
+        def __init__(self, sequence: int, event_type: str, payload: dict[str, object]) -> None:
+            self.sequence = sequence
+            self.event_type = event_type
+            self.payload = payload
+
+    class FakeEventStore:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def get_run_status(
+            self, _run_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+        ) -> AgentRunStatus | None:
+            return AgentRunStatus.running
+
+        async def replay_after(self, _run_id: uuid.UUID, after_sequence: int) -> list[FakeEvent]:
+            self.calls += 1
+            if after_sequence == 0:
+                return [FakeEvent(1, "run_started", {"status": "running"})]
+            return [FakeEvent(2, "run_completed", {"status": "succeeded"})]
+
+    fake_events = FakeEventStore()
+    monkeypatch.setattr(agent_api, "_events", fake_events)
+    response = await client.get(
+        f"/api/v1/agent/runs/{run.id}/stream",
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert "data: [DONE]" in response.text
+    assert "id: 1" in response.text
+    assert "id: 2" in response.text
+    assert fake_events.calls >= 2
 
 
 @pytest.mark.asyncio
