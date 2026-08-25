@@ -2,6 +2,7 @@ import {
   Globe,
   Image as ImageIcon,
   Mic,
+  Music,
   Paperclip,
   Send,
   Sparkles,
@@ -21,6 +22,7 @@ import {
 } from 'react-native'
 
 import { usePrefsStore } from '@yuanai/core/stores'
+import { MediaMusicDurationSeconds } from '@yuanai/types'
 import type {
   MediaGenerationOptions,
   MediaGenerationType,
@@ -40,7 +42,7 @@ import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 import { useAttachments } from '@/hooks/useAttachments'
 
-type ComposerMode = 'chat' | 'image' | 'video'
+type ComposerMode = 'chat' | 'image' | 'video' | 'music'
 
 const IMAGE_SIZES: readonly MediaImageSize[] = ['1K', '2K', '3K', '4K']
 const IMAGE_RATIOS: readonly MediaImageRatio[] = [
@@ -188,7 +190,7 @@ export function ChatInput({
   const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
   const { attachments, openAttachSheet, remove, clear, getFileIds, isUploading } = useAttachments(
-    disabled || disableAttachments
+    disabled || disableAttachments || composerMode === 'music'
   )
 
   const appendVoiceTranscript = useCallback((text: string): void => {
@@ -219,21 +221,26 @@ export function ChatInput({
   const handleSend = (): void => {
     const content = value.trim()
     if ((!content && !hasReadyAttachment) || disabled || isUploading) return
-    const fileIds = getFileIds()
+    const fileIds = composerMode === 'music' ? [] : getFileIds()
     if (composerMode !== 'chat') {
       if (mediaTaskCreating || !onCreateMediaTask) return
-      if (attachments.some((attachment) => !attachment.mimeType.startsWith('image/'))) {
+      if (
+        composerMode !== 'music' &&
+        attachments.some((attachment) => !attachment.mimeType.startsWith('image/'))
+      ) {
         toast.show('图片和视频生成只能使用图片作为参考素材', 3200)
         return
       }
       const options: MediaGenerationOptions =
         composerMode === 'image'
           ? { size: imageSize, ratio: imageRatio }
-          : {
-              aspectRatio: videoRatio,
-              resolution: videoResolution,
-              durationSeconds: videoDuration,
-            }
+          : composerMode === 'video'
+            ? {
+                aspectRatio: videoRatio,
+                resolution: videoResolution,
+                durationSeconds: videoDuration,
+              }
+            : { durationSeconds: MediaMusicDurationSeconds }
       void onCreateMediaTask({
         content,
         type: composerMode,
@@ -259,6 +266,7 @@ export function ChatInput({
   }
 
   const toggleMediaMode = (mode: Exclude<ComposerMode, 'chat'>): void => {
+    if (mode === 'music' && composerMode !== 'music' && attachments.length > 0) clear()
     setComposerMode((previous) => (previous === mode ? 'chat' : mode))
   }
 
@@ -306,7 +314,13 @@ export function ChatInput({
         <View
           style={[styles.mediaOptions, { borderColor: theme.border.default }]}
           accessibilityRole="tablist"
-          accessibilityLabel={composerMode === 'image' ? '图片生成规格' : '视频生成规格'}
+          accessibilityLabel={
+            composerMode === 'image'
+              ? '图片生成规格'
+              : composerMode === 'video'
+                ? '视频生成规格'
+                : '音乐生成规格'
+          }
         >
           <ScrollView
             horizontal
@@ -328,7 +342,7 @@ export function ChatInput({
                   onChange={setImageRatio}
                 />
               </>
-            ) : (
+            ) : composerMode === 'video' ? (
               <>
                 <MediaOptionGroup
                   label="画幅"
@@ -350,6 +364,12 @@ export function ChatInput({
                   suffix=" 秒"
                 />
               </>
+            ) : (
+              <View style={styles.mediaOptionGroup}>
+                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>时长</Text>
+                <Text style={[styles.mediaOptionText, { color: theme.text.secondary }]}>30 秒</Text>
+                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>纯音乐</Text>
+              </View>
             )}
           </ScrollView>
         </View>
@@ -367,14 +387,19 @@ export function ChatInput({
         <View style={styles.tools}>
           <Pressable
             onPress={handlePaperclip}
+            disabled={disabled || disableAttachments || composerMode === 'music'}
             hitSlop={6}
             style={[
               styles.toolBtn,
               {
                 backgroundColor: attachments.length > 0 ? theme.brand.selected : theme.bg.elevated,
+                opacity: disabled || disableAttachments || composerMode === 'music' ? 0.45 : 1,
               },
             ]}
-            accessibilityLabel={t('chat.attach')}
+            accessibilityLabel={composerMode === 'music' ? '音乐模式不支持附件' : t('chat.attach')}
+            accessibilityState={{
+              disabled: disabled || disableAttachments || composerMode === 'music',
+            }}
           >
             <Paperclip
               size={17}
@@ -503,6 +528,30 @@ export function ChatInput({
                 <Video
                   size={17}
                   color={composerMode === 'video' ? theme.brand.selectedFg : theme.text.secondary}
+                />
+              </Pressable>
+              <Pressable
+                onPress={() => toggleMediaMode('music')}
+                disabled={mediaControlsDisabled}
+                hitSlop={6}
+                style={[
+                  styles.toolBtn,
+                  {
+                    backgroundColor:
+                      composerMode === 'music' ? theme.brand.selected : theme.bg.elevated,
+                    opacity: mediaControlsDisabled ? 0.45 : 1,
+                  },
+                ]}
+                accessibilityRole="tab"
+                accessibilityLabel={composerMode === 'music' ? '退出音乐生成' : '音乐生成'}
+                accessibilityState={{
+                  selected: composerMode === 'music',
+                  disabled: mediaControlsDisabled,
+                }}
+              >
+                <Music
+                  size={17}
+                  color={composerMode === 'music' ? theme.brand.selectedFg : theme.text.secondary}
                 />
               </Pressable>
             </>

@@ -1,14 +1,17 @@
-import { Video as ExpoVideo, ResizeMode } from 'expo-av'
+import { Audio, Video as ExpoVideo, ResizeMode } from 'expo-av'
+import type { AVPlaybackStatus } from 'expo-av'
 import {
   Download,
   Image as ImageIcon,
+  Music,
+  Pause,
   Play,
   RotateCcw,
   Square,
   X,
   XCircle,
 } from 'lucide-react-native'
-import { useState, type ComponentType, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
 import {
   Image,
   Linking,
@@ -47,11 +50,22 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
   const cancel = useCancelMediaTask()
   const retry = useCreateMediaTask()
   const [previewOpen, setPreviewOpen] = useState(false)
+  const [audioLoading, setAudioLoading] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const [audioPlaying, setAudioPlaying] = useState(false)
+  const [audioPositionMillis, setAudioPositionMillis] = useState(0)
+  const [audioDurationMillis, setAudioDurationMillis] = useState(
+    task.resultDurationSeconds ? task.resultDurationSeconds * 1000 : 0
+  )
+  const [audioRetryKey, setAudioRetryKey] = useState(0)
+  const soundRef = useRef<Audio.Sound | null>(null)
   const active = task.status === 'queued' || task.status === 'running'
   const isImage = task.type === 'image'
+  const isMusic = task.type === 'music'
   const resultUrl = task.status === 'succeeded' ? task.resultUrl : null
   const resultPosterUrl = task.status === 'succeeded' ? task.resultPosterUrl : null
   const hasResult = resultUrl !== null
+  const musicUrl = task.type === 'music' && task.status === 'succeeded' ? resultUrl : null
   const statusLabel =
     task.status === 'queued'
       ? '等待生成'
@@ -78,26 +92,98 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
     void Linking.openURL(resultUrl)
   }
 
+  useEffect(() => {
+    let disposed = false
+
+    if (!musicUrl) {
+      setAudioLoading(false)
+      return undefined
+    }
+
+    setAudioError(null)
+    setAudioPlaying(false)
+    setAudioPositionMillis(0)
+    setAudioDurationMillis(task.resultDurationSeconds ? task.resultDurationSeconds * 1000 : 0)
+    setAudioLoading(true)
+    void Audio.Sound.createAsync(
+      { uri: musicUrl },
+      { shouldPlay: false, progressUpdateIntervalMillis: 250 },
+      (status: AVPlaybackStatus) => {
+        if (disposed) return
+        if (!status.isLoaded) {
+          if (status.error) setAudioError('音频播放失败，请重试')
+          return
+        }
+        setAudioPlaying(status.isPlaying)
+        setAudioPositionMillis(status.positionMillis)
+        setAudioDurationMillis(status.durationMillis ?? 0)
+      }
+    )
+      .then(({ sound }) => {
+        if (disposed) {
+          void sound.unloadAsync()
+          return
+        }
+        soundRef.current = sound
+        setAudioLoading(false)
+      })
+      .catch(() => {
+        if (disposed) return
+        setAudioLoading(false)
+        setAudioError('音频加载失败，请重试')
+      })
+
+    return () => {
+      disposed = true
+      const sound = soundRef.current
+      soundRef.current = null
+      if (sound) void sound.unloadAsync()
+    }
+  }, [musicUrl, audioRetryKey, task.resultDurationSeconds])
+
+  const toggleAudio = (): void => {
+    const sound = soundRef.current
+    if (!sound || audioLoading) return
+    if (audioPlaying) {
+      void sound
+        .pauseAsync()
+        .then(() => setAudioPlaying(false))
+        .catch(() => setAudioError('音频播放失败，请重试'))
+      return
+    }
+    void sound
+      .playAsync()
+      .then(() => setAudioPlaying(true))
+      .catch(() => setAudioError('音频播放失败，请重试'))
+  }
+
+  const formatTime = (milliseconds: number): string => {
+    const seconds = Math.max(0, Math.floor(milliseconds / 1000))
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+  }
+
   return (
     <View
       style={[
         styles.card,
         { backgroundColor: theme.bg.surface, borderColor: theme.border.default },
       ]}
-      accessibilityLabel={`${isImage ? '图片' : '视频'}生成任务，${statusLabel}`}
+      accessibilityLabel={`${isImage ? '图片' : isMusic ? '音乐' : '视频'}生成任务，${statusLabel}`}
       accessibilityLiveRegion="polite"
     >
       <View style={styles.header}>
         <View style={[styles.icon, { backgroundColor: theme.brand.selected }]}>
           {isImage ? (
             <ImageIcon size={18} color={theme.brand.selectedFg} />
+          ) : isMusic ? (
+            <Music size={18} color={theme.brand.selectedFg} />
           ) : (
             <Play size={18} color={theme.brand.selectedFg} />
           )}
         </View>
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: theme.text.primary }]}>
-            {isImage ? '图片生成' : '视频生成'}
+            {isImage ? '图片生成' : isMusic ? '音乐生成' : '视频生成'}
           </Text>
           <Text style={[styles.status, { color: theme.text.muted }]}>{statusLabel}</Text>
         </View>
@@ -118,7 +204,61 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         </View>
       ) : null}
 
-      {hasResult ? (
+      {hasResult && task.type === 'music' ? (
+        <View style={[styles.musicPlayer, { backgroundColor: theme.bg.elevated }]}>
+          {audioError ? (
+            <View style={styles.error}>
+              <XCircle size={16} color="#DC2626" />
+              <Text style={styles.errorText}>{audioError}</Text>
+              <TaskAction
+                icon={<RotateCcw size={14} color={theme.text.secondary} />}
+                label="重试播放"
+                onPress={() => setAudioRetryKey((value) => value + 1)}
+                textColor={theme.text.secondary}
+              />
+            </View>
+          ) : (
+            <>
+              <View style={styles.musicHeader}>
+                <View style={[styles.icon, { backgroundColor: theme.brand.selected }]}>
+                  <Music size={18} color={theme.brand.selectedFg} />
+                </View>
+                <Text style={[styles.musicTitle, { color: theme.text.primary }]}>音乐播放</Text>
+                <Text style={[styles.musicTime, { color: theme.text.muted }]}>
+                  {formatTime(audioPositionMillis)} / {formatTime(audioDurationMillis)}
+                </Text>
+              </View>
+              <View style={[styles.musicProgressTrack, { backgroundColor: theme.border.default }]}>
+                <View
+                  style={[
+                    styles.musicProgressValue,
+                    {
+                      width:
+                        audioDurationMillis > 0
+                          ? `${Math.min(100, (audioPositionMillis / audioDurationMillis) * 100)}%`
+                          : '0%',
+                      backgroundColor: theme.brand.solid,
+                    },
+                  ]}
+                />
+              </View>
+              <TaskAction
+                icon={
+                  audioPlaying ? (
+                    <Pause size={15} color={theme.text.secondary} />
+                  ) : (
+                    <Play size={15} color={theme.text.secondary} />
+                  )
+                }
+                label={audioLoading ? '正在加载音乐' : audioPlaying ? '暂停音乐' : '播放音乐'}
+                disabled={audioLoading}
+                onPress={toggleAudio}
+                textColor={theme.text.secondary}
+              />
+            </>
+          )}
+        </View>
+      ) : hasResult ? (
         <Pressable
           onPress={() => setPreviewOpen(true)}
           style={[styles.result, { backgroundColor: theme.bg.elevated }]}
@@ -181,7 +321,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         ) : null}
       </View>
 
-      {hasResult ? (
+      {hasResult && task.type !== 'music' ? (
         <Modal
           visible={previewOpen}
           transparent
@@ -272,6 +412,12 @@ const styles = StyleSheet.create({
   prompt: { marginHorizontal: spacing.md, marginBottom: spacing.sm, fontSize: 13, lineHeight: 19 },
   progressTrack: { height: 3 },
   progressValue: { height: '100%' },
+  musicPlayer: { gap: spacing.sm, padding: spacing.md },
+  musicHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  musicTitle: { flex: 1, fontSize: 14, fontWeight: '700' },
+  musicTime: { fontSize: 12, fontVariant: ['tabular-nums'] },
+  musicProgressTrack: { height: 4, overflow: 'hidden', borderRadius: 2 },
+  musicProgressValue: { height: '100%', borderRadius: 2 },
   result: { position: 'relative', width: '100%', height: 220, overflow: 'hidden' },
   resultMedia: { width: '100%', height: '100%' },
   previewBadge: {
