@@ -119,16 +119,21 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 ### 配置 AI 音乐生成
 
-音乐生成使用 ElevenLabs Music API，Key 只放在后端：
+音乐生成默认使用本机 Hugging Face MusicGen，不需要 API Token：
 
 ```dotenv
 # backend/.env
-ELEVENLABS_API_KEY=你的ElevenLabs_API_Key
+MEDIA_MUSIC_PROVIDER=local
+MEDIA_MUSIC_LOCAL_MODEL=facebook/musicgen-small
+MEDIA_MUSIC_LOCAL_DEVICE=auto
 ```
 
-获取 Key、固定 30 秒纯音乐范围、三端使用方式和额度注意事项见
+本机 GPU 会优先用于纯音乐生成；没有 CUDA 时可以改为 `cpu`，但速度会明显变慢。音乐支持
+固定 30 秒的纯音乐和歌词歌曲：纯音乐使用本机 MusicGen，歌词歌曲使用独立的本机 ACE-Step
+服务。模型安装、三端使用方式、远程失败降级和 provider 注意事项见
 [媒体生成与音乐配置](docs/media-generation.md)。未配置该 Key 时，图片、视频和普通聊天
-仍可使用，音乐任务会显示 provider unavailable/失败状态。
+仍可使用，音乐任务不会依赖第三方 Key；歌词模式需要 ACE-Step 服务运行。Hugging Face
+远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用方案。
 
 ## 联网搜索
 
@@ -175,22 +180,22 @@ docker compose up -d searxng
 
 ## 文档
 
-| 文档                                                                      | 说明                                   |
-| ------------------------------------------------------------------------- | -------------------------------------- |
-| [开发运行指南](docs/dev-guide.md)                                         | Mock / 全栈模式详细启动步骤            |
-| [AI 大模型接入指南](docs/ai-providers.md)                                 | API Key 配置与新增模型                 |
-| [媒体生成与音乐配置](docs/media-generation.md)                            | 图片、视频、音乐任务与 ElevenLabs 配置 |
-| [架构设计](docs/architecture.md)                                          | 系统架构与数据流                       |
-| [API 设计](docs/api-design.md)                                            | 后端接口规范                           |
-| [UI 规范](docs/ui-spec.md)                                                | 设计系统与组件规范                     |
-| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md)                        | 桌面端实施状态与验收边界               |
-| [Phase 5 — Agent Runtime](docs/phases/phase-5-agent-runtime.md)           | Agent 运行时与验收证据                 |
-| [Phase 6 — 工具与执行](docs/phases/phase-6-tools-execution.md)            | 六个 Wave 与进入 Phase 7 的门槛        |
-| [Phase 7 — 记忆与自动化](docs/phases/phase-7-memory-skills-automation.md) | 后续阶段入口条件                       |
-| [桌面端说明](apps/desktop/README.md)                                      | Electron 启动、测试与打包              |
-| [发版与 CI/CD](docs/release.md)                                           | release-it、Secrets 与 Actions         |
-| [跨端排障记录](docs/troubleshooting.md)                                   | 已解决问题和真机调试方法               |
-| [RUNNING.md](RUNNING.md)                                                  | 完整的从零部署参考手册                 |
+| 文档                                                                      | 说明                                     |
+| ------------------------------------------------------------------------- | ---------------------------------------- |
+| [开发运行指南](docs/dev-guide.md)                                         | Mock / 全栈模式详细启动步骤              |
+| [AI 大模型接入指南](docs/ai-providers.md)                                 | API Key 配置与新增模型                   |
+| [媒体生成与音乐配置](docs/media-generation.md)                            | 图片、视频、音乐任务与本机 MusicGen 配置 |
+| [架构设计](docs/architecture.md)                                          | 系统架构与数据流                         |
+| [API 设计](docs/api-design.md)                                            | 后端接口规范                             |
+| [UI 规范](docs/ui-spec.md)                                                | 设计系统与组件规范                       |
+| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md)                        | 桌面端实施状态与验收边界                 |
+| [Phase 5 — Agent Runtime](docs/phases/phase-5-agent-runtime.md)           | Agent 运行时与验收证据                   |
+| [Phase 6 — 工具与执行](docs/phases/phase-6-tools-execution.md)            | 六个 Wave 与进入 Phase 7 的门槛          |
+| [Phase 7 — 记忆与自动化](docs/phases/phase-7-memory-skills-automation.md) | 后续阶段入口条件                         |
+| [桌面端说明](apps/desktop/README.md)                                      | Electron 启动、测试与打包                |
+| [发版与 CI/CD](docs/release.md)                                           | release-it、Secrets 与 Actions           |
+| [跨端排障记录](docs/troubleshooting.md)                                   | 已解决问题和真机调试方法                 |
+| [RUNNING.md](RUNNING.md)                                                  | 完整的从零部署参考手册                   |
 
 ## 目录结构
 

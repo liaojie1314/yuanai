@@ -68,31 +68,21 @@ pnpm dev:mock
 
 - Docker Desktop 已安装并运行
 - 已在 `backend/.env` 中配置至少一个 AI 提供商的 API Key → 详见 [AI 大模型接入指南](ai-providers.md)
-- 如需音乐生成，另需配置后端 `ELEVENLABS_API_KEY` → 详见 [媒体生成与音乐配置](media-generation.md)
+- 音乐生成默认使用本机 MusicGen；歌词歌曲需另外启动本机 ACE-Step 服务。两种模式都固定
+  30 秒，任务默认只读已缓存模型并有界超时，安装、GPU/CPU 配置、ACE-Step 启动和远程实验
+  方案见 [媒体生成与音乐配置](media-generation.md)
 
 ### 启动步骤
 
 ```bash
-# 1. 启动基础设施（pnpm dev:real 会自动生成 SearXNG 密钥）
-docker compose up -d
-
-# 2. 进入后端目录
-cd backend
-
-# 3. 安装 Python 依赖（首次）
-uv sync
-
-# 4. 执行数据库迁移（首次或新版本后执行）
-uv run alembic upgrade head
-
-# 5. 启动后端（开发模式，支持热重载）
-uv run uvicorn app.main:app --reload --port 8000
-
-# 6. 另开终端，启动 Web 前端
-cd ..
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1" > apps/web/.env.local
-pnpm --filter @yuanai/web dev
+# 一键启动 Docker Compose 基础设施、迁移、FastAPI 和 Web
+pnpm dev:real
 ```
+
+`pnpm dev:real` 会启动 PostgreSQL（宿主机 `5433`）、Redis、MinIO 和 SearXNG，然后执行
+迁移并启动后端和 Web。后端集成测试使用同一个 Compose PostgreSQL 中的 `yuanai_test` 数据库；
+测试前先让真实栈运行，不要把连接地址改回宿主机 `5432`。歌词音乐还需要另开终端执行
+`ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step`。
 
 ### 启动桌面端
 

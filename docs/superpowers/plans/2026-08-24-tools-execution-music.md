@@ -4,7 +4,7 @@
 
 **Goal:** Deliver the first controlled-tool execution foundation described by Phase 6 and add prompt-to-music generation to the existing persistent image/video media workflow on Web, Desktop, and Mobile.
 
-**Architecture:** Phase 6 is documented as incremental Waves: shared contracts and policy first, cloud execution next, then MCP and Desktop execution nodes, with Web as the control center and Mobile remaining compatibility-only. Music is deliberately outside Tool Runtime and extends `MediaGenerationTask` with a `music` kind, a server-side ElevenLabs adapter, object-storage persistence, and native audio playback on all three clients.
+**Architecture:** Phase 6 is documented as incremental Waves: shared contracts and policy first, cloud execution next, then MCP and Desktop execution nodes, with Web as the control center and Mobile remaining compatibility-only. Music is deliberately outside Tool Runtime and extends `MediaGenerationTask` with a `music` kind, a server-side local Hugging Face MusicGen adapter, object-storage persistence, and native audio playback on all three clients.
 
 **Tech Stack:** FastAPI, async SQLAlchemy, Pydantic v2, HTTPX, S3-compatible storage, TypeScript monorepo packages, Next.js Web, Electron Desktop, Expo React Native, Vitest, pytest, Playwright, pnpm scripts.
 
@@ -17,7 +17,7 @@
 - Keep `.codex/phase-6-tools-execution-progress.md` local-only; update it after every committed feature with status, tests, commit hash, and blockers.
 - Every completed feature gets a separate Conventional Commit and passes its focused tests before the next feature starts.
 - Use root `package.json` scripts for startup, build, packaging, and JavaScript tests. Use `uv run` for backend checks.
-- All AI provider calls remain behind `backend/app/services/ai_service.py`; clients never call ElevenLabs directly.
+- All AI provider calls remain behind `backend/app/services/ai_service.py`; clients never call Hugging Face directly.
 - Mobile does not implement the Phase 6 control center, MCP management, Desktop node, or local tool execution.
 
 ## File Map
@@ -27,9 +27,9 @@
 | `docs/phases/phase-6-tools-execution.md`                                             | Correct Phase 6 boundaries, Wave order, and independent acceptance gates.              |
 | `backend/app/models/media_generation_task.py`                                        | Add the persisted `music` task kind.                                                   |
 | `backend/app/schemas/media_generation.py`                                            | Validate and project the shared media task contract.                                   |
-| `backend/app/services/ai_service.py`                                                 | ElevenLabs Music API adapter and provider error normalization.                         |
+| `backend/app/services/ai_service.py`                                                 | Local Hugging Face MusicGen adapter, optional remote adapter, and error normalization. |
 | `backend/app/services/media_generation_service.py`                                   | Music defaults, worker execution, MP3 persistence, status messages, and notifications. |
-| `backend/app/core/config.py`, `backend/.env.example`                                 | ElevenLabs key and bounded music timeout/configuration.                                |
+| `backend/app/core/config.py`, `backend/.env.example`                                 | Hugging Face token and bounded music timeout/retry configuration.                      |
 | `packages/types/src/index.ts`                                                        | Shared media kind/model/options types.                                                 |
 | `packages/core/src/api/media.ts`, media hooks                                        | Reuse the existing task API and polling contract.                                      |
 | `apps/web/src/components/chat/ChatInput*`, `MediaTaskCard.tsx`                       | Web music composer mode and audio task card.                                           |
@@ -71,7 +71,7 @@ git commit -m "docs(config): split phase 6 tool execution into waves"
 
 - [ ] Add `MediaGenerationType.music = "music"`; keep the existing non-native SQLAlchemy enum representation and generate a migration only if the configured database schema requires one.
 - [ ] Define the only accepted music options as `durationSeconds: 30`; reject image/video options and source files for music.
-- [ ] Map music to `elevenlabs-music-v1`, and use provider-independent status text `正在生成音乐`, `音乐生成完成`, `音乐生成失败`, and `已取消音乐生成`.
+- [ ] Map music to `musicgen-small-local`, and use provider-independent status text `正在生成音乐`, `音乐生成完成`, `音乐生成失败`, and `已取消音乐生成`.
 - [ ] Extend `_MEDIA_EXTENSIONS` with `audio/mpeg: mp3`, and persist audio bytes under `generated/<user_id>/<task_id>.mp3`.
 - [ ] Preserve the existing ownership checks, lease, cancel race protection, result URL projection, and notification behavior.
 - [ ] Add tests for music defaults, invalid options, rejected image attachments, task creation, cancellation, and a successful `audio/mpeg` result.
@@ -83,7 +83,7 @@ cd backend && uv run pytest tests/unit/test_media_generation_service.py tests/in
 
 Expected: all selected tests pass with exit code `0`.
 
-### Task 1.3: Add the ElevenLabs provider adapter
+### Task 1.3: Add the local Hugging Face MusicGen provider adapter
 
 **Files:**
 
@@ -95,7 +95,7 @@ Expected: all selected tests pass with exit code `0`.
 - Test: `backend/tests/unit/test_media_generation_service.py`
 
 - [ ] Add `elevenlabs_api_key: str = ""`, a bounded music timeout, and an explicit feature configuration that leaves music unavailable when the key is absent.
-- [ ] Implement an async `generate_elevenlabs_music(prompt: str, duration_ms: int = 30_000) -> tuple[bytes, str]` provider function in `ai_service.py`.
+- [ ] Implement an async `generate_local_music(prompt: str, duration_ms: int = 30_000) -> tuple[bytes, str]` provider function in `ai_service.py`; load the model once per worker process and serialize local generation to protect GPU memory.
 - [ ] Send `POST https://api.elevenlabs.io/v1/music` with `xi-api-key`, `Content-Type: application/json`, and query `output_format=mp3_44100_128`; body must be exactly constrained to `prompt`, `music_length_ms: 30000`, `model_id: "music_v1"`, and `force_instrumental: true`.
 - [ ] Return `audio/mpeg` only for a non-empty successful response; map missing key, timeout, HTTP errors, empty body, and unsupported response MIME to existing media provider domain errors without leaking the API key or provider response body.
 - [ ] Call this function only from the media worker, store returned bytes with the existing storage service, set `result_mime_type` and `result_duration_seconds`, then finalize through `_complete_task`.
@@ -189,7 +189,7 @@ git commit -m "feat(web): add music generation composer and player"
 - Test: `apps/desktop/src/renderer/main/App.test.tsx`
 - Test: `apps/desktop/src/renderer/main/MessageContent.test.tsx`
 
-- [ ] Add a mutually exclusive Music mode beside the existing Image and Video composer modes; submit through the existing `createMediaTask` path with `{ type: "music", options: { durationSeconds: 30 } }`, disable image/video-only attachments and controls, and show the ElevenLabs Music model label.
+- [ ] Add a mutually exclusive Music mode beside the existing Image and Video composer modes; submit through the existing `createMediaTask` path with `{ type: "music", options: { durationSeconds: 30 } }`, disable image/video-only attachments and controls, and show the local MusicGen model label.
 - [ ] Add a music branch to the existing `MediaTaskCard` with native audio controls, stable layout dimensions, download behavior, failure/retry, cancel, and accessible labels.
 - [ ] Keep Desktop artifact opening behavior for image/video and do not add a Phase 6 control center or local tool execution UI.
 - [ ] Test music mode payload and attachment boundary, succeeded/running/failed/canceled/download states, and image/video regression states.
@@ -246,7 +246,7 @@ git commit -m "feat(mobile): add music generation playback"
 - Test: existing backend integration, Web integration/E2E, Desktop tests, Mobile tests
 
 - [ ] Start the real stack only through `pnpm dev:real`; start Desktop and Mobile only through `pnpm dev:desktop` and `pnpm dev:mobile`.
-- [ ] With a configured `ELEVENLABS_API_KEY`, submit one 30-second prompt from each client and verify the same stored result is playable after refresh; without the key, verify the provider-unavailable state and no raw credential/URL leakage.
+- [ ] With the local MusicGen provider available, submit one 30-second prompt from each client and verify the same stored result is playable after refresh; with local dependencies unavailable, verify the provider-unavailable state and no raw credential/URL leakage. Exercise the remote `503` loading and `429` retry paths with mocked provider responses.
 - [ ] Run the full project checks:
 
 ```bash
@@ -267,10 +267,10 @@ Expected: every command exits `0`; any pre-existing environment failure is recor
 
 ## Deferred Roadmap
 
-The current branch intentionally excludes structured lyrics, vocal controls, selectable 10/30/60-second duration, stems, waveform/cover generation, provider fallback, and Mobile/ Desktop Phase 6 tool execution. These require separate product and provider decisions after the fixed 30-second instrumental path is verified.
+The current branch intentionally excludes structured lyrics, vocal controls, selectable 10/30/60-second duration, stems, waveform/cover generation, and Mobile/Desktop Phase 6 tool execution. Remote music providers use bounded retries and fall back to local MusicGen when enabled; this fallback does not change the fixed 30-second instrumental contract.
 
 ## Plan Self-Review
 
 - Spec coverage: Phase 6 platform boundaries, Wave decomposition, provider choice, fixed-duration music, three clients, API/storage security, tests, scripts, progress tracking, local commits, and no push/merge are all mapped above.
 - Placeholder scan: no implementation step relies on an unspecified function, unbounded provider parameter, direct frontend provider call, or generic “write tests” instruction.
-- Type consistency: `music` is the shared/backend task kind; `durationSeconds: 30`, `audio/mpeg`, `elevenlabs-music-v1`, and the existing `/media/tasks` contract are used consistently across all stages.
+- Type consistency: `music` is the shared/backend task kind; `durationSeconds: 30`, `audio/mpeg`, `musicgen-small-local`, and the existing `/media/tasks` contract are used consistently across all stages.
