@@ -111,7 +111,7 @@ const musicTask: MediaGenerationTask = {
   messageId: 'message-1',
   sourceMessageId: 'source-1',
   type: 'music',
-  model: 'elevenlabs-music-v1',
+  model: 'musicgen-small-local',
   prompt: '轻快的器乐音乐',
   options: { durationSeconds: 30 },
   sourceFileIds: [],

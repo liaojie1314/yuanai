@@ -1220,6 +1220,8 @@ export function App(): ReactElement {
   const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
   const [videoResolution, setVideoResolution] = useState<(typeof VIDEO_RESOLUTIONS)[number]>('720p')
   const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
+  const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
+  const [musicLyrics, setMusicLyrics] = useState('')
   const [selectedModelId, setSelectedModelId] = useState(FALLBACK_MODEL.id)
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
@@ -2074,6 +2076,10 @@ export function App(): ReactElement {
       setActionError('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
       return
     }
+    if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
+      setActionError('请填写歌词，或切换回纯音乐模式')
+      return
+    }
     if (
       !isMediaMode &&
       attachments.some((attachment) => attachment.file.type.startsWith('image/')) &&
@@ -2160,12 +2166,18 @@ export function App(): ReactElement {
                     resolution: videoResolution,
                     durationSeconds: videoDuration,
                   }
-                : { durationSeconds: MediaMusicDurationSeconds },
+                : {
+                    durationSeconds: MediaMusicDurationSeconds,
+                    ...(musicLyricsMode === 'lyrics' && musicLyrics.trim()
+                      ? { lyrics: musicLyrics.trim() }
+                      : {}),
+                  },
           sourceFileIds: composerMode === 'music' ? [] : fileIds,
         })
         revokeAttachmentPreviews(attachments)
         setAttachments([])
         setDraft('')
+        if (composerMode === 'music' && musicLyricsMode === 'lyrics') setMusicLyrics('')
         void requestAnimationFrame(() => scrollMessagesToBottom('smooth'))
         return
       }
@@ -2751,7 +2763,23 @@ export function App(): ReactElement {
               role="status"
             >
               <Music size={13} strokeWidth={2} aria-hidden="true" />
-              <span>音乐生成 · {MediaMusicDurationSeconds} 秒</span>
+              <span>音乐</span>
+              <button
+                type="button"
+                className={musicLyricsMode === 'instrumental' ? 'is-active' : undefined}
+                aria-pressed={musicLyricsMode === 'instrumental'}
+                onClick={() => setMusicLyricsMode('instrumental')}
+              >
+                纯音乐
+              </button>
+              <button
+                type="button"
+                className={musicLyricsMode === 'lyrics' ? 'is-active' : undefined}
+                aria-pressed={musicLyricsMode === 'lyrics'}
+                onClick={() => setMusicLyricsMode('lyrics')}
+              >
+                歌词歌曲
+              </button>
             </div>
           ) : null}
           <form
@@ -2805,13 +2833,28 @@ export function App(): ReactElement {
                 })}
               </ul>
             ) : null}
+            {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
+              <textarea
+                className="desktop-chat__music-lyrics"
+                aria-label="歌词"
+                placeholder="填写歌词，ACE-Step 会生成演唱"
+                rows={3}
+                value={musicLyrics}
+                onChange={(event) => setMusicLyrics(event.target.value)}
+                disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
+              />
+            ) : null}
             <textarea
               ref={composerInputRef}
               aria-label="输入消息"
               rows={1}
               value={draft}
               placeholder={
-                isLoggedIn ? t('chat.inputPlaceholder') : t('chat.inputPlaceholderLoggedOut')
+                isLoggedIn
+                  ? composerMode === 'music'
+                    ? '描述曲风、情绪和编曲'
+                    : t('chat.inputPlaceholder')
+                  : t('chat.inputPlaceholderLoggedOut')
               }
               disabled={!isLoggedIn || isStreaming || isUploadingAttachments}
               onChange={(event) => setDraft(event.target.value)}
@@ -3067,7 +3110,9 @@ export function App(): ReactElement {
                       ? 'Agnes Image 2.1 Flash'
                       : composerMode === 'video'
                         ? 'Agnes Video V2.0'
-                        : 'ElevenLabs Music'}
+                        : musicLyricsMode === 'lyrics'
+                          ? 'ACE-Step（本机）'
+                          : 'MusicGen（本机）'}
                   </span>
                 )}
                 {isStreaming ? (

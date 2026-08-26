@@ -2729,6 +2729,23 @@ textarea:focus-visible {
   font-size: 11px;
   white-space: nowrap;
 }
+.desktop-chat__music-lyrics {
+  width: 100%;
+  min-height: 64px;
+  max-height: 120px;
+  padding: 8px 16px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--desktop-border);
+  background: transparent;
+  color: var(--desktop-fg);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: 0;
+}
+.desktop-chat__music-lyrics::placeholder {
+  color: var(--desktop-fg-subtle);
+}
 
 .desktop-chat__media-options > button {
   min-height: 24px;

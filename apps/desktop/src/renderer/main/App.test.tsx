@@ -435,7 +435,7 @@ describe('desktop chat', () => {
 
     await user.click(screen.getByRole('button', { name: '音乐生成' }))
 
-    expect(screen.getByText('ElevenLabs Music')).toBeInTheDocument()
+    expect(screen.getByText('MusicGen（本机）')).toBeInTheDocument()
     expect(screen.getByText('音乐生成 · 30 秒')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '音乐模式不支持附件' })).toBeDisabled()
     expect(screen.getByTestId('attachment-input')).toBeDisabled()

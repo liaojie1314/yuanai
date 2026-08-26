@@ -181,6 +181,8 @@ export function ChatInput({
   const [videoRatio, setVideoRatio] = useState<MediaVideoAspectRatio>('3:2')
   const [videoResolution, setVideoResolution] = useState<MediaVideoResolution>('720p')
   const [videoDuration, setVideoDuration] = useState<MediaVideoDurationSeconds>(5)
+  const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
+  const [musicLyrics, setMusicLyrics] = useState('')
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
@@ -221,6 +223,10 @@ export function ChatInput({
   const handleSend = (): void => {
     const content = value.trim()
     if ((!content && !hasReadyAttachment) || disabled || isUploading) return
+    if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
+      toast.show('请填写歌词，或切换回纯音乐模式', 3200)
+      return
+    }
     const fileIds = composerMode === 'music' ? [] : getFileIds()
     if (composerMode !== 'chat') {
       if (mediaTaskCreating || !onCreateMediaTask) return
@@ -240,7 +246,12 @@ export function ChatInput({
                 resolution: videoResolution,
                 durationSeconds: videoDuration,
               }
-            : { durationSeconds: MediaMusicDurationSeconds }
+            : {
+                durationSeconds: MediaMusicDurationSeconds,
+                ...(musicLyricsMode === 'lyrics' && musicLyrics.trim()
+                  ? { lyrics: musicLyrics.trim() }
+                  : {}),
+              }
       void onCreateMediaTask({
         content,
         type: composerMode,
@@ -250,6 +261,7 @@ export function ChatInput({
         .then((created) => {
           if (!created) return
           setValue('')
+          if (composerMode === 'music' && musicLyricsMode === 'lyrics') setMusicLyrics('')
           clear()
         })
         .catch((error: unknown) => {
@@ -365,11 +377,33 @@ export function ChatInput({
                 />
               </>
             ) : (
-              <View style={styles.mediaStatus} accessibilityRole="text">
-                <Music size={13} color={theme.brand.selected} strokeWidth={2} />
-                <Text style={[styles.mediaStatusText, { color: theme.text.muted }]}>
-                  音乐生成 · {MediaMusicDurationSeconds} 秒
-                </Text>
+              <View style={styles.mediaOptionGroup}>
+                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>音乐</Text>
+                {(['instrumental', 'lyrics'] as const).map((mode) => {
+                  const active = musicLyricsMode === mode
+                  return (
+                    <Pressable
+                      key={mode}
+                      onPress={() => setMusicLyricsMode(mode)}
+                      style={[
+                        styles.mediaOption,
+                        { backgroundColor: active ? theme.brand.selected : theme.bg.elevated },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={mode === 'lyrics' ? '歌词歌曲模式' : '纯音乐模式'}
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text
+                        style={[
+                          styles.mediaOptionText,
+                          { color: active ? theme.brand.selectedFg : theme.text.secondary },
+                        ]}
+                      >
+                        {mode === 'lyrics' ? '歌词歌曲' : '纯音乐'}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
               </View>
             )}
           </ScrollView>
@@ -560,12 +594,28 @@ export function ChatInput({
         </View>
 
         {/* 输入行 */}
+        {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
+          <TextInput
+            value={musicLyrics}
+            onChangeText={setMusicLyrics}
+            placeholder="填写歌词，ACE-Step 会生成演唱"
+            placeholderTextColor={theme.text.muted}
+            style={[styles.musicLyricsInput, { color: theme.text.primary }]}
+            multiline
+            maxLength={4000}
+            editable={!disabled && !mediaTaskCreating}
+            textAlignVertical="top"
+            accessibilityLabel="歌词"
+          />
+        ) : null}
         <View style={styles.inputRow}>
           <TextInput
             ref={inputRef}
             value={value}
             onChangeText={setValue}
-            placeholder={t('chat.inputPlaceholder')}
+            placeholder={
+              composerMode === 'music' ? '描述曲风、情绪和编曲' : t('chat.inputPlaceholder')
+            }
             placeholderTextColor={theme.text.muted}
             style={[
               styles.input,
@@ -674,6 +724,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.sm,
     paddingTop: spacing.xs,
+  },
+  musicLyricsInput: {
+    minHeight: 64,
+    maxHeight: 120,
+    paddingHorizontal: 4,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,

@@ -129,6 +129,18 @@ interface AttachFile {
 
 type ComposerMode = 'chat' | 'agent' | MediaComposerMode
 
+const COMPOSER_MODE_STORAGE_KEY = 'yuanai-composer-mode'
+
+function isComposerMode(value: string | null): value is ComposerMode {
+  return (
+    value === 'chat' ||
+    value === 'agent' ||
+    value === 'image' ||
+    value === 'video' ||
+    value === 'music'
+  )
+}
+
 const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
 const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
 const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
@@ -397,12 +409,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const openFilePreview = useArtifactStore((s) => s.openFilePreview)
   const [webSearch, setWebSearch] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
+  const [composerModeHydrated, setComposerModeHydrated] = useState(false)
   const [agentEnabled, setAgentEnabled] = useState(false)
   const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
   const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
   const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
   const [videoResolution, setVideoResolution] = useState<(typeof VIDEO_RESOLUTIONS)[number]>('720p')
   const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
+  const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
+  const [musicLyrics, setMusicLyrics] = useState('')
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
   const [modelDropOpen, setModelDropOpen] = useState(false)
@@ -439,6 +454,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   useEffect(() => {
     if (webSearchCapability && !webSearchCapability.enabled) setWebSearch(false)
   }, [webSearchCapability])
+
+  useEffect(() => {
+    const savedMode = sessionStorage.getItem(COMPOSER_MODE_STORAGE_KEY)
+    if (isComposerMode(savedMode)) setComposerMode(savedMode)
+    setComposerModeHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!composerModeHydrated) return
+    sessionStorage.setItem(COMPOSER_MODE_STORAGE_KEY, composerMode)
+  }, [composerMode, composerModeHydrated])
 
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
@@ -774,6 +800,10 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       toast.error('音乐模式不支持附件，请移除附件后再生成')
       return
     }
+    if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
+      toast.error('请填写歌词，或切换回纯音乐模式')
+      return
+    }
     if (isMediaMode && composerMode !== 'music' && files.some((file) => file.type !== 'image')) {
       toast.error('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
       return
@@ -930,7 +960,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             composerMode === 'image'
               ? { size: imageSize, ratio: imageRatio }
               : composerMode === 'music'
-                ? { durationSeconds: MediaMusicDurationSeconds }
+                ? {
+                    durationSeconds: MediaMusicDurationSeconds,
+                    ...(musicLyricsMode === 'lyrics' && musicLyrics.trim()
+                      ? { lyrics: musicLyrics.trim() }
+                      : {}),
+                  }
                 : {
                     aspectRatio: videoRatio,
                     resolution: videoResolution,
@@ -939,6 +974,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             fileIds
           )
         )
+        if (composerMode === 'music' && musicLyricsMode === 'lyrics') setMusicLyrics('')
         virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '创建生成任务失败')
@@ -1757,10 +1793,25 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             </div>
           ) : null}
           {composerMode === 'music' ? (
-            <div className="ch-media-options-wrap" aria-label="音乐生成规格">
-              <div className="ch-media-options ch-media-status" role="status">
-                <Music size={13} strokeWidth={2} aria-hidden="true" />
-                <span>音乐生成 · {MediaMusicDurationSeconds} 秒</span>
+            <div className="ch-media-options-wrap" aria-label="音乐生成模式">
+              <div className="ch-media-options ch-media-music-options">
+                <span>音乐</span>
+                <button
+                  type="button"
+                  className={musicLyricsMode === 'instrumental' ? 'is-active' : undefined}
+                  aria-pressed={musicLyricsMode === 'instrumental'}
+                  onClick={() => setMusicLyricsMode('instrumental')}
+                >
+                  纯音乐
+                </button>
+                <button
+                  type="button"
+                  className={musicLyricsMode === 'lyrics' ? 'is-active' : undefined}
+                  aria-pressed={musicLyricsMode === 'lyrics'}
+                  onClick={() => setMusicLyricsMode('lyrics')}
+                >
+                  歌词歌曲
+                </button>
               </div>
             </div>
           ) : null}
@@ -1818,6 +1869,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   )}
                 </div>
               )}
+              {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
+                <textarea
+                  className="ch-music-lyrics-ta"
+                  aria-label="歌词"
+                  placeholder="填写歌词，ACE-Step 会生成演唱"
+                  rows={3}
+                  value={musicLyrics}
+                  onChange={(event) => setMusicLyrics(event.target.value)}
+                  disabled={!isLoggedIn}
+                />
+              ) : null}
               <textarea
                 ref={inputRef}
                 className="ch-input-ta"
@@ -1829,7 +1891,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       : voiceInput.status === 'transcribing'
                         ? '正在转写…'
                         : isLoggedIn
-                          ? t('inputPlaceholder')
+                          ? composerMode === 'music'
+                            ? '描述曲风、情绪和编曲'
+                            : t('inputPlaceholder')
                           : t('inputPlaceholderLoggedOut')
                 }
                 rows={1}
@@ -2013,7 +2077,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                         ? 'Agnes Image 2.1 Flash'
                         : composerMode === 'video'
                           ? 'Agnes Video V2.0'
-                          : 'ElevenLabs Music'}
+                          : musicLyricsMode === 'lyrics'
+                            ? 'ACE-Step（本机）'
+                            : 'MusicGen（本机）'}
                     </span>
                   )}
                   {charCount > 0 && (

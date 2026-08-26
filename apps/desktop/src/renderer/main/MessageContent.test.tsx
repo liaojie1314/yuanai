@@ -43,7 +43,7 @@ const musicTask: MediaGenerationTask = {
   ...mediaTask,
   id: 'music-task-12345678',
   type: 'music',
-  model: 'elevenlabs-music-v1',
+  model: 'musicgen-small-local',
   prompt: '生成一段轻快的器乐音乐',
   options: { durationSeconds: 30 },
   resultUrl: 'http://localhost:9000/generated/music.mp3',

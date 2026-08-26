@@ -4,7 +4,7 @@ import type { CreateMediaGenerationTaskInput, MediaGenerationOptions } from '@yu
 /** Web composer 支持的媒体模式。 */
 export type MediaComposerMode = 'image' | 'video' | 'music'
 
-/** 固定的 ElevenLabs Music 任务时长。 */
+/** 音乐任务的固定时长；填写歌词时后端会切换到 ACE-Step。 */
 export const MUSIC_DURATION_SECONDS = MediaMusicDurationSeconds
 
 /** 根据 composer 模式构造经过限制的媒体任务输入。 */
@@ -19,7 +19,13 @@ export function buildMediaTaskInput(
     conversationId,
     type: mode,
     prompt,
-    options: mode === 'music' ? { durationSeconds: MUSIC_DURATION_SECONDS } : options,
+    options:
+      mode === 'music'
+        ? {
+            durationSeconds: MUSIC_DURATION_SECONDS,
+            ...(options.lyrics?.trim() ? { lyrics: options.lyrics.trim() } : {}),
+          }
+        : options,
     sourceFileIds: mode === 'music' ? [] : sourceFileIds,
   }
 }

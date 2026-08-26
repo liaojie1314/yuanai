@@ -1431,6 +1431,23 @@
   font-family: inherit;
   overflow-y: auto;
 }
+.ch-music-lyrics-ta {
+  width: 100%;
+  min-height: 64px;
+  max-height: 120px;
+  padding: 8px 16px 4px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: 0;
+}
+.ch-music-lyrics-ta::placeholder {
+  color: var(--fg3);
+}
 .ch-input-ta::placeholder {
   color: var(--fg3);
 }

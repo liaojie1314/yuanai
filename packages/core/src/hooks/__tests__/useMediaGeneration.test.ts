@@ -9,7 +9,7 @@ const task = (status: MediaGenerationTask['status']): MediaGenerationTask => ({
   messageId: 'msg-1',
   sourceMessageId: null,
   type: 'music',
-  model: 'elevenlabs-music-v1',
+  model: 'musicgen-small-local',
   prompt: '舒缓钢琴',
   options: { durationSeconds: 30 },
   sourceFileIds: [],
