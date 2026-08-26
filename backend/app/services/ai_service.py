@@ -3,9 +3,11 @@ import html
 import json
 import re
 import uuid
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Awaitable, Callable, Mapping
 from dataclasses import asdict, dataclass
-from typing import cast
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Protocol, cast
 
 import httpx
 from openai import AsyncOpenAI, AsyncStream, OpenAIError
@@ -44,6 +46,44 @@ ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
 AGNES_VIDEO_API_BASE_URL = "https://apihub.agnes-ai.com/v1"
 ELEVENLABS_MUSIC_API_BASE_URL = "https://api.elevenlabs.io"
+_LOCAL_MUSIC_MODEL_LOCK = asyncio.Lock()
+_LOCAL_MUSIC_PROCESSOR: object | None = None
+_LOCAL_MUSIC_MODEL: object | None = None
+_LOCAL_MUSIC_DEVICE: str | None = None
+
+
+class _LocalMusicInputs(Protocol):
+    """MusicGen processor 输出的最小输入协议。"""
+
+    def __call__(
+        self, *, text: list[str], padding: bool, return_tensors: str
+    ) -> "_LocalMusicInputs": ...
+
+    def to(self, device: str) -> Mapping[str, object]: ...
+
+
+class _LocalMusicAudioEncoder(Protocol):
+    """MusicGen 配置中音频编码器的最小协议。"""
+
+    sampling_rate: int
+
+
+class _LocalMusicConfig(Protocol):
+    """MusicGen 模型配置的最小协议。"""
+
+    audio_encoder: _LocalMusicAudioEncoder
+
+
+class _LocalMusicModel(Protocol):
+    """本机 MusicGen 模型的最小协议，避免业务层绑定具体 Transformers 类型。"""
+
+    config: _LocalMusicConfig
+
+    def to(self, device: str) -> "_LocalMusicModel": ...
+
+    def generate(self, **kwargs: object) -> object: ...
+
+
 TITLE_GENERATION_TIMEOUT_SECONDS = 12
 TITLE_GENERATION_PROMPT = (
     "Summarize the user's first question as a concise sidebar title in the same language. "
@@ -174,6 +214,13 @@ class MediaProviderUnavailableError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__("Media generation provider is unavailable")
+
+
+class MediaLyricsProviderUnavailableError(MediaProviderUnavailableError):
+    """本机 ACE-Step 服务未启动或未通过认证。"""
+
+    def __init__(self) -> None:
+        super().__init__()
 
 
 class MediaProviderError(RuntimeError):
@@ -627,6 +674,415 @@ async def generate_agnes_image(
     if not isinstance(url, str) or not url.strip():
         raise MediaProviderError()
     return AgnesImageResult(url=url.strip())
+
+
+async def generate_huggingface_music(
+    prompt: str, *, duration_ms: int = 30_000
+) -> tuple[bytes, str]:
+    """调用 Hugging Face MusicGen，等待模型加载并返回音频字节。"""
+    token = settings.hf_token
+    if not token:
+        raise MediaProviderUnavailableError()
+    if duration_ms != 30_000:
+        raise MediaProviderError()
+
+    endpoint = (
+        f"{settings.huggingface_music_base_url.rstrip('/')}/{settings.huggingface_music_model}"
+    )
+    attempts = max(1, settings.media_music_max_attempts)
+    delay = max(0.5, settings.media_music_retry_delay_seconds)
+    try:
+        async with asyncio.timeout(settings.media_music_timeout_seconds):
+            async with httpx.AsyncClient(
+                timeout=settings.media_music_timeout_seconds, trust_env=True
+            ) as client:
+                for attempt in range(attempts):
+                    response = await client.post(
+                        endpoint,
+                        headers={"Authorization": f"Bearer {token}", "Accept": "audio/wav"},
+                        json={
+                            "inputs": prompt,
+                            "parameters": {"max_new_tokens": 1_500},
+                        },
+                    )
+                    if response.status_code == 200:
+                        mime_type = (
+                            response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        )
+                        supported_types = {
+                            "audio/wav",
+                            "audio/x-wav",
+                            "audio/flac",
+                            "audio/mpeg",
+                        }
+                        if mime_type in supported_types and response.content:
+                            return response.content, mime_type
+                        raise MediaProviderError()
+
+                    retryable = response.status_code in {408, 429, 500, 502, 503, 504}
+                    if not retryable or attempt == attempts - 1:
+                        raise MediaProviderError()
+
+                    retry_after = response.headers.get("retry-after")
+                    wait_seconds = delay * (2**attempt)
+                    try:
+                        if retry_after is not None:
+                            wait_seconds = max(wait_seconds, min(30.0, float(retry_after)))
+                    except ValueError:
+                        pass
+                    await asyncio.sleep(min(30.0, wait_seconds))
+    except TimeoutError as error:
+        raise MediaProviderError() from error
+    except (httpx.HTTPError, TypeError, ValueError) as error:
+        raise MediaProviderError() from error
+    raise MediaProviderError()
+
+
+class _AceStepRetryableError(RuntimeError):
+    """ACE-Step 的限流或暂时性 HTTP 故障，交由调用方继续轮询。"""
+
+
+def _ace_step_retry_after(response: httpx.Response, default: float) -> float:
+    """读取 ACE-Step 的 Retry-After，并限制单次等待时间。"""
+    retry_after = response.headers.get("retry-after")
+    if retry_after is not None:
+        try:
+            return min(30.0, max(default, float(retry_after)))
+        except ValueError:
+            pass
+    return min(30.0, default)
+
+
+def _ace_step_payload(response: httpx.Response) -> object:
+    """解析 ACE-Step 统一响应包，拒绝不完整的成功响应。"""
+    try:
+        payload = cast(object, response.json())
+    except (TypeError, ValueError) as error:
+        raise MediaProviderError() from error
+    if not isinstance(payload, dict):
+        raise MediaProviderError()
+    code = payload.get("code")
+    if isinstance(code, int) and code != 200:
+        raise MediaProviderError()
+    return payload.get("data")
+
+
+async def _ace_step_post_json(
+    client: httpx.AsyncClient,
+    path: str,
+    body: dict[str, object],
+    *,
+    unavailable_on_connect: bool = True,
+) -> object:
+    """向 ACE-Step 发出有限重试的 JSON 请求。"""
+    attempts = max(1, settings.ace_step_max_attempts)
+    delay = max(0.5, settings.media_music_retry_delay_seconds)
+    for attempt in range(attempts):
+        try:
+            response = await client.post(path, json=body)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as error:
+            if attempt == attempts - 1:
+                if unavailable_on_connect:
+                    raise MediaLyricsProviderUnavailableError() from error
+                raise _AceStepRetryableError() from error
+            await asyncio.sleep(min(30.0, delay * (2**attempt)))
+            continue
+        except httpx.HTTPError as error:
+            if attempt == attempts - 1:
+                raise MediaProviderError() from error
+            await asyncio.sleep(min(30.0, delay * (2**attempt)))
+            continue
+
+        if response.status_code in {401, 403}:
+            raise MediaLyricsProviderUnavailableError()
+        if response.status_code in {408, 425, 429, 500, 502, 503, 504}:
+            if attempt == attempts - 1:
+                raise _AceStepRetryableError()
+            await asyncio.sleep(_ace_step_retry_after(response, delay * (2**attempt)))
+            continue
+        if response.status_code < 200 or response.status_code >= 300:
+            raise MediaProviderError()
+        return _ace_step_payload(response)
+    raise MediaProviderError()
+
+
+def _ace_step_task_id(payload: object) -> str:
+    """从提交响应中提取不透明的 ACE-Step 任务 ID。"""
+    if isinstance(payload, dict):
+        task_id = payload.get("task_id")
+        if isinstance(task_id, str) and task_id.strip():
+            return task_id.strip()
+    raise MediaProviderError()
+
+
+def _ace_step_result_item(payload: object, task_id: str) -> dict[str, object]:
+    """提取查询响应中指定任务的结果项。"""
+    if not isinstance(payload, list):
+        raise MediaProviderError()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        item_task_id = item.get("task_id")
+        if item_task_id is None or str(item_task_id) == task_id:
+            return item
+    raise MediaProviderError()
+
+
+def _ace_step_result_data(item: dict[str, object]) -> dict[str, object]:
+    """解析 ACE-Step result 字段中的 JSON 字符串或对象。"""
+    result = item.get("result")
+    if isinstance(result, str):
+        try:
+            result = json.loads(result)
+        except (TypeError, ValueError):
+            raise MediaProviderError() from None
+    if isinstance(result, list) and result and isinstance(result[0], dict):
+        return cast(dict[str, object], result[0])
+    if isinstance(result, dict):
+        return cast(dict[str, object], result)
+    return item
+
+
+def _ace_step_progress(item: dict[str, object], result: dict[str, object]) -> int | None:
+    """读取 ACE-Step 返回的可选百分比进度。"""
+    for source in (item, result):
+        value = source.get("progress")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return max(0, min(95, int(value)))
+    return None
+
+
+def _ace_step_audio_location(audio_path: str) -> tuple[str, dict[str, str]]:
+    """将 ACE-Step 返回的音频引用限制为本机 `/v1/audio` 路由。"""
+    parsed = httpx.URL(audio_path)
+    if parsed.is_absolute_url:
+        configured = httpx.URL(settings.ace_step_base_url)
+        if (
+            parsed.scheme != configured.scheme
+            or parsed.host != configured.host
+            or parsed.port != configured.port
+        ):
+            raise MediaProviderError()
+    if parsed.path == "/v1/audio" and parsed.params:
+        return parsed.path, dict(parsed.params.multi_items())
+    if parsed.path.startswith("/") and parsed.path != "/v1/audio":
+        raise MediaProviderError()
+    return "/v1/audio", {"path": audio_path}
+
+
+async def generate_ace_step_music(
+    prompt: str,
+    lyrics: str,
+    *,
+    duration_ms: int = 30_000,
+    provider_task_id: str | None = None,
+    on_progress: Callable[[int], Awaitable[None]] | None = None,
+    on_task_id: Callable[[str], Awaitable[None]] | None = None,
+) -> tuple[bytes, str]:
+    """通过本机 ACE-Step 异步 REST API 生成带歌词的 MP3。"""
+    if duration_ms != 30_000 or not lyrics.strip():
+        raise MediaProviderError()
+    headers = {"Accept": "application/json"}
+    if settings.ace_step_api_key.strip():
+        headers["Authorization"] = f"Bearer {settings.ace_step_api_key.strip()}"
+    language = "zh" if re.search(r"[\u3400-\u9fff]", lyrics) else "en"
+    request_body: dict[str, object] = {
+        "prompt": prompt,
+        "lyrics": lyrics,
+        "thinking": False,
+        "model": settings.ace_step_model,
+        "vocal_language": language,
+        "audio_duration": duration_ms / 1_000,
+        "audio_format": "mp3",
+        "task_type": "text2music",
+        "inference_steps": 8,
+        "batch_size": 1,
+        "use_cot_caption": False,
+        "use_cot_language": False,
+    }
+    timeout = max(30.0, float(settings.ace_step_timeout_seconds))
+    poll_interval = max(1.0, settings.ace_step_poll_interval_seconds)
+    poll_failures = 0
+    last_progress = 5
+    try:
+        async with asyncio.timeout(timeout):
+            async with httpx.AsyncClient(
+                base_url=settings.ace_step_base_url.rstrip("/"),
+                headers=headers,
+                timeout=min(timeout, 60.0),
+                trust_env=False,
+            ) as client:
+                task_id = provider_task_id
+                if task_id is None:
+                    try:
+                        payload = await _ace_step_post_json(client, "/release_task", request_body)
+                    except _AceStepRetryableError as error:
+                        raise MediaProviderError() from error
+                    task_id = _ace_step_task_id(payload)
+                    if on_task_id is not None:
+                        await on_task_id(task_id)
+                    if on_progress is not None:
+                        await on_progress(8)
+
+                while True:
+                    try:
+                        payload = await _ace_step_post_json(
+                            client,
+                            "/query_result",
+                            {"task_id_list": [task_id]},
+                            unavailable_on_connect=False,
+                        )
+                        poll_failures = 0
+                    except _AceStepRetryableError:
+                        poll_failures += 1
+                        if poll_failures >= max(1, settings.ace_step_max_poll_failures):
+                            raise MediaProviderError() from None
+                        await asyncio.sleep(poll_interval)
+                        continue
+
+                    item = _ace_step_result_item(payload, task_id)
+                    result = _ace_step_result_data(item)
+                    status = item.get("status", result.get("status"))
+                    progress = _ace_step_progress(item, result)
+                    if progress is None:
+                        progress = min(92, last_progress + 4)
+                    last_progress = max(last_progress, progress)
+                    if on_progress is not None:
+                        await on_progress(last_progress)
+                    if status in {2, "failed", "error", "canceled"}:
+                        raise MediaProviderError()
+                    if status in {1, "succeeded", "success"}:
+                        audio_path = (
+                            result.get("file")
+                            or result.get("audio_path")
+                            or result.get("audio_url")
+                        )
+                        if not isinstance(audio_path, str) or not audio_path.strip():
+                            raise MediaProviderError()
+                        try:
+                            audio_route, audio_params = _ace_step_audio_location(audio_path)
+                            audio_response = await client.get(audio_route, params=audio_params)
+                            audio_response.raise_for_status()
+                        except (httpx.HTTPError, TypeError, ValueError) as error:
+                            raise MediaProviderError() from error
+                        mime_type = (
+                            audio_response.headers.get("content-type", "").split(";", 1)[0].lower()
+                        )
+                        if (
+                            mime_type
+                            not in {
+                                "audio/mpeg",
+                                "audio/wav",
+                                "audio/x-wav",
+                                "audio/flac",
+                            }
+                            or not audio_response.content
+                            or len(audio_response.content) > settings.media_max_output_bytes
+                        ):
+                            raise MediaProviderError()
+                        return audio_response.content, "audio/mpeg"
+                    await asyncio.sleep(poll_interval)
+    except TimeoutError as error:
+        raise MediaProviderError() from error
+
+
+def _local_music_device() -> str:
+    """解析本机音乐模型设备配置，默认优先使用 CUDA。"""
+    configured = settings.media_music_local_device.strip().lower()
+    if configured in {"cpu", "cuda"}:
+        return configured
+    try:
+        import torch
+
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except ImportError:
+        return "cpu"
+
+
+async def _generate_local_music_unbounded(
+    prompt: str, *, duration_ms: int = 30_000
+) -> tuple[bytes, str]:
+    """使用本机 Hugging Face MusicGen 生成固定 30 秒 WAV 音频。"""
+    if duration_ms != 30_000:
+        raise MediaProviderError()
+    try:
+        import numpy as np
+        import soundfile as sf
+        import torch
+        from transformers import AutoProcessor, MusicgenForConditionalGeneration
+    except ImportError as error:
+        raise MediaProviderUnavailableError() from error
+
+    async with _LOCAL_MUSIC_MODEL_LOCK:
+        global _LOCAL_MUSIC_DEVICE, _LOCAL_MUSIC_MODEL, _LOCAL_MUSIC_PROCESSOR
+        device = _local_music_device()
+        if (
+            _LOCAL_MUSIC_MODEL is None
+            or _LOCAL_MUSIC_PROCESSOR is None
+            or _LOCAL_MUSIC_DEVICE != device
+        ):
+            try:
+                _LOCAL_MUSIC_PROCESSOR = await asyncio.to_thread(
+                    AutoProcessor.from_pretrained,
+                    settings.media_music_local_model,
+                    local_files_only=settings.media_music_local_files_only,
+                )
+                dtype = torch.float16 if device == "cuda" else torch.float32
+                _LOCAL_MUSIC_MODEL = await asyncio.to_thread(
+                    MusicgenForConditionalGeneration.from_pretrained,
+                    settings.media_music_local_model,
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
+                    local_files_only=settings.media_music_local_files_only,
+                )
+                local_model = cast(_LocalMusicModel, _LOCAL_MUSIC_MODEL)
+                _LOCAL_MUSIC_MODEL = await asyncio.to_thread(local_model.to, device)
+                _LOCAL_MUSIC_DEVICE = device
+            except (OSError, RuntimeError, ValueError) as error:
+                _LOCAL_MUSIC_MODEL = None
+                _LOCAL_MUSIC_PROCESSOR = None
+                _LOCAL_MUSIC_DEVICE = None
+                raise MediaProviderError() from error
+
+        processor = cast(_LocalMusicInputs, _LOCAL_MUSIC_PROCESSOR)
+        model = cast(_LocalMusicModel, _LOCAL_MUSIC_MODEL)
+        if processor is None or model is None:
+            raise MediaProviderError()
+
+        try:
+            inputs = await asyncio.to_thread(
+                processor,
+                text=[prompt],
+                padding=True,
+                return_tensors="pt",
+            )
+            model_inputs = inputs.to(device)
+            with torch.inference_mode():
+                audio_values = await asyncio.to_thread(
+                    model.generate,
+                    **model_inputs,
+                    do_sample=True,
+                    guidance_scale=3.0,
+                    max_new_tokens=settings.media_music_local_max_new_tokens,
+                )
+            audio: np.ndarray = audio_values[0, 0].detach().float().cpu().numpy()  # type: ignore[index]
+            sample_rate = model.config.audio_encoder.sampling_rate
+            with TemporaryDirectory(prefix="yuanai-music-") as temporary_directory:
+                temporary_path = Path(temporary_directory) / "output.wav"
+                await asyncio.to_thread(sf.write, temporary_path, audio, sample_rate)
+                data = await asyncio.to_thread(temporary_path.read_bytes)
+            return data, "audio/wav"
+        except (OSError, RuntimeError, TypeError, ValueError) as error:
+            raise MediaProviderError() from error
+
+
+async def generate_local_music(prompt: str, *, duration_ms: int = 30_000) -> tuple[bytes, str]:
+    """使用本机 MusicGen 生成音频，并在模型加载或推理超时时收口任务。"""
+    try:
+        async with asyncio.timeout(settings.media_music_timeout_seconds):
+            return await _generate_local_music_unbounded(prompt, duration_ms=duration_ms)
+    except TimeoutError as error:
+        raise MediaProviderError() from error
 
 
 async def generate_elevenlabs_music(prompt: str, *, duration_ms: int = 30_000) -> tuple[bytes, str]:

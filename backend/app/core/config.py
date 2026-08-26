@@ -55,6 +55,29 @@ class Settings(BaseSettings):
     assemblyai_api_key: str = ""
     # ElevenLabs Music key，使用 ELEVENLABS_API_KEY 环境变量注入，不提交到仓库
     elevenlabs_api_key: str = ""
+    # Hugging Face Inference API token，使用 HF_TOKEN 环境变量注入，不提交到仓库
+    hf_token: str = ""
+    huggingface_music_model: str = "facebook/musicgen-small"
+    huggingface_music_base_url: str = "https://router.huggingface.co/hf-inference"
+    # 本机 ACE-Step REST 服务；仅歌词音乐任务使用，不把模型加载进 FastAPI。
+    ace_step_base_url: str = "http://127.0.0.1:8001"
+    ace_step_api_key: str = ""
+    ace_step_model: str = "acestep-v15-turbo"
+    ace_step_timeout_seconds: int = 900
+    ace_step_poll_interval_seconds: float = 2.0
+    ace_step_max_attempts: int = 3
+    ace_step_max_poll_failures: int = 5
+    # local 使用本机 MusicGen；huggingface/elevenlabs 为显式远程 provider。
+    media_music_provider: str = "local"
+    media_music_local_model: str = "facebook/musicgen-small"
+    media_music_local_device: str = "auto"
+    # 生产任务只读已缓存模型，避免 Hugging Face 网络重试把任务卡在 0%。
+    media_music_local_files_only: bool = True
+    media_music_local_max_new_tokens: int = 1_500
+    media_music_fallback_to_local: bool = True
+    media_music_max_attempts: int = 4
+    media_music_retry_delay_seconds: float = 2.0
+    media_music_lyrics_max_chars: int = 4_000
     # 视觉模型以内联 data URL 接收图片，避免云端模型无法访问内网对象存储 URL。
     ai_inline_image_max_bytes: int = 10 * 1024 * 1024
 

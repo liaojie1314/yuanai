@@ -46,9 +46,11 @@ from app.services.ai_service import (  # noqa: E402
     VoiceTranscriptionProviderError,
     VoiceTranscriptionUnavailableError,
     _get_client,
+    generate_ace_step_music,
     generate_agnes_image,
     generate_conversation_title,
     generate_elevenlabs_music,
+    generate_local_music,
     get_agnes_video,
     get_available_models,
     stream_agent,
@@ -207,6 +209,22 @@ async def test_stream_agent_rejects_tool_arguments_before_tool_name() -> None:
     assert events == [
         ModelFailed(code="MODEL_EVENT_MALFORMED", message="模型返回了无效事件", retryable=False)
     ]
+
+
+async def test_local_music_timeout_becomes_provider_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """本机模型加载或推理超时必须结束任务，不能永久占用媒体 worker。"""
+    monkeypatch.setattr(ai_svc.settings, "media_music_timeout_seconds", 0.01)
+
+    async def slow_generation(prompt: str, *, duration_ms: int) -> tuple[bytes, str]:
+        await asyncio.sleep(1)
+        return b"", "audio/wav"
+
+    monkeypatch.setattr(ai_svc, "_generate_local_music_unbounded", slow_generation)
+
+    with pytest.raises(MediaProviderError):
+        await generate_local_music("舒缓钢琴")
 
 
 async def test_stream_agent_maps_malformed_provider_event_to_stable_failure() -> None:
@@ -543,6 +561,156 @@ async def test_elevenlabs_music_hides_provider_failures(monkeypatch: pytest.Monk
         await generate_elevenlabs_music("测试")
     assert "secret" not in str(error.value)
     assert "elevenlabs" not in str(error.value).lower()
+
+
+async def test_ace_step_queues_and_downloads_the_official_audio_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ACE-Step 应按官方异步协议提交、轮询并下载本机音频。"""
+    monkeypatch.setattr(ai_svc.settings, "ace_step_max_attempts", 1)
+    monkeypatch.setattr(ai_svc.settings, "ace_step_poll_interval_seconds", 1.0)
+    monkeypatch.setattr(ai_svc.settings, "media_max_output_bytes", 1024)
+    request = httpx.Request("POST", "http://127.0.0.1:8001/release_task")
+    release = httpx.Response(
+        200,
+        json={"data": {"task_id": "ace-task-1", "status": "queued"}, "code": 200},
+        request=request,
+    )
+    queued = httpx.Response(
+        200,
+        json={"data": [{"task_id": "ace-task-1", "status": 0}], "code": 200},
+        request=request,
+    )
+    succeeded = httpx.Response(
+        200,
+        json={
+            "data": [
+                {
+                    "task_id": "ace-task-1",
+                    "status": 1,
+                    "result": '[{"file":"/v1/audio?path=%2Ftmp%2Fac e.mp3"}]',
+                }
+            ],
+            "code": 200,
+        },
+        request=request,
+    )
+    audio = httpx.Response(
+        200,
+        headers={"content-type": "audio/mpeg"},
+        content=b"mp3",
+        request=httpx.Request("GET", "http://127.0.0.1:8001/v1/audio"),
+    )
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=[release, queued, succeeded])
+    client.get = AsyncMock(return_value=audio)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **_kwargs: client)
+
+    task_ids: list[str] = []
+    progress: list[int] = []
+
+    async def on_task_id(value: str) -> None:
+        task_ids.append(value)
+
+    async def on_progress(value: int) -> None:
+        progress.append(value)
+
+    result = await generate_ace_step_music(
+        "温柔的中文流行歌曲",
+        "[Verse]\n夏风吹过街角",
+        on_task_id=on_task_id,
+        on_progress=on_progress,
+    )
+
+    assert result == (b"mp3", "audio/mpeg")
+    assert task_ids == ["ace-task-1"]
+    assert progress[-1] >= 8
+    assert client.post.await_args_list[0].args == ("/release_task",)
+    assert client.post.await_args_list[0].kwargs["json"]["vocal_language"] == "zh"
+    client.get.assert_awaited_once()
+    assert client.get.await_args.args == ("/v1/audio",)
+    assert client.get.await_args.kwargs["params"]["path"] == "/tmp/ac e.mp3"
+
+
+async def test_ace_step_retries_rate_limit_and_transient_poll_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ACE-Step 的 429 与轮询断连必须有限退避后继续，不能立即丢任务。"""
+    monkeypatch.setattr(ai_svc.settings, "ace_step_max_attempts", 2)
+    monkeypatch.setattr(ai_svc.settings, "ace_step_max_poll_failures", 2)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(ai_svc.asyncio, "sleep", no_sleep)
+    release_request = httpx.Request("POST", "http://127.0.0.1:8001/release_task")
+    rate_limited = httpx.Response(
+        429,
+        headers={"retry-after": "1"},
+        request=release_request,
+    )
+    release = httpx.Response(
+        200,
+        json={"data": {"task_id": "ace-task-2"}, "code": 200},
+        request=release_request,
+    )
+    query_request = httpx.Request("POST", "http://127.0.0.1:8001/query_result")
+    succeeded = httpx.Response(
+        200,
+        json={
+            "data": [
+                {
+                    "task_id": "ace-task-2",
+                    "status": 1,
+                    "result": [{"file": "/v1/audio?path=%2Ftmp%2Fok.mp3"}],
+                }
+            ],
+            "code": 200,
+        },
+        request=query_request,
+    )
+    audio = httpx.Response(
+        200,
+        headers={"content-type": "audio/wav"},
+        content=b"wav",
+        request=httpx.Request("GET", "http://127.0.0.1:8001/v1/audio"),
+    )
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=[
+            rate_limited,
+            release,
+            httpx.ConnectError("temporary disconnect", request=query_request),
+            succeeded,
+        ]
+    )
+    client.get = AsyncMock(return_value=audio)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **_kwargs: client)
+
+    result = await generate_ace_step_music("lofi", "[Verse]\nKeep moving")
+
+    assert result == (b"wav", "audio/mpeg")
+    assert client.post.await_count == 4
+
+
+async def test_ace_step_unavailable_is_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ACE-Step 未启动时返回稳定领域错误，不泄漏连接细节。"""
+    monkeypatch.setattr(ai_svc.settings, "ace_step_max_attempts", 1)
+    request = httpx.Request("POST", "http://127.0.0.1:8001/release_task")
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=httpx.ConnectError("secret host detail", request=request))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **_kwargs: client)
+
+    with pytest.raises(ai_svc.MediaLyricsProviderUnavailableError) as error:
+        await generate_ace_step_music("pop", "[Verse]\nHello")
+
+    assert "secret" not in str(error.value)
 
 
 def test_deepseek_v4_official_metadata() -> None:

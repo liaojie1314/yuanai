@@ -93,7 +93,7 @@ class TestMediaGenerationTasks:
         assert response.status_code == 201, response.text
         task = response.json()
         assert task["type"] == "music"
-        assert task["model"] == "elevenlabs-music-v1"
+        assert task["model"] == "musicgen-small-local"
         assert task["options"] == {"durationSeconds": 30}
 
         invalid = await client.post(
