@@ -230,6 +230,13 @@ class MediaProviderError(RuntimeError):
         super().__init__("Media generation provider failed")
 
 
+class MediaLyricsGenerationError(MediaProviderError):
+    """本机 ACE-Step 已明确返回歌词歌曲生成失败。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+
 @dataclass(frozen=True)
 class AgnesImageResult:
     """Agnes 图片 API 返回的临时 provider 输出地址。"""
@@ -950,7 +957,7 @@ async def generate_ace_step_music(
                     if on_progress is not None:
                         await on_progress(last_progress)
                     if status in {2, "failed", "error", "canceled"}:
-                        raise MediaProviderError()
+                        raise MediaLyricsGenerationError()
                     if status in {1, "succeeded", "success"}:
                         audio_path = (
                             result.get("file")

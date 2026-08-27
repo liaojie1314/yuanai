@@ -30,6 +30,7 @@ from app.models.media_generation_task import (
 from app.models.message import Message, MessageRole
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
+    MediaLyricsGenerationError,
     MediaLyricsProviderUnavailableError,
     MediaProviderError,
     MediaProviderUnavailableError,
@@ -924,6 +925,8 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
             await db.commit()
         except MediaLyricsProviderUnavailableError:
             await _fail_task(db, task, "MEDIA_LYRICS_PROVIDER_UNAVAILABLE")
+        except MediaLyricsGenerationError:
+            await _fail_task(db, task, "MEDIA_PROVIDER_GENERATION_FAILED")
         except MediaProviderUnavailableError:
             await _fail_task(db, task, "MEDIA_PROVIDER_UNAVAILABLE")
         except MediaProviderError:

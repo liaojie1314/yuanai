@@ -697,6 +697,46 @@ async def test_ace_step_retries_rate_limit_and_transient_poll_failure(
     assert client.post.await_count == 4
 
 
+async def test_ace_step_terminal_generation_failure_is_redacted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ACE-Step 已明确失败时必须停止轮询且不暴露 provider 原文。"""
+    monkeypatch.setattr(ai_svc.settings, "ace_step_max_attempts", 1)
+    release_request = httpx.Request("POST", "http://127.0.0.1:8001/release_task")
+    query_request = httpx.Request("POST", "http://127.0.0.1:8001/query_result")
+    release = httpx.Response(
+        200,
+        json={"data": {"task_id": "ace-task-failed"}, "code": 200},
+        request=release_request,
+    )
+    failed = httpx.Response(
+        200,
+        json={
+            "data": [
+                {
+                    "task_id": "ace-task-failed",
+                    "status": 2,
+                    "result": {"error": "CUDA out of memory"},
+                }
+            ],
+            "code": 200,
+        },
+        request=query_request,
+    )
+    client = MagicMock()
+    client.post = AsyncMock(side_effect=[release, failed])
+    client.get = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(ai_svc.httpx, "AsyncClient", lambda **_kwargs: client)
+
+    with pytest.raises(ai_svc.MediaLyricsGenerationError) as error:
+        await generate_ace_step_music("流行歌曲", "[Verse]\\n测试歌词")
+
+    assert "CUDA" not in str(error.value)
+    client.get.assert_not_awaited()
+
+
 async def test_ace_step_unavailable_is_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
     """ACE-Step 未启动时返回稳定领域错误，不泄漏连接细节。"""
     monkeypatch.setattr(ai_svc.settings, "ace_step_max_attempts", 1)

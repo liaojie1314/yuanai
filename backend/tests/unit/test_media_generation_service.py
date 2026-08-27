@@ -23,6 +23,7 @@ from app.models.user import User
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
     AgnesImageResult,
+    MediaLyricsGenerationError,
     MediaProviderError,
     MediaProviderUnavailableError,
 )
@@ -221,6 +222,39 @@ async def test_lyrics_music_persists_ace_step_task_id_for_poll_recovery(
     assert retrying.provider_task_id == "ace-task-1"
     assert retrying.poll_failure_count == 1
     media_service.generate_local_music.assert_not_awaited()
+
+
+async def test_lyrics_music_terminal_provider_failure_does_not_retry_polling(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ACE-Step 已给出终态失败时不能伪装成短暂轮询断连。"""
+    task = await _create_task(
+        db, test_user, kind=MediaGenerationType.music, lyrics="[Verse]\\n回到夏天"
+    )
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+
+    async def submit_then_fail(
+        _prompt: str,
+        _lyrics: str,
+        **kwargs: object,
+    ) -> tuple[bytes, str]:
+        callback = kwargs["on_task_id"]
+        assert callable(callback)
+        await callback("ace-task-terminal-failure")
+        raise MediaLyricsGenerationError()
+
+    monkeypatch.setattr(media_service, "generate_ace_step_music", submit_then_fail)
+    monkeypatch.setattr(media_service, "send_to_user", AsyncMock())
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    failed = await _load_task(db, task.id)
+    assert failed.status is MediaGenerationStatus.failed
+    assert failed.provider_task_id == "ace-task-terminal-failure"
+    assert failed.poll_failure_count == 0
+    assert failed.error_code == "MEDIA_PROVIDER_GENERATION_FAILED"
+    assert failed.error_message == "音乐生成未完成，请调整描述后重试"
 
 
 async def test_lyrics_music_never_falls_back_to_instrumental(
