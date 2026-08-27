@@ -1807,7 +1807,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             <div className="ch-media-options-wrap" aria-label="音乐生成模式">
               <div className="ch-media-options">
                 <OptionGroup<(typeof MUSIC_MODES)[number]>
-                  label="音乐"
+                  label="音乐："
                   value={musicLyricsMode}
                   values={MUSIC_MODES}
                   onChange={setMusicLyricsMode}
