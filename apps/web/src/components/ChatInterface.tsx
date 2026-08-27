@@ -146,6 +146,7 @@ const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9']
 const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const
 const VIDEO_DURATIONS = [3, 5, 10, 18] as const
+const MUSIC_MODES = ['instrumental', 'lyrics'] as const
 
 /** 输入框上方的紧凑媒体规格分段选择。 */
 function OptionGroup<T extends string | number>({
@@ -154,12 +155,14 @@ function OptionGroup<T extends string | number>({
   values,
   onChange,
   suffix = '',
+  formatValue,
 }: {
   label: string
   value: T
   values: readonly T[]
   onChange(value: T): void
   suffix?: string
+  formatValue?: (value: T) => string
 }): JSX.Element {
   return (
     <div className="ch-media-option-group">
@@ -172,7 +175,7 @@ function OptionGroup<T extends string | number>({
             className={item === value ? 'active' : ''}
             onClick={() => onChange(item)}
           >
-            {item}
+            {formatValue?.(item) ?? item}
             {suffix}
           </button>
         ))}
@@ -1794,24 +1797,14 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           ) : null}
           {composerMode === 'music' ? (
             <div className="ch-media-options-wrap" aria-label="音乐生成模式">
-              <div className="ch-media-options ch-media-music-options">
-                <span>音乐</span>
-                <button
-                  type="button"
-                  className={musicLyricsMode === 'instrumental' ? 'is-active' : undefined}
-                  aria-pressed={musicLyricsMode === 'instrumental'}
-                  onClick={() => setMusicLyricsMode('instrumental')}
-                >
-                  纯音乐
-                </button>
-                <button
-                  type="button"
-                  className={musicLyricsMode === 'lyrics' ? 'is-active' : undefined}
-                  aria-pressed={musicLyricsMode === 'lyrics'}
-                  onClick={() => setMusicLyricsMode('lyrics')}
-                >
-                  歌词歌曲
-                </button>
+              <div className="ch-media-options">
+                <OptionGroup<(typeof MUSIC_MODES)[number]>
+                  label="音乐"
+                  value={musicLyricsMode}
+                  values={MUSIC_MODES}
+                  onChange={setMusicLyricsMode}
+                  formatValue={(mode) => (mode === 'instrumental' ? '纯音乐' : '歌词歌曲')}
+                />
               </div>
             </div>
           ) : null}

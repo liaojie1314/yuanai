@@ -88,7 +88,9 @@ describe('MediaTaskCard', () => {
     expect(container.querySelector('.ch-media-task__music-download')).toHaveAttribute('download')
     expect(container.querySelector('img')).toBeNull()
     expect(container.querySelector('video')).toBeNull()
-    expect(container.querySelector('.ch-media-task__actions a[download]')).toBeNull()
+    expect(container.querySelector('.ch-media-task__actions a[download]')).toHaveClass(
+      'ch-media-task__download-hidden'
+    )
   })
 
   it('keeps cancel controls for running tasks', () => {
