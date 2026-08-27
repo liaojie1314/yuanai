@@ -10,6 +10,7 @@
   --desktop-brand-hover: #2563eb;
   --desktop-brand-light: #eff6ff;
   --desktop-brand-border: #bfdbfe;
+  --desktop-danger: #dc2626;
   --desktop-border: #dbe7f6;
   --desktop-font-size: 13px;
   color: var(--desktop-fg);
@@ -36,6 +37,7 @@
   --desktop-brand-hover: #93c5fd;
   --desktop-brand-light: #1e3a5f;
   --desktop-brand-border: #28588f;
+  --desktop-danger: #fca5a5;
   --desktop-border: #2a3648;
   color-scheme: dark;
 }
@@ -2922,7 +2924,7 @@ textarea:focus-visible {
 .desktop-chat__media-task > .is-error {
   display: block;
   padding: 0 12px 10px;
-  color: #dc2626;
+  color: var(--desktop-danger);
 }
 .desktop-chat__media-progress {
   height: 3px;

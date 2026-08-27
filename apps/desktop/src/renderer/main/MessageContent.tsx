@@ -744,10 +744,16 @@ function MediaTaskCard({
   task: MediaGenerationTask
   onOpenArtifact(payload: DesktopArtifactPayload): void
 }): ReactElement {
+  const { t } = useTranslation()
   const cancel = useCancelMediaTask()
   const retry = useCreateMediaTask()
   const active = task.status === 'queued' || task.status === 'running'
-  const label = task.type === 'image' ? '图片生成' : task.type === 'music' ? '音乐生成' : '视频生成'
+  const label =
+    task.type === 'image'
+      ? t('chat.media.image')
+      : task.type === 'music'
+        ? t('chat.media.music')
+        : t('chat.media.video')
   const outputName = `${label}-${task.id.slice(0, 8)}${
     task.type === 'image' ? '.png' : task.type === 'music' ? '.mp3' : '.mp4'
   }`
@@ -766,12 +772,19 @@ function MediaTaskCard({
       <header>
         <span>{label}</span>
         <small>
-          {active ? `${task.progress}%` : task.status === 'succeeded' ? '已完成' : '已结束'}
+          {active
+            ? `${task.progress}%`
+            : task.status === 'succeeded'
+              ? t('chat.media.completed')
+              : t('chat.media.ended')}
         </small>
       </header>
       <p>{task.prompt}</p>
       {active ? (
-        <div className="desktop-chat__media-progress" aria-label={`生成进度 ${task.progress}%`}>
+        <div
+          className="desktop-chat__media-progress"
+          aria-label={t('chat.media.generationProgress', { progress: task.progress })}
+        >
           <span style={{ width: `${Math.max(4, task.progress)}%` }} />
         </div>
       ) : null}
@@ -782,14 +795,14 @@ function MediaTaskCard({
             controls
             preload="metadata"
             src={task.resultUrl}
-            aria-label={`${label}音频`}
+            aria-label={t('chat.media.audioAria', { task: label })}
           />
           <a
             className="desktop-chat__media-audio-download"
             href={task.resultUrl}
             download={outputName}
-            aria-label={`下载${label}`}
-            title={`下载${label}`}
+            aria-label={t('chat.media.downloadTask', { task: label })}
+            title={t('chat.media.downloadTask', { task: label })}
           >
             <Download size={16} aria-hidden="true" />
           </a>
@@ -803,8 +816,8 @@ function MediaTaskCard({
           <button
             type="button"
             className="desktop-chat__media-result"
-            aria-label={`预览${label}`}
-            title={`预览${label}`}
+            aria-label={t('chat.media.openPreview', { task: label })}
+            title={t('chat.media.openPreview', { task: label })}
             onClick={() =>
               onOpenArtifact({
                 kind: 'file-preview',
@@ -833,18 +846,20 @@ function MediaTaskCard({
             className="desktop-chat__media-download"
             href={task.resultUrl}
             download
-            aria-label={`下载${label}`}
-            title={`下载${label}`}
+            aria-label={t('chat.media.downloadTask', { task: label })}
+            title={t('chat.media.downloadTask', { task: label })}
           >
             <Download size={16} aria-hidden="true" />
           </a>
         </div>
       ) : null}
-      {task.status === 'failed' ? <small className="is-error">{task.errorMessage}</small> : null}
+      {task.status === 'failed' ? (
+        <small className="is-error">{task.errorMessage ?? t('chat.media.generationFailed')}</small>
+      ) : null}
       <footer>
         {active ? (
           <button type="button" onClick={() => cancel.mutate(task.id)} disabled={cancel.isPending}>
-            <Square size={13} fill="currentColor" /> 停止
+            <Square size={13} fill="currentColor" /> {t('chat.media.stop')}
           </button>
         ) : null}
         {task.status === 'failed' ? (
@@ -861,7 +876,7 @@ function MediaTaskCard({
             }
             disabled={retry.isPending}
           >
-            <RotateCcw size={13} /> 重试
+            <RotateCcw size={13} /> {t('chat.media.retry')}
           </button>
         ) : null}
       </footer>

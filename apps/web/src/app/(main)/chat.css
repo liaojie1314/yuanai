@@ -4012,7 +4012,7 @@
   gap: 5px;
   margin: 0;
   padding: 0 12px 10px;
-  color: #dc2626;
+  color: var(--error);
   font-size: 12px;
 }
 .ch-media-task__actions {

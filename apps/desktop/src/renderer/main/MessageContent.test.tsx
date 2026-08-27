@@ -123,15 +123,15 @@ describe('ChatMessage media task', () => {
 
     expect(container.querySelector('video')).toBeNull()
     expect(container.querySelector('img')).toHaveAttribute('src', mediaTask.resultPosterUrl)
-    expect(screen.getByRole('link', { name: '下载视频生成' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'chat.media.downloadTask' })).toHaveAttribute(
       'href',
       mediaTask.resultUrl
     )
 
-    fireEvent.click(screen.getByRole('button', { name: '预览视频生成' }))
+    fireEvent.click(screen.getByRole('button', { name: 'chat.media.openPreview' }))
     expect(onOpenArtifact).toHaveBeenCalledWith({
       kind: 'file-preview',
-      title: '视频生成-task-123',
+      title: 'chat.media.video-task-123',
       sourceUrl: mediaTask.resultUrl,
       mimeType: mediaTask.resultMimeType,
     })
@@ -160,12 +160,12 @@ describe('ChatMessage media task', () => {
     expect(audio).toHaveAttribute('preload', 'metadata')
     expect(audio).not.toHaveAttribute('autoplay')
     expect(audio).toHaveAttribute('src', musicTask.resultUrl)
-    expect(screen.getByRole('link', { name: '下载音乐生成' })).toHaveAttribute(
+    expect(container.querySelector('.desktop-chat__media-audio-download')).toHaveAttribute(
       'href',
       musicTask.resultUrl
     )
     expect(container.querySelector('img')).toBeNull()
-    expect(screen.queryByRole('button', { name: '预览音乐生成' })).not.toBeInTheDocument()
+    expect(container.querySelector('.desktop-chat__media-result')).toBeNull()
   })
 
   it('exposes a download action for an uploaded image attachment', () => {

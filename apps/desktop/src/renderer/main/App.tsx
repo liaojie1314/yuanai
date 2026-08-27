@@ -2066,18 +2066,18 @@ export function App(): ReactElement {
     setActionError('')
     const isMediaMode = composerMode !== 'chat'
     if (isMediaMode && isTemporaryConversation) {
-      setActionError('临时对话不支持图片、视频或音乐生成')
+      setActionError(t('chat.media.temporaryUnavailable'))
       return
     }
     if (
       isMediaMode &&
       attachments.some((attachment) => !attachment.file.type.startsWith('image/'))
     ) {
-      setActionError('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
+      setActionError(t('chat.media.imageOnlyReferences'))
       return
     }
     if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
-      setActionError('请填写歌词，或切换回纯音乐模式')
+      setActionError(t('chat.media.lyricsRequired'))
       return
     }
     if (
@@ -2694,8 +2694,11 @@ export function App(): ReactElement {
 
         <div className="desktop-chat__composer-shell">
           {composerMode === 'image' ? (
-            <div className="desktop-chat__media-options" aria-label="图片生成规格">
-              <span>清晰度</span>
+            <div
+              className="desktop-chat__media-options"
+              aria-label={t('chat.media.imageGenerationSpecs')}
+            >
+              <span>{t('chat.media.quality')}</span>
               {IMAGE_SIZES.map((value) => (
                 <button
                   key={value}
@@ -2706,7 +2709,7 @@ export function App(): ReactElement {
                   {value}
                 </button>
               ))}
-              <span>比例</span>
+              <span>{t('chat.media.ratio')}</span>
               {IMAGE_RATIOS.map((value) => (
                 <button
                   key={value}
@@ -2720,8 +2723,11 @@ export function App(): ReactElement {
             </div>
           ) : null}
           {composerMode === 'video' ? (
-            <div className="desktop-chat__media-options" aria-label="视频生成规格">
-              <span>画幅</span>
+            <div
+              className="desktop-chat__media-options"
+              aria-label={t('chat.media.videoGenerationSpecs')}
+            >
+              <span>{t('chat.media.aspectRatio')}</span>
               {VIDEO_RATIOS.map((value) => (
                 <button
                   key={value}
@@ -2732,7 +2738,7 @@ export function App(): ReactElement {
                   {value}
                 </button>
               ))}
-              <span>清晰度</span>
+              <span>{t('chat.media.quality')}</span>
               {VIDEO_RESOLUTIONS.map((value) => (
                 <button
                   key={value}
@@ -2743,7 +2749,7 @@ export function App(): ReactElement {
                   {value}
                 </button>
               ))}
-              <span>时长</span>
+              <span>{t('chat.media.duration')}</span>
               {VIDEO_DURATIONS.map((value) => (
                 <button
                   key={value}
@@ -2751,7 +2757,8 @@ export function App(): ReactElement {
                   className={videoDuration === value ? 'is-active' : undefined}
                   onClick={() => setVideoDuration(value)}
                 >
-                  {value} 秒
+                  {value}
+                  {t('chat.media.seconds')}
                 </button>
               ))}
             </div>
@@ -2759,18 +2766,18 @@ export function App(): ReactElement {
           {composerMode === 'music' ? (
             <div
               className="desktop-chat__media-options desktop-chat__media-status"
-              aria-label="音乐生成规格"
+              aria-label={t('chat.media.musicGenerationMode')}
               role="status"
             >
               <Music size={13} strokeWidth={2} aria-hidden="true" />
-              <span>音乐</span>
+              <span>{t('chat.media.musicMode')}</span>
               <button
                 type="button"
                 className={musicLyricsMode === 'instrumental' ? 'is-active' : undefined}
                 aria-pressed={musicLyricsMode === 'instrumental'}
                 onClick={() => setMusicLyricsMode('instrumental')}
               >
-                纯音乐
+                {t('chat.media.instrumental')}
               </button>
               <button
                 type="button"
@@ -2778,7 +2785,7 @@ export function App(): ReactElement {
                 aria-pressed={musicLyricsMode === 'lyrics'}
                 onClick={() => setMusicLyricsMode('lyrics')}
               >
-                歌词歌曲
+                {t('chat.media.withLyrics')}
               </button>
             </div>
           ) : null}
@@ -2836,8 +2843,8 @@ export function App(): ReactElement {
             {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
               <textarea
                 className="desktop-chat__music-lyrics"
-                aria-label="歌词"
-                placeholder="填写歌词，ACE-Step 会生成演唱"
+                aria-label={t('chat.media.lyrics')}
+                placeholder={t('chat.media.lyricsPlaceholder')}
                 rows={3}
                 value={musicLyrics}
                 onChange={(event) => setMusicLyrics(event.target.value)}
@@ -2852,7 +2859,7 @@ export function App(): ReactElement {
               placeholder={
                 isLoggedIn
                   ? composerMode === 'music'
-                    ? '描述曲风、情绪和编曲'
+                    ? t('chat.media.musicPromptPlaceholder')
                     : t('chat.inputPlaceholder')
                   : t('chat.inputPlaceholderLoggedOut')
               }
@@ -2881,12 +2888,14 @@ export function App(): ReactElement {
                     attachments.length > 0 || isAttachmentMenuOpen ? 'is-active' : undefined
                   }
                   type="button"
-                  aria-label={composerMode === 'music' ? '音乐模式不支持附件' : '添加附件'}
+                  aria-label={
+                    composerMode === 'music' ? t('chat.media.attachmentsUnavailable') : '添加附件'
+                  }
                   aria-expanded={isAttachmentMenuOpen}
                   aria-haspopup="menu"
                   title={
                     composerMode === 'music'
-                      ? '音乐模式不支持附件'
+                      ? t('chat.media.attachmentsUnavailable')
                       : isTemporaryConversation
                         ? '临时对话不支持附件'
                         : '添加附件'
@@ -3032,8 +3041,16 @@ export function App(): ReactElement {
                 <button
                   className={composerMode === 'image' ? 'is-active' : undefined}
                   type="button"
-                  aria-label={composerMode === 'image' ? '退出图片生成' : '图片生成'}
-                  title={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  aria-label={
+                    composerMode === 'image'
+                      ? t('chat.media.exitImageGenerator')
+                      : t('chat.media.imageGenerator')
+                  }
+                  title={
+                    composerMode === 'image'
+                      ? t('chat.media.exitImageGenerator')
+                      : t('chat.media.imageGenerator')
+                  }
                   aria-pressed={composerMode === 'image'}
                   disabled={
                     !isLoggedIn ||
@@ -3049,8 +3066,16 @@ export function App(): ReactElement {
                 <button
                   className={composerMode === 'video' ? 'is-active' : undefined}
                   type="button"
-                  aria-label={composerMode === 'video' ? '退出视频生成' : '视频生成'}
-                  title={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  aria-label={
+                    composerMode === 'video'
+                      ? t('chat.media.exitVideoGenerator')
+                      : t('chat.media.videoGenerator')
+                  }
+                  title={
+                    composerMode === 'video'
+                      ? t('chat.media.exitVideoGenerator')
+                      : t('chat.media.videoGenerator')
+                  }
                   aria-pressed={composerMode === 'video'}
                   disabled={
                     !isLoggedIn ||
@@ -3066,8 +3091,16 @@ export function App(): ReactElement {
                 <button
                   className={composerMode === 'music' ? 'is-active' : undefined}
                   type="button"
-                  aria-label={composerMode === 'music' ? '退出音乐生成' : '音乐生成'}
-                  title={composerMode === 'music' ? '退出音乐生成' : '音乐生成'}
+                  aria-label={
+                    composerMode === 'music'
+                      ? t('chat.media.exitMusicGenerator')
+                      : t('chat.media.musicGenerator')
+                  }
+                  title={
+                    composerMode === 'music'
+                      ? t('chat.media.exitMusicGenerator')
+                      : t('chat.media.musicGenerator')
+                  }
                   aria-pressed={composerMode === 'music'}
                   disabled={
                     !isLoggedIn ||
@@ -3111,8 +3144,8 @@ export function App(): ReactElement {
                       : composerMode === 'video'
                         ? 'Agnes Video V2.0'
                         : musicLyricsMode === 'lyrics'
-                          ? 'ACE-Step（本机）'
-                          : 'MusicGen（本机）'}
+                          ? t('chat.media.aceStepLocal')
+                          : t('chat.media.musicGenLocal')}
                   </span>
                 )}
                 {isStreaming ? (

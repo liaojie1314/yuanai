@@ -11,17 +11,13 @@ import {
   Square,
   XCircle,
 } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { useEffect, useRef, useState } from 'react'
 import type { ChangeEvent, JSX } from 'react'
 
 import { useCancelMediaTask, useCreateMediaTask } from '@yuanai/core/hooks'
 import { useArtifactStore } from '@yuanai/core/stores'
 import type { MediaGenerationTask } from '@yuanai/types'
-
-/** 生成任务的结果类型到可展示标题的映射。 */
-function taskLabel(task: MediaGenerationTask): string {
-  return task.type === 'image' ? '图片生成' : task.type === 'music' ? '音乐生成' : '视频生成'
-}
 
 /** 将播放器秒数显示为紧凑的分:秒格式。 */
 function formatTime(seconds: number): string {
@@ -38,6 +34,7 @@ function MusicPlayer({
   task: MediaGenerationTask
   outputName: string
 }): JSX.Element {
+  const t = useTranslations('chat.media')
   const audioRef = useRef<HTMLAudioElement>(null)
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -92,14 +89,14 @@ function MusicPlayer({
       <button
         className="ch-media-task__music-play"
         type="button"
-        aria-label={playing ? '暂停音乐' : '播放音乐'}
+        aria-label={playing ? t('pauseMusic') : t('playMusic')}
         onClick={togglePlayback}
       >
         {playing ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
       </button>
       <div className="ch-media-task__music-main">
         <div className="ch-media-task__music-meta">
-          <span>{task.options.lyrics?.trim() ? 'ACE-Step' : 'MusicGen'}</span>
+          <span>{task.options.lyrics?.trim() ? t('aceStep') : t('musicGen')}</span>
           <span>
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>
@@ -115,7 +112,7 @@ function MusicPlayer({
             max={duration || 1}
             step="0.1"
             value={Math.min(currentTime, duration || 1)}
-            aria-label="音乐播放进度"
+            aria-label={t('musicPlaybackProgress')}
             onChange={seek}
           />
         </div>
@@ -124,7 +121,7 @@ function MusicPlayer({
         className="ch-media-task__music-download"
         href={task.resultUrl ?? undefined}
         download={outputName}
-        aria-label="下载音乐"
+        aria-label={t('downloadMusic')}
       >
         <Download size={16} />
       </a>
@@ -134,12 +131,13 @@ function MusicPlayer({
 
 /** 会话内图片或视频任务的可恢复卡片。 */
 export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Element {
+  const t = useTranslations('chat.media')
   const openMediaPreview = useArtifactStore((state) => state.openMediaPreview)
   const cancel = useCancelMediaTask()
   const retry = useCreateMediaTask()
   const active = task.status === 'queued' || task.status === 'running'
   const indeterminate = active && task.progress <= 0
-  const title = taskLabel(task)
+  const title = task.type === 'image' ? t('image') : task.type === 'music' ? t('music') : t('video')
   const outputName = `${title}-${task.id.slice(0, 8)}${task.type === 'image' ? '.png' : task.type === 'music' ? '.mp3' : '.mp4'}`
   const requestedRatio = task.type === 'image' ? task.options.ratio : task.options.aspectRatio
   const resultStyle = {
@@ -160,7 +158,7 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
   }
 
   return (
-    <section className="ch-media-task" aria-label={`${title}任务`}>
+    <section className="ch-media-task" aria-label={t('taskAria', { task: title })}>
       <div className="ch-media-task__head">
         <span className="ch-media-task__icon" aria-hidden="true">
           {task.type === 'image' ? (
@@ -175,7 +173,9 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
           <strong>{title}</strong>
           <p>{task.prompt}</p>
         </div>
-        {active ? <LoaderCircle className="ch-spin" size={16} aria-label="生成中" /> : null}
+        {active ? (
+          <LoaderCircle className="ch-spin" size={16} aria-label={t('generating')} />
+        ) : null}
       </div>
 
       {active ? (
@@ -186,8 +186,8 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
           ]
             .filter(Boolean)
             .join(' ')}
-          aria-label={`生成进度 ${task.progress}%`}
-          aria-valuetext={indeterminate ? '正在生成' : `${task.progress}%`}
+          aria-label={t('generationProgress', { progress: task.progress })}
+          aria-valuetext={indeterminate ? t('generatingProgress') : `${task.progress}%`}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={task.progress}
@@ -205,7 +205,7 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
         <button
           className={`ch-media-task__result${task.type === 'video' ? 'ch-media-task__result--video' : ''}`}
           type="button"
-          aria-label={`打开${title}预览`}
+          aria-label={t('openPreview', { task: title })}
           style={resultStyle}
           onClick={openPreview}
         >
@@ -228,14 +228,14 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
 
       {task.status === 'failed' ? (
         <p className="ch-media-task__error">
-          <XCircle size={15} aria-hidden="true" /> {task.errorMessage ?? '生成失败，请重试'}
+          <XCircle size={15} aria-hidden="true" /> {task.errorMessage ?? t('generationFailed')}
         </p>
       ) : null}
 
       <div className="ch-media-task__actions">
         {active ? (
           <button type="button" onClick={() => cancel.mutate(task.id)} disabled={cancel.isPending}>
-            <Square size={13} fill="currentColor" /> 停止
+            <Square size={13} fill="currentColor" /> {t('stop')}
           </button>
         ) : null}
         {task.status === 'failed' ? (
@@ -252,7 +252,7 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
             }
             disabled={retry.isPending}
           >
-            <RotateCcw size={13} /> 重试
+            <RotateCcw size={13} /> {t('retry')}
           </button>
         ) : null}
         {task.status === 'succeeded' && task.resultUrl ? (
@@ -260,8 +260,9 @@ export function MediaTaskCard({ task }: { task: MediaGenerationTask }): JSX.Elem
             className={task.type === 'music' ? 'ch-media-task__download-hidden' : undefined}
             href={task.resultUrl}
             download={outputName}
+            aria-label={t('download')}
           >
-            <Download size={13} /> 下载
+            <Download size={13} /> {t('download')}
           </a>
         ) : null}
       </div>

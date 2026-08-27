@@ -5,6 +5,7 @@ import type { ReactTestInstance } from 'react-test-renderer'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { MediaGenerationTask } from '@yuanai/types'
+import { enUS } from '@/i18n/messages/en-US'
 
 vi.mock('react-native', () => ({
   ActivityIndicator: 'ActivityIndicator',
@@ -44,8 +45,10 @@ vi.mock('lucide-react-native', () => ({
   XCircle: 'XCircle',
 }))
 
+const translation = vi.hoisted(() => ({ t: (key: string) => key }))
+
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => translation,
 }))
 
 vi.mock('@yuanai/core/stores', () => ({
@@ -81,7 +84,7 @@ vi.mock('@/hooks/useAttachments', () => ({
 vi.mock('@/theme/useTheme', () => ({
   useTheme: () => ({
     bg: { base: '#fff', elevated: '#f3f4f6', surface: '#fff' },
-    border: { default: '#e5e7eb' },
+    border: { danger: '#f87171', default: '#e5e7eb' },
     brand: { selected: '#dbeafe', selectedFg: '#1d4ed8', solid: '#2563eb' },
     text: { inverse: '#fff', muted: '#6b7280', primary: '#111827', secondary: '#374151' },
     density: { inputMinH: 48, inputPy: 12 },
@@ -153,12 +156,12 @@ describe('Mobile music generation', () => {
       })
     )
 
-    act(() => findPressable(renderer, '音乐生成').props['onPress']())
-    expect(findPressable(renderer, '音乐模式不支持附件').props['accessibilityState']).toMatchObject(
-      {
-        disabled: true,
-      }
-    )
+    act(() => findPressable(renderer, 'chat.media.musicGeneration').props['onPress']())
+    expect(
+      findPressable(renderer, 'chat.media.attachmentsUnavailable').props['accessibilityState']
+    ).toMatchObject({
+      disabled: true,
+    })
 
     const input = renderer.root.findByType('TextInput' as never)
     act(() => input.props['onChangeText']('生成轻快的器乐音乐'))
@@ -204,10 +207,10 @@ describe('Mobile music generation', () => {
       { shouldPlay: false, progressUpdateIntervalMillis: 250 },
       expect.any(Function)
     )
-    const playButton = findPressable(renderer, '播放音乐')
+    const playButton = findPressable(renderer, 'chat.media.playMusic')
     await act(async () => playButton.props['onPress']())
     expect(playAsync).toHaveBeenCalledOnce()
-    await act(async () => findPressable(renderer, '暂停音乐').props['onPress']())
+    await act(async () => findPressable(renderer, 'chat.media.pauseMusic').props['onPress']())
     expect(pauseAsync).toHaveBeenCalledOnce()
     await act(async () => renderer.unmount())
     expect(unloadAsync).toHaveBeenCalledOnce()
@@ -245,13 +248,13 @@ describe('Mobile music generation', () => {
 
     const renderer = create(createElement(MediaTaskCard, { task: musicTask }))
     await act(async () => undefined)
-    await act(async () => findPressable(renderer, '重试播放').props['onPress']())
+    await act(async () => findPressable(renderer, 'chat.media.retryPlayback').props['onPress']())
     await act(async () => undefined)
     expect(soundConstructor.createAsync).toHaveBeenCalledTimes(2)
     await act(async () => renderer.unmount())
 
     const imageRenderer = create(createElement(MediaTaskCard, { task: imageTask }))
-    expect(findPressable(imageRenderer, '预览生成的图片')).toBeDefined()
+    expect(findPressable(imageRenderer, 'chat.media.previewGenerated')).toBeDefined()
     expect(soundConstructor.createAsync).toHaveBeenCalledTimes(2)
     await act(async () => imageRenderer.unmount())
   })
@@ -261,8 +264,26 @@ describe('Mobile music generation', () => {
     const renderer = create(
       createElement(MediaTaskCard, { task: { ...imageTask, status: 'running', resultUrl: null } })
     )
-    act(() => findPressable(renderer, '停止生成').props['onPress']())
+    act(() => findPressable(renderer, 'chat.media.stopGeneration').props['onPress']())
     expect(mediaActions.cancel).toHaveBeenCalledWith(imageTask.id)
     renderer.unmount()
+  })
+
+  it('provides English music labels and uses the active theme danger token for failures', () => {
+    expect(enUS.chat.media.imageGenerationSpecs).toBe('Image generation settings')
+    expect(enUS.chat.media.videoGenerationSpecs).toBe('Video generation settings')
+    expect(enUS.chat.media.exitImageGeneration).toBe('Exit image generation')
+    expect(enUS.chat.media.exitVideoGeneration).toBe('Exit video generation')
+    expect(enUS.chat.media.instrumental).toBe('Instrumental')
+    expect(enUS.chat.media.withLyrics).toBe('With lyrics')
+    expect(enUS.chat.media.playMusic).toBe('Play music')
+
+    const renderer = create(
+      createElement(MediaTaskCard, {
+        task: { ...imageTask, status: 'failed', resultUrl: null, errorMessage: null },
+      })
+    )
+    const errorIcon = renderer.root.findByType('XCircle' as never)
+    expect(errorIcon.props.color).toBe('#f87171')
   })
 })

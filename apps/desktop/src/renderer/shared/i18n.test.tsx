@@ -27,6 +27,11 @@ describe('desktop i18n', () => {
 
     await waitFor(() => expect(screen.getByText('Language & Region')).toBeInTheDocument())
     expect(desktopI18n.t('chat.sidebar.login')).toBe('Log In')
+    expect(desktopI18n.t('chat.media.instrumental')).toBe('Instrumental')
+    expect(desktopI18n.t('chat.media.withLyrics')).toBe('With lyrics')
+    expect(desktopI18n.t('chat.media.musicGenerator')).toBe('Music generation')
+    expect(desktopI18n.t('chat.media.imageGenerationSpecs')).toBe('Image generation settings')
+    expect(desktopI18n.t('chat.media.videoGenerationSpecs')).toBe('Video generation settings')
   })
 
   it('falls back safely to Chinese for a language unsupported by the desktop app', async () => {

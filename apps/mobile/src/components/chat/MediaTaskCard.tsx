@@ -12,6 +12,7 @@ import {
   XCircle,
 } from 'lucide-react-native'
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   Image,
   Linking,
@@ -47,6 +48,7 @@ const NativeVideo = ExpoVideo as unknown as ComponentType<{
 /** 在移动端时间线中渲染持久化图片或视频生成任务。 */
 export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
   const theme = useTheme()
+  const { t } = useTranslation()
   const cancel = useCancelMediaTask()
   const retry = useCreateMediaTask()
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -68,14 +70,14 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
   const musicUrl = task.type === 'music' && task.status === 'succeeded' ? resultUrl : null
   const statusLabel =
     task.status === 'queued'
-      ? '等待生成'
+      ? t('chat.media.queued')
       : task.status === 'running'
-        ? `正在生成 ${task.progress}%`
+        ? t('chat.media.running', { progress: task.progress })
         : task.status === 'succeeded'
-          ? '生成完成'
+          ? t('chat.media.succeeded')
           : task.status === 'canceled'
-            ? '已取消'
-            : '生成失败'
+            ? t('chat.media.canceled')
+            : t('chat.media.failed')
 
   const retryTask = (): void => {
     retry.mutate({
@@ -111,7 +113,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
       (status: AVPlaybackStatus) => {
         if (disposed) return
         if (!status.isLoaded) {
-          if (status.error) setAudioError('音频播放失败，请重试')
+          if (status.error) setAudioError(t('chat.media.audioPlaybackFailed'))
           return
         }
         setAudioPlaying(status.isPlaying)
@@ -130,7 +132,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
       .catch(() => {
         if (disposed) return
         setAudioLoading(false)
-        setAudioError('音频加载失败，请重试')
+        setAudioError(t('chat.media.audioLoadFailed'))
       })
 
     return () => {
@@ -139,7 +141,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
       soundRef.current = null
       if (sound) void sound.unloadAsync()
     }
-  }, [musicUrl, audioRetryKey, task.resultDurationSeconds])
+  }, [audioRetryKey, musicUrl, t, task.resultDurationSeconds])
 
   const toggleAudio = (): void => {
     const sound = soundRef.current
@@ -148,13 +150,13 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
       void sound
         .pauseAsync()
         .then(() => setAudioPlaying(false))
-        .catch(() => setAudioError('音频播放失败，请重试'))
+        .catch(() => setAudioError(t('chat.media.audioPlaybackFailed')))
       return
     }
     void sound
       .playAsync()
       .then(() => setAudioPlaying(true))
-      .catch(() => setAudioError('音频播放失败，请重试'))
+      .catch(() => setAudioError(t('chat.media.audioPlaybackFailed')))
   }
 
   const formatTime = (milliseconds: number): string => {
@@ -168,7 +170,14 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         styles.card,
         { backgroundColor: theme.bg.surface, borderColor: theme.border.default },
       ]}
-      accessibilityLabel={`${isImage ? '图片' : isMusic ? '音乐' : '视频'}生成任务，${statusLabel}`}
+      accessibilityLabel={t('chat.media.taskAria', {
+        type: isImage
+          ? t('chat.media.image')
+          : isMusic
+            ? t('chat.media.music')
+            : t('chat.media.video'),
+        status: statusLabel,
+      })}
       accessibilityLiveRegion="polite"
     >
       <View style={styles.header}>
@@ -183,7 +192,11 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         </View>
         <View style={styles.headerText}>
           <Text style={[styles.title, { color: theme.text.primary }]}>
-            {isImage ? '图片生成' : isMusic ? '音乐生成' : '视频生成'}
+            {isImage
+              ? t('chat.media.imageGeneration')
+              : isMusic
+                ? t('chat.media.musicGenerationTitle')
+                : t('chat.media.videoGeneration')}
           </Text>
           <Text style={[styles.status, { color: theme.text.muted }]}>{statusLabel}</Text>
         </View>
@@ -208,11 +221,11 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         <View style={[styles.musicPlayer, { backgroundColor: theme.bg.elevated }]}>
           {audioError ? (
             <View style={styles.error}>
-              <XCircle size={16} color="#DC2626" />
-              <Text style={styles.errorText}>{audioError}</Text>
+              <XCircle size={16} color={theme.border.danger} />
+              <Text style={[styles.errorText, { color: theme.border.danger }]}>{audioError}</Text>
               <TaskAction
                 icon={<RotateCcw size={14} color={theme.text.secondary} />}
-                label="重试播放"
+                label={t('chat.media.retryPlayback')}
                 onPress={() => setAudioRetryKey((value) => value + 1)}
                 textColor={theme.text.secondary}
               />
@@ -223,7 +236,9 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
                 <View style={[styles.icon, { backgroundColor: theme.brand.selected }]}>
                   <Music size={18} color={theme.brand.selectedFg} />
                 </View>
-                <Text style={[styles.musicTitle, { color: theme.text.primary }]}>音乐播放</Text>
+                <Text style={[styles.musicTitle, { color: theme.text.primary }]}>
+                  {t('chat.media.musicPlayback')}
+                </Text>
                 <Text style={[styles.musicTime, { color: theme.text.muted }]}>
                   {formatTime(audioPositionMillis)} / {formatTime(audioDurationMillis)}
                 </Text>
@@ -250,7 +265,13 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
                     <Play size={15} color={theme.text.secondary} />
                   )
                 }
-                label={audioLoading ? '正在加载音乐' : audioPlaying ? '暂停音乐' : '播放音乐'}
+                label={
+                  audioLoading
+                    ? t('chat.media.loadingMusic')
+                    : audioPlaying
+                      ? t('chat.media.pauseMusic')
+                      : t('chat.media.playMusic')
+                }
                 disabled={audioLoading}
                 onPress={toggleAudio}
                 textColor={theme.text.secondary}
@@ -263,7 +284,9 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
           onPress={() => setPreviewOpen(true)}
           style={[styles.result, { backgroundColor: theme.bg.elevated }]}
           accessibilityRole="button"
-          accessibilityLabel={`预览生成的${isImage ? '图片' : '视频'}`}
+          accessibilityLabel={t('chat.media.previewGenerated', {
+            type: isImage ? t('chat.media.image') : t('chat.media.video'),
+          })}
         >
           {isImage || resultPosterUrl ? (
             <Image
@@ -275,7 +298,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
             <View style={[styles.resultMedia, { backgroundColor: theme.bg.elevated }]} />
           )}
           <View style={styles.previewBadge} pointerEvents="none">
-            <Text style={styles.previewBadgeText}>预览</Text>
+            <Text style={styles.previewBadgeText}>{t('chat.media.preview')}</Text>
           </View>
           {!isImage ? (
             <View style={styles.videoPlay} pointerEvents="none">
@@ -287,8 +310,10 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
 
       {task.status === 'failed' ? (
         <View style={styles.error}>
-          <XCircle size={16} color="#DC2626" />
-          <Text style={styles.errorText}>{task.errorMessage ?? '生成失败，请重试'}</Text>
+          <XCircle size={16} color={theme.border.danger} />
+          <Text style={[styles.errorText, { color: theme.border.danger }]}>
+            {task.errorMessage ?? t('chat.media.generationFailed')}
+          </Text>
         </View>
       ) : null}
 
@@ -296,7 +321,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         {active ? (
           <TaskAction
             icon={<Square size={14} color={theme.text.secondary} fill={theme.text.secondary} />}
-            label="停止生成"
+            label={t('chat.media.stopGeneration')}
             disabled={cancel.isPending}
             onPress={() => cancel.mutate(task.id)}
             textColor={theme.text.secondary}
@@ -305,7 +330,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         {task.status === 'failed' || task.status === 'canceled' ? (
           <TaskAction
             icon={<RotateCcw size={14} color={theme.text.secondary} />}
-            label="重试"
+            label={t('chat.media.retry')}
             disabled={retry.isPending}
             onPress={retryTask}
             textColor={theme.text.secondary}
@@ -314,7 +339,7 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
         {hasResult ? (
           <TaskAction
             icon={<Download size={14} color={theme.text.secondary} />}
-            label="下载"
+            label={t('chat.media.download')}
             onPress={openDownload}
             textColor={theme.text.secondary}
           />
@@ -332,13 +357,13 @@ export function MediaTaskCard({ task }: MediaTaskCardProps): React.JSX.Element {
             <View style={[styles.modalCard, { backgroundColor: theme.bg.base }]}>
               <View style={styles.modalHeader}>
                 <Text style={[styles.modalTitle, { color: theme.text.primary }]}>
-                  {isImage ? '图片预览' : '视频预览'}
+                  {isImage ? t('chat.media.imagePreview') : t('chat.media.videoPreview')}
                 </Text>
                 <Pressable
                   onPress={() => setPreviewOpen(false)}
                   style={styles.closeButton}
                   accessibilityRole="button"
-                  accessibilityLabel="关闭预览"
+                  accessibilityLabel={t('chat.media.closePreview')}
                 >
                   <X size={20} color={theme.text.primary} />
                 </Pressable>
@@ -452,7 +477,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
-  errorText: { flex: 1, color: '#DC2626', fontSize: 12, lineHeight: 18 },
+  errorText: { flex: 1, fontSize: 12, lineHeight: 18 },
   actions: {
     flexDirection: 'row',
     gap: spacing.xs,
