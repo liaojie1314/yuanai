@@ -133,7 +133,8 @@ MEDIA_MUSIC_LOCAL_DEVICE=auto
 服务。模型安装、三端使用方式、远程失败降级和 provider 注意事项见
 [媒体生成与音乐配置](docs/media-generation.md)。未配置该 Key 时，图片、视频和普通聊天
 仍可使用，音乐任务不会依赖第三方 Key；歌词模式需要 ACE-Step 服务运行。Hugging Face
-远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用方案。
+远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用方案。ACE-Step 建议使用至少 6 GB
+可用显存；4 GB 显卡不能稳定完成歌词推理，可按媒体配置文档使用 CPU-only 启动回退。
 
 ## 联网搜索
 

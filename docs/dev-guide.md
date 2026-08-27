@@ -82,7 +82,9 @@ pnpm dev:real
 `pnpm dev:real` 会启动 PostgreSQL（宿主机 `5433`）、Redis、MinIO 和 SearXNG，然后执行
 迁移并启动后端和 Web。后端集成测试使用同一个 Compose PostgreSQL 中的 `yuanai_test` 数据库；
 测试前先让真实栈运行，不要把连接地址改回宿主机 `5432`。歌词音乐还需要另开终端执行
-`ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step`。
+`ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step`。低显存 GPU 无法完成 ACE-Step
+推理时，不要反复重试同一任务；改用[媒体生成与音乐配置](media-generation.md#设备与低显存配置)
+中的 CPU-only 启动命令。
 
 ### 启动桌面端
 

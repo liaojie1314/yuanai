@@ -70,6 +70,29 @@ ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step
 明确显示“歌词音乐服务未启动”，不会静默改成纯音乐。不要把本机目录或 `MEDIA_MUSIC_PROXY_URL`
 写入项目配置。
 
+### 设备与低显存配置
+
+ACE-Step 的 2B DiT-only 路径官方标注最低 4 GB 显存，但实际可用空间还会受到 CUDA 上下文、
+模型版本和驱动影响。建议使用至少 6 GB 可用显存；`<=4 GB` 的显卡不能把默认 REST 启动当作
+稳定验收路径。当前本机 RTX 3050 4 GB 能加载低显存配置，但在实际推理时仍会因显存不足失败。
+
+CPU-only 推理是官方支持的回退方式，已在本项目环境生成过有效的 30 秒、48 kHz、128 kbps
+歌词 MP3。它会占用约 10 GB 内存并明显变慢，单曲约需数分钟，因此只应保持单任务运行，且不要
+同时启动构建、模型下载或其他高内存进程：
+
+```bash
+ACESTEP_DEVICE=cpu \
+ACESTEP_OFFLOAD_TO_CPU=true \
+ACESTEP_OFFLOAD_DIT_TO_CPU=true \
+ACESTEP_NO_INIT=false \
+ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 \
+pnpm dev:ace-step
+```
+
+这些是启动 ACE-Step 的本机 shell 变量，不是 YuanAI 的 `backend/.env` 配置；不要把它们、
+本机路径、Token 或代理地址提交到仓库。首次下载 ACE-Step 核心模型前应预留约 10 GB 磁盘空间；
+模型已经缓存时不要清理其 `checkpoints` 目录。
+
 ## 可选方案：Hugging Face 远程推理
 
 只有将 `MEDIA_MUSIC_PROVIDER` 显式设为 `huggingface` 时，后端才会优先调用远程推理路由。
@@ -181,8 +204,9 @@ Token 放到 `apps/*/.env` 或 `NEXT_PUBLIC_*` 变量中。
 
 本机纯音乐生成失败时检查 CUDA、显存和模型缓存；远程生成失败时系统会先按有限次数重试，
 再退回本机 MusicGen。歌词任务失败时检查 ACE-Step 进程、8001 端口和模型日志，不会改成
-纯音乐。远程仍失败时再检查 Hugging Face Token 权限、账号额度和模型状态。日志不会打印
-Token 或供应商响应正文。
+纯音乐。出现任务已失败时，客户端会显示“音乐生成未完成”，不会继续伪装成进度查询故障。若日志
+包含 CUDA OOM，使用上方 CPU-only 命令或迁移到显存更充足的设备。远程仍失败时再检查 Hugging
+Face Token 权限、账号额度和模型状态。日志不会打印 Token 或供应商响应正文。
 必要时可适当提高 `MEDIA_MUSIC_TIMEOUT_SECONDS`，但仍应保持有界超时；远程遇到排队或 `429`
 时等待一段时间后重试，不要并发提交多个任务。
 
