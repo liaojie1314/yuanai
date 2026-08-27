@@ -55,6 +55,13 @@ const musicTask: MediaGenerationTask = {
   resultDurationSeconds: 30,
 }
 
+const lyricMusicTask: MediaGenerationTask = {
+  ...musicTask,
+  id: 'lyric-music-task-12345678',
+  model: 'ace-step-v15-local',
+  options: { durationSeconds: 30, lyrics: '窗外微光落在清晨' },
+}
+
 const activeTask: MediaGenerationTask = { ...task, status: 'running', progress: 42 }
 const failedTask: MediaGenerationTask = {
   ...task,
@@ -81,6 +88,7 @@ describe('MediaTaskCard', () => {
     expect(audio).toHaveAttribute('preload', 'metadata')
     expect(audio).not.toHaveAttribute('autoplay')
     expect(container.querySelector('.ch-media-task__music')).not.toBeNull()
+    expect(container.querySelector('.ch-media-task__music-meta')).toHaveTextContent('MusicGen')
     expect(container.querySelector('input[type="range"]')).toHaveAttribute(
       'aria-label',
       '音乐播放进度'
@@ -91,6 +99,12 @@ describe('MediaTaskCard', () => {
     expect(container.querySelector('.ch-media-task__actions a[download]')).toHaveClass(
       'ch-media-task__download-hidden'
     )
+  })
+
+  it('identifies a lyric song as an ACE-Step result', () => {
+    const { getByText } = render(<MediaTaskCard task={lyricMusicTask} />)
+
+    expect(getByText('ACE-Step')).toBeInTheDocument()
   })
 
   it('keeps cancel controls for running tasks', () => {

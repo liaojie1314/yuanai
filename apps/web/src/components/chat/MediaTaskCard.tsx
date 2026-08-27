@@ -99,7 +99,7 @@ function MusicPlayer({
       </button>
       <div className="ch-media-task__music-main">
         <div className="ch-media-task__music-meta">
-          <span>MusicGen</span>
+          <span>{task.options.lyrics?.trim() ? 'ACE-Step' : 'MusicGen'}</span>
           <span>
             {formatTime(currentTime)} / {formatTime(duration)}
           </span>

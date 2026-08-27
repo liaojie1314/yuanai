@@ -130,6 +130,7 @@ interface AttachFile {
 type ComposerMode = 'chat' | 'agent' | MediaComposerMode
 
 const COMPOSER_MODE_STORAGE_KEY = 'yuanai-composer-mode'
+const MUSIC_LYRICS_MODE_STORAGE_KEY = 'yuanai-music-lyrics-mode'
 
 function isComposerMode(value: string | null): value is ComposerMode {
   return (
@@ -139,6 +140,10 @@ function isComposerMode(value: string | null): value is ComposerMode {
     value === 'video' ||
     value === 'music'
   )
+}
+
+function isMusicLyricsMode(value: string | null): value is 'instrumental' | 'lyrics' {
+  return value === 'instrumental' || value === 'lyrics'
 }
 
 const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
@@ -461,13 +466,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   useEffect(() => {
     const savedMode = sessionStorage.getItem(COMPOSER_MODE_STORAGE_KEY)
     if (isComposerMode(savedMode)) setComposerMode(savedMode)
+    const savedMusicLyricsMode = sessionStorage.getItem(MUSIC_LYRICS_MODE_STORAGE_KEY)
+    if (isMusicLyricsMode(savedMusicLyricsMode)) setMusicLyricsMode(savedMusicLyricsMode)
     setComposerModeHydrated(true)
   }, [])
 
   useEffect(() => {
     if (!composerModeHydrated) return
     sessionStorage.setItem(COMPOSER_MODE_STORAGE_KEY, composerMode)
-  }, [composerMode, composerModeHydrated])
+    sessionStorage.setItem(MUSIC_LYRICS_MODE_STORAGE_KEY, musicLyricsMode)
+  }, [composerMode, composerModeHydrated, musicLyricsMode])
 
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
