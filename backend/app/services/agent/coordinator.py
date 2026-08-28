@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_run import (
@@ -20,7 +21,7 @@ from app.models.agent_run import (
     AgentStepKind,
     AgentStepStatus,
 )
-from app.models.approval import ApprovalRiskLevel
+from app.models.approval import ApprovalRequest, ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
@@ -308,16 +309,36 @@ class AgentCoordinator:
                 )
                 execution: ToolExecution | None = None
                 if db is not None:
-                    try:
-                        execution = await self._tool_runtime.create_execution(
-                            user_id=run.user_id,
-                            tool_name=call.name,
-                            arguments=arguments,
-                            execution_location=execution_location,
-                            db=db,
-                            run_id=run.id,
-                            step_id=run.steps[-1].id,
+                    if approval_id is not None:
+                        approval_request = await db.scalar(
+                            select(ApprovalRequest).where(
+                                ApprovalRequest.id == approval_id,
+                                ApprovalRequest.run_id == run.id,
+                                ApprovalRequest.user_id == run.user_id,
+                            )
                         )
+                        if approval_request is not None:
+                            execution = await db.scalar(
+                                select(ToolExecution)
+                                .where(
+                                    ToolExecution.run_id == run.id,
+                                    ToolExecution.step_id == approval_request.step_id,
+                                    ToolExecution.tool_name == call.name,
+                                    ToolExecution.status == ToolExecutionStatus.waiting,
+                                )
+                                .order_by(ToolExecution.created_at.desc())
+                            )
+                    try:
+                        if execution is None:
+                            execution = await self._tool_runtime.create_execution(
+                                user_id=run.user_id,
+                                tool_name=call.name,
+                                arguments=arguments,
+                                execution_location=execution_location,
+                                db=db,
+                                run_id=run.id,
+                                step_id=run.steps[-1].id,
+                            )
                     except ToolRuntimeError as error:
                         return self._failure(run, AgentErrorCode.TOOL_FAILED, str(error), error)
                 decision = self._policy.decide(spec)
@@ -347,6 +368,7 @@ class AgentCoordinator:
                             db=db,
                         )
                         if execution is not None and db is not None:
+                            execution.step_id = approval_step.id
                             execution.status = ToolExecutionStatus.waiting
                             execution.error_code = AgentErrorCode.TOOL_APPROVAL_REQUIRED.value
                             execution.error_message = "工具执行需要审批"

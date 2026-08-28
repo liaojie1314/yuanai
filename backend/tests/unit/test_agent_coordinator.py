@@ -7,14 +7,18 @@ import json
 import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
 
 from app.models import AgentRun, Assistant, Conversation, Message, User
-from app.models.agent_run import AgentRunStatus
+from app.models.agent_run import AgentRunStatus, AgentStep, AgentStepKind, AgentStepStatus
+from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.message import MessageRole
+from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
+from app.services.agent.approval_service import payload_hash
 from app.services.agent.context_builder import AgentContextBuilder
 from app.services.agent.coordinator import (
     AgentCoordinator,
@@ -361,6 +365,101 @@ async def test_high_risk_tool_waits_for_approval_without_execution() -> None:
 
     assert result.status is AgentRunStatus.waiting_approval
     assert calls == 0
+
+
+@pytest.mark.asyncio
+async def test_approved_tool_reuses_waiting_execution(db, test_user: User) -> None:
+    """批准后重跑协调器时复用原等待执行记录，避免重复副作用审计。"""
+    assistant = Assistant(
+        user_id=test_user.id,
+        name="审批恢复",
+        default_model="test-model",
+        is_default=True,
+    )
+    db.add(assistant)
+    await db.flush()
+    run = AgentRun(
+        id=uuid.uuid4(),
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        goal="复用执行记录",
+        model="test-model",
+        status=AgentRunStatus.waiting_approval,
+        current_step=1,
+    )
+    approval_step = AgentStep(
+        run_id=run.id,
+        sequence=1,
+        kind=AgentStepKind.approval,
+        status=AgentStepStatus.waiting,
+    )
+    db.add_all([run, approval_step])
+    await db.flush()
+    approval = ApprovalRequest(
+        run_id=run.id,
+        step_id=approval_step.id,
+        user_id=test_user.id,
+        tool_name="external_write",
+        execution_location="cloud",
+        risk_level=ApprovalRiskLevel.high,
+        action_summary="执行外部写入",
+        arguments_preview={},
+        payload_hash=payload_hash({}),
+        status=ApprovalStatus.approved,
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        decided_at=datetime.now(UTC),
+    )
+    execution = ToolExecution(
+        user_id=test_user.id,
+        run_id=run.id,
+        step_id=approval_step.id,
+        tool_name="external_write",
+        tool_version="1.0.0",
+        execution_location="cloud",
+        risk_level="external_side_effect",
+        side_effect="external",
+        arguments_preview={},
+        arguments_hash=payload_hash({}),
+        status=ToolExecutionStatus.waiting,
+        artifact_ids=[],
+    )
+    db.add_all([approval, execution])
+    await db.commit()
+    await db.refresh(run, ["steps"])
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="external_write",
+            description="模拟外部写入",
+            input_schema={"type": "object"},
+            risk_level=ToolRisk.external_side_effect,
+            execution_location="cloud",
+        ),
+        lambda _args, _context: {"ok": True},
+    )
+    model = ModelScript(
+        [
+            [
+                ToolCallStart(tool_call_id="call-risk", name="external_write"),
+                ToolCallArgumentsDelta(tool_call_id="call-risk", args_chunk="{}"),
+                ToolCallEnd(tool_call_id="call-risk"),
+                ModelCompleted(finish_reason="tool_calls"),
+            ],
+            [ContentDelta(token="完成"), ModelCompleted()],
+        ]
+    )
+    coordinator = AgentCoordinator(model_stream=model, tool_registry=registry)
+    result = await coordinator.run(run, db=db, approval_id=approval.id)
+    await db.commit()
+
+    executions = (
+        await db.scalars(select(ToolExecution).where(ToolExecution.run_id == run.id))
+    ).all()
+    assert result.status is AgentRunStatus.succeeded
+    assert len(executions) == 1
+    assert executions[0].id == execution.id
+    assert executions[0].status is ToolExecutionStatus.succeeded
 
 
 @pytest.mark.asyncio

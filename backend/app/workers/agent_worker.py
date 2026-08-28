@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.core.redis import redis_client
 from app.models.agent_run import AgentRun
+from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.assistant import Assistant
 from app.services.agent.coordinator import AgentCoordinator
 from app.services.agent.event_service import EventStore
@@ -93,11 +94,21 @@ async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
             tool_registry=build_builtin_registry(),
             event_store=EventStore(queue=AgentQueue(redis_client)),
         )
+        approval = await db.scalar(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.run_id == run.id,
+                ApprovalRequest.user_id == item.tenant_id,
+                ApprovalRequest.status == ApprovalStatus.approved,
+            )
+            .order_by(ApprovalRequest.decided_at.desc())
+        )
         await coordinator.run(
             run,
             db=db,
             user_instructions=assistant.instructions,
             cancellation=token.is_cancelled,
+            approval_id=approval.id if approval is not None else None,
         )
         await db.commit()
 

@@ -1,6 +1,7 @@
 """Agent API 的授权、幂等和事件重放集成测试。"""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
@@ -9,7 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.api.v1.agent as agent_api
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password
-from app.models.agent_run import AgentEvent, AgentRun, AgentRunStatus
+from app.models.agent_run import (
+    AgentEvent,
+    AgentRun,
+    AgentRunStatus,
+    AgentStep,
+    AgentStepKind,
+    AgentStepStatus,
+)
+from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.assistant import Assistant
 from app.models.user import User
 
@@ -188,6 +197,74 @@ async def test_event_stream_waits_for_events_created_after_connection(
     assert "id: 1" in response.text
     assert "id: 2" in response.text
     assert fake_events.calls >= 2
+
+
+@pytest.mark.asyncio
+async def test_approval_decision_requeues_run_and_denial_terminates(
+    client: AsyncClient,
+    db: AsyncSession,
+    test_user: User,
+    auth_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """审批决定必须恢复 Run；拒绝则发布可终止 SSE 的取消事件。"""
+    assistant = await _assistant(db, test_user)
+    run = AgentRun(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        goal="审批恢复测试",
+        model="test-model",
+        status=AgentRunStatus.waiting_approval,
+    )
+    db.add(run)
+    await db.flush()
+    step = AgentStep(
+        run_id=run.id,
+        sequence=1,
+        kind=AgentStepKind.approval,
+        status=AgentStepStatus.waiting,
+    )
+    db.add(step)
+    await db.flush()
+    approved = ApprovalRequest(
+        run_id=run.id,
+        step_id=step.id,
+        user_id=test_user.id,
+        tool_name="external_write",
+        execution_location="cloud",
+        risk_level=ApprovalRiskLevel.high,
+        action_summary="执行外部工具",
+        arguments_preview={},
+        payload_hash="a" * 64,
+        status=ApprovalStatus.pending,
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    db.add(approved)
+    await db.commit()
+
+    class FakeEventStore:
+        async def append(
+            self,
+            _run_id: uuid.UUID,
+            _event_type: str,
+            _payload: dict[str, object],
+            *,
+            tenant_id: uuid.UUID | None = None,
+        ) -> None:
+            del tenant_id
+
+    monkeypatch.setattr(agent_api, "_events", FakeEventStore())
+
+    response = await client.post(
+        f"/api/v1/agent/approvals/{approved.id}",
+        headers=auth_headers,
+        json={"decision": "approve"},
+    )
+    assert response.status_code == 200, response.text
+    await db.refresh(run)
+    await db.refresh(step)
+    assert run.status is AgentRunStatus.queued
+    assert step.status is AgentStepStatus.succeeded
 
 
 @pytest.mark.asyncio

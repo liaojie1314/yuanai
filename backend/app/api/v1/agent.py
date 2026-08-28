@@ -32,6 +32,7 @@ from app.schemas.agent import (
 )
 from app.services.agent.approval_service import (
     ApprovalAlreadyDecidedError,
+    ApprovalError,
     ApprovalExpiredError,
     ApprovalNotFoundError,
     ApprovalService,
@@ -303,13 +304,34 @@ async def decide_approval(
         item = await _approvals.decide(
             approval_id, user_id=current_user.id, decision=req.decision, note=req.note, db=db
         )
+        run = await _approvals.resume_after_decision(item, user_id=current_user.id, db=db)
     except ApprovalNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ApprovalExpiredError as error:
         raise HTTPException(status_code=410, detail=str(error)) from error
     except ApprovalAlreadyDecidedError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except ApprovalError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     await db.commit()
+    if run.status is AgentRunStatus.queued:
+        try:
+            await AgentQueue().enqueue(current_user.id, run.id)
+        except (OSError, RuntimeError, RedisError):
+            pass
+        await _events.append(
+            run.id,
+            "approval_resolved",
+            {"approval_id": str(item.id), "decision": "approve"},
+            tenant_id=current_user.id,
+        )
+    else:
+        await _events.append(
+            run.id,
+            "run_cancelled",
+            {"status": AgentRunStatus.cancelled.value, "reason": "approval_denied"},
+            tenant_id=current_user.id,
+        )
     return item
 
 

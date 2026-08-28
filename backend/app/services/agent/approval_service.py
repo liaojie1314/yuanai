@@ -81,6 +81,7 @@ class ApprovalService:
             raise ValueError("default_ttl_seconds must be positive")
         self.default_ttl_seconds = default_ttl_seconds
         self._memory: dict[uuid.UUID, ApprovalRequest] = {}
+        self._contexts: dict[uuid.UUID, tuple[AgentRun, AgentStep]] = {}
 
     async def create_request(
         self,
@@ -114,6 +115,7 @@ class ApprovalService:
             or datetime.now(UTC) + timedelta(seconds=self.default_ttl_seconds),
         )
         self._memory[request.id] = request
+        self._contexts[request.id] = (run, step)
         if db is not None:
             db.add(request)
             await db.flush()
@@ -242,6 +244,43 @@ class ApprovalService:
         if db is not None:
             await db.flush()
         return request
+
+    async def resume_after_decision(
+        self,
+        request: ApprovalRequest,
+        *,
+        user_id: uuid.UUID,
+        db: AsyncSession | None = None,
+    ) -> AgentRun:
+        """根据一次审批决定恢复或终止关联 Run。"""
+
+        if request.user_id != user_id:
+            raise ApprovalNotFoundError("审批请求不存在")
+        if db is None:
+            context = self._contexts.get(request.id)
+            run, step = context if context is not None else (None, None)
+        else:
+            run = await db.get(AgentRun, request.run_id)
+            step = await db.get(AgentStep, request.step_id)
+        if run is None or step is None or run.user_id != user_id:
+            raise ApprovalNotFoundError("审批请求关联的 Run 不存在")
+        if run.status is not AgentRunStatus.waiting_approval:
+            raise ApprovalError("Run 当前不等待审批")
+        if request.status is ApprovalStatus.approved:
+            step.status = AgentStepStatus.succeeded
+            run.status = AgentRunStatus.queued
+            run.error_code = None
+            run.error_message = None
+        elif request.status is ApprovalStatus.denied:
+            step.status = AgentStepStatus.cancelled
+            run.status = AgentRunStatus.cancelled
+            run.error_code = "APPROVAL_DENIED"
+            run.error_message = "用户拒绝了工具执行审批"
+        else:
+            raise ApprovalError("审批请求尚未形成可执行决定")
+        if db is not None:
+            await db.flush()
+        return run
 
     async def submit_input(
         self,
