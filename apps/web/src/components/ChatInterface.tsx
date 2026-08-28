@@ -677,7 +677,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const toggleTemporary = (): void => {
     // 不要把 router.push / 其他 setState 放进 setTemporary 的 updater —— React
-    // 会在渲染阶段调用 updater，router.push 会向 Router 派发状态更新，
+    // React 渲染期间调用 updater，router.push 会向 Router 派发状态更新，
     // 触发 "Cannot update Router while rendering ChatInterface" 警告。
     const next = !temporary
     setTemporary(next)

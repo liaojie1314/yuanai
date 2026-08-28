@@ -104,10 +104,9 @@ export default function TemporaryChatScreen(): React.JSX.Element {
     nav.openDrawer?.()
   }, [navigation])
 
-  // 「离场即忘」：屏幕失焦时清空 state 并中断进行中的流（对齐 web 端「切走
-  // 即丢弃」，phase-3 §0.1 也是这样规定）。用 useFocusEffect 的 cleanup —— 无论
-  // 是抽屉切正式会话、返回、还是新建对话都会触发。切回临时对话会重新聚焦并渲染
-  // 一个空的对话。
+  // 「离场即忘」：屏幕失焦时清空 state 并中断进行中的流，避免临时会话内容
+  // 在离开后继续保留。用 useFocusEffect 的 cleanup —— 无论是抽屉切正式会话、
+  // 返回、还是新建对话都会触发。切回临时对话会重新聚焦并渲染一个空的对话。
   useFocusEffect(
     useCallback(
       () => () => {

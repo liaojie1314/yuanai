@@ -381,7 +381,7 @@ async def cancel_media_task(
 
 
 def _option_int(task: MediaGenerationTask, key: str) -> int:
-    """读取已在创建阶段验证的整数任务选项。"""
+    """读取已在创建任务时验证的整数选项。"""
     value = task.request_options.get(key)
     if isinstance(value, bool):
         raise MediaGenerationValidationError("任务参数无效")
@@ -391,7 +391,7 @@ def _option_int(task: MediaGenerationTask, key: str) -> int:
 
 
 def _option_string(task: MediaGenerationTask, key: str) -> str:
-    """读取已在创建阶段验证的字符串任务选项。"""
+    """读取已在创建任务时验证的字符串选项。"""
     value = task.request_options.get(key)
     if isinstance(value, str) and value:
         return value

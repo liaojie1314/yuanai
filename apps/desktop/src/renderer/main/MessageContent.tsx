@@ -1033,7 +1033,7 @@ export function ChatMessage({
   )
 }
 
-/** 渲染正在返回的 AI 消息，思考与工具调用阶段默认展开。 */
+/** 渲染正在返回的 AI 消息，默认展开思考与工具调用内容。 */
 export function StreamingMessage({
   content,
   thinking,

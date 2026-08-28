@@ -37,7 +37,7 @@ function formatCtx(len: number): string {
 }
 
 /**
- * 模型选择 BottomSheet（对齐 web 顶栏模型下拉，phase-3 §0.1 规定移动端用 BottomSheet）。
+ * 模型选择 BottomSheet，保持与 Web 顶栏模型下拉的一致交互。
  *
  * - `@gorhom/bottom-sheet` v5：走 Provider portal 渲染，不经过 RN `Modal`，
  *   不触发 docs-internal 第 1 条的 Fabric 首帧后挂载 0 尺寸缺陷。
