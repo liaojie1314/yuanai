@@ -23,6 +23,7 @@ from app.models.agent_run import (
 from app.models.approval import ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
+from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
 from app.services import ai_service
 from app.services.agent.approval_service import (
     ApprovalError,
@@ -43,6 +44,7 @@ from app.services.ai_service import (
     ToolCallStart,
     UsageDelta,
 )
+from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
 from app.tools.contracts import (
     ToolContext,
     ToolError,
@@ -132,6 +134,7 @@ class AgentCoordinator:
         self._tool_timeout_seconds = tool_timeout_seconds
         self._approval_service = approval_service or ApprovalService()
         self._metrics = metrics or AgentMetrics()
+        self._tool_runtime = ToolRuntimeService(tool_registry)
 
     async def run(
         self,
@@ -300,6 +303,23 @@ class AgentCoordinator:
                     spec = self._tool_registry.get_spec(call.name)
                 except ToolRegistrationError as error:
                     return self._failure(run, AgentErrorCode.TOOL_FAILED, error.code.value, error)
+                execution_location = (
+                    "cloud" if spec.execution_location == "either" else spec.execution_location
+                )
+                execution: ToolExecution | None = None
+                if db is not None:
+                    try:
+                        execution = await self._tool_runtime.create_execution(
+                            user_id=run.user_id,
+                            tool_name=call.name,
+                            arguments=arguments,
+                            execution_location=execution_location,
+                            db=db,
+                            run_id=run.id,
+                            step_id=run.steps[-1].id,
+                        )
+                    except ToolRuntimeError as error:
+                        return self._failure(run, AgentErrorCode.TOOL_FAILED, str(error), error)
                 decision = self._policy.decide(spec)
                 if not decision.allowed:
                     if approval_id is None:
@@ -311,7 +331,7 @@ class AgentCoordinator:
                             status=AgentStepStatus.waiting,
                             input_json={
                                 "name": call.name,
-                                "execution_location": spec.execution_location,
+                                "execution_location": execution_location,
                             },
                         )
                         run.current_step += 1
@@ -322,15 +342,20 @@ class AgentCoordinator:
                             tool_name=call.name,
                             arguments=arguments,
                             risk_level=self._approval_risk(spec.risk_level),
-                            execution_location=spec.execution_location,
+                            execution_location=execution_location,
                             action_summary=f"执行工具 {call.name}",
                             db=db,
                         )
+                        if execution is not None and db is not None:
+                            execution.status = ToolExecutionStatus.waiting
+                            execution.error_code = AgentErrorCode.TOOL_APPROVAL_REQUIRED.value
+                            execution.error_message = "工具执行需要审批"
+                            await db.flush()
                         run.status = AgentRunStatus.waiting_approval
                         await self._emit(
                             run,
                             "approval_required",
-                            {"tool_name": call.name, "execution_location": spec.execution_location},
+                            {"tool_name": call.name, "execution_location": execution_location},
                         )
                         return CoordinatorResult(
                             status=AgentRunStatus.waiting_approval,
@@ -343,7 +368,7 @@ class AgentCoordinator:
                             user_id=run.user_id,
                             tool_name=call.name,
                             arguments=arguments,
-                            execution_location=spec.execution_location,
+                            execution_location=execution_location,
                             db=db,
                         )
                     except ApprovalPayloadMismatchError as error:
@@ -354,6 +379,11 @@ class AgentCoordinator:
                         return self._failure(run, AgentErrorCode.APPROVAL_DENIED, str(error), error)
                 run.current_step += 1
                 self._add_step(run, AgentStepKind.tool, {"name": call.name, "arguments": arguments})
+                if execution is not None and db is not None:
+                    try:
+                        await self._tool_runtime.start_execution(execution, db=db)
+                    except ToolRuntimeError as error:
+                        return self._failure(run, AgentErrorCode.TOOL_FAILED, str(error), error)
                 await self._emit(
                     run,
                     "step_started",
@@ -373,14 +403,27 @@ class AgentCoordinator:
                         timeout=timeout,
                     )
                 except TimeoutError as error:
+                    if execution is not None and db is not None:
+                        await self._tool_runtime.fail_execution(
+                            execution,
+                            code=AgentErrorCode.TOOL_TIMEOUT.value,
+                            message="工具执行超时",
+                            db=db,
+                        )
                     return self._failure(run, AgentErrorCode.TOOL_TIMEOUT, "工具执行超时", error)
                 except ToolError as error:
+                    if execution is not None and db is not None:
+                        await self._tool_runtime.fail_execution(
+                            execution, code=error.code.value, message=str(error), db=db
+                        )
                     code = (
                         AgentErrorCode.TOOL_TIMEOUT
                         if error.code is ToolErrorCode.TIMEOUT
                         else AgentErrorCode.TOOL_FAILED
                     )
                     return self._failure(run, code, error.code.value, error)
+                if execution is not None and db is not None:
+                    await self._tool_runtime.complete_success(execution, output=output, db=db)
                 output_text = json.dumps(output, ensure_ascii=False, separators=(",", ":"))
                 tool_calls_summary.append(
                     {"name": call.name, "arguments": arguments, "output": output}

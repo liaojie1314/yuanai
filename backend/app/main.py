@@ -17,6 +17,7 @@ from app.api.v1 import (
     notifications,
     qr_login,
     share,
+    tools,
     voice,
 )
 from app.api.v1 import files as files_router
@@ -93,6 +94,7 @@ app.include_router(files_router.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(admin_agent.router, prefix="/api/v1")
+app.include_router(tools.router, prefix="/api/v1")
 
 
 @app.get("/health")

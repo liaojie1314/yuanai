@@ -182,8 +182,6 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     }
 
 
-
-
 @router.post("/stream")
 async def stream_chat_endpoint(
     req: SendMessageRequest, current_user: CurrentUser, db: DB

@@ -116,14 +116,8 @@ class ToolRegistry:
 
         return [self._specs[name] for name in sorted(self._specs)]
 
-    async def execute(
-        self,
-        name: str,
-        arguments: ToolArguments,
-        *,
-        context: ToolContext | None = None,
-    ) -> ToolOutput:
-        """校验参数并在工具声明的时间边界内执行一次调用。"""
+    def validate_arguments(self, name: str, arguments: ToolArguments) -> dict[str, object]:
+        """校验工具参数并返回普通字典，供审计和执行共用。"""
 
         spec = self.get_spec(name)
         if not isinstance(arguments, Mapping):
@@ -135,6 +129,19 @@ class ToolRegistry:
             raise
         except (TypeError, ValueError) as error:
             raise ToolValidationError() from error
+        return arguments_dict
+
+    async def execute(
+        self,
+        name: str,
+        arguments: ToolArguments,
+        *,
+        context: ToolContext | None = None,
+    ) -> ToolOutput:
+        """校验参数并在工具声明的时间边界内执行一次调用。"""
+
+        spec = self.get_spec(name)
+        arguments_dict = self.validate_arguments(name, arguments)
 
         handler = self._handlers[name]
         execution_context = context or ToolContext()

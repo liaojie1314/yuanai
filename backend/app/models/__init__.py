@@ -17,6 +17,21 @@ from app.models.message import Message
 from app.models.push_subscription import PushSubscription
 from app.models.qr_login import QRLoginChallenge, QRLoginEvent
 from app.models.share import ConversationShare
+from app.models.tool_runtime import (
+    Artifact,
+    ArtifactKind,
+    ExecutionNode,
+    ExecutionNodeStatus,
+    McpServer,
+    McpServerStatus,
+    ResourceGrant,
+    ResourceGrantKind,
+    ToolConnection,
+    ToolConnectionKind,
+    ToolConnectionStatus,
+    ToolExecution,
+    ToolExecutionStatus,
+)
 from app.models.upload_session import FileUploadSession
 from app.models.user import User
 
@@ -45,4 +60,17 @@ __all__ = [
     "ApprovalRequest",
     "ApprovalRiskLevel",
     "ApprovalStatus",
+    "ToolConnection",
+    "ToolConnectionKind",
+    "ToolConnectionStatus",
+    "ToolExecution",
+    "ToolExecutionStatus",
+    "ExecutionNode",
+    "ExecutionNodeStatus",
+    "ResourceGrant",
+    "ResourceGrantKind",
+    "Artifact",
+    "ArtifactKind",
+    "McpServer",
+    "McpServerStatus",
 ]
