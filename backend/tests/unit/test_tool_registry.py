@@ -1,4 +1,4 @@
-"""Task 5 bounded ToolRegistry 契约测试。"""
+"""ToolRegistry 的有界执行契约测试。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,9 @@ from app.tools.contracts import ToolContext, ToolErrorCode, ToolRisk, ToolSpec
 from app.tools.registry import ToolRegistry
 
 
-def _spec(name: str = "echo", *, timeout_seconds: int = 30) -> ToolSpec:
+def _spec(
+    name: str = "echo", *, timeout_seconds: int = 30, max_output_bytes: int = 32 * 1024
+) -> ToolSpec:
     return ToolSpec(
         name=name,
         description="测试工具",
@@ -29,6 +31,7 @@ def _spec(name: str = "echo", *, timeout_seconds: int = 30) -> ToolSpec:
         risk_level=ToolRisk.read,
         execution_location="cloud",
         timeout_seconds=timeout_seconds,
+        max_output_bytes=max_output_bytes,
         idempotent=True,
     )
 
@@ -106,6 +109,11 @@ async def test_registry_rejects_unknown_tool_and_oversized_output() -> None:
     registry.register(_spec("large"), large)
     with pytest.raises(RuntimeError, match=ToolErrorCode.OUTPUT_TOO_LARGE.value):
         await registry.execute("large", {"value": "ok"})
+
+    small_registry = ToolRegistry()
+    small_registry.register(_spec("small", max_output_bytes=16), large)
+    with pytest.raises(RuntimeError, match=ToolErrorCode.OUTPUT_TOO_LARGE.value):
+        await small_registry.execute("small", {"value": "ok"})
 
 
 @pytest.mark.asyncio

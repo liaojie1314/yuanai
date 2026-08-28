@@ -168,7 +168,8 @@ class ToolRegistry:
             encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
         except (TypeError, ValueError) as error:
             raise ToolExecutionError(ToolErrorCode.EXECUTION_FAILED) from error
-        if len(encoded.encode("utf-8")) > self._max_output_bytes:
+        output_limit = min(self._max_output_bytes, spec.max_output_bytes)
+        if len(encoded.encode("utf-8")) > output_limit:
             raise ToolExecutionError(ToolErrorCode.OUTPUT_TOO_LARGE)
         if not isinstance(result, (dict, list)):
             raise ToolExecutionError(ToolErrorCode.EXECUTION_FAILED)

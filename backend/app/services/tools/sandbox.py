@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
@@ -13,17 +14,70 @@ class SandboxExecutionError(RuntimeError):
     """代码不符合沙箱约束或子进程执行失败。"""
 
 
+def _sandbox_command(backend_root: Path) -> tuple[list[str], dict[str, str]]:
+    """构造无网络、只读代码目录的隔离命令。"""
+
+    clean_env = {"PATH": os.defpath, "PYTHONNOUSERSITE": "1"}
+    bwrap = shutil.which("bwrap")
+    if bwrap is None:
+        return [sys.executable, "-m", "app.services.tools.sandbox_worker"], clean_env
+
+    python_runtime = Path(sys.executable).resolve().parent.parent
+    app_root = backend_root / "app"
+    command = [
+        bwrap,
+        "--die-with-parent",
+        "--unshare-all",
+        "--new-session",
+        "--clearenv",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--ro-bind",
+        "/lib",
+        "/lib",
+        "--ro-bind",
+        "/lib64",
+        "/lib64",
+        "--ro-bind",
+        str(python_runtime),
+        "/runtime",
+        "--ro-bind",
+        str(app_root),
+        "/sandbox/app",
+        "--tmpfs",
+        "/tmp",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--chdir",
+        "/sandbox",
+        "--setenv",
+        "PATH",
+        "/runtime/bin",
+        "--setenv",
+        "PYTHONPATH",
+        "/sandbox",
+        "--setenv",
+        "PYTHONNOUSERSITE",
+        "1",
+        f"/runtime/bin/{Path(sys.executable).name}",
+        "-m",
+        "app.services.tools.sandbox_worker",
+    ]
+    return command, {}
+
+
 async def execute_python(code: str, *, timeout_seconds: float = 10.0) -> dict[str, object]:
     """在无继承环境的独立进程中执行受限表达式。"""
 
     if not code.strip() or len(code) > 8_000:
         raise SandboxExecutionError("SANDBOX_CODE_INVALID")
     backend_root = Path(__file__).resolve().parents[2]
-    clean_env = {"PATH": os.defpath, "PYTHONNOUSERSITE": "1"}
+    command, clean_env = _sandbox_command(backend_root)
     process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "app.services.tools.sandbox_worker",
+        *command,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
