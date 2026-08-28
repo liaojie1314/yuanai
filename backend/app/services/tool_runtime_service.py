@@ -42,7 +42,7 @@ from app.tools.contracts import (
     ToolSpec,
     ToolValidationError,
 )
-from app.tools.registry import ToolRegistry
+from app.tools.registry import ToolRegistry, validate_arguments_against_schema
 
 _NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -99,8 +99,14 @@ def catalog_item(spec: ToolSpec) -> dict[str, object]:
 class ToolRuntimeService:
     """统一执行入口，保证策略、审计和大结果外置存储不被路由绕过。"""
 
-    def __init__(self, registry: ToolRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: ToolRegistry | None = None,
+        *,
+        mcp_transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self.registry = registry or build_phase6_registry()
+        self._mcp_transport = mcp_transport
 
     def catalog(self) -> list[dict[str, object]]:
         """返回稳定排序的内置工具目录。"""
@@ -388,7 +394,7 @@ class ToolRuntimeService:
             endpoint_url=endpoint,
             transport="streamable_http",
             status=McpServerStatus.pending,
-            enabled_tools=sorted(set(enabled_tools)),
+            enabled_tools=[],
             metadata_json={},
         )
         db.add(server)
@@ -428,7 +434,9 @@ class ToolRuntimeService:
 
         server = await self.get_mcp_server(server_id, user_id=user_id, db=db)
         try:
-            async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            async with httpx.AsyncClient(
+                timeout=15, follow_redirects=False, transport=self._mcp_transport
+            ) as client:
                 response = await client.post(
                     server.endpoint_url,
                     json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
@@ -456,6 +464,16 @@ class ToolRuntimeService:
                     "name": item["name"],
                     "description": str(item.get("description", ""))[:500],
                     "inputSchema": input_schema if isinstance(input_schema, dict) else {},
+                    "annotations": (
+                        {
+                            key: value
+                            for key, value in item["annotations"].items()
+                            if key in {"readOnlyHint", "destructiveHint", "idempotentHint"}
+                            and isinstance(value, bool)
+                        }
+                        if isinstance(item.get("annotations"), Mapping)
+                        else {}
+                    ),
                 }
             )
         snapshot: dict[str, object] = {"tools": snapshot_tools}
@@ -506,6 +524,122 @@ class ToolRuntimeService:
         await db.commit()
         await db.refresh(server)
         return server
+
+    async def create_mcp_execution(
+        self,
+        server_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID,
+        tool_name: str,
+        arguments: dict[str, object],
+        db: AsyncSession,
+    ) -> ToolExecution:
+        """调用已发现且明确启用的 MCP 工具，并为副作用调用保留审批状态。"""
+
+        server = await self.get_mcp_server(server_id, user_id=user_id, db=db)
+        if server.status is not McpServerStatus.active or tool_name not in server.enabled_tools:
+            raise ToolRuntimeError("MCP_TOOL_NOT_ENABLED")
+        snapshot = server.schema_snapshot or {}
+        tools_value = snapshot.get("tools") if isinstance(snapshot, Mapping) else None
+        schema_item = (
+            next(
+                (
+                    item
+                    for item in tools_value
+                    if isinstance(item, dict) and item.get("name") == tool_name
+                ),
+                None,
+            )
+            if isinstance(tools_value, list)
+            else None
+        )
+        if not isinstance(schema_item, dict):
+            raise ToolRuntimeError("MCP_TOOL_NOT_VERIFIED")
+        input_schema = schema_item.get("inputSchema", {})
+        if not isinstance(input_schema, Mapping):
+            raise ToolRuntimeError("MCP_SCHEMA_INVALID")
+        try:
+            validated_arguments = validate_arguments_against_schema(arguments, input_schema)
+        except ToolValidationError as error:
+            raise ToolRuntimeError("MCP_TOOL_INVALID_INPUT") from error
+
+        annotations = schema_item.get("annotations")
+        read_only = isinstance(annotations, Mapping) and annotations.get("readOnlyHint") is True
+        execution = ToolExecution(
+            user_id=user_id,
+            tool_name=tool_name,
+            tool_version="mcp-1.0.0",
+            execution_location="mcp_remote",
+            risk_level="read" if read_only else "external_side_effect",
+            side_effect="none" if read_only else "external",
+            arguments_preview=sanitize_arguments(validated_arguments),
+            arguments_hash=payload_hash(validated_arguments),
+            status=ToolExecutionStatus.queued,
+            artifact_ids=[],
+        )
+        db.add(execution)
+        await db.flush()
+        if not read_only:
+            execution.status = ToolExecutionStatus.waiting
+            execution.error_code = "TOOL_APPROVAL_REQUIRED"
+            execution.error_message = "MCP 工具未声明只读，需要 Agent 审批后执行"
+            await db.commit()
+            await db.refresh(execution)
+            return execution
+
+        try:
+            endpoint = validate_public_url(server.endpoint_url)
+            async with httpx.AsyncClient(
+                timeout=15, follow_redirects=False, transport=self._mcp_transport
+            ) as client:
+                response = await client.post(
+                    endpoint,
+                    json={
+                        "jsonrpc": "2.0",
+                        "id": str(execution.id),
+                        "method": "tools/call",
+                        "params": {"name": tool_name, "arguments": validated_arguments},
+                    },
+                    headers={"Accept": "application/json, text/event-stream"},
+                )
+                if response.is_redirect:
+                    raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
+                response.raise_for_status()
+                payload_value = response.json()
+        except ToolRuntimeError:
+            raise
+        except (httpx.HTTPError, TimeoutError, ValueError, UrlPolicyError) as error:
+            execution.status = ToolExecutionStatus.failed
+            execution.error_code = "MCP_CALL_FAILED"
+            execution.error_message = "MCP 工具调用失败"
+            execution.finished_at = datetime.now(UTC)
+            await db.commit()
+            await db.refresh(execution)
+            raise ToolRuntimeError("MCP_CALL_FAILED") from error
+        if not isinstance(payload_value, dict):
+            raise ToolRuntimeError("MCP_RESPONSE_INVALID")
+        if payload_value.get("error") is not None:
+            execution.status = ToolExecutionStatus.failed
+            execution.error_code = "MCP_TOOL_FAILED"
+            execution.error_message = "MCP 工具返回错误"
+        else:
+            result_value = payload_value.get("result")
+            if not isinstance(result_value, dict):
+                raise ToolRuntimeError("MCP_RESPONSE_INVALID")
+            encoded = json.dumps(result_value, ensure_ascii=False, separators=(",", ":"))
+            if len(encoded.encode("utf-8")) > 32 * 1024:
+                execution.status = ToolExecutionStatus.failed
+                execution.error_code = "TOOL_OUTPUT_TOO_LARGE"
+                execution.error_message = "MCP 工具结果超过大小限制"
+            else:
+                execution.result_json = result_value
+                execution.result_summary = "MCP 只读工具执行完成"
+                execution.status = ToolExecutionStatus.succeeded
+        execution.started_at = execution.started_at or datetime.now(UTC)
+        execution.finished_at = datetime.now(UTC)
+        await db.commit()
+        await db.refresh(execution)
+        return execution
 
     async def create_execution(
         self,

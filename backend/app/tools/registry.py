@@ -85,6 +85,18 @@ def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
         raise _schema_error()
 
 
+def validate_arguments_against_schema(
+    arguments: Mapping[str, object], schema: Mapping[str, object]
+) -> dict[str, object]:
+    """验证外部工具 schema 的有限 JSON Schema 子集。"""
+
+    if not isinstance(arguments, Mapping):
+        raise ToolValidationError()
+    arguments_dict = dict(arguments)
+    _validate_schema(arguments_dict, schema)
+    return arguments_dict
+
+
 class ToolRegistry:
     """管理工具 schema、输入校验、超时和稳定错误包装。"""
 
@@ -120,11 +132,8 @@ class ToolRegistry:
         """校验工具参数并返回普通字典，供审计和执行共用。"""
 
         spec = self.get_spec(name)
-        if not isinstance(arguments, Mapping):
-            raise ToolValidationError()
-        arguments_dict = dict(arguments)
         try:
-            _validate_schema(arguments_dict, spec.input_schema)
+            arguments_dict = validate_arguments_against_schema(arguments, spec.input_schema)
         except ToolValidationError:
             raise
         except (TypeError, ValueError) as error:

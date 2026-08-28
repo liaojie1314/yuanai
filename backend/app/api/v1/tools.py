@@ -23,6 +23,7 @@ from app.schemas.tool_runtime import (
     McpEnableToolsRequest,
     McpServerCreateRequest,
     McpServerResponse,
+    McpToolExecuteRequest,
     ResourceGrantCreateRequest,
     ResourceGrantResponse,
     ToolCatalogResponse,
@@ -336,4 +337,35 @@ async def enable_mcp_tools(
         )
     except ToolRuntimeError as error:
         status_code = 422 if str(error) == "MCP_TOOL_NOT_VERIFIED" else 404
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+@router.post(
+    "/mcp-servers/{server_id}/execute",
+    response_model=ToolExecutionResponse,
+    status_code=202,
+)
+async def execute_mcp_tool(
+    server_id: uuid.UUID,
+    req: McpToolExecuteRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> ToolExecution:
+    """调用明确启用的 MCP 工具；未声明只读的工具只登记为 waiting。"""
+
+    try:
+        return await runtime.create_mcp_execution(
+            server_id,
+            user_id=current_user.id,
+            tool_name=req.tool_name,
+            arguments=req.arguments,
+            db=db,
+        )
+    except ToolRuntimeError as error:
+        status_code = (
+            404
+            if str(error)
+            in {"MCP_SERVER_NOT_FOUND", "MCP_TOOL_NOT_ENABLED", "MCP_TOOL_NOT_VERIFIED"}
+            else 422
+        )
         raise HTTPException(status_code=status_code, detail=str(error)) from error

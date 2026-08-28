@@ -216,6 +216,13 @@ class McpServerResponse(AgentSchema):
     updated_at: datetime
 
 
+class McpToolExecuteRequest(AgentSchema):
+    """调用已验证并明确启用的 MCP 工具。"""
+
+    tool_name: str = Field(min_length=1, max_length=100)
+    arguments: dict[str, object] = Field(default_factory=dict)
+
+
 class McpEnableToolsRequest(AgentSchema):
     """明确启用 MCP 工具列表。"""
 
