@@ -32,7 +32,12 @@ from app.schemas.tool_runtime import (
     ToolExecuteRequest,
     ToolExecutionResponse,
 )
-from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
+from app.services.tool_runtime_service import (
+    ToolRuntimeError,
+    ToolRuntimeService,
+    artifact_download_url,
+    verify_artifact_download_token,
+)
 
 router = APIRouter(tags=["tools"])
 runtime = ToolRuntimeService()
@@ -55,7 +60,7 @@ def _artifact_response(artifact: Artifact, user_id: uuid.UUID) -> ArtifactRespon
         retention_policy=artifact.retention_policy,
         expires_at=artifact.expires_at,
         preview=artifact.preview_json,
-        download_url=f"/api/v1/artifacts/{artifact.id}/content",
+        download_url=artifact_download_url(artifact.id, user_id),
         created_at=artifact.created_at,
     )
 
@@ -172,9 +177,21 @@ async def get_artifact(
 
 
 @router.get("/artifacts/{artifact_id}/content")
-async def download_artifact(artifact_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Response:
+async def download_artifact(
+    artifact_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    expires: int | None = None,
+    signature: str | None = None,
+) -> Response:
     """鉴权读取 Artifact 内容，避免公开 storage key。"""
 
+    if (
+        expires is None
+        or signature is None
+        or not verify_artifact_download_token(artifact_id, current_user.id, expires, signature)
+    ):
+        raise HTTPException(status_code=403, detail="ARTIFACT_SIGNATURE_INVALID")
     try:
         artifact, content = await runtime.read_artifact_content(
             artifact_id, user_id=current_user.id, db=db
@@ -186,6 +203,17 @@ async def download_artifact(artifact_id: uuid.UUID, current_user: CurrentUser, d
         media_type=artifact.mime_type,
         headers={"Content-Disposition": f'attachment; filename="{artifact.name}"'},
     )
+
+
+@router.delete("/artifacts/{artifact_id}", status_code=204)
+async def delete_artifact(artifact_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Response:
+    """删除当前用户的 Artifact 及其存储对象。"""
+
+    try:
+        await runtime.delete_artifact(artifact_id, user_id=current_user.id, db=db)
+    except ToolRuntimeError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return Response(status_code=204)
 
 
 @router.post("/execution-nodes/pair", response_model=ExecutionNodePairResponse, status_code=201)

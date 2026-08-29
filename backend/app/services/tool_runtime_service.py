@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import re
 import secrets
@@ -16,6 +17,7 @@ import httpx
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models.agent_run import AgentRun
 from app.models.tool_runtime import (
     Artifact,
@@ -55,6 +57,42 @@ _NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 class ToolRuntimeError(RuntimeError):
     """Tool Runtime 可安全返回给 API 的领域错误。"""
+
+
+def create_artifact_download_token(
+    artifact_id: uuid.UUID, user_id: uuid.UUID, *, expires_at: datetime
+) -> str:
+    """为指定租户的 Artifact 生成短期下载签名。"""
+
+    expires = int(expires_at.timestamp())
+    payload = f"{artifact_id}:{user_id}:{expires}".encode()
+    return hmac.new(settings.jwt_secret_key.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def verify_artifact_download_token(
+    artifact_id: uuid.UUID, user_id: uuid.UUID, expires: int, token: str
+) -> bool:
+    """校验 Artifact 下载签名、租户边界和有效期。"""
+
+    if expires <= int(datetime.now(UTC).timestamp()) or not token:
+        return False
+    expected = create_artifact_download_token(
+        artifact_id,
+        user_id,
+        expires_at=datetime.fromtimestamp(expires, tz=UTC),
+    )
+    return hmac.compare_digest(expected, token)
+
+
+def artifact_download_url(artifact_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    """生成带有短期签名的内部 Artifact 下载地址。"""
+
+    expires_at = datetime.now(UTC) + timedelta(
+        seconds=max(1, settings.tool_artifact_url_ttl_seconds)
+    )
+    expires = int(expires_at.timestamp())
+    token = create_artifact_download_token(artifact_id, user_id, expires_at=expires_at)
+    return f"/api/v1/artifacts/{artifact_id}/content?expires={expires}&signature={token}"
 
 
 def _safe_name(value: str) -> str:
@@ -285,11 +323,54 @@ class ToolRuntimeService:
         """按租户读取 Artifact 内容，存储 key 不对外暴露。"""
 
         artifact = await self.get_artifact(artifact_id, user_id=user_id, db=db)
+        if artifact.expires_at is not None and artifact.expires_at <= datetime.now(UTC):
+            raise ToolRuntimeError("ARTIFACT_EXPIRED")
         try:
             content = await storage.get_object(artifact.storage_key)
         except (OSError, KeyError, ValueError) as error:
             raise ToolRuntimeError("ARTIFACT_CONTENT_NOT_FOUND") from error
         return artifact, content
+
+    async def delete_artifact(
+        self, artifact_id: uuid.UUID, *, user_id: uuid.UUID, db: AsyncSession
+    ) -> None:
+        """删除当前租户的 Artifact 及其对象存储内容。"""
+
+        artifact = await self.get_artifact(artifact_id, user_id=user_id, db=db)
+        try:
+            await storage.delete(artifact.storage_key)
+        except (OSError, KeyError, ValueError) as error:
+            raise ToolRuntimeError("ARTIFACT_DELETE_FAILED") from error
+        await db.delete(artifact)
+        await db.commit()
+
+    async def purge_expired_artifacts(
+        self, *, db: AsyncSession, now: datetime | None = None, limit: int = 100
+    ) -> int:
+        """删除已过期 Artifact，存储删除失败时保留记录供下次重试。"""
+
+        current_time = now or datetime.now(UTC)
+        artifacts = list(
+            (
+                await db.scalars(
+                    select(Artifact)
+                    .where(Artifact.expires_at.is_not(None), Artifact.expires_at <= current_time)
+                    .order_by(Artifact.expires_at.asc())
+                    .limit(max(1, min(limit, 500)))
+                )
+            ).all()
+        )
+        removed = 0
+        for artifact in artifacts:
+            try:
+                await storage.delete(artifact.storage_key)
+            except (OSError, KeyError, ValueError):
+                continue
+            await db.delete(artifact)
+            removed += 1
+        if removed:
+            await db.commit()
+        return removed
 
     async def get_node(
         self, node_id: uuid.UUID, *, user_id: uuid.UUID, db: AsyncSession

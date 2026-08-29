@@ -102,6 +102,9 @@ class Settings(BaseSettings):
     media_video_poster_timeout_seconds: int = 12
     media_video_poster_max_bytes: int = 2 * 1024 * 1024
 
+    # 工具 Artifact 下载链接的短期签名有效期。
+    tool_artifact_url_ttl_seconds: int = 300
+
     # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
     search_provider: SearchProviderName = "auto"
     searxng_base_url: str = "http://127.0.0.1:8082"

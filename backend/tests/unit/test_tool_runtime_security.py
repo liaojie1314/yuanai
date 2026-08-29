@@ -1,6 +1,7 @@
 """Tool Runtime 的安全契约测试。"""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,7 +11,12 @@ from app.models.tool_runtime import (
     ExecutionNodeStatus,
     ToolExecutionStatus,
 )
-from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
+from app.services.tool_runtime_service import (
+    ToolRuntimeError,
+    ToolRuntimeService,
+    create_artifact_download_token,
+    verify_artifact_download_token,
+)
 from app.services.tools.sandbox import SandboxExecutionError, execute_python
 from app.services.tools.web_security import UrlPolicyError, validate_public_url
 from app.tools.contracts import SideEffect, ToolContext, ToolRisk, ToolSpec
@@ -110,6 +116,29 @@ async def test_execution_persists_the_unified_tool_result_contract(
     assert execution.result_json["citations"] == []
     assert execution.result_json["metrics"]["output_bytes"] > 0
     assert execution.result_json["error"] is None
+
+
+@pytest.mark.asyncio
+async def test_expired_artifact_is_unreadable_and_purgeable(db: AsyncSession, test_user) -> None:
+    """过期 Artifact 不得读取，并可由清理任务移除记录和对象。"""
+
+    service = ToolRuntimeService()
+    artifact = await service.create_artifact(
+        user_id=test_user.id,
+        data=b"expired report",
+        name="expired-report.txt",
+        mime_type="text/plain",
+        db=db,
+    )
+    artifact.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    await db.flush()
+
+    with pytest.raises(ToolRuntimeError, match="ARTIFACT_EXPIRED"):
+        await service.read_artifact_content(artifact.id, user_id=test_user.id, db=db)
+
+    assert await service.purge_expired_artifacts(db=db) == 1
+    with pytest.raises(ToolRuntimeError, match="ARTIFACT_NOT_FOUND"):
+        await service.get_artifact(artifact.id, user_id=test_user.id, db=db)
 
 
 @pytest.mark.asyncio
@@ -234,3 +263,24 @@ def test_tool_context_does_not_expose_unrelated_user_identity() -> None:
     context = ToolContext(user_id=user_id)
     assert context.user_id == user_id
     assert context.db is None
+
+
+def test_artifact_download_token_is_expiring_and_tenant_bound() -> None:
+    """Artifact 下载签名必须绑定租户、Artifact 和明确的过期时间。"""
+
+    user_id = uuid.uuid4()
+    other_user_id = uuid.uuid4()
+    artifact_id = uuid.uuid4()
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
+    token = create_artifact_download_token(artifact_id, user_id, expires_at=expires_at)
+    expires = int(expires_at.timestamp())
+
+    assert verify_artifact_download_token(artifact_id, user_id, expires, token) is True
+    assert verify_artifact_download_token(artifact_id, other_user_id, expires, token) is False
+    assert verify_artifact_download_token(uuid.uuid4(), user_id, expires, token) is False
+    assert (
+        verify_artifact_download_token(
+            artifact_id, user_id, int((datetime.now(UTC) - timedelta(seconds=1)).timestamp()), token
+        )
+        is False
+    )

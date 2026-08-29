@@ -76,17 +76,18 @@ async def test_connection_and_artifact_access_are_tenant_scoped(
         mime_type="text/plain",
         db=db,
     )
-    own_artifact = await client.get(
-        f"/api/v1/artifacts/{artifact.id}/content", headers=auth_headers
-    )
+    artifact_details = await client.get(f"/api/v1/artifacts/{artifact.id}", headers=auth_headers)
+    assert artifact_details.status_code == 200
+    assert "signature=" in artifact_details.json()["downloadUrl"]
+    own_artifact = await client.get(artifact_details.json()["downloadUrl"], headers=auth_headers)
     assert own_artifact.status_code == 200
     assert own_artifact.content == b"tenant report"
 
     other_headers = {"Authorization": f"Bearer {create_access_token(str(other.id))}"}
     forbidden_artifact = await client.get(
-        f"/api/v1/artifacts/{artifact.id}/content", headers=other_headers
+        artifact_details.json()["downloadUrl"], headers=other_headers
     )
-    assert forbidden_artifact.status_code == 404
+    assert forbidden_artifact.status_code == 403
 
 
 async def test_node_pairing_heartbeat_and_resource_grant(
