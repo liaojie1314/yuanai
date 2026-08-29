@@ -83,6 +83,36 @@ async def test_execution_sanitizes_arguments_and_detects_idempotency_conflict(
 
 
 @pytest.mark.asyncio
+async def test_execution_persists_the_unified_tool_result_contract(
+    db: AsyncSession, test_user
+) -> None:
+    """成功执行应保存统一结果，而不是把 handler 原始字典直接落库。"""
+
+    service = ToolRuntimeService()
+    execution = await service.create_execution(
+        user_id=test_user.id,
+        tool_name="calculate",
+        arguments={"expression": "2 + 3"},
+        execution_location="cloud",
+        db=db,
+    )
+
+    await service.execute(
+        execution,
+        arguments={"expression": "2 + 3"},
+        db=db,
+    )
+
+    assert execution.result_json is not None
+    assert execution.result_json["status"] == "succeeded"
+    assert execution.result_json["data"] == {"result": 5}
+    assert execution.result_json["artifacts"] == []
+    assert execution.result_json["citations"] == []
+    assert execution.result_json["metrics"]["output_bytes"] > 0
+    assert execution.result_json["error"] is None
+
+
+@pytest.mark.asyncio
 async def test_manual_side_effect_waits_without_calling_handler(
     db: AsyncSession, test_user
 ) -> None:

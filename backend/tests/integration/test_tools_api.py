@@ -28,7 +28,9 @@ async def test_catalog_and_read_execution_are_available(
     assert execution.status_code == 202
     payload = execution.json()
     assert payload["status"] == "succeeded"
-    assert payload["resultJson"]["result"] == 5
+    assert payload["resultJson"]["status"] == "succeeded"
+    assert payload["resultJson"]["data"]["result"] == 5
+    assert payload["resultJson"]["error"] is None
     assert payload["argumentsHash"] != "2 + 3"
 
 

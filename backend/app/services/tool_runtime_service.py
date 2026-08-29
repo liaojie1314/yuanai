@@ -10,6 +10,7 @@ import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
+from typing import cast
 
 import httpx
 from sqlalchemy import select, update
@@ -36,9 +37,14 @@ from app.services.storage_service import storage
 from app.services.tools.web_security import UrlPolicyError, validate_public_url
 from app.tools.builtin import build_phase6_registry
 from app.tools.contracts import (
+    ArtifactRef,
+    Citation,
     ToolContext,
     ToolError,
+    ToolErrorPayload,
+    ToolMetrics,
     ToolRegistrationError,
+    ToolResult,
     ToolSpec,
     ToolValidationError,
 )
@@ -249,6 +255,13 @@ class ToolRuntimeService:
             execution.status = ToolExecutionStatus.cancelled
             execution.error_code = "TOOL_CANCELLED"
             execution.finished_at = datetime.now(UTC)
+            execution.result_json = _tool_result_payload(
+                ToolResult(
+                    status="cancelled",
+                    summary="工具执行已取消",
+                    error=ToolErrorPayload(code="TOOL_CANCELLED", message="工具执行已取消"),
+                )
+            )
             await db.commit()
             await db.refresh(execution)
         return execution
@@ -613,6 +626,13 @@ class ToolRuntimeService:
             execution.error_code = "MCP_CALL_FAILED"
             execution.error_message = "MCP 工具调用失败"
             execution.finished_at = datetime.now(UTC)
+            execution.result_json = _tool_result_payload(
+                ToolResult(
+                    status="failed",
+                    summary="MCP 工具调用失败",
+                    error=ToolErrorPayload(code="MCP_CALL_FAILED", message="MCP 工具调用失败"),
+                )
+            )
             await db.commit()
             await db.refresh(execution)
             raise ToolRuntimeError("MCP_CALL_FAILED") from error
@@ -631,12 +651,31 @@ class ToolRuntimeService:
                 execution.status = ToolExecutionStatus.failed
                 execution.error_code = "TOOL_OUTPUT_TOO_LARGE"
                 execution.error_message = "MCP 工具结果超过大小限制"
+                execution.result_json = _tool_result_payload(
+                    ToolResult(
+                        status="failed",
+                        summary="MCP 工具结果超过大小限制",
+                        error=ToolErrorPayload(
+                            code="TOOL_OUTPUT_TOO_LARGE", message="MCP 工具结果超过大小限制"
+                        ),
+                    )
+                )
             else:
                 execution.result_json = result_value
                 execution.result_summary = "MCP 只读工具执行完成"
                 execution.status = ToolExecutionStatus.succeeded
         execution.started_at = execution.started_at or datetime.now(UTC)
         execution.finished_at = datetime.now(UTC)
+        if execution.status is ToolExecutionStatus.succeeded:
+            output_bytes = len(encoded.encode("utf-8"))
+            execution.result_json = _tool_result_payload(
+                ToolResult(
+                    status="succeeded",
+                    summary="MCP 只读工具执行完成",
+                    data=result_value,
+                    metrics=ToolMetrics(output_bytes=output_bytes),
+                )
+            )
         await db.commit()
         await db.refresh(execution)
         return execution
@@ -735,17 +774,13 @@ class ToolRuntimeService:
             )
             await self.complete_success(execution, output=output, db=db)
         except ToolError as error:
-            execution.status = ToolExecutionStatus.failed
-            execution.error_code = error.code.value
-            execution.error_message = str(error)[:500]
+            await self.fail_execution(execution, code=error.code.value, message=str(error), db=db)
         except ToolRuntimeError as error:
-            execution.status = ToolExecutionStatus.failed
-            execution.error_code = str(error)
-            execution.error_message = str(error)[:500]
+            await self.fail_execution(execution, code=str(error), message=str(error), db=db)
         except (OSError, RuntimeError, ValueError, TypeError) as error:
-            execution.status = ToolExecutionStatus.failed
-            execution.error_code = "TOOL_EXECUTION_FAILED"
-            execution.error_message = str(error)[:500]
+            await self.fail_execution(
+                execution, code="TOOL_EXECUTION_FAILED", message=str(error), db=db
+            )
         execution.finished_at = datetime.now(UTC)
         await db.flush()
         return execution
@@ -765,6 +800,7 @@ class ToolRuntimeService:
         else:
             result_json = dict(output)
         artifact_ids: list[str] = []
+        artifact_refs: list[ArtifactRef] = []
         content = result_json.pop("content", None)
         if isinstance(content, str) and result_json.get("workspace") is True:
             name = str(result_json.get("name", "artifact.txt"))
@@ -780,6 +816,16 @@ class ToolRuntimeService:
                 preview={"text": content[:2_000]},
             )
             artifact_ids.append(str(artifact.id))
+            artifact_refs.append(
+                ArtifactRef(
+                    id=str(artifact.id),
+                    name=artifact.name,
+                    kind=artifact.kind.value,
+                    mime_type=artifact.mime_type,
+                    size_bytes=artifact.size_bytes,
+                    sha256=artifact.sha256,
+                )
+            )
             result_json["artifact_id"] = str(artifact.id)
             result_json.pop("workspace", None)
         execution.result_json = result_json
@@ -787,6 +833,26 @@ class ToolRuntimeService:
         execution.result_summary = _summary(result_json)
         execution.status = ToolExecutionStatus.succeeded
         execution.finished_at = datetime.now(UTC)
+        result_data: dict[str, object] | list[object]
+        if isinstance(output, list):
+            result_data = result_json
+        else:
+            result_data = result_json
+        encoded = json.dumps(result_data, ensure_ascii=False, separators=(",", ":"))
+        duration_ms = _duration_ms(execution.started_at)
+        execution.result_json = _tool_result_payload(
+            ToolResult(
+                status="succeeded",
+                summary=execution.result_summary,
+                data=result_data,
+                artifacts=artifact_refs,
+                citations=_citations_from_data(result_json),
+                metrics=ToolMetrics(
+                    duration_ms=duration_ms,
+                    output_bytes=len(encoded.encode("utf-8")),
+                ),
+            )
+        )
         await db.flush()
 
     async def fail_execution(
@@ -803,6 +869,13 @@ class ToolRuntimeService:
         execution.error_code = code[:100]
         execution.error_message = message[:500]
         execution.finished_at = datetime.now(UTC)
+        execution.result_json = _tool_result_payload(
+            ToolResult(
+                status="failed",
+                summary="工具执行失败",
+                error=ToolErrorPayload(code=code[:100], message=message[:500]),
+            )
+        )
         await db.flush()
 
     async def create_artifact(
@@ -894,6 +967,44 @@ def _summary(value: dict[str, object]) -> str:
     if "artifact_id" in value:
         return "已生成 Artifact"
     return str({key: item for key, item in value.items() if key not in {"text", "content"}})[:1000]
+
+
+def _tool_result_payload(result: ToolResult) -> dict[str, object]:
+    """把统一结果序列化为可安全写入 JSON 列的普通字典。"""
+
+    return cast(dict[str, object], result.model_dump(mode="json"))
+
+
+def _duration_ms(started_at: datetime | None) -> int:
+    """计算不包含敏感信息的执行耗时。"""
+
+    if started_at is None:
+        return 0
+    return max(0, int((datetime.now(UTC) - started_at).total_seconds() * 1_000))
+
+
+def _citations_from_data(value: Mapping[str, object]) -> list[Citation]:
+    """从搜索工具的结构化来源中提取统一引用。"""
+
+    sources = value.get("sources")
+    if not isinstance(sources, list):
+        return []
+    citations: list[Citation] = []
+    for source in sources:
+        if not isinstance(source, Mapping):
+            continue
+        title = source.get("title")
+        url = source.get("url")
+        snippet = source.get("snippet", "")
+        if isinstance(title, str) and isinstance(url, str):
+            citations.append(
+                Citation(
+                    title=title[:500],
+                    url=url[:2_000],
+                    snippet=snippet[:1_000] if isinstance(snippet, str) else "",
+                )
+            )
+    return citations
 
 
 def connection_model(kind: str) -> ToolConnectionKind:
