@@ -22,7 +22,7 @@ from app.services.agent.queue import (
     AgentQueue,
     QueueItem,
 )
-from app.tools.builtin import build_builtin_registry
+from app.tools.builtin import build_phase6_registry
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
             await db.commit()
             return
         coordinator = AgentCoordinator(
-            tool_registry=build_builtin_registry(),
+            tool_registry=build_phase6_registry(),
             event_store=EventStore(queue=AgentQueue(redis_client)),
         )
         approval = await db.scalar(
