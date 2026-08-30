@@ -145,6 +145,9 @@ class ToolExecution(Base):
     connection_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("tool_connections.id", ondelete="SET NULL"), nullable=True
     )
+    mcp_server_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("mcp_servers.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     execution_location: Mapped[str] = mapped_column(String(20), nullable=False)
     node_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("execution_nodes.id", ondelete="SET NULL"), nullable=True
@@ -272,6 +275,9 @@ class McpServer(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    connection_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tool_connections.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     endpoint_url: Mapped[str] = mapped_column(String(500), nullable=False)

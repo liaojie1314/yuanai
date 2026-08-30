@@ -128,8 +128,9 @@ class ApprovalRequestResponse(AgentSchema):
     """审批卡片响应，不包含未脱敏的原始参数。"""
 
     id: uuid.UUID
-    run_id: uuid.UUID
-    step_id: uuid.UUID
+    run_id: uuid.UUID | None
+    step_id: uuid.UUID | None
+    tool_execution_id: uuid.UUID | None
     user_id: uuid.UUID
     tool_name: str
     execution_location: str

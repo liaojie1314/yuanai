@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentStep, AgentStepKind, AgentStepStatus
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
+from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
 
 
 class ApprovalDecision(StrEnum):
@@ -119,6 +120,42 @@ class ApprovalService:
         if db is not None:
             db.add(request)
             await db.flush()
+        return request
+
+    async def create_tool_request(
+        self,
+        *,
+        user_id: uuid.UUID,
+        tool_execution_id: uuid.UUID,
+        tool_name: str,
+        arguments: dict[str, object],
+        risk_level: ApprovalRiskLevel | str,
+        execution_location: str,
+        action_summary: str,
+        db: AsyncSession,
+        expires_at: datetime | None = None,
+    ) -> ApprovalRequest:
+        """创建不依附 Agent Run 的工具审批，并绑定单次执行记录。"""
+
+        request = ApprovalRequest(
+            id=uuid.uuid4(),
+            run_id=None,
+            step_id=None,
+            tool_execution_id=tool_execution_id,
+            user_id=user_id,
+            tool_name=tool_name,
+            execution_location=execution_location,
+            risk_level=ApprovalRiskLevel(risk_level),
+            action_summary=action_summary[:500],
+            arguments_preview=sanitize_arguments(arguments),
+            payload_hash=payload_hash(arguments),
+            status=ApprovalStatus.pending,
+            expires_at=expires_at
+            or datetime.now(UTC) + timedelta(seconds=self.default_ttl_seconds),
+        )
+        self._memory[request.id] = request
+        db.add(request)
+        await db.flush()
         return request
 
     async def decide(
@@ -244,6 +281,55 @@ class ApprovalService:
         if db is not None:
             await db.flush()
         return request
+
+    async def resolve_tool_execution(
+        self,
+        request: ApprovalRequest,
+        *,
+        user_id: uuid.UUID,
+        db: AsyncSession,
+    ) -> ToolExecution:
+        """把独立工具审批的决定同步到绑定执行记录。"""
+
+        if request.user_id != user_id or request.tool_execution_id is None:
+            raise ApprovalNotFoundError("工具审批请求不存在")
+        execution = await db.scalar(
+            select(ToolExecution).where(
+                ToolExecution.id == request.tool_execution_id,
+                ToolExecution.user_id == user_id,
+            )
+        )
+        if execution is None:
+            raise ApprovalNotFoundError("工具执行记录不存在")
+        if request.status is ApprovalStatus.approved:
+            if execution.status is not ToolExecutionStatus.waiting:
+                raise ApprovalError("工具执行当前不可恢复")
+            execution.status = ToolExecutionStatus.queued
+            execution.error_code = None
+            execution.error_message = None
+        elif request.status is ApprovalStatus.denied:
+            if execution.status is not ToolExecutionStatus.waiting:
+                raise ApprovalError("工具执行当前不可取消")
+            execution.status = ToolExecutionStatus.cancelled
+            execution.error_code = "TOOL_APPROVAL_DENIED"
+            execution.error_message = "用户拒绝了工具执行审批"
+            execution.finished_at = datetime.now(UTC)
+            execution.result_json = {
+                "status": "cancelled",
+                "summary": "工具执行审批被拒绝",
+                "data": None,
+                "artifacts": [],
+                "citations": [],
+                "metrics": {"duration_ms": 0, "output_bytes": 0},
+                "error": {
+                    "code": "TOOL_APPROVAL_DENIED",
+                    "message": "用户拒绝了工具执行审批",
+                },
+            }
+        else:
+            raise ApprovalError("审批请求尚未形成可执行决定")
+        await db.flush()
+        return execution
 
     async def resume_after_decision(
         self,

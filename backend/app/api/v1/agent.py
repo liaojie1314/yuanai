@@ -304,7 +304,11 @@ async def decide_approval(
         item = await _approvals.decide(
             approval_id, user_id=current_user.id, decision=req.decision, note=req.note, db=db
         )
-        run = await _approvals.resume_after_decision(item, user_id=current_user.id, db=db)
+        run = None
+        if item.tool_execution_id is not None:
+            await _approvals.resolve_tool_execution(item, user_id=current_user.id, db=db)
+        else:
+            run = await _approvals.resume_after_decision(item, user_id=current_user.id, db=db)
     except ApprovalNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ApprovalExpiredError as error:
@@ -314,7 +318,7 @@ async def decide_approval(
     except ApprovalError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     await db.commit()
-    if run.status is AgentRunStatus.queued:
+    if run is not None and run.status is AgentRunStatus.queued:
         try:
             await AgentQueue().enqueue(current_user.id, run.id)
         except (OSError, RuntimeError, RedisError):
@@ -325,7 +329,7 @@ async def decide_approval(
             {"approval_id": str(item.id), "decision": "approve"},
             tenant_id=current_user.id,
         )
-    else:
+    elif run is not None:
         await _events.append(
             run.id,
             "run_cancelled",

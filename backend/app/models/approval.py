@@ -41,11 +41,14 @@ class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True, nullable=False
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True, nullable=True
     )
-    step_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("agent_steps.id", ondelete="CASCADE"), index=True, nullable=False
+    step_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_steps.id", ondelete="CASCADE"), index=True, nullable=True
+    )
+    tool_execution_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tool_executions.id", ondelete="CASCADE"), index=True, nullable=True
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
@@ -71,5 +74,5 @@ class ApprovalRequest(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    run: Mapped[AgentRun] = relationship(back_populates="approval_requests")
-    step: Mapped[AgentStep] = relationship(back_populates="approval_requests")
+    run: Mapped[AgentRun | None] = relationship(back_populates="approval_requests")
+    step: Mapped[AgentStep | None] = relationship(back_populates="approval_requests")

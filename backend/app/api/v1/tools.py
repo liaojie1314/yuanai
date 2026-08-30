@@ -322,7 +322,7 @@ async def create_mcp_server(
             user_id=current_user.id,
             name=req.name,
             endpoint_url=req.endpoint_url,
-            enabled_tools=req.enabled_tools,
+            connection_id=req.connection_id,
             db=db,
         )
     except ToolRuntimeError as error:
@@ -387,6 +387,8 @@ async def execute_mcp_tool(
             user_id=current_user.id,
             tool_name=req.tool_name,
             arguments=req.arguments,
+            run_id=req.run_id,
+            approval_id=req.approval_id,
             db=db,
         )
     except ToolRuntimeError as error:

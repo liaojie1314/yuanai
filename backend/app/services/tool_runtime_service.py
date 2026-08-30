@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent_run import AgentRun
+from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.tool_runtime import (
     Artifact,
     ArtifactKind,
@@ -34,9 +35,15 @@ from app.models.tool_runtime import (
     ToolExecution,
     ToolExecutionStatus,
 )
-from app.services.agent.approval_service import payload_hash, sanitize_arguments
+from app.services.agent.approval_service import ApprovalService, payload_hash, sanitize_arguments
+from app.services.secret_store import SecretStore, SecretStoreUnavailableError
 from app.services.storage_service import storage
-from app.services.tools.web_security import UrlPolicyError, validate_public_url
+from app.services.tools.web_security import (
+    UrlPolicyError,
+    create_pinned_http_transport,
+    resolve_public_url,
+    validate_public_url,
+)
 from app.tools.builtin import build_phase6_registry
 from app.tools.contracts import (
     ArtifactRef,
@@ -148,9 +155,11 @@ class ToolRuntimeService:
         registry: ToolRegistry | None = None,
         *,
         mcp_transport: httpx.AsyncBaseTransport | None = None,
+        secret_store: SecretStore | None = None,
     ) -> None:
         self.registry = registry or build_phase6_registry()
         self._mcp_transport = mcp_transport
+        self._secret_store = secret_store
 
     def catalog(self) -> list[dict[str, object]]:
         """返回稳定排序的内置工具目录。"""
@@ -473,7 +482,7 @@ class ToolRuntimeService:
         user_id: uuid.UUID,
         name: str,
         endpoint_url: str,
-        enabled_tools: list[str],
+        connection_id: uuid.UUID,
         db: AsyncSession,
     ) -> McpServer:
         """添加尚未验证 schema 的远程 MCP Server。"""
@@ -482,10 +491,21 @@ class ToolRuntimeService:
             endpoint = validate_public_url(endpoint_url)
         except UrlPolicyError as error:
             raise ToolRuntimeError("MCP_ENDPOINT_INVALID") from error
+        connection = await db.scalar(
+            select(ToolConnection).where(
+                ToolConnection.id == connection_id,
+                ToolConnection.user_id == user_id,
+                ToolConnection.kind == ToolConnectionKind.mcp_http,
+                ToolConnection.status == ToolConnectionStatus.active,
+            )
+        )
+        if connection is None:
+            raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
         server = McpServer(
             user_id=user_id,
             name=name,
             endpoint_url=endpoint,
+            connection_id=connection.id,
             transport="streamable_http",
             status=McpServerStatus.pending,
             enabled_tools=[],
@@ -527,15 +547,24 @@ class ToolRuntimeService:
         """读取 MCP schema 快照，变化时暂停并清空已启用工具。"""
 
         server = await self.get_mcp_server(server_id, user_id=user_id, db=db)
+        if server.connection_id is None:
+            raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
         try:
-            async with httpx.AsyncClient(
-                timeout=15, follow_redirects=False, transport=self._mcp_transport
-            ) as client:
+            if self._mcp_transport is None:
+                endpoint, address = resolve_public_url(server.endpoint_url)
+            else:
+                endpoint = validate_public_url(server.endpoint_url)
+                address = None
+            connection = await self._mcp_connection(server, user_id=user_id, db=db)
+            headers = await self._mcp_headers(connection, user_id=user_id)
+            async with self._mcp_client(endpoint, address=address) as client:
                 response = await client.post(
-                    server.endpoint_url,
+                    endpoint,
                     json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-                    headers={"Accept": "application/json, text/event-stream"},
+                    headers={"Accept": "application/json, text/event-stream", **headers},
                 )
+                if response.is_redirect:
+                    raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
                 response.raise_for_status()
                 payload_value = response.json()
         except (httpx.HTTPError, TimeoutError, ValueError) as error:
@@ -626,9 +655,11 @@ class ToolRuntimeService:
         user_id: uuid.UUID,
         tool_name: str,
         arguments: dict[str, object],
+        run_id: uuid.UUID | None = None,
+        approval_id: uuid.UUID | None = None,
         db: AsyncSession,
     ) -> ToolExecution:
-        """调用已发现且明确启用的 MCP 工具，并为副作用调用保留审批状态。"""
+        """调用已启用的 MCP 工具，副作用调用必须消费同一审批记录。"""
 
         server = await self.get_mcp_server(server_id, user_id=user_id, db=db)
         if server.status is not McpServerStatus.active or tool_name not in server.enabled_tools:
@@ -659,33 +690,98 @@ class ToolRuntimeService:
 
         annotations = schema_item.get("annotations")
         read_only = isinstance(annotations, Mapping) and annotations.get("readOnlyHint") is True
-        execution = ToolExecution(
-            user_id=user_id,
-            tool_name=tool_name,
-            tool_version="mcp-1.0.0",
-            execution_location="mcp_remote",
-            risk_level="read" if read_only else "external_side_effect",
-            side_effect="none" if read_only else "external",
-            arguments_preview=sanitize_arguments(validated_arguments),
-            arguments_hash=payload_hash(validated_arguments),
-            status=ToolExecutionStatus.queued,
-            artifact_ids=[],
-        )
-        db.add(execution)
-        await db.flush()
-        if not read_only:
-            execution.status = ToolExecutionStatus.waiting
-            execution.error_code = "TOOL_APPROVAL_REQUIRED"
-            execution.error_message = "MCP 工具未声明只读，需要 Agent 审批后执行"
-            await db.commit()
-            await db.refresh(execution)
-            return execution
+        if run_id is not None:
+            run = await db.scalar(
+                select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
+            )
+            if run is None:
+                raise ToolRuntimeError("AGENT_RUN_NOT_FOUND")
+        execution: ToolExecution | None = None
+        if approval_id is not None:
+            approval = await db.scalar(
+                select(ApprovalRequest).where(
+                    ApprovalRequest.id == approval_id,
+                    ApprovalRequest.user_id == user_id,
+                    ApprovalRequest.tool_execution_id.is_not(None),
+                    ApprovalRequest.tool_name == tool_name,
+                )
+            )
+            if approval is None or approval.tool_execution_id is None:
+                raise ToolRuntimeError("MCP_APPROVAL_NOT_FOUND")
+            execution = await db.scalar(
+                select(ToolExecution).where(
+                    ToolExecution.id == approval.tool_execution_id,
+                    ToolExecution.user_id == user_id,
+                    ToolExecution.mcp_server_id == server.id,
+                    ToolExecution.tool_name == tool_name,
+                    ToolExecution.arguments_hash == payload_hash(validated_arguments),
+                )
+            )
+            if execution is None:
+                raise ToolRuntimeError("MCP_EXECUTION_NOT_FOUND")
+            if approval.status is not ApprovalStatus.approved:
+                raise ToolRuntimeError("MCP_APPROVAL_NOT_READY")
+            try:
+                await ApprovalService().authorize_execution(
+                    approval.id,
+                    user_id=user_id,
+                    tool_name=tool_name,
+                    arguments=validated_arguments,
+                    execution_location="mcp_remote",
+                    db=db,
+                )
+            except RuntimeError as error:
+                raise ToolRuntimeError("MCP_APPROVAL_NOT_READY") from error
+            execution.status = ToolExecutionStatus.queued
+            execution.error_code = None
+            execution.error_message = None
+        else:
+            connection = await self._mcp_connection(server, user_id=user_id, db=db)
+            execution = ToolExecution(
+                user_id=user_id,
+                run_id=run_id,
+                tool_name=tool_name,
+                tool_version="mcp-1.0.0",
+                execution_location="mcp_remote",
+                mcp_server_id=server.id,
+                connection_id=connection.id if connection is not None else None,
+                risk_level="read" if read_only else "external_side_effect",
+                side_effect="none" if read_only else "external",
+                arguments_preview=sanitize_arguments(validated_arguments),
+                arguments_hash=payload_hash(validated_arguments),
+                status=ToolExecutionStatus.queued,
+                artifact_ids=[],
+            )
+            db.add(execution)
+            await db.flush()
+            if not read_only:
+                execution.status = ToolExecutionStatus.waiting
+                execution.error_code = "TOOL_APPROVAL_REQUIRED"
+                execution.error_message = "MCP 工具未声明只读，需要审批"
+                approval = await ApprovalService().create_tool_request(
+                    user_id=user_id,
+                    tool_execution_id=execution.id,
+                    tool_name=tool_name,
+                    arguments=validated_arguments,
+                    risk_level="high",
+                    execution_location="mcp_remote",
+                    action_summary=f"执行 MCP 工具 {tool_name}",
+                    db=db,
+                )
+                execution.error_message = f"审批请求 {approval.id} 已创建"
+                await db.commit()
+                await db.refresh(execution)
+                return execution
 
         try:
-            endpoint = validate_public_url(server.endpoint_url)
-            async with httpx.AsyncClient(
-                timeout=15, follow_redirects=False, transport=self._mcp_transport
-            ) as client:
+            if self._mcp_transport is None:
+                endpoint, address = resolve_public_url(server.endpoint_url)
+            else:
+                endpoint = validate_public_url(server.endpoint_url)
+                address = None
+            connection = await self._mcp_connection(server, user_id=user_id, db=db)
+            headers = await self._mcp_headers(connection, user_id=user_id)
+            async with self._mcp_client(endpoint, address=address) as client:
                 response = await client.post(
                     endpoint,
                     json={
@@ -694,7 +790,7 @@ class ToolRuntimeService:
                         "method": "tools/call",
                         "params": {"name": tool_name, "arguments": validated_arguments},
                     },
-                    headers={"Accept": "application/json, text/event-stream"},
+                    headers={"Accept": "application/json, text/event-stream", **headers},
                 )
                 if response.is_redirect:
                     raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
@@ -760,6 +856,66 @@ class ToolRuntimeService:
         await db.commit()
         await db.refresh(execution)
         return execution
+
+    async def _mcp_connection(
+        self, server: McpServer, *, user_id: uuid.UUID, db: AsyncSession
+    ) -> ToolConnection | None:
+        """读取与 MCP Server 同租户的活动连接。"""
+
+        if server.connection_id is None:
+            return None
+        connection = await db.scalar(
+            select(ToolConnection).where(
+                ToolConnection.id == server.connection_id,
+                ToolConnection.user_id == user_id,
+                ToolConnection.kind == ToolConnectionKind.mcp_http,
+                ToolConnection.status == ToolConnectionStatus.active,
+            )
+        )
+        if connection is None:
+            raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
+        return connection
+
+    async def _mcp_headers(
+        self, connection: ToolConnection | None, *, user_id: uuid.UUID
+    ) -> dict[str, str]:
+        """从租户绑定 SecretStore 解析请求头，不把 secret 写入审计。"""
+
+        if connection is None or connection.secret_ref is None:
+            return {}
+        if self._secret_store is None:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
+        try:
+            secret = await self._secret_store.get(user_id, connection.secret_ref)
+        except SecretStoreUnavailableError as error:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE") from error
+        if not secret:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
+        header_name = connection.metadata_json.get("auth_header", "Authorization")
+        auth_prefix = connection.metadata_json.get("auth_prefix", "Bearer ")
+        if not isinstance(header_name, str) or not isinstance(auth_prefix, str):
+            raise ToolRuntimeError("MCP_AUTH_CONFIG_INVALID")
+        if header_name not in {"Authorization", "X-API-Key", "api-key"}:
+            raise ToolRuntimeError("MCP_AUTH_CONFIG_INVALID")
+        return {header_name: f"{auth_prefix}{secret}"}
+
+    def _mcp_client(self, endpoint_url: str, *, address: str | None = None) -> httpx.AsyncClient:
+        """创建 MCP HTTP 客户端，生产请求使用校验阶段的固定 DNS 地址。"""
+
+        if self._mcp_transport is not None:
+            return httpx.AsyncClient(
+                timeout=15,
+                follow_redirects=False,
+                transport=self._mcp_transport,
+            )
+        if address is None:
+            raise ToolRuntimeError("MCP_ENDPOINT_INVALID")
+        return httpx.AsyncClient(
+            timeout=15,
+            follow_redirects=False,
+            transport=create_pinned_http_transport(address),
+            trust_env=False,
+        )
 
     async def create_execution(
         self,

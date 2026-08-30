@@ -81,6 +81,7 @@ class ToolExecutionResponse(AgentSchema):
     tool_name: str
     tool_version: str
     connection_id: uuid.UUID | None
+    mcp_server_id: uuid.UUID | None
     execution_location: str
     node_id: uuid.UUID | None
     risk_level: str
@@ -183,7 +184,7 @@ class McpServerCreateRequest(AgentSchema):
 
     name: str = Field(min_length=1, max_length=120)
     endpoint_url: str = Field(min_length=1, max_length=500)
-    enabled_tools: list[str] = Field(default_factory=list, max_length=100)
+    connection_id: uuid.UUID
 
     @field_validator("endpoint_url")
     @classmethod
@@ -200,6 +201,7 @@ class McpServerResponse(AgentSchema):
 
     id: uuid.UUID
     user_id: uuid.UUID
+    connection_id: uuid.UUID | None
     name: str
     endpoint_url: str
     transport: str
@@ -221,6 +223,8 @@ class McpToolExecuteRequest(AgentSchema):
 
     tool_name: str = Field(min_length=1, max_length=100)
     arguments: dict[str, object] = Field(default_factory=dict)
+    run_id: uuid.UUID | None = None
+    approval_id: uuid.UUID | None = None
 
 
 class McpEnableToolsRequest(AgentSchema):
