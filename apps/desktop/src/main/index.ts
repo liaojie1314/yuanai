@@ -62,6 +62,12 @@ let executionNodeService: ExecutionNodeService | undefined
 let trayController: TrayController | undefined
 let isQuitting = false
 
+// 端到端测试通过该环境变量隔离用户数据目录，避免读写真实安装实例的会话。
+const isolatedUserData = process.env['YUANAI_USER_DATA_DIR']
+if (isolatedUserData) {
+  app.setPath('userData', isolatedUserData)
+}
+
 function trayIconPath(): string {
   return app.isPackaged
     ? join(process.resourcesPath, 'tray-icon.png')
