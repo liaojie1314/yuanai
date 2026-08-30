@@ -30,9 +30,7 @@ class EnvironmentSecretStore:
     租户身份，防止一个租户通过自建连接读取另一个租户或部署级的其他密钥。
     """
 
-    _REF_RE = re.compile(
-        r"^env://YUANAI_MCP_SECRET_(?P<owner>[0-9A-F]{32})_(?P<name>[A-Z0-9_]+)$"
-    )
+    _REF_RE = re.compile(r"^env://YUANAI_MCP_SECRET_(?P<owner>[0-9A-F]{32})_(?P<name>[A-Z0-9_]+)$")
 
     @staticmethod
     def _tenant_key(owner_id: uuid.UUID) -> str:

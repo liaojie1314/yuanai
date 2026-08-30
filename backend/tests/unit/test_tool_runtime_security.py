@@ -5,12 +5,15 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.approval import ApprovalRequest
 from app.models.tool_runtime import (
     ExecutionNodeStatus,
     ToolExecutionStatus,
 )
+from app.services.agent.approval_service import ApprovalService
 from app.services.tool_runtime_service import (
     ToolRuntimeError,
     ToolRuntimeService,
@@ -145,7 +148,7 @@ async def test_expired_artifact_is_unreadable_and_purgeable(db: AsyncSession, te
 async def test_manual_side_effect_waits_without_calling_handler(
     db: AsyncSession, test_user
 ) -> None:
-    """未获批的副作用工具只能进入 waiting，handler 不得被调用。"""
+    """未获批的副作用工具进入 waiting 并创建审批，handler 不得被调用。"""
 
     handler = AsyncMock(return_value={"unexpected": True})
     registry = ToolRegistry()
@@ -174,7 +177,54 @@ async def test_manual_side_effect_waits_without_calling_handler(
 
     assert execution.status is ToolExecutionStatus.waiting
     assert execution.error_code == "TOOL_APPROVAL_REQUIRED"
+    assert "审批请求" in (execution.error_message or "")
     handler.assert_not_awaited()
+
+    request = await db.scalar(
+        select(ApprovalRequest).where(ApprovalRequest.tool_execution_id == execution.id)
+    )
+    assert request is not None
+
+
+@pytest.mark.asyncio
+async def test_manual_side_effect_executes_after_approval(db: AsyncSession, test_user) -> None:
+    """审批通过后，云端副作用工具由恢复流程真正执行；拒绝则保持取消。"""
+
+    handler = AsyncMock(return_value={"done": True})
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="external_publish",
+            description="测试审批后执行",
+            input_schema={"type": "object", "additionalProperties": False},
+            risk_level=ToolRisk.external_side_effect,
+            execution_location="cloud",
+            side_effect=SideEffect.external,
+        ),
+        handler,
+    )
+    service = ToolRuntimeService(registry)
+    approvals = ApprovalService()
+
+    execution = await service.create_manual_execution(
+        user_id=test_user.id,
+        tool_name="external_publish",
+        arguments={},
+        execution_location="cloud",
+        idempotency_key=None,
+        run_id=None,
+        db=db,
+    )
+    request = await db.scalar(
+        select(ApprovalRequest).where(ApprovalRequest.tool_execution_id == execution.id)
+    )
+    assert request is not None
+    await approvals.decide(request.id, user_id=test_user.id, decision="approve", db=db)
+    await approvals.resolve_tool_execution(request, user_id=test_user.id, db=db)
+    resumed = await service.resume_approved_execution(execution.id, user_id=test_user.id, db=db)
+
+    assert resumed.status is ToolExecutionStatus.succeeded
+    handler.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -39,10 +39,14 @@ from app.services.agent.approval_service import (
 )
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue
+from app.services.secret_store import EnvironmentSecretStore
+from app.services.tool_runtime_service import ToolRuntimeService
+from app.tools.builtin import build_phase6_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 _approvals = ApprovalService()
 _events = EventStore()
+_tools_runtime = ToolRuntimeService(build_phase6_registry(), secret_store=EnvironmentSecretStore())
 
 
 def _agent_enabled_for(user_id: uuid.UUID) -> bool:
@@ -307,6 +311,10 @@ async def decide_approval(
         run = None
         if item.tool_execution_id is not None:
             await _approvals.resolve_tool_execution(item, user_id=current_user.id, db=db)
+            if req.decision == "approve":
+                await _tools_runtime.resume_approved_execution(
+                    item.tool_execution_id, user_id=current_user.id, db=db
+                )
         else:
             run = await _approvals.resume_after_decision(item, user_id=current_user.id, db=db)
     except ApprovalNotFoundError as error:

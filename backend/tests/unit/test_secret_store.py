@@ -31,9 +31,7 @@ async def test_environment_store_rejects_other_tenant_reference(
 
     owner = uuid.uuid4()
     other = uuid.uuid4()
-    monkeypatch.setenv(
-        f"YUANAI_MCP_SECRET_{other.hex.upper()}_DEPLOY_SECRET", "deployment-secret"
-    )
+    monkeypatch.setenv(f"YUANAI_MCP_SECRET_{other.hex.upper()}_DEPLOY_SECRET", "deployment-secret")
     store = EnvironmentSecretStore()
     foreign_ref = f"env://YUANAI_MCP_SECRET_{other.hex.upper()}_DEPLOY_SECRET"
     with pytest.raises(SecretStoreUnavailableError):

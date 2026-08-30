@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.models.agent_run import AgentRun
-from app.models.approval import ApprovalRequest, ApprovalStatus
+from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.tool_runtime import (
     Artifact,
     ArtifactKind,
@@ -60,6 +60,7 @@ from app.tools.contracts import (
     ToolMetrics,
     ToolRegistrationError,
     ToolResult,
+    ToolRisk,
     ToolSpec,
     ToolValidationError,
 )
@@ -374,6 +375,19 @@ class ToolRuntimeService:
         await db.refresh(connection)
         return connection
 
+    @staticmethod
+    def _approval_risk(risk: ToolRisk) -> ApprovalRiskLevel:
+        """将工具风险归一为审批模型可持久化的等级。"""
+
+        value = risk.value
+        if value in {ToolRisk.read.value, ToolRisk.low.value}:
+            return ApprovalRiskLevel.low
+        if value in {ToolRisk.local_write.value, ToolRisk.reversible_write.value}:
+            return ApprovalRiskLevel.medium
+        if value == ToolRisk.external_side_effect.value:
+            return ApprovalRiskLevel.high
+        return ApprovalRiskLevel.critical
+
     async def create_manual_execution(
         self,
         *,
@@ -387,7 +401,6 @@ class ToolRuntimeService:
         node_id: uuid.UUID | None = None,
     ) -> ToolExecution:
         """登记并执行手动工具请求，副作用工具保持等待审批。"""
-
         if run_id is not None:
             run = await db.scalar(
                 select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
@@ -406,18 +419,53 @@ class ToolRuntimeService:
         )
         spec = self.registry.get_spec(tool_name)
         if execution_location == "desktop":
-            execution.node_delivery_status = (
-                "pending" if spec.risk_level.value == "read" else "waiting_approval"
-            )
+            # 桌面任务由节点本地用户逐次确认，无需云端审批记录。
+            execution.node_delivery_status = "pending"
         elif spec.risk_level.value == "read":
             await self.execute(execution, arguments=arguments, db=db)
         else:
             execution.status = ToolExecutionStatus.waiting
             execution.error_code = "TOOL_APPROVAL_REQUIRED"
-            execution.error_message = "工具执行需要审批"
+            approval = await ApprovalService().create_tool_request(
+                user_id=user_id,
+                tool_execution_id=execution.id,
+                tool_name=tool_name,
+                arguments=arguments,
+                risk_level=self._approval_risk(spec.risk_level),
+                execution_location="cloud",
+                action_summary=f"执行工具 {tool_name}",
+                db=db,
+            )
+            execution.error_message = f"审批请求 {approval.id} 已创建"
         await db.commit()
         await db.refresh(execution)
         return execution
+
+    async def resume_approved_execution(
+        self,
+        execution_id: uuid.UUID,
+        *,
+        user_id: uuid.UUID,
+        db: AsyncSession,
+    ) -> ToolExecution:
+        """执行审批通过后已回到 queued 的云端工具；桌面与 MCP 执行由各自链路处理。"""
+
+        execution = await db.scalar(
+            select(ToolExecution).where(
+                ToolExecution.id == execution_id,
+                ToolExecution.user_id == user_id,
+            )
+        )
+        if execution is None:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_FOUND")
+        if execution.execution_location != "cloud":
+            return execution
+        if execution.status is not ToolExecutionStatus.queued:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
+        if execution.arguments_encrypted is None:
+            raise ToolRuntimeError("TOOL_ARGUMENTS_UNAVAILABLE")
+        arguments = decrypt_execution_arguments(execution.id, execution.arguments_encrypted)
+        return await self.execute(execution, arguments=arguments, db=db, approved=True)
 
     async def list_executions(
         self, *, user_id: uuid.UUID, limit: int, db: AsyncSession
@@ -1172,7 +1220,11 @@ class ToolRuntimeService:
             raise ToolRuntimeError("TOOL_APPROVAL_REQUIRED")
         if execution.status not in {ToolExecutionStatus.queued, ToolExecutionStatus.waiting}:
             raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
-        if execution.status is ToolExecutionStatus.queued and spec.risk_level.value != "read":
+        if (
+            execution.status is ToolExecutionStatus.queued
+            and spec.risk_level.value != "read"
+            and not approved
+        ):
             raise ToolRuntimeError("TOOL_APPROVAL_REQUIRED")
         await self.start_execution(execution, db=db)
         try:
