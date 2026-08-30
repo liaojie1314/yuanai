@@ -2,12 +2,12 @@
 
 from app.tools.builtin.calculate import CALCULATE_SPEC, calculate
 from app.tools.builtin.current_time import CURRENT_TIME_SPEC, get_current_time
+from app.tools.builtin.desktop import DESKTOP_BUILTINS
 from app.tools.builtin.file_metadata import (
     FILE_METADATA_SPEC,
     inspect_uploaded_file_metadata,
 )
 from app.tools.builtin.phase6 import PHASE6_BUILTINS
-from app.tools.builtin.desktop import DESKTOP_BUILTINS
 from app.tools.registry import ToolRegistry
 
 
