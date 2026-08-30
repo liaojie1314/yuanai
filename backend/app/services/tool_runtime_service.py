@@ -1532,6 +1532,9 @@ class ToolRuntimeService:
                         ),
                     )
                     .order_by(ToolExecution.created_at.asc())
+                    # 节点网关是长会话；取消等状态由其他会话提交，
+                    # 必须以数据库最新行为准刷新身份映射中的旧对象。
+                    .execution_options(populate_existing=True)
                 )
             ).all()
         )

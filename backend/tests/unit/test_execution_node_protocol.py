@@ -340,3 +340,43 @@ async def test_node_token_renewal_requires_private_key_signature(
         await service.renew_node_token(
             node_id=node.id, token=expired_token, signature=signature, db=db
         )
+
+
+@pytest.mark.asyncio
+async def test_node_gateway_refreshes_state_committed_by_other_sessions(
+    db: AsyncSession, test_user
+) -> None:
+    """节点网关长会话必须看到其他会话提交的取消状态，不能停留在旧快照。"""
+
+    from sqlalchemy import select
+
+    from app.core.database import AsyncSessionLocal
+
+    service = ToolRuntimeService()
+    node, _private_key_value, _token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    execution = await service.create_execution(
+        user_id=test_user.id,
+        tool_name="browser_open_url",
+        arguments={"url": "https://example.com"},
+        execution_location="desktop",
+        node_id=node.id,
+        db=db,
+    )
+    await db.commit()
+
+    async with AsyncSessionLocal() as gateway_db:
+        gateway_node = await gateway_db.scalar(
+            select(ExecutionNode).where(ExecutionNode.id == node.id)
+        )
+        assert gateway_node is not None
+        first = await service.list_node_messages(gateway_node, db=gateway_db)
+        assert [message["type"] for _execution, message in first] == ["job_offer"]
+        await gateway_db.commit()
+
+        await service.cancel_execution(execution.id, user_id=test_user.id, db=db)
+
+        second = await service.list_node_messages(gateway_node, db=gateway_db)
+        assert [message["type"] for _execution, message in second] == ["cancel_request"]
+        await gateway_db.commit()
