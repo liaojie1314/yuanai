@@ -381,5 +381,125 @@
       "musicPlaybackProgress": "Music playback progress",
       "downloadMusic": "Download music"
     }
+  },
+  "tools": {
+    "title": "Tool Control Center",
+    "subtitle": "Manage the tool catalog, connections, MCP servers, execution nodes, and audit records",
+    "tabs": {
+      "catalog": "Catalog",
+      "connections": "Connections",
+      "mcp": "MCP",
+      "nodes": "Execution nodes",
+      "executions": "Executions",
+      "artifacts": "Artifacts"
+    },
+    "risk": {
+      "read": "Read",
+      "local_write": "Local write",
+      "reversible_write": "Reversible write",
+      "external_side_effect": "External side effect",
+      "destructive": "Destructive",
+      "financial": "Financial",
+      "privileged": "Privileged",
+      "unknown": "Unknown"
+    },
+    "location": {
+      "cloud": "Cloud",
+      "desktop": "Desktop node",
+      "either": "Either",
+      "mcp_remote": "MCP remote",
+      "unknown": "Unknown"
+    },
+    "status": {
+      "active": "Active",
+      "expired": "Expired",
+      "revoked": "Revoked",
+      "error": "Error",
+      "online": "Online",
+      "offline": "Offline",
+      "update_required": "Update required",
+      "paused": "Paused",
+      "pending": "Pending",
+      "unknown": "Unknown"
+    },
+    "catalog": {
+      "name": "Tool",
+      "description": "Description",
+      "risk": "Risk",
+      "location": "Location",
+      "tags": "Tags",
+      "empty": "No tools available"
+    },
+    "connections": {
+      "empty": "No tool connections yet",
+      "provider": "Provider",
+      "scopes": "Scopes",
+      "createdAt": "Created",
+      "create": "New connection",
+      "delete": "Revoke",
+      "confirmDelete": "Revoke this connection?",
+      "kind": "Kind",
+      "displayName": "Display name",
+      "secretRef": "Secret reference (optional)",
+      "scopesHint": "Scopes separated by commas"
+    },
+    "mcp": {
+      "empty": "No MCP servers yet",
+      "endpoint": "Endpoint",
+      "enabledTools": "Enabled tools",
+      "availableTools": "Snapshot tools",
+      "noSnapshot": "Schema not discovered yet",
+      "pausedReason": "Paused reason",
+      "create": "Add MCP server",
+      "discover": "Rediscover",
+      "name": "Name",
+      "endpointUrl": "Endpoint URL (public HTTPS)",
+      "connection": "Connection",
+      "enable": "Enable selected tools"
+    },
+    "nodes": {
+      "empty": "No paired execution nodes yet",
+      "platform": "Platform",
+      "version": "Version",
+      "capabilities": "Capabilities",
+      "lastSeenAt": "Last seen",
+      "policy": "Node policy",
+      "pair": "Generate pairing code",
+      "pairingCode": "Pairing code (shown once)",
+      "pairingHint": "Enter this code in the signed-in Desktop settings to pair. Valid for 10 minutes.",
+      "revoke": "Revoke",
+      "confirmRevoke": "Revoke this node? Pending jobs fail immediately.",
+      "grants": "Resource grants",
+      "grantsEmpty": "No resource grants yet",
+      "grantKind": "Kind",
+      "grantResource": "Resource ID",
+      "grantName": "Display name"
+    },
+    "executions": {
+      "empty": "No tool executions yet",
+      "tool": "Tool",
+      "statusLabel": "Status",
+      "location": "Location",
+      "startedAt": "Started",
+      "finishedAt": "Finished",
+      "error": "Error",
+      "result": "Result",
+      "cancel": "Cancel"
+    },
+    "artifacts": {
+      "empty": "No artifacts yet",
+      "kind": "Kind",
+      "size": "Size",
+      "expiresAt": "Expires",
+      "download": "Download",
+      "delete": "Delete",
+      "confirmDelete": "Delete this artifact?"
+    },
+    "common": {
+      "creating": "Creating…",
+      "working": "Working…",
+      "actionFailed": "Action failed. Try again.",
+      "none": "None"
+    }
   }
 }
