@@ -26,6 +26,8 @@ from app.schemas.tool_runtime import (
     ExecutionNodeRegisterRequest,
     ExecutionNodeRegisterResponse,
     ExecutionNodeResponse,
+    ExecutionNodeTokenRenewalRequest,
+    ExecutionNodeTokenResponse,
     McpEnableToolsRequest,
     McpServerCreateRequest,
     McpServerResponse,
@@ -290,6 +292,34 @@ async def register_execution_node(
         node_token=token,
         expires_at=expires_at,
         protocol_version=req.protocol_version,
+    )
+
+
+@router.post("/execution-nodes/token", response_model=ExecutionNodeTokenResponse)
+async def renew_execution_node_token(
+    req: ExecutionNodeTokenRenewalRequest, db: DB
+) -> ExecutionNodeTokenResponse:
+    """节点凭登记私钥签署旧令牌换取新的短期会话凭证。"""
+
+    try:
+        node, token, expires_at = await runtime.renew_node_token(
+            node_id=req.node_id, token=req.token, signature=req.signature, db=db
+        )
+        await db.commit()
+    except ToolRuntimeError as error:
+        detail = str(error)
+        if detail == "EXECUTION_NODE_REVOKED":
+            status_code = 403
+        elif detail == "EXECUTION_NODE_UPDATE_REQUIRED":
+            status_code = 426
+        else:
+            status_code = 401
+        raise HTTPException(status_code=status_code, detail=detail) from error
+    return ExecutionNodeTokenResponse(
+        node_id=node.id,
+        node_token=token,
+        expires_at=expires_at,
+        protocol_version=settings.execution_node_protocol_version,
     )
 
 

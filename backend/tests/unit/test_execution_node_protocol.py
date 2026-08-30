@@ -299,3 +299,44 @@ async def test_node_cannot_complete_before_execution_is_running(
             _signed_result(private_key, execution_id=execution.id, result={"opened": True}),
             db=db,
         )
+
+
+def _renewal_signature(private_key: Ed25519PrivateKey, node_id: uuid.UUID, token: str) -> str:
+    """按服务端规范生成令牌续期签名。"""
+
+    payload = {"type": "token_renewal", "node_id": str(node_id), "token": token}
+    signature = private_key.sign(_canonical_json(payload))
+    return base64.urlsafe_b64encode(signature).decode().rstrip("=")
+
+
+@pytest.mark.asyncio
+async def test_node_token_renewal_requires_private_key_signature(
+    db: AsyncSession, test_user
+) -> None:
+    """过期令牌可凭登记私钥换新；签名、撤销和版本不匹配都会被拒绝。"""
+
+    service = ToolRuntimeService()
+    node, private_key, _token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    expired_token = create_node_token(node, expires_at=datetime.now(UTC) - timedelta(minutes=1))
+    signature = _renewal_signature(private_key, node.id, expired_token)
+    renewed, fresh_token, expires_at = await service.renew_node_token(
+        node_id=node.id, token=expired_token, signature=signature, db=db
+    )
+    assert renewed.id == node.id
+    assert (await service.authenticate_node(fresh_token, db=db)).id == node.id
+    assert expires_at > datetime.now(UTC)
+
+    tampered = _renewal_signature(private_key, node.id, fresh_token)
+    with pytest.raises(ToolRuntimeError, match="EXECUTION_NODE_SIGNATURE_INVALID"):
+        await service.renew_node_token(
+            node_id=node.id, token=expired_token, signature=tampered, db=db
+        )
+
+    node.token_version += 1
+    await db.flush()
+    with pytest.raises(ToolRuntimeError, match="EXECUTION_NODE_REVOKED"):
+        await service.renew_node_token(
+            node_id=node.id, token=expired_token, signature=signature, db=db
+        )

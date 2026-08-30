@@ -1,5 +1,6 @@
 """Tool Runtime API 的租户和安全边界集成测试。"""
 
+import base64
 import uuid
 
 from httpx import AsyncClient
@@ -130,6 +131,87 @@ async def test_node_pairing_heartbeat_and_resource_grant(
     )
     assert grant.status_code == 201
     assert "path" not in grant.json()
+
+
+async def test_node_token_renewal_requires_registered_private_key(
+    client: AsyncClient, auth_headers: dict[str, str], db: AsyncSession, test_user
+) -> None:
+    """续期端点只接受登记私钥签署的旧令牌，撤销后拒绝续期。"""
+
+    from datetime import UTC, datetime, timedelta
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from sqlalchemy import select
+
+    from app.core.config import settings
+    from app.models.tool_runtime import ExecutionNode
+    from app.services.tool_runtime_service import (
+        _canonical_json,
+        create_node_token,
+        encode_public_key,
+    )
+
+    private_key = Ed25519PrivateKey.generate()
+    pairing = await client.post(
+        "/api/v1/execution-nodes/pair",
+        headers=auth_headers,
+        json={
+            "name": "Renewal Desktop",
+            "platform": "linux",
+            "app_version": "0.1.0",
+            "capabilities": ["browser_open_url"],
+        },
+    )
+    assert pairing.status_code == 201
+    node_id = pairing.json()["id"]
+    registered = await client.post(
+        "/api/v1/execution-nodes/register",
+        json={
+            "pairing_code": pairing.json()["pairingCode"],
+            "public_key": encode_public_key(private_key.public_key()),
+            "name": "Renewal Desktop",
+            "platform": "linux",
+            "app_version": "0.1.0",
+            "capabilities": ["browser_open_url"],
+            "protocol_version": settings.execution_node_protocol_version,
+        },
+    )
+    assert registered.status_code == 201
+
+    node = await db.scalar(select(ExecutionNode).where(ExecutionNode.id == node_id))
+    assert node is not None
+    expired_token = create_node_token(node, expires_at=datetime.now(UTC) - timedelta(minutes=1))
+
+    def renewal_body(token: str, signature: bytes) -> dict[str, str]:
+        return {
+            "node_id": node_id,
+            "token": token,
+            "signature": base64.urlsafe_b64encode(signature).decode().rstrip("="),
+        }
+
+    signed_payload = _canonical_json(
+        {"type": "token_renewal", "node_id": node_id, "token": expired_token}
+    )
+    renewed = await client.post(
+        "/api/v1/execution-nodes/token",
+        json=renewal_body(expired_token, private_key.sign(signed_payload)),
+    )
+    assert renewed.status_code == 200
+    assert renewed.json()["nodeToken"]
+
+    tampered = await client.post(
+        "/api/v1/execution-nodes/token",
+        json=renewal_body(expired_token, private_key.sign(b"tampered")),
+    )
+    assert tampered.status_code == 401
+
+    revoke = await client.post(f"/api/v1/execution-nodes/{node_id}/revoke", headers=auth_headers)
+    assert revoke.status_code == 200
+    denied = await client.post(
+        "/api/v1/execution-nodes/token",
+        json=renewal_body(expired_token, private_key.sign(signed_payload)),
+    )
+    assert denied.status_code == 403
 
 
 async def test_mcp_endpoint_requires_public_https(

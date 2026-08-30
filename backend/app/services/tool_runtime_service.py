@@ -1444,6 +1444,63 @@ class ToolRuntimeService:
             raise ToolRuntimeError("EXECUTION_NODE_UPDATE_REQUIRED")
         return node
 
+    async def renew_node_token(
+        self,
+        *,
+        node_id: uuid.UUID,
+        token: str,
+        signature: str,
+        db: AsyncSession,
+    ) -> tuple[ExecutionNode, str, datetime]:
+        """校验节点登记私钥对旧令牌的签名后签发新令牌。
+
+        过期令牌允许参与续期：信任根是登记私钥而非令牌时效；令牌版本与撤销
+        状态仍必须与数据库一致，版本不匹配按撤销处理。
+        """
+
+        node = await db.scalar(select(ExecutionNode).where(ExecutionNode.id == node_id))
+        if node is None or node.public_key is None:
+            raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID")
+        if node.status is ExecutionNodeStatus.revoked:
+            raise ToolRuntimeError("EXECUTION_NODE_REVOKED")
+        try:
+            payload = cast(
+                dict[str, object],
+                jwt.decode(
+                    token,
+                    settings.jwt_secret_key,
+                    algorithms=[settings.jwt_algorithm],
+                    options={"verify_exp": False},
+                ),
+            )
+            if payload.get("type") != "execution_node" or str(payload.get("sub")) != str(node.id):
+                raise ValueError("token does not belong to node")
+            raw_token_version = payload["version"]
+            if isinstance(raw_token_version, bool) or not isinstance(raw_token_version, int):
+                raise ValueError("invalid token version")
+            if raw_token_version != node.token_version:
+                raise ToolRuntimeError("EXECUTION_NODE_REVOKED")
+            if payload.get("protocol_version") != settings.execution_node_protocol_version:
+                raise ToolRuntimeError("EXECUTION_NODE_UPDATE_REQUIRED")
+        except ToolRuntimeError:
+            raise
+        except (JWTError, KeyError, TypeError, ValueError) as error:
+            raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID") from error
+        signed_payload: dict[str, object] = {
+            "type": "token_renewal",
+            "node_id": str(node.id),
+            "token": token,
+        }
+        try:
+            public_key = Ed25519PublicKey.from_public_bytes(decode_key(node.public_key))
+            public_key.verify(decode_signature(signature), _canonical_json(signed_payload))
+        except (InvalidSignature, ValueError, TypeError, binascii.Error) as error:
+            raise ToolRuntimeError("EXECUTION_NODE_SIGNATURE_INVALID") from error
+        expires_at = datetime.now(UTC) + timedelta(
+            minutes=max(1, settings.execution_node_token_expire_minutes)
+        )
+        return node, create_node_token(node, expires_at=expires_at), expires_at
+
     def _validate_node_tool(self, node: ExecutionNode, tool_name: str) -> None:
         """确认节点声明并获准执行指定工具。"""
 

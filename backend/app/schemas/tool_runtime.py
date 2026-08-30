@@ -182,6 +182,23 @@ class ExecutionNodeRegisterResponse(AgentSchema):
     protocol_version: str
 
 
+class ExecutionNodeTokenRenewalRequest(AgentSchema):
+    """节点使用登记私钥签署旧令牌以换取新会话凭证。"""
+
+    node_id: uuid.UUID
+    token: str = Field(min_length=20, max_length=2048)
+    signature: str = Field(min_length=80, max_length=200)
+
+
+class ExecutionNodeTokenResponse(AgentSchema):
+    """节点令牌续期结果。"""
+
+    node_id: uuid.UUID
+    node_token: str
+    expires_at: datetime
+    protocol_version: str
+
+
 class ResourceGrantCreateRequest(AgentSchema):
     """桌面资源授权元数据；真实路径只保存在节点本地。"""
 
