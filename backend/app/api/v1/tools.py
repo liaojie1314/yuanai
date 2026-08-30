@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
+import secrets
 import uuid
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 from app.models.tool_runtime import (
     Artifact,
     ExecutionNode,
@@ -19,6 +23,8 @@ from app.schemas.tool_runtime import (
     ArtifactResponse,
     ExecutionNodePairRequest,
     ExecutionNodePairResponse,
+    ExecutionNodeRegisterRequest,
+    ExecutionNodeRegisterResponse,
     ExecutionNodeResponse,
     McpEnableToolsRequest,
     McpServerCreateRequest,
@@ -37,6 +43,7 @@ from app.services.tool_runtime_service import (
     ToolRuntimeService,
     artifact_download_url,
     verify_artifact_download_token,
+    verify_node_challenge,
 )
 
 router = APIRouter(tags=["tools"])
@@ -127,6 +134,7 @@ async def create_tool_execution(
             execution_location=req.execution_location,
             db=db,
             run_id=req.run_id,
+            node_id=req.node_id,
             idempotency_key=req.idempotency_key,
         )
     except ToolRuntimeError as error:
@@ -249,6 +257,99 @@ async def pair_execution_node(
         pairing_code=code,
         expires_at=node.pairing_expires_at,
     )
+
+
+@router.post(
+    "/execution-nodes/register",
+    response_model=ExecutionNodeRegisterResponse,
+    status_code=201,
+)
+async def register_execution_node(
+    req: ExecutionNodeRegisterRequest, db: DB
+) -> ExecutionNodeRegisterResponse:
+    """使用一次性配对码登记 Desktop 节点。"""
+
+    try:
+        node, token, expires_at = await runtime.register_node(
+            pairing_code=req.pairing_code,
+            public_key=req.public_key,
+            name=req.name,
+            platform=req.platform,
+            app_version=req.app_version,
+            capabilities=req.capabilities,
+            protocol_version=req.protocol_version,
+            db=db,
+        )
+        await db.commit()
+    except ToolRuntimeError as error:
+        status_code = 426 if str(error) == "EXECUTION_NODE_UPDATE_REQUIRED" else 422
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+    return ExecutionNodeRegisterResponse(
+        node_id=node.id,
+        user_id=node.user_id,
+        node_token=token,
+        expires_at=expires_at,
+        protocol_version=req.protocol_version,
+    )
+
+
+@router.websocket("/execution-nodes/ws")
+async def execution_node_socket(websocket: WebSocket, token: str) -> None:
+    """为已登记节点提供 challenge、任务投递和结果确认通道。"""
+
+    await websocket.accept()
+    async with AsyncSessionLocal() as db:
+        try:
+            node = await runtime.authenticate_node(token, db=db)
+        except ToolRuntimeError:
+            await websocket.close(code=1008, reason="node authentication failed")
+            return
+        challenge = secrets.token_urlsafe(24)
+        await websocket.send_json(
+            {
+                "type": "challenge",
+                "challenge": challenge,
+                "protocol_version": settings.execution_node_protocol_version,
+            }
+        )
+        try:
+            response = await asyncio.wait_for(
+                websocket.receive_json(),
+                timeout=max(1, settings.execution_node_challenge_timeout_seconds),
+            )
+        except (TimeoutError, ValueError, WebSocketDisconnect):
+            await websocket.close(code=1008, reason="challenge timeout")
+            return
+        if (
+            not isinstance(response, dict)
+            or response.get("type") != "challenge_response"
+            or not isinstance(response.get("signature"), str)
+            or not verify_node_challenge(node, challenge, response["signature"])
+        ):
+            await websocket.close(code=1008, reason="challenge invalid")
+            return
+        await runtime.heartbeat_node(node.id, user_id=node.user_id, db=db)
+        await db.commit()
+        try:
+            while True:
+                for execution, message in await runtime.list_node_messages(node, db=db):
+                    await websocket.send_json(message)
+                    await runtime.mark_node_offer_sent(execution, db=db)
+                await db.commit()
+                try:
+                    incoming = await asyncio.wait_for(websocket.receive_json(), timeout=5)
+                except TimeoutError:
+                    continue
+                if not isinstance(incoming, dict):
+                    raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+                response_message = await runtime.apply_node_message(node, incoming, db=db)
+                await db.commit()
+                await websocket.send_json(response_message)
+        except WebSocketDisconnect:
+            return
+        except (ToolRuntimeError, ValueError, TypeError):
+            await db.rollback()
+            await websocket.close(code=1008, reason="node message rejected")
 
 
 @router.get("/execution-nodes", response_model=list[ExecutionNodeResponse])

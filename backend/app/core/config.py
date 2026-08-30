@@ -105,6 +105,15 @@ class Settings(BaseSettings):
     # 工具 Artifact 下载链接的短期签名有效期。
     tool_artifact_url_ttl_seconds: int = 300
 
+    # Desktop 节点注册、握手和任务回传协议。
+    execution_node_token_expire_minutes: int = 60
+    execution_node_challenge_timeout_seconds: int = 10
+    execution_node_job_offer_ttl_seconds: int = 120
+    execution_node_result_max_bytes: int = 64 * 1024
+    execution_node_protocol_version: str = "1"
+    execution_node_min_protocol_version: str = "1"
+    execution_node_encryption_key: str = ""
+
     # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
     search_provider: SearchProviderName = "auto"
     searxng_base_url: str = "http://127.0.0.1:8082"

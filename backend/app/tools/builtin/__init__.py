@@ -7,6 +7,7 @@ from app.tools.builtin.file_metadata import (
     inspect_uploaded_file_metadata,
 )
 from app.tools.builtin.phase6 import PHASE6_BUILTINS
+from app.tools.builtin.desktop import DESKTOP_BUILTINS
 from app.tools.registry import ToolRegistry
 
 
@@ -25,6 +26,8 @@ def build_phase6_registry() -> ToolRegistry:
 
     registry = build_builtin_registry()
     for spec, handler in PHASE6_BUILTINS:
+        registry.register(spec, handler)
+    for spec, handler in DESKTOP_BUILTINS:
         registry.register(spec, handler)
     return registry
 

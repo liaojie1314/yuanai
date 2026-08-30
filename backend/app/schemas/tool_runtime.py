@@ -69,6 +69,7 @@ class ToolExecuteRequest(AgentSchema):
     execution_location: str = Field(default="cloud", pattern="^(cloud|desktop)$")
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=120)
     run_id: uuid.UUID | None = None
+    node_id: uuid.UUID | None = None
 
 
 class ToolExecutionResponse(AgentSchema):
@@ -97,6 +98,10 @@ class ToolExecutionResponse(AgentSchema):
     error_message: str | None
     started_at: datetime | None
     finished_at: datetime | None
+    node_delivery_status: str | None
+    node_progress: int | None
+    node_last_delivered_at: datetime | None
+    node_acknowledged_at: datetime | None
     created_at: datetime
 
 
@@ -153,6 +158,28 @@ class ExecutionNodePairResponse(ExecutionNodeResponse):
 
     pairing_code: str
     expires_at: datetime
+
+
+class ExecutionNodeRegisterRequest(AgentSchema):
+    """使用一次性配对码登记 Desktop 节点公钥。"""
+
+    pairing_code: str = Field(min_length=20, max_length=100)
+    public_key: str = Field(min_length=40, max_length=100)
+    name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=40)
+    app_version: str = Field(min_length=1, max_length=40)
+    capabilities: list[str] = Field(default_factory=list, max_length=100)
+    protocol_version: str = Field(min_length=1, max_length=20)
+
+
+class ExecutionNodeRegisterResponse(AgentSchema):
+    """节点登记成功后获得的短期会话凭证。"""
+
+    node_id: uuid.UUID
+    user_id: uuid.UUID
+    node_token: str
+    expires_at: datetime
+    protocol_version: str
 
 
 class ResourceGrantCreateRequest(AgentSchema):

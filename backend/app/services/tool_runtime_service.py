@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -14,6 +16,10 @@ from pathlib import PurePosixPath
 from typing import cast
 
 import httpx
+from cryptography.exceptions import InvalidSignature, InvalidTag
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from jose import JWTError, jwt
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,6 +70,140 @@ _NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 class ToolRuntimeError(RuntimeError):
     """Tool Runtime 可安全返回给 API 的领域错误。"""
+
+
+def _canonical_json(value: Mapping[str, object]) -> bytes:
+    """生成协议签名使用的稳定 JSON 字节。"""
+
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+
+
+def _node_encryption_key() -> bytes:
+    """从部署密钥派生固定长度的 AES-GCM 密钥。"""
+
+    source = settings.execution_node_encryption_key or settings.jwt_secret_key
+    return hashlib.sha256(source.encode("utf-8")).digest()
+
+
+def encode_public_key(key: Ed25519PublicKey) -> str:
+    """以无填充 Base64 编码保存 Ed25519 公钥。"""
+
+    from cryptography.hazmat.primitives import serialization
+
+    raw = key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+def decode_key(value: str) -> bytes:
+    """解析节点发送的无填充 Base64 Ed25519 公钥。"""
+
+    if not value or len(value) > 200:
+        raise ValueError("invalid public key")
+    padded = value + "=" * (-len(value) % 4)
+    raw = base64.urlsafe_b64decode(padded.encode("ascii"))
+    if len(raw) != 32:
+        raise ValueError("invalid public key")
+    return raw
+
+
+def decode_signature(value: str) -> bytes:
+    """解析协议消息中的无填充 Base64 签名。"""
+
+    if not value or len(value) > 200:
+        raise ValueError("invalid signature")
+    padded = value + "=" * (-len(value) % 4)
+    raw = base64.urlsafe_b64decode(padded.encode("ascii"))
+    if len(raw) != 64:
+        raise ValueError("invalid signature")
+    return raw
+
+
+def encrypt_execution_arguments(execution_id: uuid.UUID, arguments: Mapping[str, object]) -> str:
+    """使用 AES-GCM 加密节点任务参数，并绑定 execution ID。"""
+
+    nonce = secrets.token_bytes(12)
+    ciphertext = AESGCM(_node_encryption_key()).encrypt(
+        nonce,
+        _canonical_json(arguments),
+        str(execution_id).encode("ascii"),
+    )
+    return ".".join(
+        base64.urlsafe_b64encode(part).decode("ascii").rstrip("=") for part in (nonce, ciphertext)
+    )
+
+
+def decrypt_execution_arguments(execution_id: uuid.UUID, value: str) -> dict[str, object]:
+    """解密并校验绑定 execution ID 的节点任务参数。"""
+
+    parts = value.split(".")
+    if len(parts) != 2:
+        raise ToolRuntimeError("TOOL_ARGUMENTS_UNAVAILABLE")
+    try:
+        decoded = []
+        for part in parts:
+            padded = part + "=" * (-len(part) % 4)
+            decoded.append(base64.urlsafe_b64decode(padded.encode("ascii")))
+        nonce, ciphertext = decoded
+        plaintext = AESGCM(_node_encryption_key()).decrypt(
+            nonce,
+            ciphertext,
+            str(execution_id).encode("ascii"),
+        )
+        result = json.loads(plaintext)
+    except (InvalidTag, ValueError, TypeError, KeyError, json.JSONDecodeError) as error:
+        raise ToolRuntimeError("TOOL_ARGUMENTS_UNAVAILABLE") from error
+    if not isinstance(result, dict):
+        raise ToolRuntimeError("TOOL_ARGUMENTS_UNAVAILABLE")
+    return cast(dict[str, object], result)
+
+
+def create_node_token(node: ExecutionNode, *, expires_at: datetime) -> str:
+    """为节点签发带版本号和协议版本的短期 JWT。"""
+
+    return str(
+        jwt.encode(
+            {
+                "sub": str(node.id),
+                "user_id": str(node.user_id),
+                "version": node.token_version,
+                "protocol_version": settings.execution_node_protocol_version,
+                "type": "execution_node",
+                "exp": expires_at,
+            },
+            settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
+    )
+
+
+def sign_server_message(message: Mapping[str, object]) -> str:
+    """签署服务端下发的不可变协议消息。"""
+
+    signature = hmac.new(
+        settings.jwt_secret_key.encode("utf-8"), _canonical_json(message), hashlib.sha256
+    )
+    return base64.urlsafe_b64encode(signature.digest()).decode("ascii").rstrip("=")
+
+
+def verify_node_challenge(node: ExecutionNode, challenge: str, signature: str) -> bool:
+    """验证节点私钥对一次性 challenge 的签名。"""
+
+    if node.public_key is None or not challenge or len(challenge) > 200:
+        return False
+    try:
+        key = Ed25519PublicKey.from_public_bytes(decode_key(node.public_key))
+        key.verify(decode_signature(signature), challenge.encode("utf-8"))
+    except (InvalidSignature, ValueError, TypeError, binascii.Error):
+        return False
+    return True
+
+
+def _string_list(value: object) -> list[str]:
+    """从 JSON 策略字段提取字符串列表。"""
+
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
 def create_artifact_download_token(
@@ -237,6 +377,7 @@ class ToolRuntimeService:
         idempotency_key: str | None,
         run_id: uuid.UUID | None,
         db: AsyncSession,
+        node_id: uuid.UUID | None = None,
     ) -> ToolExecution:
         """登记并执行手动工具请求，副作用工具保持等待审批。"""
 
@@ -253,10 +394,15 @@ class ToolRuntimeService:
             execution_location=execution_location,
             db=db,
             run_id=run_id,
+            node_id=node_id,
             idempotency_key=idempotency_key,
         )
         spec = self.registry.get_spec(tool_name)
-        if spec.risk_level.value == "read":
+        if execution_location == "desktop":
+            execution.node_delivery_status = (
+                "pending" if spec.risk_level.value == "read" else "waiting_approval"
+            )
+        elif spec.risk_level.value == "read":
             await self.execute(execution, arguments=arguments, db=db)
         else:
             execution.status = ToolExecutionStatus.waiting
@@ -309,6 +455,8 @@ class ToolRuntimeService:
                     error=ToolErrorPayload(code="TOOL_CANCELLED", message="工具执行已取消"),
                 )
             )
+            if execution.execution_location == "desktop" and execution.node_id is not None:
+                execution.node_delivery_status = "cancel_pending"
             await db.commit()
             await db.refresh(execution)
         return execution
@@ -927,6 +1075,7 @@ class ToolRuntimeService:
         db: AsyncSession,
         run_id: uuid.UUID | None = None,
         step_id: uuid.UUID | None = None,
+        node_id: uuid.UUID | None = None,
         idempotency_key: str | None = None,
     ) -> ToolExecution:
         """校验工具并创建 queued 审计记录；不执行未授权的位置。"""
@@ -942,6 +1091,14 @@ class ToolRuntimeService:
             raise ToolRuntimeError("EXECUTION_LOCATION_INVALID")
         if spec.execution_location != "either" and execution_location != spec.execution_location:
             raise ToolRuntimeError("EXECUTION_LOCATION_NOT_ALLOWED")
+        node: ExecutionNode | None = None
+        if execution_location == "desktop":
+            if node_id is None:
+                raise ToolRuntimeError("EXECUTION_NODE_REQUIRED")
+            node = await self.get_node(node_id, user_id=user_id, db=db)
+            self._validate_node_tool(node, tool_name)
+        elif node_id is not None:
+            raise ToolRuntimeError("EXECUTION_NODE_NOT_ALLOWED")
         argument_hash = payload_hash(validated_arguments)
         if idempotency_key:
             existing = await db.scalar(
@@ -952,6 +1109,8 @@ class ToolRuntimeService:
             )
             if existing is not None:
                 if existing.arguments_hash != argument_hash:
+                    raise ToolRuntimeError("TOOL_IDEMPOTENCY_CONFLICT")
+                if existing.node_id != node_id or existing.execution_location != execution_location:
                     raise ToolRuntimeError("TOOL_IDEMPOTENCY_CONFLICT")
                 return existing
         execution = ToolExecution(
@@ -964,12 +1123,18 @@ class ToolRuntimeService:
             risk_level=spec.risk_level.value,
             side_effect=spec.side_effect.value,
             arguments_preview=sanitize_arguments(validated_arguments),
+            arguments_encrypted=None,
             arguments_hash=argument_hash,
             idempotency_key=idempotency_key,
+            node_id=node.id if node is not None else None,
             status=ToolExecutionStatus.queued,
             artifact_ids=[],
         )
         db.add(execution)
+        await db.flush()
+        execution.arguments_encrypted = encrypt_execution_arguments(
+            execution.id, validated_arguments
+        )
         await db.flush()
         return execution
 
@@ -1185,13 +1350,375 @@ class ToolRuntimeService:
             app_version=app_version,
             capabilities=sorted(set(capabilities))[:100],
             status=ExecutionNodeStatus.offline,
-            policy={"allowed_tools": [], "allowed_resource_ids": []},
+            policy={
+                "allowed_tools": sorted(set(capabilities)),
+                "allowed_resource_ids": [],
+            },
             pairing_code_hash=hashlib.sha256(code.encode()).hexdigest(),
             pairing_expires_at=now + timedelta(minutes=10),
         )
         db.add(node)
         await db.flush()
         return node, code
+
+    async def register_node(
+        self,
+        *,
+        pairing_code: str,
+        public_key: str,
+        name: str,
+        platform: str,
+        app_version: str,
+        capabilities: list[str],
+        protocol_version: str,
+        db: AsyncSession,
+    ) -> tuple[ExecutionNode, str, datetime]:
+        """用一次性配对码登记节点公钥并签发短期节点令牌。"""
+
+        if protocol_version != settings.execution_node_protocol_version:
+            raise ToolRuntimeError("EXECUTION_NODE_UPDATE_REQUIRED")
+        try:
+            normalized_key = encode_public_key(
+                Ed25519PublicKey.from_public_bytes(decode_key(public_key))
+            )
+        except (ValueError, TypeError, binascii.Error) as error:
+            raise ToolRuntimeError("EXECUTION_NODE_PUBLIC_KEY_INVALID") from error
+        now = datetime.now(UTC)
+        node = await db.scalar(
+            select(ExecutionNode)
+            .where(
+                ExecutionNode.pairing_code_hash
+                == hashlib.sha256(pairing_code.encode()).hexdigest(),
+                ExecutionNode.pairing_expires_at.is_not(None),
+                ExecutionNode.pairing_expires_at > now,
+                ExecutionNode.status != ExecutionNodeStatus.revoked,
+            )
+            .with_for_update()
+        )
+        if node is None or node.public_key is not None:
+            raise ToolRuntimeError("EXECUTION_NODE_PAIRING_INVALID")
+        if (node.name, node.platform, node.app_version) != (name, platform, app_version):
+            raise ToolRuntimeError("EXECUTION_NODE_METADATA_MISMATCH")
+        node.public_key = normalized_key
+        node.capabilities = sorted(set(capabilities))[:100]
+        node.pairing_code_hash = None
+        node.pairing_expires_at = None
+        node.policy = {
+            "allowed_tools": sorted(
+                set(_string_list(node.policy.get("allowed_tools"))) & set(node.capabilities)
+            ),
+            "allowed_resource_ids": _string_list(node.policy.get("allowed_resource_ids")),
+        }
+        expires_at = now + timedelta(minutes=max(1, settings.execution_node_token_expire_minutes))
+        token = create_node_token(node, expires_at=expires_at)
+        await db.flush()
+        return node, token, expires_at
+
+    async def authenticate_node(self, token: str, *, db: AsyncSession) -> ExecutionNode:
+        """校验节点令牌、版本和撤销状态。"""
+
+        try:
+            payload = cast(
+                dict[str, object],
+                jwt.decode(
+                    token,
+                    settings.jwt_secret_key,
+                    algorithms=[settings.jwt_algorithm],
+                ),
+            )
+            if payload.get("type") != "execution_node":
+                raise ValueError("wrong token type")
+            node_id = uuid.UUID(str(payload["sub"]))
+            raw_token_version = payload["version"]
+            if isinstance(raw_token_version, bool) or not isinstance(raw_token_version, int):
+                raise ValueError("invalid token version")
+            token_version = raw_token_version
+        except (JWTError, KeyError, TypeError, ValueError) as error:
+            raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID") from error
+        node = await db.scalar(select(ExecutionNode).where(ExecutionNode.id == node_id))
+        if node is None or node.public_key is None:
+            raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID")
+        if node.status is ExecutionNodeStatus.revoked or node.token_version != token_version:
+            raise ToolRuntimeError("EXECUTION_NODE_REVOKED")
+        if payload.get("protocol_version") != settings.execution_node_protocol_version:
+            raise ToolRuntimeError("EXECUTION_NODE_UPDATE_REQUIRED")
+        return node
+
+    def _validate_node_tool(self, node: ExecutionNode, tool_name: str) -> None:
+        """确认节点声明并获准执行指定工具。"""
+
+        allowed_tools = node.policy.get("allowed_tools", [])
+        if not isinstance(allowed_tools, list) or tool_name not in allowed_tools:
+            raise ToolRuntimeError("EXECUTION_NODE_TOOL_NOT_ALLOWED")
+        if tool_name not in node.capabilities:
+            raise ToolRuntimeError("EXECUTION_NODE_CAPABILITY_MISSING")
+
+    async def list_node_messages(
+        self, node: ExecutionNode, *, db: AsyncSession
+    ) -> list[tuple[ToolExecution, dict[str, object]]]:
+        """返回节点尚未接收或确认的任务消息。"""
+
+        executions = list(
+            (
+                await db.scalars(
+                    select(ToolExecution)
+                    .where(
+                        ToolExecution.node_id == node.id,
+                        ToolExecution.status.in_(
+                            {
+                                ToolExecutionStatus.queued,
+                                ToolExecutionStatus.running,
+                                ToolExecutionStatus.succeeded,
+                                ToolExecutionStatus.failed,
+                                ToolExecutionStatus.cancelled,
+                            }
+                        ),
+                    )
+                    .order_by(ToolExecution.created_at.asc())
+                )
+            ).all()
+        )
+        messages: list[tuple[ToolExecution, dict[str, object]]] = []
+        for execution in executions:
+            if (
+                execution.status
+                in {
+                    ToolExecutionStatus.succeeded,
+                    ToolExecutionStatus.failed,
+                }
+                and execution.node_acknowledged_at is None
+            ):
+                messages.append(
+                    (
+                        execution,
+                        {
+                            "type": "result_replay_request",
+                            "execution_id": str(execution.id),
+                            "status": execution.status.value,
+                        },
+                    )
+                )
+                continue
+            if execution.status is ToolExecutionStatus.cancelled:
+                if execution.node_delivery_status == "cancel_pending":
+                    messages.append(
+                        (
+                            execution,
+                            {"type": "cancel_request", "execution_id": str(execution.id)},
+                        )
+                    )
+                continue
+            if execution.status is ToolExecutionStatus.queued:
+                messages.append((execution, self.build_job_offer(execution, node=node)))
+            elif execution.status is ToolExecutionStatus.running:
+                messages.append(
+                    (
+                        execution,
+                        {
+                            "type": "job_status",
+                            "execution_id": str(execution.id),
+                            "status": execution.status.value,
+                        },
+                    )
+                )
+        return messages
+
+    async def mark_node_offer_sent(self, execution: ToolExecution, *, db: AsyncSession) -> None:
+        """记录任务已投递，重连时仍可由执行 ID 恢复。"""
+
+        execution.node_delivery_status = "sent"
+        execution.node_last_delivered_at = datetime.now(UTC)
+        await db.flush()
+
+    def build_job_offer(
+        self, execution: ToolExecution, *, node: ExecutionNode
+    ) -> dict[str, object]:
+        """构造带服务端完整性签名的节点任务消息。"""
+
+        if execution.arguments_encrypted is None:
+            raise ToolRuntimeError("TOOL_ARGUMENTS_UNAVAILABLE")
+        arguments = decrypt_execution_arguments(execution.id, execution.arguments_encrypted)
+        expires_at = datetime.now(UTC) + timedelta(
+            seconds=max(1, settings.execution_node_job_offer_ttl_seconds)
+        )
+        message: dict[str, object] = {
+            "type": "job_offer",
+            "protocol_version": settings.execution_node_protocol_version,
+            "execution_id": str(execution.id),
+            "tool_name": execution.tool_name,
+            "tool_version": execution.tool_version,
+            "arguments": arguments,
+            "arguments_preview": execution.arguments_preview,
+            "policy": node.policy,
+            "expires_at": expires_at.isoformat(),
+        }
+        message["signature"] = sign_server_message(message)
+        return message
+
+    async def apply_node_message(
+        self,
+        node: ExecutionNode,
+        message: Mapping[str, object],
+        *,
+        db: AsyncSession,
+    ) -> dict[str, object]:
+        """校验并应用节点的接受、进度和终态回传。"""
+
+        message_type = message.get("type")
+        if message_type == "heartbeat":
+            await set_node_online(node, db)
+            return {"type": "heartbeat_ack", "timestamp": datetime.now(UTC).isoformat()}
+        if message_type == "ack":
+            execution_id = message.get("execution_id")
+            if not isinstance(execution_id, str):
+                raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+            try:
+                parsed_id = uuid.UUID(execution_id)
+            except ValueError as error:
+                raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID") from error
+            await self.acknowledge_node_result(parsed_id, node_id=node.id, db=db)
+            return {"type": "acknowledged", "execution_id": execution_id}
+        execution_id = message.get("execution_id")
+        if not isinstance(execution_id, str):
+            raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+        try:
+            execution_uuid = uuid.UUID(execution_id)
+        except ValueError as error:
+            raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID") from error
+        execution = await db.scalar(
+            select(ToolExecution).where(
+                ToolExecution.id == execution_uuid,
+                ToolExecution.node_id == node.id,
+            )
+        )
+        if execution is None:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_FOUND")
+        await set_node_online(node, db)
+        if message_type == "accepted":
+            if execution.status is ToolExecutionStatus.queued:
+                await self.start_execution(execution, db=db)
+            if execution.status is not ToolExecutionStatus.running:
+                raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
+            execution.node_delivery_status = "accepted"
+            await db.flush()
+            return {"type": "accepted_ack", "execution_id": execution_id}
+        if message_type == "rejected":
+            if execution.status not in {ToolExecutionStatus.queued, ToolExecutionStatus.running}:
+                raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
+            await self.fail_execution(
+                execution,
+                code="TOOL_NODE_REJECTED",
+                message="Desktop 节点拒绝执行任务",
+                db=db,
+            )
+            execution.node_delivery_status = "result_pending_ack"
+            return {"type": "rejected_ack", "execution_id": execution_id}
+        if message_type == "progress":
+            progress = message.get("progress")
+            if (
+                execution.status not in {ToolExecutionStatus.queued, ToolExecutionStatus.running}
+                or isinstance(progress, bool)
+                or not isinstance(progress, int)
+                or not 0 <= progress <= 100
+            ):
+                raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+            execution.node_progress = progress
+            execution.node_delivery_status = "running"
+            await db.flush()
+            return {"type": "progress_ack", "execution_id": execution_id, "progress": progress}
+        if message_type not in {"completed", "failed", "cancelled"}:
+            raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+        self._verify_node_result(node, execution, message)
+        if execution.status in {
+            ToolExecutionStatus.succeeded,
+            ToolExecutionStatus.failed,
+            ToolExecutionStatus.cancelled,
+        }:
+            return {"type": "ack", "execution_id": execution_id}
+        if execution.status is not ToolExecutionStatus.running:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
+        if message_type == "completed":
+            result = message.get("result")
+            if not isinstance(result, (dict, list)):
+                raise ToolRuntimeError("EXECUTION_NODE_RESULT_INVALID")
+            await self.complete_success(execution, output=result, db=db)
+        elif message_type == "cancelled":
+            execution.status = ToolExecutionStatus.cancelled
+            execution.error_code = "TOOL_CANCELLED"
+            execution.error_message = "Desktop 节点取消了任务"
+            execution.finished_at = datetime.now(UTC)
+            execution.result_json = _tool_result_payload(
+                ToolResult(
+                    status="cancelled",
+                    summary="工具执行已取消",
+                    error=ToolErrorPayload(code="TOOL_CANCELLED", message="工具执行已取消"),
+                )
+            )
+        else:
+            await self.fail_execution(
+                execution,
+                code=str(message.get("error_code") or "TOOL_NODE_FAILED")[:100],
+                message="Desktop 节点执行失败",
+                db=db,
+            )
+        execution.node_delivery_status = "result_pending_ack"
+        execution.node_acknowledged_at = None
+        await db.flush()
+        return {"type": "ack", "execution_id": execution_id}
+
+    async def acknowledge_node_result(
+        self, execution_id: uuid.UUID, *, node_id: uuid.UUID, db: AsyncSession
+    ) -> None:
+        """确认节点已收到终态 ACK；未确认结果会在重连时请求重发。"""
+
+        execution = await db.scalar(
+            select(ToolExecution).where(
+                ToolExecution.id == execution_id,
+                ToolExecution.node_id == node_id,
+            )
+        )
+        if execution is None:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_FOUND")
+        if execution.status not in {
+            ToolExecutionStatus.succeeded,
+            ToolExecutionStatus.failed,
+            ToolExecutionStatus.cancelled,
+        }:
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_TERMINAL")
+        execution.node_acknowledged_at = datetime.now(UTC)
+        execution.node_delivery_status = "acknowledged"
+        await db.flush()
+
+    def _verify_node_result(
+        self,
+        node: ExecutionNode,
+        execution: ToolExecution,
+        message: Mapping[str, object],
+    ) -> None:
+        """验证节点使用登记公钥签名的结果，并限制回传大小。"""
+
+        signature = message.get("signature")
+        if not isinstance(signature, str):
+            raise ToolRuntimeError("EXECUTION_NODE_SIGNATURE_INVALID")
+        result = message.get("result")
+        error_code = message.get("error_code")
+        error_message = message.get("error_message")
+        signed_payload: dict[str, object] = {
+            "type": message.get("type"),
+            "execution_id": str(execution.id),
+            "result": result,
+            "error_code": error_code,
+            "error_message": error_message,
+            "progress": message.get("progress"),
+        }
+        encoded_result = _canonical_json(signed_payload)
+        if len(encoded_result) > max(1, settings.execution_node_result_max_bytes):
+            raise ToolRuntimeError("EXECUTION_NODE_RESULT_TOO_LARGE")
+        try:
+            public_key = Ed25519PublicKey.from_public_bytes(decode_key(node.public_key or ""))
+            public_key.verify(decode_signature(signature), encoded_result)
+        except (InvalidSignature, ValueError, TypeError, binascii.Error) as error:
+            raise ToolRuntimeError("EXECUTION_NODE_SIGNATURE_INVALID") from error
 
 
 def _summary(value: dict[str, object]) -> str:
@@ -1273,6 +1800,7 @@ async def revoke_node(node: ExecutionNode, db: AsyncSession) -> None:
     """立即让节点停止接受任务。"""
 
     node.status = ExecutionNodeStatus.revoked
+    node.token_version += 1
     node.pairing_code_hash = None
     node.pairing_expires_at = None
     await db.execute(

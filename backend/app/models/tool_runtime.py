@@ -7,7 +7,18 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -155,6 +166,7 @@ class ToolExecution(Base):
     risk_level: Mapped[str] = mapped_column(String(30), nullable=False)
     side_effect: Mapped[str] = mapped_column(String(30), nullable=False, default="none")
     arguments_preview: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    arguments_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     arguments_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     idempotency_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
     status: Mapped[ToolExecutionStatus] = mapped_column(
@@ -169,6 +181,14 @@ class ToolExecution(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    node_delivery_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    node_progress: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    node_last_delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    node_acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -200,6 +220,7 @@ class ExecutionNode(Base):
     pairing_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
