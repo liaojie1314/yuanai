@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.core.redis import redis_client
@@ -71,7 +72,9 @@ async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
 
     async with AsyncSessionLocal() as db:
         run = await db.scalar(
-            select(AgentRun).where(
+            select(AgentRun)
+            .options(selectinload(AgentRun.steps))
+            .where(
                 AgentRun.id == item.run_id,
                 AgentRun.user_id == item.tenant_id,
             )
