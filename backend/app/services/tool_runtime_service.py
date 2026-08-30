@@ -320,6 +320,13 @@ class ToolRuntimeService:
     ) -> ToolConnection:
         """创建用户连接元数据，永远不接收明文凭证。"""
 
+        if connection_model(kind) is ToolConnectionKind.mcp_http and secret_ref:
+            if self._secret_store is None:
+                raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
+            try:
+                self._secret_store.assert_ref_allowed(user_id, secret_ref)
+            except SecretStoreUnavailableError as error:
+                raise ToolRuntimeError("TOOL_SECRET_REF_INVALID") from error
         connection = ToolConnection(
             user_id=user_id,
             kind=connection_model(kind),

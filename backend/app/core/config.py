@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SearchProviderName = Literal["auto", "searxng", "brave", "tavily", "disabled"]
@@ -145,6 +146,16 @@ class Settings(BaseSettings):
     verify_code_send_interval_seconds: int = 60
     # 测试环境后门：非空时跳过真实发送和 Redis 校验，任何 6 位数字都视作正确
     verify_code_debug_bypass: str = ""
+
+    @model_validator(mode="after")
+    def _require_separated_execution_node_key(self) -> "Settings":
+        """生产模式必须使用独立于 JWT 签名密钥的节点参数加密密钥。"""
+
+        if not self.debug and not self.execution_node_encryption_key:
+            raise ValueError(
+                "EXECUTION_NODE_ENCRYPTION_KEY must be configured when debug is disabled"
+            )
+        return self
 
     # ── 三方登录 / OAuth ──────────────────────────────────────
     # GitHub OAuth App：在 GitHub Settings → Developer settings → OAuth Apps 创建

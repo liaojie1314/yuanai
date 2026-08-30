@@ -40,6 +40,7 @@ from app.schemas.tool_runtime import (
     ToolExecuteRequest,
     ToolExecutionResponse,
 )
+from app.services.secret_store import EnvironmentSecretStore
 from app.services.tool_runtime_service import (
     ToolRuntimeError,
     ToolRuntimeService,
@@ -49,7 +50,7 @@ from app.services.tool_runtime_service import (
 )
 
 router = APIRouter(tags=["tools"])
-runtime = ToolRuntimeService()
+runtime = ToolRuntimeService(secret_store=EnvironmentSecretStore())
 
 
 def _artifact_response(artifact: Artifact, user_id: uuid.UUID) -> ArtifactResponse:
