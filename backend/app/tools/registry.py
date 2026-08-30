@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import re
 from collections.abc import Mapping
 
 from app.tools.contracts import (
@@ -25,6 +26,30 @@ def _schema_error() -> ToolValidationError:
     """构造不泄漏参数内容的统一 schema 错误。"""
 
     return ToolValidationError()
+
+
+def _validate_pattern(value: str, schema: Mapping[str, object]) -> None:
+    """按 JSON Schema 语义执行未锚定的 pattern 子串匹配。"""
+
+    pattern = schema.get("pattern")
+    if not isinstance(pattern, str):
+        return
+    try:
+        if re.search(pattern, value) is None:
+            raise _schema_error()
+    except re.error as error:
+        raise _schema_error() from error
+
+
+def _validate_number_bounds(value: int | float, schema: Mapping[str, object]) -> None:
+    """校验数值字段的 minimum 和 maximum 边界。"""
+
+    minimum = schema.get("minimum")
+    maximum = schema.get("maximum")
+    if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and value < minimum:
+        raise _schema_error()
+    if isinstance(maximum, (int, float)) and not isinstance(maximum, bool) and value > maximum:
+        raise _schema_error()
 
 
 def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
@@ -58,12 +83,15 @@ def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
             raise _schema_error()
         if isinstance(max_length, int) and len(value) > max_length:
             raise _schema_error()
+        _validate_pattern(value, schema)
     elif expected_type == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
             raise _schema_error()
+        _validate_number_bounds(value, schema)
     elif expected_type == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise _schema_error()
+        _validate_number_bounds(value, schema)
     elif expected_type == "boolean":
         if not isinstance(value, bool):
             raise _schema_error()
