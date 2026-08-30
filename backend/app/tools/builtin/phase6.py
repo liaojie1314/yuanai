@@ -56,7 +56,7 @@ WEB_EXTRACT_SPEC = ToolSpec(
     risk_level=ToolRisk.read,
     execution_location="cloud",
     timeout_seconds=30,
-    tags={"web", "browser"},
+    tags={"web", "html"},
 )
 
 FILE_READ_SPEC = ToolSpec(
@@ -128,7 +128,7 @@ BROWSER_OPEN_SPEC = ToolSpec(
     risk_level=ToolRisk.read,
     execution_location="cloud",
     timeout_seconds=30,
-    tags={"browser", "dom"},
+    tags={"html", "fetch"},
 )
 
 BROWSER_CLICK_SPEC = ToolSpec(
@@ -147,7 +147,7 @@ BROWSER_CLICK_SPEC = ToolSpec(
     risk_level=ToolRisk.read,
     execution_location="cloud",
     timeout_seconds=30,
-    tags={"browser", "dom"},
+    tags={"html", "fetch"},
 )
 
 
