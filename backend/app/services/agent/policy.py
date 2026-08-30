@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.tools.contracts import ToolRisk, ToolSpec
+from app.tools.contracts import SideEffect, ToolRisk, ToolSpec
 
 SYSTEM_POLICY = (
     "你是 YuanAI 的受限 Agent。必须遵守平台安全策略和工具契约。"
@@ -30,9 +30,11 @@ class PolicyEngine:
     def decide(self, spec: ToolSpec) -> PolicyDecision:
         """低风险只读工具允许自动执行，其余风险不自动执行。"""
 
-        if spec.risk_level not in {ToolRisk.read, ToolRisk.low}:
-            return PolicyDecision(False, "TOOL_APPROVAL_REQUIRED")
-        return PolicyDecision(True)
+        if spec.risk_level in {ToolRisk.read, ToolRisk.low}:
+            return PolicyDecision(True)
+        if spec.risk_level is ToolRisk.local_write and spec.side_effect is SideEffect.local_write:
+            return PolicyDecision(True)
+        return PolicyDecision(False, "TOOL_APPROVAL_REQUIRED")
 
     def build_system_messages(self, user_instructions: str = "") -> list[dict[str, object]]:
         """将平台规则放在用户级指令之前，并保持为独立 system 消息。"""

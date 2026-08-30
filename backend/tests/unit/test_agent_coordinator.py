@@ -321,6 +321,22 @@ def test_policy_rejects_non_read_tools_without_execution() -> None:
     assert decision.reason == "TOOL_APPROVAL_REQUIRED"
 
 
+def test_policy_allows_isolated_workspace_artifacts() -> None:
+    """仅写入系统托管 Artifact 的工具可自动执行。"""
+    spec = ToolSpec(
+        name="workspace_artifact",
+        description="生成工作区 Artifact",
+        input_schema={"type": "object"},
+        risk_level=ToolRisk.local_write,
+        execution_location="cloud",
+        side_effect="local_write",
+    )
+
+    decision = PolicyEngine().decide(spec)
+
+    assert decision.allowed is True
+
+
 @pytest.mark.asyncio
 async def test_high_risk_tool_waits_for_approval_without_execution() -> None:
     """未审批的高风险工具只创建等待状态，不调用 handler。"""

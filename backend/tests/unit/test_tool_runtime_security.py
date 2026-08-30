@@ -241,6 +241,27 @@ async def test_sandbox_rejects_environment_files_and_network() -> None:
             await execute_python(code)
 
 
+@pytest.mark.asyncio
+async def test_sandbox_executes_inside_the_available_rootless_boundary() -> None:
+    """可用隔离运行时应执行简单表达式并返回结构化结果。"""
+
+    result = await execute_python("2 + 3")
+
+    assert result == {"status": "succeeded", "stdout": "5", "variables": {}}
+
+
+@pytest.mark.asyncio
+async def test_sandbox_fails_closed_when_rootless_runtime_is_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """没有 rootless 运行时不能退回宿主 Python。"""
+
+    monkeypatch.setattr("app.services.tools.sandbox.shutil.which", lambda _name: None)
+
+    with pytest.raises(SandboxExecutionError, match="SANDBOX_UNAVAILABLE"):
+        await execute_python("2 + 3")
+
+
 def test_public_url_rejects_local_and_private_targets(monkeypatch: pytest.MonkeyPatch) -> None:
     """公网 URL 校验阻断 localhost 和 DNS 解析到内网的域名。"""
 

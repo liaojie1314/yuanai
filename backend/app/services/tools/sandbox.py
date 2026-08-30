@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -17,10 +16,9 @@ class SandboxExecutionError(RuntimeError):
 def _sandbox_command(backend_root: Path) -> tuple[list[str], dict[str, str]]:
     """构造无网络、只读代码目录的隔离命令。"""
 
-    clean_env = {"PATH": os.defpath, "PYTHONNOUSERSITE": "1"}
     bwrap = shutil.which("bwrap")
     if bwrap is None:
-        return [sys.executable, "-m", "app.services.tools.sandbox_worker"], clean_env
+        raise SandboxExecutionError("SANDBOX_UNAVAILABLE")
 
     python_runtime = Path(sys.executable).resolve().parent.parent
     app_root = backend_root / "app"
@@ -30,6 +28,8 @@ def _sandbox_command(backend_root: Path) -> tuple[list[str], dict[str, str]]:
         "--unshare-all",
         "--new-session",
         "--clearenv",
+        "--cap-drop",
+        "ALL",
         "--ro-bind",
         "/usr",
         "/usr",
@@ -74,7 +74,7 @@ async def execute_python(code: str, *, timeout_seconds: float = 10.0) -> dict[st
 
     if not code.strip() or len(code) > 8_000:
         raise SandboxExecutionError("SANDBOX_CODE_INVALID")
-    backend_root = Path(__file__).resolve().parents[2]
+    backend_root = Path(__file__).resolve().parents[3]
     command, clean_env = _sandbox_command(backend_root)
     process = await asyncio.create_subprocess_exec(
         *command,
