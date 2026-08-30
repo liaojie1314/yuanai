@@ -603,8 +603,10 @@ export interface AgentEvent {
 /** 脱敏审批请求。 */
 export interface ApprovalRequest {
   id: string
-  runId: string
-  stepId: string
+  /** 绑定 Agent Run 的审批有值；独立工具审批为 null。 */
+  runId: string | null
+  /** 绑定 Agent Step 的审批有值；独立工具审批为 null。 */
+  stepId: string | null
   userId: string
   toolName: string
   executionLocation: string

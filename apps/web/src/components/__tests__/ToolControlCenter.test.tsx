@@ -80,6 +80,24 @@ const execution = {
   updatedAt: '2026-08-30T00:00:00Z',
 }
 
+const approval = {
+  id: 'appr-1',
+  runId: null,
+  stepId: null,
+  userId: 'user-1',
+  toolName: 'files_write',
+  executionLocation: 'cloud',
+  riskLevel: 'high',
+  actionSummary: '执行工具 files_write',
+  argumentsPreview: { path: 'a.txt' },
+  payloadHash: 'hash',
+  status: 'pending',
+  expiresAt: '2026-08-31T00:00:00Z',
+  decidedAt: null,
+  decisionNote: null,
+  createdAt: '2026-08-30T00:00:00Z',
+}
+
 const artifact = {
   id: 'art-1',
   userId: 'user-1',
@@ -132,7 +150,8 @@ beforeEach(() => {
     http.get(`${API}/resource-grants`, () => HttpResponse.json([])),
     http.get(`${API}/mcp-servers`, () => HttpResponse.json([])),
     http.get(`${API}/tool-executions`, () => HttpResponse.json([execution])),
-    http.get(`${API}/artifacts`, () => HttpResponse.json([artifact]))
+    http.get(`${API}/artifacts`, () => HttpResponse.json([artifact])),
+    http.get(`${API}/agent/approvals`, () => HttpResponse.json([approval]))
   )
 })
 
@@ -224,5 +243,27 @@ describe('ToolControlCenter', () => {
     expect(link).toHaveAttribute('href', artifact.downloadUrl)
     await user.click(screen.getByRole('button', { name: /删除/ }))
     expect(deleteSpy).not.toHaveBeenCalled()
+  })
+
+  it('Artifact 预览内容被渲染', async () => {
+    server.use(
+      http.get(`${API}/artifacts`, () =>
+        HttpResponse.json([{ ...artifact, preview: { lines: ['第一行'] } }])
+      )
+    )
+    renderCenter()
+    await userEvent.setup().click(screen.getByRole('button', { name: /Artifact/ }))
+    expect(await screen.findByText(/预览: /)).toBeInTheDocument()
+  })
+
+  it('审批页签展示待处理审批并支持批准', async () => {
+    const user = userEvent.setup()
+    const decideSpy = vi.fn(() => HttpResponse.json({ ...approval, status: 'approved' }))
+    server.use(http.post(`${API}/agent/approvals/appr-1`, () => decideSpy()))
+    renderCenter()
+    await user.click(screen.getByRole('button', { name: /审批/ }))
+    expect(await screen.findByText('执行工具 files_write')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '批准' }))
+    await waitFor(() => expect(decideSpy).toHaveBeenCalled())
   })
 })

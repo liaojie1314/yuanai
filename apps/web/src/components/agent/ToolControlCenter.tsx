@@ -8,14 +8,16 @@ import {
   Plug,
   RefreshCw,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Trash2,
   X,
 } from 'lucide-react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useLocale } from 'next-intl'
 import { useState, type FormEvent, type JSX } from 'react'
 import type {
+  ApprovalRequest,
   ArtifactMeta,
   ExecutionNode,
   ExecutionNodePairing,
@@ -28,6 +30,7 @@ import type {
 } from '@yuanai/types'
 import {
   useCancelToolExecution,
+  useDecideAgentApproval,
   useCreateMcpServer,
   useCreateToolConnection,
   useDeleteArtifact,
@@ -44,10 +47,12 @@ import {
   useToolConnections,
   useToolExecutions,
 } from '@yuanai/core/hooks'
+import { listAgentApprovals } from '@yuanai/core/api'
 import { useTranslations } from '@/i18n/client'
 import './tools.css'
 
-type ToolCenterTab = 'catalog' | 'connections' | 'mcp' | 'nodes' | 'executions' | 'artifacts'
+type ToolCenterTab =
+  'catalog' | 'connections' | 'mcp' | 'nodes' | 'executions' | 'artifacts' | 'approvals'
 
 const TABS: readonly ToolCenterTab[] = [
   'catalog',
@@ -56,6 +61,7 @@ const TABS: readonly ToolCenterTab[] = [
   'nodes',
   'executions',
   'artifacts',
+  'approvals',
 ]
 
 const CONNECTION_KINDS: readonly ToolConnectionKind[] = ['api_key', 'oauth']
@@ -704,6 +710,11 @@ function ArtifactsTab(): JSX.Element {
                 <span>
                   {t('artifacts.expiresAt')}: {formatDate(item.expiresAt, locale)}
                 </span>
+                {item.preview ? (
+                  <span className="tools-break">
+                    {t('artifacts.preview')}: {JSON.stringify(item.preview).slice(0, 300)}
+                  </span>
+                ) : null}
               </div>
               <div className="tools-actions">
                 {item.downloadUrl ? (
@@ -735,6 +746,79 @@ function ArtifactsTab(): JSX.Element {
   )
 }
 
+function ApprovalsTab(): JSX.Element {
+  const t = useTranslations('tools')
+  const locale = useLocale()
+  const approvals = useQuery({
+    queryKey: ['agent-approvals'],
+    queryFn: listAgentApprovals,
+  })
+  const decide = useDecideAgentApproval()
+  const rows = approvals.data ?? []
+  return (
+    <div className="tools-pane">
+      {rows.length ? (
+        <ul className="tools-list">
+          {rows.map((item: ApprovalRequest) => (
+            <li key={item.id} className="tools-row">
+              <div className="tools-row-main">
+                <strong>{item.toolName}</strong>
+                <StatusBadge
+                  tone={
+                    item.status === 'approved'
+                      ? 'ok'
+                      : item.status === 'denied' || item.status === 'expired'
+                        ? 'bad'
+                        : 'busy'
+                  }
+                  label={t(`approvals.${item.status === 'pending' ? 'pending' : item.status}`)}
+                />
+                <span className="tools-muted">{t(`location.${item.executionLocation}`)}</span>
+              </div>
+              <div className="tools-card-meta">
+                <span>{item.actionSummary}</span>
+                <span>
+                  {t('approvals.expiresAt')}: {formatDate(item.expiresAt, locale)}
+                </span>
+                {item.status === 'pending' ? (
+                  <span className="tools-break">
+                    {t('catalog.name')}: {JSON.stringify(item.argumentsPreview)}
+                  </span>
+                ) : null}
+              </div>
+              {item.status === 'pending' ? (
+                <div className="tools-actions">
+                  <button
+                    className="tools-btn tools-btn--primary"
+                    type="button"
+                    disabled={decide.isPending}
+                    onClick={() => decide.mutate({ id: item.id, decision: 'approve' })}
+                  >
+                    {t('approvals.approve')}
+                  </button>
+                  <button
+                    className="tools-btn tools-btn--danger"
+                    type="button"
+                    disabled={decide.isPending}
+                    onClick={() => decide.mutate({ id: item.id, decision: 'deny' })}
+                  >
+                    {t('approvals.deny')}
+                  </button>
+                </div>
+              ) : (
+                <span className="tools-muted">{t('approvals.decided')}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="tools-empty">{t('approvals.empty')}</p>
+      )}
+      <SectionError message={decide.isError ? t('common.actionFailed') : undefined} />
+    </div>
+  )
+}
+
 /** 用户工具控制中心：只呈现后端事实，不在前端复制策略判断。 */
 export default function ToolControlCenter(): JSX.Element {
   const t = useTranslations('tools')
@@ -748,6 +832,7 @@ export default function ToolControlCenter(): JSX.Element {
     nodes: <Plug size={15} aria-hidden="true" />,
     executions: <ShieldCheck size={15} aria-hidden="true" />,
     artifacts: <Download size={15} aria-hidden="true" />,
+    approvals: <ShieldAlert size={15} aria-hidden="true" />,
   }
 
   return (
@@ -782,6 +867,7 @@ export default function ToolControlCenter(): JSX.Element {
       {tab === 'nodes' ? <NodesTab /> : null}
       {tab === 'executions' ? <ExecutionsTab /> : null}
       {tab === 'artifacts' ? <ArtifactsTab /> : null}
+      {tab === 'approvals' ? <ApprovalsTab /> : null}
     </main>
   )
 }

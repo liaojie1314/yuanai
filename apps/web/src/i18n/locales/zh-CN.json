@@ -391,7 +391,8 @@
       "mcp": "MCP",
       "nodes": "执行节点",
       "executions": "执行记录",
-      "artifacts": "Artifact"
+      "artifacts": "Artifact",
+      "approvals": "审批"
     },
     "risk": {
       "read": "只读",
@@ -493,13 +494,26 @@
       "expiresAt": "过期时间",
       "download": "下载",
       "delete": "删除",
-      "confirmDelete": "确定删除该 Artifact？"
+      "confirmDelete": "确定删除该 Artifact？",
+      "preview": "预览"
     },
     "common": {
       "creating": "创建中…",
       "working": "处理中…",
       "actionFailed": "操作失败，请重试",
       "none": "无"
+    },
+    "approvals": {
+      "empty": "没有等待处理的审批",
+      "pending": "待处理",
+      "approve": "批准",
+      "deny": "拒绝",
+      "approved": "已批准",
+      "denied": "已拒绝",
+      "expired": "已过期",
+      "cancelled": "已取消",
+      "expiresAt": "过期时间",
+      "decided": "已处理"
     }
   }
 }

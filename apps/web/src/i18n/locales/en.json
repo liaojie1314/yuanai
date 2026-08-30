@@ -391,7 +391,8 @@
       "mcp": "MCP",
       "nodes": "Execution nodes",
       "executions": "Executions",
-      "artifacts": "Artifacts"
+      "artifacts": "Artifacts",
+      "approvals": "Approvals"
     },
     "risk": {
       "read": "Read",
@@ -493,13 +494,26 @@
       "expiresAt": "Expires",
       "download": "Download",
       "delete": "Delete",
-      "confirmDelete": "Delete this artifact?"
+      "confirmDelete": "Delete this artifact?",
+      "preview": "Preview"
     },
     "common": {
       "creating": "Creating…",
       "working": "Working…",
       "actionFailed": "Action failed. Try again.",
       "none": "None"
+    },
+    "approvals": {
+      "empty": "No pending approvals",
+      "pending": "Pending",
+      "approve": "Approve",
+      "deny": "Deny",
+      "approved": "Approved",
+      "denied": "Denied",
+      "expired": "Expired",
+      "cancelled": "Cancelled",
+      "expiresAt": "Expires",
+      "decided": "Decided"
     }
   }
 }
