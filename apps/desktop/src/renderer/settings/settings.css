@@ -1005,3 +1005,37 @@ textarea:focus-visible {
     padding: 14px;
   }
 }
+
+.settings-spin {
+  animation: settings-spin 1s linear infinite;
+}
+
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-grant-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-grant-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--desktop-settings-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.settings-grant-list li span:nth-child(2) {
+  color: var(--settings-muted, inherit);
+  font-size: 12px;
+}

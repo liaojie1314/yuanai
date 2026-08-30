@@ -13,6 +13,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } fr
 import { useTranslation } from 'react-i18next'
 
 import type { DesktopPreferences, DesktopUpdateStatus } from '../../../shared/ipc-contract'
+import { ExecutionNodeSection } from './ExecutionNodeSection'
 
 import '../../shared/i18n'
 
@@ -448,6 +449,7 @@ export function DesktopSection({
             </div>
           </div>
         </section>
+        <ExecutionNodeSection />
       </div>
     </div>
   )
