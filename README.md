@@ -131,9 +131,10 @@ MEDIA_MUSIC_LOCAL_DEVICE=auto
 本机 GPU 会优先用于纯音乐生成；没有 CUDA 时可以改为 `cpu`，但速度会明显变慢。音乐支持
 固定 30 秒的纯音乐和歌词歌曲：纯音乐使用本机 MusicGen，歌词歌曲使用独立的本机 ACE-Step
 服务。模型安装、三端使用方式、远程失败降级和 provider 注意事项见
-[媒体生成与音乐配置](docs/media-generation.md)。未配置该 Key 时，图片、视频和普通聊天
-仍可使用，音乐任务不会依赖第三方 Key；歌词模式需要 ACE-Step 服务运行。Hugging Face
-远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用方案。ACE-Step 建议使用至少 6 GB
+[媒体生成与音乐配置](docs/media-generation.md)。未配置 `HF_TOKEN` 或 `ELEVENLABS_API_KEY`
+时，图片、视频和普通聊天仍可使用，默认本机 MusicGen 也不依赖第三方 Key；歌词模式需要
+ACE-Step 服务运行。Hugging Face 远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用
+方案，其中 ElevenLabs 不保证包含免费 Music API 额度。ACE-Step 建议使用至少 6 GB
 可用显存；4 GB 显卡不能稳定完成歌词推理，可按媒体配置文档使用 CPU-only 启动回退。
 
 ## 联网搜索

@@ -6,19 +6,22 @@
 - **执行范围**：按 Wave 分批修改 `backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`；Mobile 仅保持共享协议兼容，不实现本阶段的工具控制中心或本地执行节点。
 - **阶段定位**：让 Agent 从“会规划”升级为“能在受控边界内执行真实数字动作”
 
-> **当前实现状态（2026-08-25）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
-> 当前 checkout 只完成了本页的边界修订，以及独立的媒体音乐能力；MCP、云沙箱、Tool
-> Connection、Desktop Execution Node、Web Tool Control Center 和浏览器自动化尚未交付。
-> 本页验收标准必须逐项有代码、测试和真实运行证据后才能勾选，音乐生成不计入本阶段许可证。
+> **当前实现状态（2026-08-30）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
+> 当前 checkout 已在 `feature/tools-execution` 分支本地提交 Wave 1-5 的实现代码：Tool
+> Runtime 安全基础、云端只读/产出工具与受限 Python 沙箱、远程 Streamable HTTP MCP、
+> Desktop 执行节点协议与 Electron 客户端、Web Tool Control Center。**本页验收标准尚未
+> 达成**：桌面客户端真实配对/执行演练、故障注入稳定性、安全测试和下文标注的边界项
+> （stdio MCP、真实 DOM 浏览器自动化、SecretStore 持久化契约）仍未完成，进入 Phase 7
+> 的许可证仍然阻塞。勾选任何验收项前必须有代码、测试和真实运行证据。
 
-| Wave                      | 当前状态 | 进入 Phase 7 的影响 |
-| ------------------------- | -------- | ------------------- |
-| 1. 共享契约与安全基础     | 未开始   | 阻塞                |
-| 2. 云端只读与产出工具     | 未开始   | 阻塞                |
-| 3. MCP 连接与路由         | 未开始   | 阻塞                |
-| 4. Desktop 执行节点       | 未开始   | 阻塞                |
-| 5. Web 控制中心           | 未开始   | 阻塞                |
-| 6. 浏览器自动化与安全灰度 | 未开始   | 阻塞                |
+| Wave                      | 当前状态                                   | 进入 Phase 7 的影响 |
+| ------------------------- | ------------------------------------------ | ------------------- |
+| 1. 共享契约与安全基础     | 代码已提交，契约测试通过                   | 阻塞                |
+| 2. 云端只读与产出工具     | 代码已提交，模拟链路测试通过               | 阻塞                |
+| 3. MCP 连接与路由         | 仅远程 HTTP MCP；stdio 未实现              | 阻塞                |
+| 4. Desktop 执行节点       | 后端协议已过真实链路演练；客户端待真实验收 | 阻塞                |
+| 5. Web 控制中心           | 页面/hooks/测试已提交；真实数据验收未做    | 阻塞                |
+| 6. 浏览器自动化与安全灰度 | 未开始（仅受限静态 HTML 抓取）             | 阻塞                |
 
 ---
 
@@ -239,6 +242,13 @@ class SecretStore(Protocol):
 - 桌面凭证：Electron `safeStorage` / OS Keychain；云端只保存连接存在与作用域，不保存明文
 - 日志、Event、trace 和异常禁止输出 secret；健康检查只返回 `valid/invalid`
 
+**当前实现边界（2026-08-30）**：`EnvironmentSecretStore` 只实现 `get`（加上
+`assert_ref_allowed` 引用校验），尚无 `put`/`delete` 持久化契约。引用格式强制内嵌租户
+身份：`env://YUANAI_MCP_SECRET_<去掉连字符的大写用户UUID>_<NAME>`，跨租户引用在连接
+创建与执行时都会被拒绝；非调试部署必须显式配置独立的
+`EXECUTION_NODE_ENCRYPTION_KEY`（不得回退 JWT 签名密钥）。`put`/`delete` 与 KMS
+adapter 待补。
+
 每个连接器必须声明数据处理位置：cloud、desktop 或 user_selected。
 
 ---
@@ -277,8 +287,8 @@ class SecretStore(Protocol):
 
 ### 8.1 支持范围
 
-- 远程 Streamable HTTP MCP：云端和桌面均可连接
-- stdio MCP：仅云端隔离 Worker或桌面节点运行
+- 远程 Streamable HTTP MCP：云端和桌面均可连接（**当前已实现**）
+- stdio MCP：仅云端隔离 Worker或桌面节点运行（**尚未实现**，是 Wave 3 剩余范围）
 - 每用户/Workspace 独立配置，不提供全局共享用户凭证
 - 首次连接展示服务器来源、工具列表、schema、网络目标和环境变量需求
 
@@ -320,10 +330,11 @@ Renderer
 
 ### 9.2 配对
 
-1. 用户在已登录客户端创建一次性配对码
+1. 用户在已登录客户端创建一次性配对码（Web 控制中心或 Desktop 设置页均可发起）
 2. Desktop 生成 Ed25519 密钥对，私钥进入 safeStorage
 3. 配对码换取短期注册 token，服务端保存设备公钥
-4. 后续 WSS 连接使用设备 JWT + challenge 签名
+4. 后续 WSS 连接使用设备 JWT + challenge 签名；令牌到期前可用登记私钥
+   签署旧令牌调用 `POST /execution-nodes/token` 续期，撤销节点后旧令牌立即失效
 5. 用户可在任一端撤销节点；撤销后旧密钥立即失效
 
 ### 9.3 Job 协议
@@ -342,13 +353,15 @@ Renderer
 - 获取剪贴板内容，仅在用户主动触发且每次确认
 - 通过 Electron 原生文件选择器授予新 ResourceGrant
 
-任意桌面软件控制、浏览器 Profile 自动化和无障碍树操作在本阶段后半段灰度，不作为进入 Phase 7 的硬门槛。
+任意桌面软件控制和带登录态的浏览器 Profile 自动化在本阶段后半段灰度，不作为进入 Phase 7
+的硬门槛。浏览器 Worker 的 DOM/无障碍树读取与受控动作属于 Wave 6，仍是其安全验收和
+Phase 7 许可证的一部分。
 
 ---
 
 ## 10. 首批云端工具
 
-### Wave 1：只读与产出
+### 云端只读与产出（Wave 2）
 
 - Web 搜索：provider adapter，返回结构化结果和引用
 - 网页提取：正文、元数据、链接和抓取时间
@@ -356,13 +369,19 @@ Renderer
 - Python 代码执行：隔离沙箱，返回 stdout、文件和图表 Artifact
 - 工作区文件生成：Markdown、CSV、JSON、DOCX、XLSX、PPTX
 
-### Wave 2：受控浏览器
+### 受控浏览器（Wave 6）
 
 - 打开页面、读取 DOM/无障碍树、点击、输入、下载、截图
 - 优先使用语义定位器，不使用固定坐标
 - 登录态存储在独立加密 Browser Profile
 - 每个导航和下载经过域名与 SSRF 策略
 - CAPTCHA、二次验证和异常风控自动转为人工接管
+
+> **当前边界（2026-08-30）**：现存的 `web_extract` / `browser_open` / `browser_click`
+> 是 HTTPS 公网受限抓取：SSRF 逐跳校验、DNS 固定、100KB 截断、静态 HTML 文本与前 100
+> 个链接的解析，`browser_click` 只按可见文本重新抓取目标页。**没有** JS 渲染、无障碍
+> 树、坐标点击、表单提交、Cookie、下载或截图能力，不得当作浏览器自动化使用。真实 DOM
+> 浏览器 Worker 属于 Wave 6 未开工范围。
 
 ---
 
@@ -490,3 +509,20 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 - [ ] Tool Contract Suite、安全集成测试和 Desktop E2E 全部通过
 
 **进入 Phase 7 的许可证**：Wave 1-6 的出口条件全部满足，至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
+
+### 当前证据索引（2026-08-30）
+
+| 验收域                                                                       | 证据                                                                                                              | 状态                                 |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`              | 已覆盖                               |
+| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                        | 模拟已覆盖；真实外部模型链未验证     |
+| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                     | 已覆盖                               |
+| MCP 连接绑定、审批与跨租户隔离                                               | `backend/tests/integration/test_mcp_runtime.py`                                                                   | 已覆盖                               |
+| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证） | 已覆盖（后端链路）                   |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/src/main/execution-node/*` 单元测试 81 例、`ExecutionNodeSection` 组件测试                          | 组件级已覆盖；真实桌面端到端验收未做 |
+| Web Tool Control Center                                                      | `apps/web/src/components/agent/ToolControlCenter.tsx` + 组件测试 8 例                                             | 组件级已覆盖；真实数据验收未做       |
+| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | 尚未执行                                                                                                          | 未验证                               |
+| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 部分：审批哈希绑定与幂等键有测试；其余未系统执行                                                                  | 部分覆盖                             |
+
+因此，Phase 6 许可证仍然阻塞：剩余工作为 Desktop 客户端真实端到端验收、故障注入演练、
+系统性安全测试与 Wave 6 浏览器能力。

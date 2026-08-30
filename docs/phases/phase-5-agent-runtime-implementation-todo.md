@@ -1,6 +1,9 @@
 # Agent Runtime Implementation Checklist
 
-This checklist records the locally verified contracts for the Agent runtime.
+This checklist records the locally verified code contracts for the Agent runtime. It is not the
+Phase 5 release gate: the phase remains blocked until the real external-model two-tool run,
+real Worker-crash recovery, and 5-minute disconnect recovery drills in
+`phase-5-agent-runtime.md` have evidence.
 
 ## Verification
 

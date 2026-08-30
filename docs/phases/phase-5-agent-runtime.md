@@ -5,10 +5,12 @@
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`；Mobile/Desktop 本阶段只保持协议兼容
 - **阶段定位**：在不破坏现有聊天功能的前提下，建立可持久化、可恢复、可审批的 Agent 最小闭环
 
-> **当前验收状态（2026-08-25）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
-> Worker、Web Agent UI 和测试。逐项实现契约记录见
-> [Phase 5 实施清单](./phase-5-agent-runtime-implementation-todo.md)。本页的验收复选框
-> 只有在对应测试或真实运行证据明确存在时才勾选；不能用构建成功替代恢复、审批或租户隔离证据。
+> **当前验收状态（2026-08-27）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
+> Worker、Web Agent UI 和自动化测试。逐项已验证的代码合同记录见
+> [Phase 5 实施清单](./phase-5-agent-runtime-implementation-todo.md)，但它不是阶段放行结论。
+> 当前 Phase 5 许可证仍为**阻塞**：尚缺真实外部模型两工具链、真实 Worker 崩溃恢复和 5 分钟
+> 断线恢复演练。只有对应测试或真实运行证据明确存在时才能勾选本页验收项；不能用构建成功替代
+> 恢复、审批或租户隔离证据。
 
 ---
 
@@ -321,36 +323,33 @@ POST /api/v1/agent/runs
 Idempotency-Key: <client-generated>
 
 HTTP/1.1 202 Accepted
-{"run_id":"uuid","status":"queued","events_url":"/api/v1/agent/runs/uuid/events"}
+{"run_id":"uuid","status":"queued","events_url":"/api/v1/agent/runs/uuid/stream"}
 ```
 
 ```http
-GET /api/v1/agent/runs/{run_id}/events
+GET /api/v1/agent/runs/{run_id}/stream
 Last-Event-ID: 42
 Accept: text/event-stream
 ```
 
-服务端先从 `agent_events` 重放 `sequence > Last-Event-ID`，再订阅 Redis 广播；Redis 消息丢失时仍可从数据库补齐。
+服务端先从 `agent_events` 重放 `sequence > Last-Event-ID`，再轮询可恢复事件；Redis 只负责
+队列和广播提示，消息丢失时仍可从数据库补齐。`GET /agent/runs/{run_id}/events` 是同一游标的
+JSON 回放端点，供列表/补拉使用，不是 SSE 端点。
 
 ### 8.2 事件清单
 
-| SSE event           | 核心字段                                                       |
-| ------------------- | -------------------------------------------------------------- |
-| `run_start`         | `run_id`, `model`, `max_steps`                                 |
-| `step_start`        | `step_id`, `sequence`, `kind`                                  |
-| `thinking_delta`    | `token`                                                        |
-| `content_delta`     | `token`                                                        |
-| `tool_call_start`   | `tool_execution_id`, `name`, `risk_level`                      |
-| `tool_call_delta`   | `tool_execution_id`, `args_chunk`                              |
-| `approval_required` | `approval_id`, `summary`, `expires_at`                         |
-| `tool_call_end`     | `tool_execution_id`, `status`, `result_preview`, `duration_ms` |
-| `input_required`    | `request_id`, `question`                                       |
-| `artifact_created`  | `artifact_id`, `name`, `mime_type`                             |
-| `run_waiting`       | `reason`                                                       |
-| `run_end`           | `status`, `usage`, `finish_reason`                             |
-| `error`             | `code`, `message`, `retryable`                                 |
+| 当前 SSE event      | 核心字段                                |
+| ------------------- | --------------------------------------- |
+| `run_started`       | `model`, `max_steps`                    |
+| `step_started`      | `sequence`, `kind`，工具步骤另带 `name` |
+| `approval_required` | `tool_name`, `execution_location`       |
+| `tool_completed`    | `name`, `status`                        |
+| `run_completed`     | `status`, `content`                     |
 
-事件字段统一使用 `snake_case`。现有 `/chat/stream` 协议保持不变，`packages/core` 新增 `useAgentRun`，不要继续扩大 `useStream` 的职责。
+当前失败或取消的流以 `[DONE]` 结束，客户端随后读取 Run 快照确认终态；这是当前实现边界，
+不是未来 Tool Runtime 的完整事件字典。事件字段统一使用 `snake_case`。Phase 6 如需扩展
+`tool_call_*`、Artifact 或浏览器事件，必须先在共享类型、SSE 和 JSON 回放端点中一并定义并测试。
+现有 `/chat/stream` 协议保持不变，`packages/core` 的 `useAgentRun` 不应扩大 `useStream` 的职责。
 
 ---
 
@@ -367,7 +366,8 @@ Accept: text/event-stream
 | POST  | `/agent/runs`                    | 创建 Run，返回 202    |
 | GET   | `/agent/runs/{id}`               | Run 当前快照          |
 | GET   | `/agent/runs/{id}/steps`         | Step 列表             |
-| GET   | `/agent/runs/{id}/events`        | 可重放 SSE            |
+| GET   | `/agent/runs/{id}/stream`        | 可重放 SSE            |
+| GET   | `/agent/runs/{id}/events`        | 按游标返回 JSON 事件  |
 | POST  | `/agent/runs/{id}/cancel`        | 取消 Run              |
 | POST  | `/agent/runs/{id}/input`         | 回答澄清问题          |
 | POST  | `/agent/approvals/{id}/decision` | 批准或拒绝            |

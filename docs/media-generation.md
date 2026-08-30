@@ -114,6 +114,31 @@ MusicGen，避免限流或排队阻断生成。
 
 Hugging Face 的免费推理额度、模型排队和速率限制会随账号、区域和平台策略变化，不能承诺固定生成数量。远程适配器会等待并重试模型加载、`429`、`503`、网关错误和短暂网络故障，但远程模型本身不支持时不会无限重试。
 
+## 可选方案：ElevenLabs 远程纯音乐
+
+只有将 `MEDIA_MUSIC_PROVIDER` 显式设为 `elevenlabs` 时，后端才会调用 ElevenLabs Music API。
+它只处理纯音乐任务；填写歌词的任务始终使用本机 ACE-Step。远程调用失败时，若
+`MEDIA_MUSIC_FALLBACK_TO_LOCAL=true` 且本机 MusicGen 已就绪，会回退到本机 MusicGen。
+
+获取并配置 Key：
+
+1. 登录 [ElevenLabs](https://elevenlabs.io/)，打开 [Developers → API keys](https://elevenlabs.io/app/developers/api-keys)。
+2. 点击 `Create API key`，为本机开发环境命名，例如 `yuanai-music-local`，按当前账户页面可用的最小权限范围创建。
+3. Key 仅完整显示一次。保存到本机密码管理器后，只写入 `backend/.env`；不要写入客户端环境变量、Git、截图或聊天记录。
+4. 在 `backend/.env` 配置：
+
+```dotenv
+ELEVENLABS_API_KEY=你的ElevenLabs_Key
+MEDIA_MUSIC_PROVIDER=elevenlabs
+MEDIA_MUSIC_FALLBACK_TO_LOCAL=true
+MEDIA_MUSIC_TIMEOUT_SECONDS=120
+```
+
+创建 API Key 不等于获得 Music API 调用额度。ElevenLabs 的套餐、Music API 权限和试用额度会
+变化；本项目的真实调用曾收到 HTTP `402 Payment Required`，因此不能把该平台描述为已验证的
+免费音乐 API。出现 `402`、限流或服务故障时，应用会保持有界重试，并在已启用且可用时回退到
+本机 MusicGen；歌词任务不会静默改成无歌词音乐。
+
 ## 本地配置
 
 在仓库根目录执行：
@@ -122,7 +147,7 @@ Hugging Face 的免费推理额度、模型排队和速率限制会随账号、�
 cp backend/.env.example backend/.env
 ```
 
-编辑 `backend/.env`，只在后端配置 Key：
+编辑 `backend/.env`，只在后端配置所选远程 provider 的 Key；以下是 Hugging Face 示例：
 
 ```dotenv
 HF_TOKEN=你的HuggingFace_Token
@@ -151,9 +176,9 @@ pnpm dev:real
 `pnpm dev:real` 会通过 Docker Compose 启动本地 PostgreSQL、Redis、MinIO、SearXNG，再启动
 FastAPI 和 Web。它不会
 把 Token 暴露给 Web、Mobile 或 Desktop；三端都通过 FastAPI 使用音乐生成能力。没有配置
-`HF_TOKEN` 时，纯音乐的远程 provider 会先失败，若启用本机 fallback 且 MusicGen 可用则
-自动降级；歌词模式不使用该 Token，而是要求 ACE-Step 服务可用。任何情况下都不会向客户端
-泄漏 Token 或供应商响应正文。
+`HF_TOKEN` 或 `ELEVENLABS_API_KEY` 时，对应的远程 provider 会先失败；若启用本机 fallback
+且 MusicGen 可用则自动降级。歌词模式不使用这些 Token，而是要求 ACE-Step 服务可用。任何
+情况下都不会向客户端泄漏 Token 或供应商响应正文。
 
 如果当前网络访问 Hugging Face 远程 provider 需要本地代理，请在启动项目时通过标准环境变量注入，
 不要把代理地址作为项目配置提交：

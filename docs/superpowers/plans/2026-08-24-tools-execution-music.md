@@ -1,14 +1,28 @@
-# Tools Execution and Music Generation Implementation Plan
+# Tools Execution and Music Generation Implementation Plan and Delivery Record
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Deliver the first controlled-tool execution foundation described by Phase 6 and add prompt-to-music generation to the existing persistent image/video media workflow on Web, Desktop, and Mobile.
+**Original goal:** Plan the first controlled-tool execution foundation described by Phase 6 and add prompt-to-music generation to the existing persistent image/video media workflow on Web, Desktop, and Mobile.
 
-**Architecture:** Phase 6 is documented as incremental Waves: shared contracts and policy first, cloud execution next, then MCP and Desktop execution nodes, with Web as the control center and Mobile remaining compatibility-only. Music is deliberately outside Tool Runtime and extends `MediaGenerationTask` with a `music` kind, a server-side local Hugging Face MusicGen adapter, object-storage persistence, and native audio playback on all three clients.
+**Architecture:** Phase 6 is documented as incremental Waves: shared contracts and policy first, cloud execution next, then MCP and Desktop execution nodes, with Web as the control center and Mobile remaining compatibility-only. Music is deliberately outside Tool Runtime and extends `MediaGenerationTask` with a `music` kind. Pure music defaults to local MusicGen; lyrics songs use local ACE-Step. Hugging Face and ElevenLabs are explicit remote pure-music experiments with bounded retry and optional local fallback. Audio is persisted in object storage and rendered natively on all three clients.
 
 **Tech Stack:** FastAPI, async SQLAlchemy, Pydantic v2, HTTPX, S3-compatible storage, TypeScript monorepo packages, Next.js Web, Electron Desktop, Expo React Native, Vitest, pytest, Playwright, pnpm scripts.
 
 ---
+
+## Delivery Status (2026-08-27)
+
+This document retains the original implementation checklist for traceability. The checkboxes below
+are historical planning items, not the current Phase 6 acceptance authority. Current truth is:
+
+| Area                           | Status                                                 | Evidence / boundary                                                                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Music Stage 1-3                | Implemented                                            | Persisted `music` tasks, local MusicGen, ACE-Step lyrics, Web/Mobile/Desktop playback, local commits and real Web music verification are recorded in `.codex/phase-6-tools-execution-progress.md`. |
+| Pure music providers           | Implemented                                            | Default local MusicGen needs no token; Hugging Face and ElevenLabs are optional remote providers with bounded retry and local fallback. ElevenLabs entitlement is not verified as free.            |
+| Lyrics songs                   | Approved extension and implemented                     | The initial plan excluded structured lyrics, but the approved extension now persists lyrics and routes them only to local ACE-Step.                                                                |
+| Phase 6 Tool Runtime Waves 1-5 | Code committed locally; acceptance evidence incomplete | Music does not satisfy Tool Runtime acceptance or open Phase 7. Wave status and the evidence index live in `docs/phases/phase-6-tools-execution.md`.                                               |
+
+## Historical Execution Plan
 
 ## Working Rules
 
@@ -83,7 +97,7 @@ cd backend && uv run pytest tests/unit/test_media_generation_service.py tests/in
 
 Expected: all selected tests pass with exit code `0`.
 
-### Task 1.3: Add the local Hugging Face MusicGen provider adapter
+### Task 1.3: Add bounded music provider adapters
 
 **Files:**
 
@@ -94,12 +108,12 @@ Expected: all selected tests pass with exit code `0`.
 - Test: `backend/tests/unit/test_ai_service.py`
 - Test: `backend/tests/unit/test_media_generation_service.py`
 
-- [ ] Add `elevenlabs_api_key: str = ""`, a bounded music timeout, and an explicit feature configuration that leaves music unavailable when the key is absent.
-- [ ] Implement an async `generate_local_music(prompt: str, duration_ms: int = 30_000) -> tuple[bytes, str]` provider function in `ai_service.py`; load the model once per worker process and serialize local generation to protect GPU memory.
-- [ ] Send `POST https://api.elevenlabs.io/v1/music` with `xi-api-key`, `Content-Type: application/json`, and query `output_format=mp3_44100_128`; body must be exactly constrained to `prompt`, `music_length_ms: 30000`, `model_id: "music_v1"`, and `force_instrumental: true`.
-- [ ] Return `audio/mpeg` only for a non-empty successful response; map missing key, timeout, HTTP errors, empty body, and unsupported response MIME to existing media provider domain errors without leaking the API key or provider response body.
-- [ ] Call this function only from the media worker, store returned bytes with the existing storage service, set `result_mime_type` and `result_duration_seconds`, then finalize through `_complete_task`.
-- [ ] Add HTTP mock tests asserting URL, headers, JSON body, timeout/error mapping, and no provider URL exposure.
+- [ ] Keep local MusicGen as the default provider with no token; load it once per worker process and serialize generation to protect memory.
+- [ ] Add explicit Hugging Face and ElevenLabs remote providers with bounded timeout/retry. A missing remote Key must be eligible for local fallback, not make default music unavailable.
+- [ ] Restrict remote provider calls to pure music. Route lyrics tasks only to ACE-Step and never silently drop lyrics.
+- [ ] Return `audio/mpeg` only for a non-empty successful response; map missing key, timeout, HTTP errors, empty body, and unsupported response MIME to existing media provider domain errors without leaking credentials or provider response bodies.
+- [ ] Call providers only from the media worker, store returned bytes with the existing storage service, set `result_mime_type` and `result_duration_seconds`, then finalize through `_complete_task`.
+- [ ] Add provider-contract tests for bounded failure handling, fallback, and secret redaction.
 - [ ] Run:
 
 ```bash
@@ -267,10 +281,14 @@ Expected: every command exits `0`; any pre-existing environment failure is recor
 
 ## Deferred Roadmap
 
-The current branch intentionally excludes structured lyrics, vocal controls, selectable 10/30/60-second duration, stems, waveform/cover generation, and Mobile/Desktop Phase 6 tool execution. Remote music providers use bounded retries and fall back to local MusicGen when enabled; this fallback does not change the fixed 30-second instrumental contract.
+The current branch intentionally excludes vocal controls, selectable 10/30/60-second duration, stems,
+waveform/cover generation, and Mobile/Desktop Phase 6 tool execution. Structured lyrics are now an
+approved implemented extension and are handled only by ACE-Step. Remote pure-music providers use
+bounded retries and fall back to local MusicGen when enabled; this fallback does not change the
+fixed 30-second contract.
 
 ## Plan Self-Review
 
-- Spec coverage: Phase 6 platform boundaries, Wave decomposition, provider choice, fixed-duration music, three clients, API/storage security, tests, scripts, progress tracking, local commits, and no push/merge are all mapped above.
+- Spec coverage: Phase 6 platform boundaries, Wave decomposition, provider choice, fixed-duration music, lyrics routing, three clients, API/storage security, tests, scripts, progress tracking, local commits, and no push/merge are all mapped above.
 - Placeholder scan: no implementation step relies on an unspecified function, unbounded provider parameter, direct frontend provider call, or generic “write tests” instruction.
-- Type consistency: `music` is the shared/backend task kind; `durationSeconds: 30`, `audio/mpeg`, `musicgen-small-local`, and the existing `/media/tasks` contract are used consistently across all stages.
+- Type consistency: `music` is the shared/backend task kind; `durationSeconds: 30`, `audio/mpeg`, local MusicGen, ACE-Step lyrics, and the existing `/media/tasks` contract are used consistently across all stages.
