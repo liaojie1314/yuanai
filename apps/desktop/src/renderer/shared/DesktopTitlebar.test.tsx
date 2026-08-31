@@ -22,10 +22,10 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/settings/index.html')
 })
 
-afterEach(() => {
+afterEach(async () => {
   cleanup()
   vi.clearAllMocks()
-  void changeDesktopLanguage('zh-CN')
+  await changeDesktopLanguage('zh-CN')
 })
 
 describe('DesktopTitlebar', () => {
