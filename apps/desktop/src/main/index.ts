@@ -52,6 +52,10 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret')
+}
+
 const trustedWebContents = createTrustedWebContentsRegistry()
 const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined

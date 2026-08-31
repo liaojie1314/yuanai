@@ -1,3 +1,5 @@
+import WebSocket from 'ws'
+
 import {
   EXECUTION_NODE_PROTOCOL_VERSION,
   buildSignedTerminalMessage,
@@ -113,7 +115,7 @@ export interface ExecutionNodeClientOptions {
   onJobSettled?(executionId: string): void
   /** 时间源，毫秒。 */
   now?(): number
-  /** WebSocket 构造器；缺省使用全局 WebSocket。 */
+  /** WebSocket 构造器；缺省使用主进程的 Node WebSocket 实现。 */
   webSocketCtor?: NodeWebSocketConstructor
   /** fetch 实现；缺省使用全局 fetch。 */
   fetchFn?: NodeFetchLike
@@ -218,9 +220,7 @@ export class ExecutionNodeClient {
     this.jobs = options.jobs
     this.apiBaseUrl = options.runtimeConfig.apiBaseUrl
     this.now = options.now ?? (() => Date.now())
-    this.webSocketCtor =
-      options.webSocketCtor ??
-      (globalThis as unknown as { WebSocket: NodeWebSocketConstructor }).WebSocket
+    this.webSocketCtor = options.webSocketCtor ?? (WebSocket as unknown as NodeWebSocketConstructor)
     this.fetchFn = options.fetchFn ?? ((url, init) => fetch(url, init) as Promise<NodeHttpResponse>)
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS
     this.challengeTimeoutMs = options.challengeTimeoutMs ?? CHALLENGE_TIMEOUT_MS

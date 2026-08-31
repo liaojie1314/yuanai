@@ -14,6 +14,8 @@ import { expect, test, type ElectronApplication, type Page } from '@playwright/t
 import { _electron } from '@playwright/test'
 
 const API_BASE_URL = process.env['YUANAI_API_URL'] ?? 'http://localhost:8000/api/v1'
+const E2E_EMAIL = process.env['YUANAI_E2E_EMAIL']
+const E2E_PASSWORD = process.env['YUANAI_E2E_PASSWORD']
 
 interface TestUser {
   email: string
@@ -32,6 +34,22 @@ function readVerifyCodeBypass(): string {
 }
 
 async function createTestUser(): Promise<TestUser> {
+  if (E2E_EMAIL !== undefined || E2E_PASSWORD !== undefined) {
+    if (!E2E_EMAIL || !E2E_PASSWORD) {
+      throw new Error('YUANAI_E2E_EMAIL and YUANAI_E2E_PASSWORD must be provided together')
+    }
+    const loggedIn = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: E2E_EMAIL, password: E2E_PASSWORD }),
+    })
+    if (!loggedIn.ok) {
+      throw new Error(`configured e2e login failed: ${loggedIn.status}`)
+    }
+    const payload = (await loggedIn.json()) as { access_token: string }
+    return { email: E2E_EMAIL, password: E2E_PASSWORD, token: payload.access_token }
+  }
+
   const suffix = Math.random().toString(36).slice(2, 10)
   const email = `desktop-e2e-${suffix}@example.com`
   const password = `E2e-${suffix}-Pass!`
@@ -73,7 +91,7 @@ async function api(
 async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: string }> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'yuanai-desktop-e2e-'))
   const app = await _electron.launch({
-    args: [join(__dirname, '../../out/main/index.js')],
+    args: ['--password-store=gnome-libsecret', join(__dirname, '../../out/main/index.js')],
     env: {
       ...process.env,
       YUANAI_API_URL: API_BASE_URL,
@@ -112,24 +130,31 @@ test.describe('desktop execution node', () => {
       // safeStorage 需要已解锁的桌面钥匙串；无钥匙串的环境会按安全规则拒绝
       // 持久化并停留在登录页，此时跳过而不是伪造验收。
       await app.firstWindow()
-      const storageReady = await app.evaluate(({ safeStorage }) =>
-        safeStorage.isEncryptionAvailable()
+      const storageState = await app.evaluate(({ safeStorage }) => ({
+        available: safeStorage.isEncryptionAvailable(),
+        backend: safeStorage.getSelectedStorageBackend(),
+      }))
+      test.skip(
+        !storageState.available ||
+          (process.platform === 'linux' && storageState.backend === 'basic_text'),
+        '需要可用且已解锁的桌面钥匙串（safeStorage）才能运行'
       )
-      test.skip(!storageReady, '需要可用且已解锁的桌面钥匙串（safeStorage）才能运行')
       const loginWindow = await login(app, user)
       await loginWindow.close()
       const settings = await openSettings(app)
-      await settings.getByRole('button', { name: '桌面设置' }).click()
-      await settings.getByLabel('节点名称').fill('E2E 节点')
+      await settings.getByRole('tab', { name: '桌面设置' }).click()
+      const nodeName = `E2E 节点 ${Date.now()}`
+      await settings.getByLabel('节点名称').fill(nodeName)
       await settings.getByRole('button', { name: '启用执行节点' }).click()
       await expect(settings.getByRole('heading', { name: '执行节点' })).toBeVisible()
       await expect(settings.getByText('在线')).toBeVisible({ timeout: 30_000 })
 
       const nodes = (await api(user.token, 'GET', '/execution-nodes')) as unknown as Array<{
         id: string
+        name: string
         status: string
       }>
-      const node = nodes.at(-1)
+      const node = nodes.find((candidate) => candidate.name === nodeName)
       if (!node) throw new Error('paired node not registered on the backend')
       expect(node.status).toBe('online')
       const execution = (await api(user.token, 'POST', '/tool-executions', {
