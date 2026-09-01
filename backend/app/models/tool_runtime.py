@@ -33,6 +33,7 @@ class ToolConnectionKind(StrEnum):
     oauth = "oauth"
     api_key = "api_key"
     mcp_http = "mcp_http"
+    mcp_stdio = "mcp_stdio"
     desktop_local = "desktop_local"
 
 
@@ -320,7 +321,9 @@ class McpServer(Base):
         ForeignKey("tool_connections.id", ondelete="CASCADE"), nullable=True, index=True
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    endpoint_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    endpoint_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    command: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    command_args: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     transport: Mapped[str] = mapped_column(String(20), nullable=False, default="streamable_http")
     status: Mapped[McpServerStatus] = mapped_column(
         Enum(McpServerStatus, native_enum=False, length=12),

@@ -44,6 +44,12 @@ from app.models.tool_runtime import (
 from app.services.agent.approval_service import ApprovalService, payload_hash, sanitize_arguments
 from app.services.secret_store import SecretStore, SecretStoreUnavailableError
 from app.services.storage_service import storage
+from app.services.tools.mcp_stdio import (
+    StdioMcpError,
+    call_stdio_mcp,
+    validate_secret_environment_name,
+    validate_stdio_command,
+)
 from app.services.tools.web_security import (
     UrlPolicyError,
     create_pinned_http_transport,
@@ -321,7 +327,10 @@ class ToolRuntimeService:
     ) -> ToolConnection:
         """创建用户连接元数据，永远不接收明文凭证。"""
 
-        if connection_model(kind) is ToolConnectionKind.mcp_http and secret_ref:
+        if (
+            connection_model(kind) in {ToolConnectionKind.mcp_http, ToolConnectionKind.mcp_stdio}
+            and secret_ref
+        ):
             if self._secret_store is None:
                 raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
             try:
@@ -684,21 +693,39 @@ class ToolRuntimeService:
         *,
         user_id: uuid.UUID,
         name: str,
-        endpoint_url: str,
+        transport: str = "streamable_http",
+        endpoint_url: str | None = None,
+        command: str | None = None,
+        command_args: list[str] | None = None,
         connection_id: uuid.UUID,
         db: AsyncSession,
     ) -> McpServer:
-        """添加尚未验证 schema 的远程 MCP Server。"""
+        """添加尚未验证 schema 的远程 HTTP 或受控 stdio MCP Server。"""
 
-        try:
-            endpoint = validate_public_url(endpoint_url)
-        except UrlPolicyError as error:
-            raise ToolRuntimeError("MCP_ENDPOINT_INVALID") from error
+        if transport == "streamable_http":
+            if endpoint_url is None or command is not None or command_args:
+                raise ToolRuntimeError("MCP_ENDPOINT_INVALID")
+            try:
+                endpoint = validate_public_url(endpoint_url)
+            except UrlPolicyError as error:
+                raise ToolRuntimeError("MCP_ENDPOINT_INVALID") from error
+            connection_kind = ToolConnectionKind.mcp_http
+        elif transport == "stdio":
+            if endpoint_url is not None or command is None:
+                raise ToolRuntimeError("MCP_STDIO_CONFIG_INVALID")
+            try:
+                validate_stdio_command(command, command_args or [])
+            except StdioMcpError as error:
+                raise ToolRuntimeError(str(error)) from error
+            endpoint = None
+            connection_kind = ToolConnectionKind.mcp_stdio
+        else:
+            raise ToolRuntimeError("MCP_TRANSPORT_INVALID")
         connection = await db.scalar(
             select(ToolConnection).where(
                 ToolConnection.id == connection_id,
                 ToolConnection.user_id == user_id,
-                ToolConnection.kind == ToolConnectionKind.mcp_http,
+                ToolConnection.kind == connection_kind,
                 ToolConnection.status == ToolConnectionStatus.active,
             )
         )
@@ -708,8 +735,10 @@ class ToolRuntimeService:
             user_id=user_id,
             name=name,
             endpoint_url=endpoint,
+            command=command,
+            command_args=list(command_args or []),
             connection_id=connection.id,
-            transport="streamable_http",
+            transport=transport,
             status=McpServerStatus.pending,
             enabled_tools=[],
             metadata_json={},
@@ -753,24 +782,39 @@ class ToolRuntimeService:
         if server.connection_id is None:
             raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
         try:
-            if self._mcp_transport is None:
-                endpoint, address = resolve_public_url(server.endpoint_url)
-            else:
-                endpoint = validate_public_url(server.endpoint_url)
-                address = None
             connection = await self._mcp_connection(server, user_id=user_id, db=db)
-            headers = await self._mcp_headers(connection, user_id=user_id)
-            async with self._mcp_client(endpoint, address=address) as client:
-                response = await client.post(
-                    endpoint,
-                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-                    headers={"Accept": "application/json, text/event-stream", **headers},
-                )
-                if response.is_redirect:
-                    raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
-                response.raise_for_status()
-                payload_value = response.json()
-        except (httpx.HTTPError, TimeoutError, ValueError) as error:
+            if server.transport == "stdio":
+                if server.command is None:
+                    raise ToolRuntimeError("MCP_STDIO_CONFIG_INVALID")
+                payload_value = {
+                    "result": await call_stdio_mcp(
+                        server.command,
+                        server.command_args,
+                        method="tools/list",
+                        params={},
+                        environment=await self._stdio_environment(connection, user_id=user_id),
+                    )
+                }
+            else:
+                if server.endpoint_url is None:
+                    raise ToolRuntimeError("MCP_ENDPOINT_INVALID")
+                if self._mcp_transport is None:
+                    endpoint, address = resolve_public_url(server.endpoint_url)
+                else:
+                    endpoint = validate_public_url(server.endpoint_url)
+                    address = None
+                headers = await self._mcp_headers(connection, user_id=user_id)
+                async with self._mcp_client(endpoint, address=address) as client:
+                    response = await client.post(
+                        endpoint,
+                        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                        headers={"Accept": "application/json, text/event-stream", **headers},
+                    )
+                    if response.is_redirect:
+                        raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
+                    response.raise_for_status()
+                    payload_value = response.json()
+        except (httpx.HTTPError, StdioMcpError, TimeoutError, ValueError) as error:
             server.status = McpServerStatus.error
             await db.commit()
             raise ToolRuntimeError("MCP_DISCOVERY_FAILED") from error
@@ -899,6 +943,7 @@ class ToolRuntimeService:
             )
             if run is None:
                 raise ToolRuntimeError("AGENT_RUN_NOT_FOUND")
+        connection = await self._mcp_connection(server, user_id=user_id, db=db)
         execution: ToolExecution | None = None
         if approval_id is not None:
             approval = await db.scalar(
@@ -939,7 +984,6 @@ class ToolRuntimeService:
             execution.error_code = None
             execution.error_message = None
         else:
-            connection = await self._mcp_connection(server, user_id=user_id, db=db)
             execution = ToolExecution(
                 user_id=user_id,
                 run_id=run_id,
@@ -977,31 +1021,45 @@ class ToolRuntimeService:
                 return execution
 
         try:
-            if self._mcp_transport is None:
-                endpoint, address = resolve_public_url(server.endpoint_url)
+            if server.transport == "stdio":
+                if server.command is None:
+                    raise ToolRuntimeError("MCP_STDIO_CONFIG_INVALID")
+                payload_value = {
+                    "result": await call_stdio_mcp(
+                        server.command,
+                        server.command_args,
+                        method="tools/call",
+                        params={"name": tool_name, "arguments": validated_arguments},
+                        environment=await self._stdio_environment(connection, user_id=user_id),
+                    )
+                }
             else:
-                endpoint = validate_public_url(server.endpoint_url)
-                address = None
-            connection = await self._mcp_connection(server, user_id=user_id, db=db)
-            headers = await self._mcp_headers(connection, user_id=user_id)
-            async with self._mcp_client(endpoint, address=address) as client:
-                response = await client.post(
-                    endpoint,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": str(execution.id),
-                        "method": "tools/call",
-                        "params": {"name": tool_name, "arguments": validated_arguments},
-                    },
-                    headers={"Accept": "application/json, text/event-stream", **headers},
-                )
-                if response.is_redirect:
-                    raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
-                response.raise_for_status()
-                payload_value = response.json()
+                if server.endpoint_url is None:
+                    raise ToolRuntimeError("MCP_ENDPOINT_INVALID")
+                if self._mcp_transport is None:
+                    endpoint, address = resolve_public_url(server.endpoint_url)
+                else:
+                    endpoint = validate_public_url(server.endpoint_url)
+                    address = None
+                headers = await self._mcp_headers(connection, user_id=user_id)
+                async with self._mcp_client(endpoint, address=address) as client:
+                    response = await client.post(
+                        endpoint,
+                        json={
+                            "jsonrpc": "2.0",
+                            "id": str(execution.id),
+                            "method": "tools/call",
+                            "params": {"name": tool_name, "arguments": validated_arguments},
+                        },
+                        headers={"Accept": "application/json, text/event-stream", **headers},
+                    )
+                    if response.is_redirect:
+                        raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
+                    response.raise_for_status()
+                    payload_value = response.json()
         except ToolRuntimeError:
             raise
-        except (httpx.HTTPError, TimeoutError, ValueError, UrlPolicyError) as error:
+        except (httpx.HTTPError, StdioMcpError, TimeoutError, ValueError, UrlPolicyError) as error:
             execution.status = ToolExecutionStatus.failed
             execution.error_code = "MCP_CALL_FAILED"
             execution.error_message = "MCP 工具调用失败"
@@ -1071,13 +1129,42 @@ class ToolRuntimeService:
             select(ToolConnection).where(
                 ToolConnection.id == server.connection_id,
                 ToolConnection.user_id == user_id,
-                ToolConnection.kind == ToolConnectionKind.mcp_http,
+                ToolConnection.kind
+                == (
+                    ToolConnectionKind.mcp_stdio
+                    if server.transport == "stdio"
+                    else ToolConnectionKind.mcp_http
+                ),
                 ToolConnection.status == ToolConnectionStatus.active,
             )
         )
         if connection is None:
             raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
         return connection
+
+    async def _stdio_environment(
+        self, connection: ToolConnection | None, *, user_id: uuid.UUID
+    ) -> dict[str, str]:
+        """只向 stdio 子进程注入租户绑定的单个 Secret 环境变量。"""
+
+        if connection is None or connection.secret_ref is None:
+            return {}
+        if self._secret_store is None:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
+        try:
+            secret = await self._secret_store.get(user_id, connection.secret_ref)
+        except SecretStoreUnavailableError as error:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE") from error
+        if not secret:
+            raise ToolRuntimeError("MCP_SECRET_UNAVAILABLE")
+        name = connection.metadata_json.get("secret_env_name", "MCP_AUTH_TOKEN")
+        if not isinstance(name, str):
+            raise ToolRuntimeError("MCP_AUTH_CONFIG_INVALID")
+        try:
+            validate_secret_environment_name(name)
+        except StdioMcpError as error:
+            raise ToolRuntimeError("MCP_AUTH_CONFIG_INVALID") from error
+        return {name: secret}
 
     async def _mcp_headers(
         self, connection: ToolConnection | None, *, user_id: uuid.UUID

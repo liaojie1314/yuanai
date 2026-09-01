@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 
 from app.schemas.agent import AgentSchema
 
@@ -33,7 +34,7 @@ class ToolCatalogResponse(AgentSchema):
 class ToolConnectionCreateRequest(AgentSchema):
     """创建连接请求；服务端只保存 secret_ref，不接受明文 secret。"""
 
-    kind: str = Field(pattern="^(oauth|api_key|mcp_http|desktop_local)$")
+    kind: str = Field(pattern="^(oauth|api_key|mcp_http|mcp_stdio|desktop_local)$")
     provider: str = Field(min_length=1, max_length=100)
     display_name: str = Field(min_length=1, max_length=120)
     secret_ref: str | None = Field(default=None, max_length=200)
@@ -224,17 +225,34 @@ class ResourceGrantResponse(AgentSchema):
 
 
 class McpServerCreateRequest(AgentSchema):
-    """添加远程 Streamable HTTP MCP Server。"""
+    """添加远程 HTTP 或受控 stdio MCP Server。"""
 
     name: str = Field(min_length=1, max_length=120)
-    endpoint_url: str = Field(min_length=1, max_length=500)
+    transport: Literal["streamable_http", "stdio"] = "streamable_http"
+    endpoint_url: str | None = Field(default=None, max_length=500)
+    command: str | None = Field(default=None, max_length=255)
+    command_args: list[str] = Field(default_factory=list, max_length=16)
     connection_id: uuid.UUID
+
+    @model_validator(mode="after")
+    def validate_transport_fields(self) -> McpServerCreateRequest:
+        """确保 transport 只使用对应的连接和启动字段。"""
+
+        if self.transport == "streamable_http" and not self.endpoint_url:
+            raise ValueError("endpoint_url is required for HTTP MCP")
+        if self.transport == "stdio" and (not self.command or self.endpoint_url is not None):
+            raise ValueError("stdio MCP requires command and forbids endpoint_url")
+        if self.transport == "streamable_http" and (self.command or self.command_args):
+            raise ValueError("HTTP MCP forbids command fields")
+        return self
 
     @field_validator("endpoint_url")
     @classmethod
-    def reject_credentials_in_url(cls, value: str) -> str:
+    def reject_credentials_in_url(cls, value: str | None) -> str | None:
         """拒绝把用户名或密码写进远程 MCP URL。"""
 
+        if value is None:
+            return None
         if "@" in value.split("//", 1)[-1].split("/", 1)[0]:
             raise ValueError("MCP endpoint cannot contain credentials")
         return value
@@ -247,7 +265,9 @@ class McpServerResponse(AgentSchema):
     user_id: uuid.UUID
     connection_id: uuid.UUID | None
     name: str
-    endpoint_url: str
+    endpoint_url: str | None
+    command: str | None
+    command_args: list[str]
     transport: str
     status: str
     schema_snapshot: dict[str, object] | None

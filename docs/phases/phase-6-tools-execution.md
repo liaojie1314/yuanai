@@ -6,22 +6,23 @@
 - **执行范围**：按 Wave 分批修改 `backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`；Mobile 仅保持共享协议兼容，不实现本阶段的工具控制中心或本地执行节点。
 - **阶段定位**：让 Agent 从“会规划”升级为“能在受控边界内执行真实数字动作”
 
-> **当前实现状态（2026-08-30）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
-> 当前 checkout 已在 `feature/tools-execution` 分支本地提交 Wave 1-5 的实现代码：Tool
+> **当前实现状态（2026-09-01）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
+> 当前 checkout 已在 `feature/tools-execution` 分支本地提交 Wave 1-5 的实现代码，并已
+> 在工作树中完成 Wave 3 stdio MCP 的受控 transport 实现：Tool
 > Runtime 安全基础、云端只读/产出工具与受限 Python 沙箱、远程 Streamable HTTP MCP、
 > Desktop 执行节点协议与 Electron 客户端、Web Tool Control Center。**本页验收标准尚未
-> 达成**：桌面客户端真实配对/执行演练、故障注入稳定性、安全测试和下文标注的边界项
-> （stdio MCP、真实 DOM 浏览器自动化、SecretStore 持久化契约）仍未完成，进入 Phase 7
-> 的许可证仍然阻塞。勾选任何验收项前必须有代码、测试和真实运行证据。
+> 达成**：stdio 尚缺 Worker/桌面承载与真实外部 MCP 验收，桌面客户端真实配对/执行演练、
+> 故障注入稳定性、安全测试和真实 DOM 浏览器自动化仍未完成，进入 Phase 7 的许可证仍然
+> 阻塞。勾选任何验收项前必须有代码、测试和真实运行证据。
 
-| Wave                      | 当前状态                                   | 进入 Phase 7 的影响 |
-| ------------------------- | ------------------------------------------ | ------------------- |
-| 1. 共享契约与安全基础     | 代码已提交，契约测试通过                   | 阻塞                |
-| 2. 云端只读与产出工具     | 代码已提交，模拟链路测试通过               | 阻塞                |
-| 3. MCP 连接与路由         | 仅远程 HTTP MCP；stdio 未实现              | 阻塞                |
-| 4. Desktop 执行节点       | 后端协议已过真实链路演练；客户端待真实验收 | 阻塞                |
-| 5. Web 控制中心           | 页面/hooks/测试已提交；真实数据验收未做    | 阻塞                |
-| 6. 浏览器自动化与安全灰度 | 未开始（仅受限静态 HTML 抓取）             | 阻塞                |
+| Wave                      | 当前状态                                    | 进入 Phase 7 的影响 |
+| ------------------------- | ------------------------------------------- | ------------------- |
+| 1. 共享契约与安全基础     | 代码已提交，契约测试通过                    | 阻塞                |
+| 2. 云端只读与产出工具     | 代码已提交，模拟链路测试通过                | 阻塞                |
+| 3. MCP 连接与路由         | HTTP + 受控 stdio 已实现；承载/外部验收待做 | 阻塞                |
+| 4. Desktop 执行节点       | 后端协议已过真实链路演练；客户端待真实验收  | 阻塞                |
+| 5. Web 控制中心           | 页面/hooks/测试已提交；真实数据验收未做     | 阻塞                |
+| 6. 浏览器自动化与安全灰度 | 未开始（仅受限静态 HTML 抓取）              | 阻塞                |
 
 ---
 
@@ -288,7 +289,7 @@ fail closed，不回退到 JWT 或节点加密密钥。`db://` 引用强制内�
 ### 8.1 支持范围
 
 - 远程 Streamable HTTP MCP：云端和桌面均可连接（**当前已实现**）
-- stdio MCP：仅云端隔离 Worker或桌面节点运行（**尚未实现**，是 Wave 3 剩余范围）
+- stdio MCP：仅云端隔离 Worker 或桌面节点运行（受控 transport 已实现，承载与外部验收待做）
 - 每用户/Workspace 独立配置，不提供全局共享用户凭证
 - 首次连接展示服务器来源、工具列表、schema、网络目标和环境变量需求
 
@@ -473,7 +474,8 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 ### Wave 3：MCP 连接与路由
 
 - 实现远程 HTTP MCP、隔离 Worker/配对节点中的 stdio MCP、schema 快照和 ToolRouter。
-- `DatabaseSecretStore` 的租户绑定加密持久化契约已完成；stdio MCP 隔离执行仍未实现。
+- `DatabaseSecretStore` 的租户绑定加密持久化契约已完成。
+- stdio MCP 已增加严格命令 allowlist、参数校验、bubblewrap 隔离子进程、JSON-RPC 生命周期、超时/输出限制、进程组回收和 Secret 环境变量隔离；尚未完成 Worker/桌面承载与真实外部 MCP 验收。
 - 首次连接只启用用户明确选择的工具；schema、证书、域名或启动命令变化时自动暂停。
 - 出口：MCP schema 变化、凭证隔离、审批和跨租户测试通过。
 
@@ -511,19 +513,19 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 **进入 Phase 7 的许可证**：Wave 1-6 的出口条件全部满足，至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
 
-### 当前证据索引（2026-08-30）
+### 当前证据索引（2026-09-01）
 
-| 验收域                                                                       | 证据                                                                                                              | 状态                                 |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`              | 已覆盖                               |
-| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                        | 模拟已覆盖；真实外部模型链未验证     |
-| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                     | 已覆盖                               |
-| MCP 连接绑定、审批与跨租户隔离                                               | `backend/tests/integration/test_mcp_runtime.py`                                                                   | 已覆盖                               |
-| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证） | 已覆盖（后端链路）                   |
-| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/src/main/execution-node/*` 单元测试 81 例、`ExecutionNodeSection` 组件测试                          | 组件级已覆盖；真实桌面端到端验收未做 |
-| Web Tool Control Center                                                      | `apps/web/src/components/agent/ToolControlCenter.tsx` + 组件测试 8 例                                             | 组件级已覆盖；真实数据验收未做       |
-| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | 尚未执行                                                                                                          | 未验证                               |
-| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 部分：审批哈希绑定与幂等键有测试；其余未系统执行                                                                  | 部分覆盖                             |
+| 验收域                                                                       | 证据                                                                                                              | 状态                                   |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`              | 已覆盖                                 |
+| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                        | 模拟已覆盖；真实外部模型链未验证       |
+| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                     | 已覆盖                                 |
+| MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`                           | 代码与集成测试已覆盖；外部承载验收待做 |
+| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证） | 已覆盖（后端链路）                     |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/src/main/execution-node/*` 单元测试 81 例、`ExecutionNodeSection` 组件测试                          | 组件级已覆盖；真实桌面端到端验收未做   |
+| Web Tool Control Center                                                      | `apps/web/src/components/agent/ToolControlCenter.tsx` + 组件测试 8 例                                             | 组件级已覆盖；真实数据验收未做         |
+| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | 尚未执行                                                                                                          | 未验证                                 |
+| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 部分：审批哈希绑定与幂等键有测试；其余未系统执行                                                                  | 部分覆盖                               |
 
-因此，Phase 6 许可证仍然阻塞：剩余工作为 Desktop 客户端真实端到端验收、故障注入演练、
-系统性安全测试与 Wave 6 浏览器能力。
+因此，Phase 6 许可证仍然阻塞：剩余工作为 stdio 的 Worker/桌面承载与外部 MCP 验收、
+Desktop 客户端真实端到端验收、故障注入演练、系统性安全测试与 Wave 6 浏览器能力。

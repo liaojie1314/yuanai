@@ -453,7 +453,10 @@ async def create_mcp_server(
         return await runtime.create_mcp_server(
             user_id=current_user.id,
             name=req.name,
+            transport=req.transport,
             endpoint_url=req.endpoint_url,
+            command=req.command,
+            command_args=req.command_args,
             connection_id=req.connection_id,
             db=db,
         )

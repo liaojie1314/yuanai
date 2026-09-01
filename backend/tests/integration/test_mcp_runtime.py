@@ -1,7 +1,9 @@
 """MCP discovery、显式启用和调用边界集成测试。"""
 
 import json
+import sys
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
@@ -15,7 +17,9 @@ from app.models.tool_runtime import (
     ToolConnectionKind,
     ToolExecutionStatus,
 )
+from app.services.secret_store import DatabaseSecretStore, TenantSecretStore
 from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
+from tests.conftest import TestSessionLocal
 
 
 def _mcp_response(*, changed: bool = False) -> dict[str, object]:
@@ -371,3 +375,62 @@ async def test_mcp_rejects_cross_tenant_server_and_connection(db: AsyncSession, 
             connection_id=connection.id,
             db=db,
         )
+
+
+@pytest.mark.asyncio
+async def test_stdio_mcp_runs_with_tenant_secret_in_isolated_process(
+    db: AsyncSession, test_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stdio MCP 使用受控命令、SecretStore 和独立进程完成 discovery/call。"""
+
+    command = sys.executable
+    script = str(Path(__file__).parents[1] / "support" / "stdio_mcp_server.py")
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        f"{command} {script}",
+    )
+    monkeypatch.setattr(
+        "app.services.secret_store.settings.secret_store_encryption_key",
+        "test-secret-store-key",
+    )
+    secret_store = TenantSecretStore(
+        database_store=DatabaseSecretStore(session_factory=TestSessionLocal)
+    )
+    secret_ref = await secret_store.put(test_user.id, "stdio-secret")
+    connection = ToolConnection(
+        user_id=test_user.id,
+        kind=ToolConnectionKind.mcp_stdio,
+        provider="local-test",
+        display_name="Local stdio MCP",
+        secret_ref=secret_ref,
+        scopes=[],
+        metadata_json={"secret_env_name": "MCP_AUTH_TOKEN"},
+    )
+    db.add(connection)
+    await db.commit()
+    await db.refresh(connection)
+    service = ToolRuntimeService(secret_store=secret_store)
+    server = await service.create_mcp_server(
+        user_id=test_user.id,
+        name="Local stdio MCP",
+        transport="stdio",
+        endpoint_url=None,
+        command=command,
+        command_args=[script],
+        connection_id=connection.id,
+        db=db,
+    )
+    await service.discover_mcp_server(server.id, user_id=test_user.id, db=db)
+    await service.enable_mcp_tools(server.id, user_id=test_user.id, enabled_tools=["lookup"], db=db)
+    execution = await service.create_mcp_execution(
+        server.id,
+        user_id=test_user.id,
+        tool_name="lookup",
+        arguments={"query": "yuanai"},
+        db=db,
+    )
+
+    assert execution.status is ToolExecutionStatus.succeeded
+    assert execution.arguments_preview == {"query": "yuanai"}
+    assert execution.result_json is not None
+    assert execution.result_json["data"]["content"][0]["text"] == "yuanai:stdio-secret"

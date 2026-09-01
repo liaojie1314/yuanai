@@ -109,6 +109,12 @@ class Settings(BaseSettings):
     # SecretStore 主密钥；只用于数据库 Secret 的 AES-GCM 加解密，不回退到 JWT 密钥。
     secret_store_encryption_key: str = ""
 
+    # stdio MCP 只允许部署显式列出的可执行文件，空值表示关闭此 transport。
+    mcp_stdio_command_allowlist: str = ""
+    mcp_stdio_max_arguments: int = 16
+    mcp_stdio_timeout_seconds: float = 30.0
+    mcp_stdio_max_output_bytes: int = 64 * 1024
+
     # Desktop 节点注册、握手和任务回传协议。
     execution_node_token_expire_minutes: int = 60
     execution_node_challenge_timeout_seconds: int = 10
