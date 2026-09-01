@@ -45,7 +45,7 @@ from app.services.ai_service import (
     ToolCallStart,
     UsageDelta,
 )
-from app.services.secret_store import EnvironmentSecretStore
+from app.services.secret_store import TenantSecretStore
 from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
 from app.tools.contracts import (
     ToolContext,
@@ -136,9 +136,7 @@ class AgentCoordinator:
         self._tool_timeout_seconds = tool_timeout_seconds
         self._approval_service = approval_service or ApprovalService()
         self._metrics = metrics or AgentMetrics()
-        self._tool_runtime = ToolRuntimeService(
-            tool_registry, secret_store=EnvironmentSecretStore()
-        )
+        self._tool_runtime = ToolRuntimeService(tool_registry, secret_store=TenantSecretStore())
 
     async def run(
         self,

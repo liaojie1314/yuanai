@@ -45,7 +45,8 @@ _TRUNCATE_SQL = text(
     "TRUNCATE TABLE qr_login_events, qr_login_challenges, message_files, messages, "
     "file_upload_sessions, files, "
     "conversation_shares, conversations, tool_executions, artifacts, resource_grants, "
-    "execution_nodes, mcp_servers, tool_connections, users RESTART IDENTITY CASCADE"
+    "execution_nodes, mcp_servers, tool_connections, secret_records, users "
+    "RESTART IDENTITY CASCADE"
 )
 
 

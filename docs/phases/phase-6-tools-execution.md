@@ -242,12 +242,12 @@ class SecretStore(Protocol):
 - 桌面凭证：Electron `safeStorage` / OS Keychain；云端只保存连接存在与作用域，不保存明文
 - 日志、Event、trace 和异常禁止输出 secret；健康检查只返回 `valid/invalid`
 
-**当前实现边界（2026-08-30）**：`EnvironmentSecretStore` 只实现 `get`（加上
-`assert_ref_allowed` 引用校验），尚无 `put`/`delete` 持久化契约。引用格式强制内嵌租户
-身份：`env://YUANAI_MCP_SECRET_<去掉连字符的大写用户UUID>_<NAME>`，跨租户引用在连接
-创建与执行时都会被拒绝；非调试部署必须显式配置独立的
-`EXECUTION_NODE_ENCRYPTION_KEY`（不得回退 JWT 签名密钥）。`put`/`delete` 与 KMS
-adapter 待补。
+**当前实现边界（2026-08-31）**：`DatabaseSecretStore` 已实现 `put/get/delete`，使用独立
+的 `SECRET_STORE_ENCRYPTION_KEY` 经 AES-256-GCM 加密后保存到 PostgreSQL；缺少主密钥时
+fail closed，不回退到 JWT 或节点加密密钥。`db://` 引用强制内嵌租户身份，跨租户引用在
+校验和读取时都会被拒绝。`EnvironmentSecretStore` 继续兼容只读的
+`env://YUANAI_MCP_SECRET_<去掉连字符的大写用户UUID>_<NAME>` 引用，数据库与环境引用由
+`TenantSecretStore` 路由；环境变量仍由部署管理，应用不会删除它。云端 KMS adapter 待补。
 
 每个连接器必须声明数据处理位置：cloud、desktop 或 user_selected。
 
@@ -473,6 +473,7 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 ### Wave 3：MCP 连接与路由
 
 - 实现远程 HTTP MCP、隔离 Worker/配对节点中的 stdio MCP、schema 快照和 ToolRouter。
+- `DatabaseSecretStore` 的租户绑定加密持久化契约已完成；stdio MCP 隔离执行仍未实现。
 - 首次连接只启用用户明确选择的工具；schema、证书、域名或启动命令变化时自动暂停。
 - 出口：MCP schema 变化、凭证隔离、审批和跨租户测试通过。
 

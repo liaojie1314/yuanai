@@ -33,6 +33,7 @@ from app.models import (  # noqa: F401, E402
     MessageFile,
     PushSubscription,
     ResourceGrant,
+    SecretRecord,
     ToolConnection,
     ToolExecution,
     User,

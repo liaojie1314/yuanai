@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     # 工具 Artifact 下载链接的短期签名有效期。
     tool_artifact_url_ttl_seconds: int = 300
 
+    # SecretStore 主密钥；只用于数据库 Secret 的 AES-GCM 加解密，不回退到 JWT 密钥。
+    secret_store_encryption_key: str = ""
+
     # Desktop 节点注册、握手和任务回传协议。
     execution_node_token_expire_minutes: int = 60
     execution_node_challenge_timeout_seconds: int = 10

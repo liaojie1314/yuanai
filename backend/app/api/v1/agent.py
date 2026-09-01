@@ -39,14 +39,14 @@ from app.services.agent.approval_service import (
 )
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue
-from app.services.secret_store import EnvironmentSecretStore
+from app.services.secret_store import TenantSecretStore
 from app.services.tool_runtime_service import ToolRuntimeService
 from app.tools.builtin import build_phase6_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 _approvals = ApprovalService()
 _events = EventStore()
-_tools_runtime = ToolRuntimeService(build_phase6_registry(), secret_store=EnvironmentSecretStore())
+_tools_runtime = ToolRuntimeService(build_phase6_registry(), secret_store=TenantSecretStore())
 
 
 def _agent_enabled_for(user_id: uuid.UUID) -> bool:

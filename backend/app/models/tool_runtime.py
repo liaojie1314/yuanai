@@ -45,6 +45,25 @@ class ToolConnectionStatus(StrEnum):
     error = "error"
 
 
+class SecretRecord(Base):
+    """租户级加密凭证；数据库只保存密文和元数据。"""
+
+    __tablename__ = "secret_records"
+    __table_args__ = (Index("ix_secret_records_owner_created", "owner_id", "created_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class ToolExecutionStatus(StrEnum):
     """工具执行生命周期状态。"""
 
