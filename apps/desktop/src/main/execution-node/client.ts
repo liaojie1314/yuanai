@@ -113,6 +113,8 @@ export interface ExecutionNodeClientOptions {
   onJobStarted?(executionId: string): void
   /** 任务终态已发送并暂存时回调。 */
   onJobSettled?(executionId: string): void
+  /** 服务端取消任务时回调，用于清除本地审批状态。 */
+  onJobCancelled?(executionId: string): void
   /** 时间源，毫秒。 */
   now?(): number
   /** WebSocket 构造器；缺省使用主进程的 Node WebSocket 实现。 */
@@ -214,6 +216,7 @@ export class ExecutionNodeClient {
   private readonly onJobOffer: ((job: PendingJob) => void) | undefined
   private readonly onJobStarted: ((executionId: string) => void) | undefined
   private readonly onJobSettled: ((executionId: string) => void) | undefined
+  private readonly onJobCancelled: ((executionId: string) => void) | undefined
 
   public constructor(options: ExecutionNodeClientOptions) {
     this.identityStore = options.identityStore
@@ -230,6 +233,7 @@ export class ExecutionNodeClient {
     this.onJobOffer = options.onJobOffer
     this.onJobStarted = options.onJobStarted
     this.onJobSettled = options.onJobSettled
+    this.onJobCancelled = options.onJobCancelled
   }
 
   /** 当前状态机状态。 */
@@ -638,6 +642,10 @@ export class ExecutionNodeClient {
   }
 
   private handleCancelRequest(executionId: string): void {
+    if (this.pendingOffers.delete(executionId)) {
+      this.onJobCancelled?.(executionId)
+      return
+    }
     const active = this.activeJobs.get(executionId)
     if (active) {
       active.controller.abort()

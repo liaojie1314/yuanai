@@ -585,6 +585,33 @@ describe('ExecutionNodeClient job lifecycle', () => {
     expect(harness.onJobSettled).toHaveBeenCalledWith('exec-4')
   })
 
+  it('removes a pending approval when the server cancels before local acceptance', async () => {
+    const harness = createHarness()
+    await harness.client.connect()
+    const socket = await completeHandshake(harness)
+    socket.serverMessage({
+      type: 'job_offer',
+      protocol_version: '1',
+      execution_id: 'exec-cancelled-pending',
+      tool_name: 'browser_open_url',
+      tool_version: '1.0.0',
+      arguments: { url: 'https://example.com' },
+      arguments_preview: '{}',
+      policy: {},
+      expires_at: new Date(CURRENT_TIME + 60_000).toISOString(),
+      signature: 'server-signature',
+    })
+    await flush()
+
+    socket.serverMessage({ type: 'cancel_request', execution_id: 'exec-cancelled-pending' })
+    await flush()
+
+    expect(() => harness.client.acceptJob('exec-cancelled-pending')).toThrow(
+      'EXECUTION_NODE_JOB_UNKNOWN'
+    )
+    expect(harness.jobs.executeJob).not.toHaveBeenCalled()
+  })
+
   it('answers job_status for unknown executions with a signed failed terminal', async () => {
     const harness = createHarness()
     await harness.client.connect()

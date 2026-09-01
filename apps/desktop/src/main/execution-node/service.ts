@@ -120,6 +120,10 @@ export class ExecutionNodeService {
         if (this.currentJob?.executionId === executionId) this.currentJob = null
         this.broadcast()
       },
+      onJobCancelled: (executionId) => {
+        if (this.pendingJob?.executionId === executionId) this.pendingJob = null
+        this.broadcast()
+      },
       ...(options.webSocketCtor ? { webSocketCtor: options.webSocketCtor } : {}),
       ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
       ...(options.now ? { now: options.now } : {}),

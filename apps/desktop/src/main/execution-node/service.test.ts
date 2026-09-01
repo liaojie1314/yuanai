@@ -421,6 +421,34 @@ describe('ExecutionNodeService job decisions', () => {
     expect(socket.lastSent()).toEqual({ type: 'rejected', execution_id: 'exec-2' })
     expect(harness.statuses.at(-1)?.pendingJob).toBeNull()
   })
+
+  it('removes a pending approval when the server cancels the offer', async () => {
+    const harness = createHarness(createIdentity())
+    await harness.service.start()
+    const socket = await completeHandshake(harness)
+    socket.serverMessage({
+      type: 'job_offer',
+      protocol_version: '1',
+      execution_id: 'exec-cancelled-pending',
+      tool_name: 'browser_open_url',
+      tool_version: '1.0.0',
+      arguments: { url: 'https://example.com' },
+      arguments_preview: '{}',
+      policy: {},
+      expires_at: new Date(CURRENT_TIME + 60_000).toISOString(),
+      signature: 'server-signature',
+    })
+    await flush()
+    expect(harness.statuses.at(-1)?.pendingJob?.executionId).toBe('exec-cancelled-pending')
+
+    socket.serverMessage({ type: 'cancel_request', execution_id: 'exec-cancelled-pending' })
+    await flush()
+
+    expect(harness.statuses.at(-1)?.pendingJob).toBeNull()
+    await expect(
+      harness.service.respondJob({ executionId: 'exec-cancelled-pending', decision: 'accept' })
+    ).rejects.toThrow('EXECUTION_NODE_JOB_UNKNOWN')
+  })
 })
 
 describe('ExecutionNodeService grants', () => {
