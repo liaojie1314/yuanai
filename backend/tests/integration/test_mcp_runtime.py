@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models import User
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.tool_runtime import (
     McpServerStatus,
@@ -433,4 +434,68 @@ async def test_stdio_mcp_runs_with_tenant_secret_in_isolated_process(
     assert execution.status is ToolExecutionStatus.succeeded
     assert execution.arguments_preview == {"query": "yuanai"}
     assert execution.result_json is not None
-    assert execution.result_json["data"]["content"][0]["text"] == "yuanai:stdio-secret"
+    data = execution.result_json.get("data")
+    assert isinstance(data, dict)
+    content = data.get("content")
+    assert isinstance(content, list)
+    first_content = content[0]
+    assert isinstance(first_content, dict)
+    text = first_content.get("text")
+    assert isinstance(text, str)
+    assert text.startswith("yuanai:stdio-secret:worker=1:parent=")
+
+
+@pytest.mark.asyncio
+async def test_stdio_mcp_rejects_cross_tenant_secret_reference_before_worker_spawn(
+    db: AsyncSession, test_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """用户 B 不能把用户 A 的 SecretRef 交给 stdio Worker 注入环境。"""
+
+    command = sys.executable
+    script = str(Path(__file__).parents[1] / "support" / "stdio_mcp_server.py")
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        f"{command} {script}",
+    )
+    monkeypatch.setattr(
+        "app.services.secret_store.settings.secret_store_encryption_key",
+        "test-secret-store-key",
+    )
+    other = User(
+        id=uuid.uuid4(),
+        email="other@example.com",
+        username="other-user",
+        hashed_password="unused",
+    )
+    db.add(other)
+    await db.commit()
+    secret_store = TenantSecretStore(
+        database_store=DatabaseSecretStore(session_factory=TestSessionLocal)
+    )
+    secret_ref = await secret_store.put(test_user.id, "tenant-a-secret")
+    connection = ToolConnection(
+        user_id=other.id,
+        kind=ToolConnectionKind.mcp_stdio,
+        provider="local-test",
+        display_name="Other tenant stdio MCP",
+        secret_ref=secret_ref,
+        scopes=[],
+        metadata_json={"secret_env_name": "MCP_AUTH_TOKEN"},
+    )
+    db.add(connection)
+    await db.commit()
+    await db.refresh(connection)
+    service = ToolRuntimeService(secret_store=secret_store)
+    server = await service.create_mcp_server(
+        user_id=other.id,
+        name="Other tenant stdio MCP",
+        transport="stdio",
+        endpoint_url=None,
+        command=command,
+        command_args=[script],
+        connection_id=connection.id,
+        db=db,
+    )
+
+    with pytest.raises(ToolRuntimeError, match="MCP_SECRET_UNAVAILABLE"):
+        await service.discover_mcp_server(server.id, user_id=other.id, db=db)

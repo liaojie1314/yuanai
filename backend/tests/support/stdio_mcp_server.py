@@ -39,11 +39,25 @@ def main() -> None:
                 ]
             }
         elif method == "tools/call":
+            query = request["params"]["arguments"]["query"]
+            if query == "hang":
+                import time
+
+                time.sleep(2)
+            if query == "large":
+                text = "x" * 4_096
+            else:
+                text = (
+                    f"{query}:"
+                    f"{os.environ.get('MCP_AUTH_TOKEN', '')}:"
+                    f"worker={os.environ.get('YUANAI_MCP_STDIO_WORKER', '')}:"
+                    f"parent={os.getppid()}"
+                )
             result = {
                 "content": [
                     {
                         "type": "text",
-                        "text": f"{request['params']['arguments']['query']}:{os.environ.get('MCP_AUTH_TOKEN', '')}",
+                        "text": text,
                     }
                 ]
             }

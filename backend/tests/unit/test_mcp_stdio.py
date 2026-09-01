@@ -59,4 +59,50 @@ async def test_stdio_client_completes_initialize_and_tool_call(
     )
     content = result["content"]
     assert isinstance(content, list)
-    assert content[0]["text"] == "yuanai:secret-value"
+    assert content[0]["text"].startswith("yuanai:secret-value:worker=1:parent=")
+
+
+@pytest.mark.asyncio
+async def test_stdio_worker_rejects_hung_fixture_and_recovers_process_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """超时的真实 MCP fixture 必须由 Worker 回收，不能阻塞 API 进程。"""
+
+    command = sys.executable
+    script = str(Path(__file__).parents[1] / "support" / "stdio_mcp_server.py")
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        f"{command} {script}",
+    )
+    monkeypatch.setattr("app.services.tools.mcp_stdio.settings.mcp_stdio_timeout_seconds", 0.05)
+
+    with pytest.raises(StdioMcpError, match="MCP_STDIO_TIMEOUT"):
+        await call_stdio_mcp(
+            command,
+            [script],
+            method="tools/call",
+            params={"name": "lookup", "arguments": {"query": "hang"}},
+        )
+
+
+@pytest.mark.asyncio
+async def test_stdio_worker_rejects_fixture_output_above_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """超过协议输出限制的 MCP 响应不会泄露回 API 进程。"""
+
+    command = sys.executable
+    script = str(Path(__file__).parents[1] / "support" / "stdio_mcp_server.py")
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        f"{command} {script}",
+    )
+    monkeypatch.setattr("app.services.tools.mcp_stdio.settings.mcp_stdio_max_output_bytes", 256)
+
+    with pytest.raises(StdioMcpError, match="MCP_STDIO_OUTPUT_TOO_LARGE"):
+        await call_stdio_mcp(
+            command,
+            [script],
+            method="tools/call",
+            params={"name": "lookup", "arguments": {"query": "large"}},
+        )
