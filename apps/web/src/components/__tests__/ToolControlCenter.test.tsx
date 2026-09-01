@@ -37,6 +37,39 @@ const connection = {
   updatedAt: '2026-08-30T00:00:00Z',
 }
 
+const mcpHttpConnection = {
+  ...connection,
+  id: 'conn-http',
+  kind: 'mcp_http',
+  displayName: 'Docs HTTP',
+}
+
+const mcpStdioConnection = {
+  ...connection,
+  id: 'conn-stdio',
+  kind: 'mcp_stdio',
+  displayName: 'Local stdio',
+}
+
+const mcpServer = {
+  id: 'mcp-1',
+  userId: 'user-1',
+  connectionId: 'conn-http',
+  name: 'Docs MCP',
+  endpointUrl: 'https://mcp.example.com/mcp',
+  command: null,
+  commandArgs: [],
+  transport: 'streamable_http',
+  status: 'pending',
+  schemaSnapshot: null,
+  schemaHash: null,
+  enabledTools: [],
+  metadata: {},
+  lastVerifiedAt: null,
+  createdAt: '2026-08-30T00:00:00Z',
+  updatedAt: '2026-08-30T00:00:00Z',
+}
+
 const node = {
   id: 'node-1',
   userId: 'user-1',
@@ -200,6 +233,47 @@ describe('ToolControlCenter', () => {
     expect(await screen.findByText('yuanai.web.search')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /取消/ }))
     await waitFor(() => expect(cancelSpy).toHaveBeenCalled())
+  })
+
+  it('MCP 表单按 transport 提交 HTTP 与 stdio 所需字段', async () => {
+    const user = userEvent.setup()
+    const createSpy = vi.fn<(body: Record<string, unknown>) => void>()
+    server.use(
+      http.get(`${API}/tool-connections`, () =>
+        HttpResponse.json([mcpHttpConnection, mcpStdioConnection])
+      ),
+      http.post(`${API}/mcp-servers`, async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>
+        createSpy(body)
+        return HttpResponse.json({
+          ...mcpServer,
+          ...body,
+          id: 'mcp-stdio-1',
+          endpointUrl: null,
+          command: body['command'],
+          commandArgs: body['commandArgs'],
+          connectionId: body['connectionId'],
+          transport: 'stdio',
+        })
+      })
+    )
+    renderCenter()
+    await user.click(screen.getByRole('button', { name: /MCP/ }))
+    await user.selectOptions(await screen.findByLabelText('传输方式'), 'stdio')
+    await user.type(screen.getByLabelText('名称'), 'Local tools')
+    await user.type(screen.getByLabelText('启动命令'), '/usr/bin/node')
+    await user.type(screen.getByLabelText('启动参数（每行一个）'), 'server.js\n--mode\nreadonly')
+    await user.selectOptions(screen.getByLabelText('所属连接'), 'conn-stdio')
+    await user.click(screen.getByRole('button', { name: '添加 MCP Server' }))
+    await waitFor(() => expect(createSpy).toHaveBeenCalled())
+    expect(createSpy).toHaveBeenCalledWith({
+      name: 'Local tools',
+      transport: 'stdio',
+      connectionId: 'conn-stdio',
+      command: '/usr/bin/node',
+      commandArgs: ['server.js', '--mode', 'readonly'],
+    })
+    expect(screen.queryByLabelText('端点 URL（公网 HTTPS）')).not.toBeInTheDocument()
   })
 
   it('节点页签生成仅显示一次的配对码并展示资源授权', async () => {

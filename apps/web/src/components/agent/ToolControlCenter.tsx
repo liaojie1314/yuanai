@@ -64,7 +64,12 @@ const TABS: readonly ToolCenterTab[] = [
   'approvals',
 ]
 
-const CONNECTION_KINDS: readonly ToolConnectionKind[] = ['api_key', 'oauth']
+const CONNECTION_KINDS: readonly ToolConnectionKind[] = [
+  'api_key',
+  'oauth',
+  'mcp_http',
+  'mcp_stdio',
+]
 
 function formatDate(value: string | null, locale: string): string {
   if (!value) return '—'
@@ -236,7 +241,7 @@ function ConnectionsTab(): JSX.Element {
             >
               {CONNECTION_KINDS.map((value) => (
                 <option key={value} value={value}>
-                  {value}
+                  {t(`connections.kindLabels.${value}`)}
                 </option>
               ))}
             </select>
@@ -327,19 +332,43 @@ function McpTab(): JSX.Element {
   const discover = useDiscoverMcpServer()
   const enable = useEnableMcpTools()
   const [name, setName] = useState('')
+  const [transport, setTransport] = useState<'streamable_http' | 'stdio'>('streamable_http')
   const [endpointUrl, setEndpointUrl] = useState('')
+  const [command, setCommand] = useState('')
+  const [commandArgs, setCommandArgs] = useState('')
   const [connectionId, setConnectionId] = useState('')
   const [selectedTools, setSelectedTools] = useState<Record<string, boolean>>({})
 
+  const connectionKind = transport === 'stdio' ? 'mcp_stdio' : 'mcp_http'
+  const mcpConnections = (connections.data ?? []).filter((item) => item.kind === connectionKind)
+
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
-    if (!name.trim() || !endpointUrl.trim() || !connectionId) return
+    if (!name.trim() || !connectionId) return
+    if (transport === 'streamable_http' && !endpointUrl.trim()) return
+    if (transport === 'stdio' && !command.trim()) return
     create.mutate(
-      { name: name.trim(), endpointUrl: endpointUrl.trim(), connectionId },
+      {
+        name: name.trim(),
+        transport,
+        connectionId,
+        ...(transport === 'streamable_http'
+          ? { endpointUrl: endpointUrl.trim() }
+          : {
+              command: command.trim(),
+              commandArgs: commandArgs
+                .split('\n')
+                .map((value) => value.trim())
+                .filter(Boolean),
+            }),
+      },
       {
         onSuccess: () => {
           setName('')
           setEndpointUrl('')
+          setCommand('')
+          setCommandArgs('')
+          setConnectionId('')
         },
       }
     )
@@ -360,6 +389,22 @@ function McpTab(): JSX.Element {
             />
           </label>
           <label>
+            {t('mcp.transport')}
+            <select
+              value={transport}
+              onChange={(event) => {
+                const next = event.target.value as 'streamable_http' | 'stdio'
+                setTransport(next)
+                setConnectionId('')
+              }}
+            >
+              <option value="streamable_http">{t('mcp.transportLabels.streamable_http')}</option>
+              <option value="stdio">{t('mcp.transportLabels.stdio')}</option>
+            </select>
+          </label>
+        </div>
+        {transport === 'streamable_http' ? (
+          <label>
             {t('mcp.endpointUrl')}
             <input
               value={endpointUrl}
@@ -369,7 +414,29 @@ function McpTab(): JSX.Element {
               required
             />
           </label>
-        </div>
+        ) : (
+          <div className="tools-form-row">
+            <label>
+              {t('mcp.command')}
+              <input
+                value={command}
+                onChange={(event) => setCommand(event.target.value)}
+                maxLength={255}
+                required
+              />
+            </label>
+            <label>
+              {t('mcp.commandArgs')}
+              <textarea
+                value={commandArgs}
+                onChange={(event) => setCommandArgs(event.target.value)}
+                maxLength={3200}
+                rows={3}
+              />
+            </label>
+          </div>
+        )}
+        {transport === 'stdio' ? <p className="tools-muted">{t('mcp.stdioHint')}</p> : null}
         <label>
           {t('mcp.connection')}
           <select
@@ -378,7 +445,7 @@ function McpTab(): JSX.Element {
             required
           >
             <option value="">—</option>
-            {(connections.data ?? []).map((item) => (
+            {mcpConnections.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.displayName}
               </option>
@@ -403,7 +470,11 @@ function McpTab(): JSX.Element {
                     label={t(`status.${server.status}`)}
                   />
                 </div>
-                <p className="tools-break">{server.endpointUrl}</p>
+                <p className="tools-break">
+                  {server.transport === 'stdio'
+                    ? [server.command, ...server.commandArgs].filter(Boolean).join(' ')
+                    : server.endpointUrl}
+                </p>
                 <div className="tools-card-meta">
                   <span>
                     {t('mcp.availableTools')}:{' '}

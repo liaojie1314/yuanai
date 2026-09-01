@@ -70,10 +70,13 @@ export interface ResourceGrantInput {
   scopes?: string[]
 }
 
-/** 添加远程 MCP Server 的请求参数。 */
+/** 添加远程 HTTP 或受控 stdio MCP Server 的请求参数。 */
 export interface McpServerCreateInput {
   name: string
-  endpointUrl: string
+  transport?: 'streamable_http' | 'stdio'
+  endpointUrl?: string
+  command?: string
+  commandArgs?: string[]
   connectionId: string
 }
 

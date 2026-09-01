@@ -170,6 +170,8 @@ const mcpServer = {
   connectionId: 'conn-1',
   name: 'docs',
   endpointUrl: 'https://mcp.example.com/mcp',
+  command: null,
+  commandArgs: [],
   transport: 'streamable_http',
   status: 'pending',
   schemaSnapshot: null,

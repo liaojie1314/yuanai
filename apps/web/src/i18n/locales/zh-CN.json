@@ -421,7 +421,13 @@
       "update_required": "待更新",
       "paused": "已暂停",
       "pending": "待确认",
-      "unknown": "未知"
+      "unknown": "未知",
+      "queued": "排队中",
+      "running": "执行中",
+      "waiting": "等待审批",
+      "succeeded": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
     },
     "catalog": {
       "name": "工具",
@@ -440,6 +446,13 @@
       "delete": "撤销",
       "confirmDelete": "确定撤销该连接？",
       "kind": "类型",
+      "kindLabels": {
+        "oauth": "OAuth",
+        "api_key": "API 密钥",
+        "mcp_http": "MCP HTTP",
+        "mcp_stdio": "MCP stdio",
+        "desktop_local": "桌面节点"
+      },
       "displayName": "显示名称",
       "secretRef": "凭证引用（可选）",
       "scopesHint": "作用域，用英文逗号分隔"
@@ -454,7 +467,15 @@
       "create": "添加 MCP Server",
       "discover": "重新发现",
       "name": "名称",
+      "transport": "传输方式",
+      "transportLabels": {
+        "streamable_http": "Streamable HTTP",
+        "stdio": "stdio（隔离进程）"
+      },
       "endpointUrl": "端点 URL（公网 HTTPS）",
+      "command": "启动命令",
+      "commandArgs": "启动参数（每行一个）",
+      "stdioHint": "命令必须已加入服务器 allowlist；stdio 运行在隔离子进程中。",
       "connection": "所属连接",
       "enable": "启用所选工具"
     },

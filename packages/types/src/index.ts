@@ -644,7 +644,7 @@ export type ToolExecutionStatus =
 export type ExecutionNodeStatus = 'offline' | 'online' | 'revoked' | 'update_required'
 
 /** 工具连接的凭证或服务类型（后端 ToolConnectionKind 枚举）。 */
-export type ToolConnectionKind = 'oauth' | 'api_key' | 'mcp_http' | 'desktop_local'
+export type ToolConnectionKind = 'oauth' | 'api_key' | 'mcp_http' | 'mcp_stdio' | 'desktop_local'
 
 /** 客户端工具目录项（GET /tools/catalog），不含任何密钥。 */
 export interface ToolCatalogItem {
@@ -857,8 +857,10 @@ export interface McpServer {
   userId: string
   connectionId: string | null
   name: string
-  endpointUrl: string
-  transport: string
+  endpointUrl: string | null
+  command: string | null
+  commandArgs: string[]
+  transport: 'streamable_http' | 'stdio'
   status: string
   /** 发现得到的 schema 快照，标准形状为 `{ tools: McpToolSummary[] }`。 */
   schemaSnapshot: ({ tools?: McpToolSummary[] } & Record<string, unknown>) | null

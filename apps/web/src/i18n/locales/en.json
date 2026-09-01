@@ -421,7 +421,13 @@
       "update_required": "Update required",
       "paused": "Paused",
       "pending": "Pending",
-      "unknown": "Unknown"
+      "unknown": "Unknown",
+      "queued": "Queued",
+      "running": "Running",
+      "waiting": "Waiting for approval",
+      "succeeded": "Succeeded",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
     },
     "catalog": {
       "name": "Tool",
@@ -440,6 +446,13 @@
       "delete": "Revoke",
       "confirmDelete": "Revoke this connection?",
       "kind": "Kind",
+      "kindLabels": {
+        "oauth": "OAuth",
+        "api_key": "API key",
+        "mcp_http": "MCP HTTP",
+        "mcp_stdio": "MCP stdio",
+        "desktop_local": "Desktop node"
+      },
       "displayName": "Display name",
       "secretRef": "Secret reference (optional)",
       "scopesHint": "Scopes separated by commas"
@@ -454,7 +467,15 @@
       "create": "Add MCP server",
       "discover": "Rediscover",
       "name": "Name",
+      "transport": "Transport",
+      "transportLabels": {
+        "streamable_http": "Streamable HTTP",
+        "stdio": "stdio (isolated process)"
+      },
       "endpointUrl": "Endpoint URL (public HTTPS)",
+      "command": "Launch command",
+      "commandArgs": "Launch arguments (one per line)",
+      "stdioHint": "The command must be on the server allowlist; stdio runs in an isolated process.",
       "connection": "Connection",
       "enable": "Enable selected tools"
     },
