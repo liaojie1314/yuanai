@@ -159,6 +159,7 @@ function CatalogTab(): JSX.Element {
       </p>
     )
   }
+  if (catalog.isError) return <SectionError message={t('common.actionFailed')} />
   const items = catalog.data ?? []
   if (items.length === 0) return <p className="tools-empty">{t('catalog.empty')}</p>
   return (
@@ -281,7 +282,9 @@ function ConnectionsTab(): JSX.Element {
         </button>
         <SectionError message={create.isError ? t('common.actionFailed') : undefined} />
       </form>
-      {list.data?.length ? (
+      {list.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : list.data?.length ? (
         <ul className="tools-grid">
           {list.data.map((item: ToolConnection) => (
             <li key={item.id} className="tools-card">
@@ -457,7 +460,9 @@ function McpTab(): JSX.Element {
         </button>
         <SectionError message={create.isError ? t('common.actionFailed') : undefined} />
       </form>
-      {servers.data?.length ? (
+      {servers.isError || connections.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : servers.data?.length ? (
         <ul className="tools-grid">
           {servers.data.map((server: McpServer) => {
             const snapshotTools = server.schemaSnapshot?.tools ?? []
@@ -628,7 +633,9 @@ function NodesTab(): JSX.Element {
           </div>
         ) : null}
       </form>
-      {nodes.data?.length ? (
+      {nodes.isError || grants.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : nodes.data?.length ? (
         <ul className="tools-grid">
           {nodes.data.map((node: ExecutionNode) => (
             <li key={node.id} className="tools-card">
@@ -705,7 +712,9 @@ function ExecutionsTab(): JSX.Element {
   const rows = executions.data ?? []
   return (
     <div className="tools-pane">
-      {rows.length ? (
+      {executions.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : rows.length ? (
         <ul className="tools-list">
           {rows.map((item: ToolExecution) => (
             <li key={item.id} className="tools-row">
@@ -729,6 +738,11 @@ function ExecutionsTab(): JSX.Element {
                 {item.errorMessage ? (
                   <span className="tools-error-text">
                     {t('executions.error')}: {item.errorMessage}
+                  </span>
+                ) : null}
+                {item.resultSummary ? (
+                  <span className="tools-break">
+                    {t('executions.result')}: {item.resultSummary}
                   </span>
                 ) : null}
                 {formatResultPreview(item.resultJson) ? (
@@ -764,7 +778,9 @@ function ArtifactsTab(): JSX.Element {
   const rows = artifacts.data ?? []
   return (
     <div className="tools-pane">
-      {rows.length ? (
+      {artifacts.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : rows.length ? (
         <ul className="tools-list">
           {rows.map((item: ArtifactMeta) => (
             <li key={item.id} className="tools-row">
@@ -820,6 +836,7 @@ function ArtifactsTab(): JSX.Element {
 function ApprovalsTab(): JSX.Element {
   const t = useTranslations('tools')
   const locale = useLocale()
+  const queryClient = useQueryClient()
   const approvals = useQuery({
     queryKey: ['agent-approvals'],
     queryFn: listAgentApprovals,
@@ -828,7 +845,9 @@ function ApprovalsTab(): JSX.Element {
   const rows = approvals.data ?? []
   return (
     <div className="tools-pane">
-      {rows.length ? (
+      {approvals.isError ? (
+        <SectionError message={t('common.actionFailed')} />
+      ) : rows.length ? (
         <ul className="tools-list">
           {rows.map((item: ApprovalRequest) => (
             <li key={item.id} className="tools-row">
@@ -863,7 +882,15 @@ function ApprovalsTab(): JSX.Element {
                     className="tools-btn tools-btn--primary"
                     type="button"
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ id: item.id, decision: 'approve' })}
+                    onClick={() =>
+                      decide.mutate(
+                        { id: item.id, decision: 'approve' },
+                        {
+                          onSuccess: () =>
+                            void queryClient.invalidateQueries({ queryKey: ['agent-approvals'] }),
+                        }
+                      )
+                    }
                   >
                     {t('approvals.approve')}
                   </button>
@@ -871,7 +898,15 @@ function ApprovalsTab(): JSX.Element {
                     className="tools-btn tools-btn--danger"
                     type="button"
                     disabled={decide.isPending}
-                    onClick={() => decide.mutate({ id: item.id, decision: 'deny' })}
+                    onClick={() =>
+                      decide.mutate(
+                        { id: item.id, decision: 'deny' },
+                        {
+                          onSuccess: () =>
+                            void queryClient.invalidateQueries({ queryKey: ['agent-approvals'] }),
+                        }
+                      )
+                    }
                   >
                     {t('approvals.deny')}
                   </button>
