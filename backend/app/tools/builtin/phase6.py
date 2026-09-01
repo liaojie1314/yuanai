@@ -10,6 +10,12 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.models.file import File
 from app.services.file_extract_service import extract_preview, preview_context
 from app.services.storage_service import storage
+from app.services.tools.browser_worker import (
+    BrowserWorkerError,
+    browser_artifact_output,
+    build_browser_request,
+    run_browser_worker,
+)
 from app.services.tools.sandbox import SandboxExecutionError, execute_python
 from app.services.tools.search import SearchError, search_web
 from app.services.tools.web_security import (
@@ -117,7 +123,7 @@ CODE_EXECUTE_SPEC = ToolSpec(
 
 BROWSER_OPEN_SPEC = ToolSpec(
     name="browser_open",
-    description="打开 HTTPS 公网页面并返回 DOM 文本快照与可继续导航链接；不提交表单、不写 Cookie。",
+    description="使用隔离系统 Chrome 打开 HTTPS 公网页面并返回 DOM 与无障碍快照；不共享登录态。",
     input_schema={
         "type": "object",
         "properties": {"url": {"type": "string", "minLength": 8, "maxLength": 2_000}},
@@ -128,26 +134,152 @@ BROWSER_OPEN_SPEC = ToolSpec(
     risk_level=ToolRisk.read,
     execution_location="cloud",
     timeout_seconds=30,
-    tags={"html", "fetch"},
+    max_output_bytes=30 * 1024,
+    tags={"browser", "html", "accessibility"},
 )
 
 BROWSER_CLICK_SPEC = ToolSpec(
     name="browser_click",
-    description="按链接可见文本执行一次只读导航；不点击提交、付款、下载或外部副作用控件。",
+    description="使用无障碍角色和可见名称点击一个受控页面元素；禁止坐标、CSS、XPath 和下载点击。",
     input_schema={
         "type": "object",
         "properties": {
             "url": {"type": "string", "minLength": 8, "maxLength": 2_000},
+            "target": {
+                "type": "object",
+                "properties": {
+                    "role": {
+                        "type": "string",
+                        "enum": [
+                            "link",
+                            "button",
+                            "tab",
+                            "checkbox",
+                            "radio",
+                            "switch",
+                            "menuitem",
+                        ],
+                    },
+                    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "exact": {"type": "boolean"},
+                },
+                "required": ["role", "name"],
+                "additionalProperties": False,
+            },
             "link_text": {"type": "string", "minLength": 1, "maxLength": 200},
+            "allowed_domains": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "string", "minLength": 1, "maxLength": 253},
+            },
+            "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 30_000},
         },
-        "required": ["url", "link_text"],
+        "required": ["url"],
+        "additionalProperties": False,
+    },
+    output_schema={"type": "object"},
+    risk_level=ToolRisk.reversible_write,
+    execution_location="cloud",
+    timeout_seconds=30,
+    side_effect=SideEffect.external,
+    tags={"browser", "semantic_action"},
+)
+
+BROWSER_FILL_SPEC = ToolSpec(
+    name="browser_fill",
+    description="使用无障碍角色和可见名称填充非敏感文本框；禁止密码、OTP、Token 和登录态共享。",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "minLength": 8, "maxLength": 2_000},
+            "target": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "enum": ["textbox", "searchbox", "combobox"]},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "exact": {"type": "boolean"},
+                },
+                "required": ["role", "name"],
+                "additionalProperties": False,
+            },
+            "value": {"type": "string", "maxLength": 5_000},
+            "allowed_domains": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "string", "minLength": 1, "maxLength": 253},
+            },
+            "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 30_000},
+        },
+        "required": ["url", "target", "value"],
+        "additionalProperties": False,
+    },
+    output_schema={"type": "object"},
+    risk_level=ToolRisk.reversible_write,
+    execution_location="cloud",
+    timeout_seconds=30,
+    side_effect=SideEffect.external,
+    tags={"browser", "semantic_action"},
+)
+
+BROWSER_DOWNLOAD_SPEC = ToolSpec(
+    name="browser_download",
+    description="点击语义下载控件并生成受大小、MIME、扩展名和哈希保护的 Artifact。",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "minLength": 8, "maxLength": 2_000},
+            "target": {
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "enum": ["link", "button"]},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "exact": {"type": "boolean"},
+                },
+                "required": ["role", "name"],
+                "additionalProperties": False,
+            },
+            "allowed_domains": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "string", "minLength": 1, "maxLength": 253},
+            },
+            "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 30_000},
+        },
+        "required": ["url", "target"],
+        "additionalProperties": False,
+    },
+    output_schema={"type": "object"},
+    risk_level=ToolRisk.local_write,
+    execution_location="cloud",
+    timeout_seconds=30,
+    side_effect=SideEffect.local_write,
+    tags={"browser", "artifact", "download"},
+)
+
+BROWSER_SCREENSHOT_SPEC = ToolSpec(
+    name="browser_screenshot",
+    description="对隔离页面生成 PNG Artifact；不使用坐标操作，不共享浏览器 Profile。",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "minLength": 8, "maxLength": 2_000},
+            "full_page": {"type": "boolean"},
+            "allowed_domains": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {"type": "string", "minLength": 1, "maxLength": 253},
+            },
+            "timeout_ms": {"type": "integer", "minimum": 100, "maximum": 30_000},
+        },
+        "required": ["url"],
         "additionalProperties": False,
     },
     output_schema={"type": "object"},
     risk_level=ToolRisk.read,
     execution_location="cloud",
     timeout_seconds=30,
-    tags={"html", "fetch"},
+    max_output_bytes=16 * 1024,
+    tags={"browser", "artifact", "screenshot"},
 )
 
 
@@ -242,44 +374,61 @@ async def code_execute_python(arguments: dict[str, object], _context: ToolContex
         raise ToolError(ToolErrorCode.EXECUTION_FAILED, str(error)) from error
 
 
-async def browser_open(arguments: dict[str, object], _context: ToolContext) -> ToolOutput:
-    """读取只读 DOM 文本快照。"""
+async def _execute_browser_action(
+    arguments: dict[str, object], *, action: str
+) -> dict[str, object]:
+    """构造并执行一个浏览器 Worker 请求。"""
 
-    url = arguments.get("url")
-    if not isinstance(url, str):
-        raise ToolError(ToolErrorCode.INVALID_INPUT)
     try:
-        resolved_url, html = await fetch_public_html(url)
-        return parse_html_document(html, base_url=resolved_url)
-    except (OSError, UrlPolicyError, ValueError) as error:
-        raise ToolError(ToolErrorCode.EXECUTION_FAILED, "BROWSER_NAVIGATION_BLOCKED") from error
+        request = build_browser_request(arguments, action=action)
+        return await run_browser_worker(request)
+    except BrowserWorkerError as error:
+        raise ToolError(ToolErrorCode.EXECUTION_FAILED, error.code) from error
+
+
+async def browser_open(arguments: dict[str, object], _context: ToolContext) -> ToolOutput:
+    """使用隔离系统 Chrome 返回 DOM、文本和无障碍快照。"""
+
+    return await _execute_browser_action(arguments, action="open")
 
 
 async def browser_click(arguments: dict[str, object], _context: ToolContext) -> ToolOutput:
-    """只跟随页面中可见链接，不执行表单或副作用控件。"""
+    """使用语义 locator 点击页面元素并返回动作后的快照。"""
 
-    url = arguments.get("url")
-    link_text = arguments.get("link_text")
-    if not isinstance(url, str) or not isinstance(link_text, str):
-        raise ToolError(ToolErrorCode.INVALID_INPUT)
+    normalized = dict(arguments)
+    if "target" not in normalized:
+        link_text = normalized.pop("link_text", None)
+        if isinstance(link_text, str):
+            normalized["target"] = {"role": "link", "name": link_text, "exact": True}
+    return await _execute_browser_action(normalized, action="click")
+
+
+async def browser_fill(arguments: dict[str, object], _context: ToolContext) -> ToolOutput:
+    """使用语义 locator 填充非敏感文本框，不执行提交。"""
+
+    return await _execute_browser_action(arguments, action="fill")
+
+
+async def browser_download(arguments: dict[str, object], context: ToolContext) -> ToolOutput:
+    """通过语义下载控件创建租户隔离 Artifact。"""
+
+    del context
+    result = await _execute_browser_action(arguments, action="download")
     try:
-        resolved_url, html = await fetch_public_html(url)
-        page = parse_html_document(html, base_url=resolved_url)
-    except (OSError, UrlPolicyError, ValueError) as error:
-        raise ToolError(ToolErrorCode.EXECUTION_FAILED, "BROWSER_NAVIGATION_BLOCKED") from error
-    links = page.get("links")
-    if not isinstance(links, list):
-        raise ToolError(ToolErrorCode.EXECUTION_FAILED, "BROWSER_LINK_NOT_FOUND")
-    match = next(
-        (link for link in links if isinstance(link, dict) and link.get("text") == link_text),
-        None,
-    )
-    if not isinstance(match, dict) or not isinstance(match.get("url"), str):
-        raise ToolError(ToolErrorCode.EXECUTION_FAILED, "BROWSER_LINK_NOT_FOUND")
-    matched_url = match.get("url")
-    if not isinstance(matched_url, str):
-        raise ToolError(ToolErrorCode.EXECUTION_FAILED, "BROWSER_LINK_NOT_FOUND")
-    return await browser_open({"url": matched_url}, _context)
+        return browser_artifact_output(result)
+    except BrowserWorkerError as error:
+        raise ToolError(ToolErrorCode.EXECUTION_FAILED, error.code) from error
+
+
+async def browser_screenshot(arguments: dict[str, object], context: ToolContext) -> ToolOutput:
+    """生成页面 PNG 并创建租户隔离 Artifact。"""
+
+    del context
+    result = await _execute_browser_action(arguments, action="screenshot")
+    try:
+        return browser_artifact_output(result)
+    except BrowserWorkerError as error:
+        raise ToolError(ToolErrorCode.EXECUTION_FAILED, error.code) from error
 
 
 PHASE6_BUILTINS = (
@@ -290,4 +439,7 @@ PHASE6_BUILTINS = (
     (CODE_EXECUTE_SPEC, code_execute_python),
     (BROWSER_OPEN_SPEC, browser_open),
     (BROWSER_CLICK_SPEC, browser_click),
+    (BROWSER_FILL_SPEC, browser_fill),
+    (BROWSER_DOWNLOAD_SPEC, browser_download),
+    (BROWSER_SCREENSHOT_SPEC, browser_screenshot),
 )
