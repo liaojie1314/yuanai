@@ -28,6 +28,10 @@ All pnpm commands used Node.js `22.21.1` and pnpm `10.22.0`.
 - `pnpm --filter @yuanai/desktop exec playwright test --list`: found one
   Electron E2E test in `tests/e2e/execution-node.spec.ts`.
 
+No Playwright browser download was run. The E2E harness uses Electron and may
+use the system `/usr/bin/google-chrome` or an existing `executablePath` when a
+browser binary is required.
+
 ## Evidence Boundary
 
 The Desktop unit suite covers safeStorage fail-closed behavior, Ed25519
@@ -42,5 +46,9 @@ the test's safeStorage gate is reached only after the backend-created test user
 step. No backend startup was performed because the repository's
 `pnpm dev:real` script also writes `apps/web/.env.local`, outside the requested
 Desktop-only write scope. Windows/macOS packaging and signing were not tested.
+
+The E2E packaging directory generated during this run was moved to the system
+trash after verification. The existing `apps/desktop/out` build output,
+dependencies, and model caches were preserved.
 
 Unrelated changes observed in `apps/web/` and `backend/` were preserved.
