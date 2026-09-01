@@ -445,6 +445,10 @@ describe('ExecutionNodeService job decisions', () => {
     await flush()
 
     expect(harness.statuses.at(-1)?.pendingJob).toBeNull()
+    expect(socket.lastSent()).toEqual({
+      type: 'ack',
+      execution_id: 'exec-cancelled-pending',
+    })
     await expect(
       harness.service.respondJob({ executionId: 'exec-cancelled-pending', decision: 'accept' })
     ).rejects.toThrow('EXECUTION_NODE_JOB_UNKNOWN')

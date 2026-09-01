@@ -643,6 +643,7 @@ export class ExecutionNodeClient {
 
   private handleCancelRequest(executionId: string): void {
     if (this.pendingOffers.delete(executionId)) {
+      this.send({ type: 'ack', execution_id: executionId })
       this.onJobCancelled?.(executionId)
       return
     }

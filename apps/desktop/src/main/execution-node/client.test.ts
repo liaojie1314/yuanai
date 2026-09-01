@@ -610,6 +610,10 @@ describe('ExecutionNodeClient job lifecycle', () => {
       'EXECUTION_NODE_JOB_UNKNOWN'
     )
     expect(harness.jobs.executeJob).not.toHaveBeenCalled()
+    expect(harness.ws().sentMessages().at(-1)).toEqual({
+      type: 'ack',
+      execution_id: 'exec-cancelled-pending',
+    })
   })
 
   it('answers job_status for unknown executions with a signed failed terminal', async () => {
