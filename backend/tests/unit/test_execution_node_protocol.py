@@ -21,6 +21,7 @@ from app.services.tool_runtime_service import (
     encode_public_key,
     verify_node_challenge,
 )
+from tests.conftest import TestSessionLocal
 
 
 def _private_key() -> Ed25519PrivateKey:
@@ -307,8 +308,6 @@ async def test_cancelled_execution_cannot_start_from_a_stale_object(
 ) -> None:
     """取消提交后，另一个会话中的旧 queued 对象不能重新启动任务。"""
 
-    from app.core.database import AsyncSessionLocal
-
     service = ToolRuntimeService()
     node, _private_key, _token = await _registered_node(
         service, db, test_user, capabilities=["browser_open_url"]
@@ -323,7 +322,7 @@ async def test_cancelled_execution_cannot_start_from_a_stale_object(
     )
     await db.commit()
 
-    async with AsyncSessionLocal() as cancel_db:
+    async with TestSessionLocal() as cancel_db:
         await service.cancel_execution(execution.id, user_id=test_user.id, db=cancel_db)
 
     with pytest.raises(ToolRuntimeError, match="TOOL_EXECUTION_NOT_STARTABLE"):
@@ -401,11 +400,12 @@ async def test_node_token_renewal_requires_private_key_signature(
 async def test_node_gateway_refreshes_state_committed_by_other_sessions(
     db: AsyncSession, test_user
 ) -> None:
-    """节点网关长会话必须看到其他会话提交的取消状态，不能停留在旧快照。"""
+    """节点网关长会话必须看到其他会话提交的取消状态，不能停留在旧快照。
+
+    使用 NullPool 测试 session factory，避免 pytest 的不同 event loop 复用 asyncpg 连接。
+    """
 
     from sqlalchemy import select
-
-    from app.core.database import AsyncSessionLocal
 
     service = ToolRuntimeService()
     node, _private_key_value, _token = await _registered_node(
@@ -421,7 +421,7 @@ async def test_node_gateway_refreshes_state_committed_by_other_sessions(
     )
     await db.commit()
 
-    async with AsyncSessionLocal() as gateway_db:
+    async with TestSessionLocal() as gateway_db:
         gateway_node = await gateway_db.scalar(
             select(ExecutionNode).where(ExecutionNode.id == node.id)
         )
