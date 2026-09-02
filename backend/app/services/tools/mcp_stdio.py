@@ -17,6 +17,8 @@ from app.core.config import settings
 _COMMAND_RE = re.compile(r"^[A-Za-z0-9_./-]+$")
 _ARGUMENT_RE = re.compile(r"^[A-Za-z0-9_./:@=+,%~-]+$")
 _ENV_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+_SECRET_ENV_NAME_RE = re.compile(r"^MCP_[A-Z][A-Z0-9_]{0,59}$")
+_MAX_SECRET_ENV_VALUE_LENGTH = 4096
 _PROTOCOL_VERSION = "2025-06-18"
 _FORBIDDEN_ARGUMENTS = frozenset({"-c", "--command", "--eval", "--execute"})
 _ALLOWED_METHODS = frozenset({"tools/list", "tools/call"})
@@ -160,8 +162,12 @@ def _validate_environment(environment: Mapping[str, str] | None) -> dict[str, st
 
     validated: dict[str, str] = {}
     for name, value in (environment or {}).items():
-        if validate_secret_environment_name(name) in _WORKER_ENVIRONMENT or not isinstance(
-            value, str
+        if (
+            not isinstance(name, str)
+            or not _SECRET_ENV_NAME_RE.fullmatch(name)
+            or validate_secret_environment_name(name) in _WORKER_ENVIRONMENT
+            or not isinstance(value, str)
+            or len(value) > _MAX_SECRET_ENV_VALUE_LENGTH
         ):
             raise StdioMcpError("MCP_STDIO_ENV_INVALID")
         validated[name] = value

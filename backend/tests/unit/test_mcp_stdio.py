@@ -38,6 +38,55 @@ def test_stdio_secret_environment_name_is_restricted() -> None:
         validate_secret_environment_name("PATH=OVERRIDE")
 
 
+@pytest.mark.parametrize("name", ["PATH", "PYTHONPATH", "LD_PRELOAD", "NODE_OPTIONS"])
+def test_stdio_environment_rejects_runtime_override_names(
+    monkeypatch: pytest.MonkeyPatch, name: str
+) -> None:
+    """Secret 入口不能改变 Worker 的解释器、动态加载或搜索路径。"""
+
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        "/usr/bin/node server.js",
+    )
+    with pytest.raises(StdioMcpError, match="MCP_STDIO_ENV_INVALID"):
+        # 通过公开调用入口验证，而不是只测试下游 Worker。
+        import asyncio
+
+        asyncio.run(
+            call_stdio_mcp(
+                "/usr/bin/node",
+                ["server.js"],
+                method="tools/list",
+                params={},
+                environment={name: "unsafe"},
+            )
+        )
+
+
+def test_stdio_environment_requires_mcp_prefix_and_bounded_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """只允许 MCP_ 前缀且限制 Secret 长度，避免任意环境注入和资源滥用。"""
+
+    monkeypatch.setattr(
+        "app.services.tools.mcp_stdio.settings.mcp_stdio_command_allowlist",
+        "/usr/bin/node server.js",
+    )
+    import asyncio
+
+    for environment in ({"AUTH_TOKEN": "secret"}, {"MCP_AUTH_TOKEN": "x" * 4097}):
+        with pytest.raises(StdioMcpError, match="MCP_STDIO_ENV_INVALID"):
+            asyncio.run(
+                call_stdio_mcp(
+                    "/usr/bin/node",
+                    ["server.js"],
+                    method="tools/list",
+                    params={},
+                    environment=environment,
+                )
+            )
+
+
 @pytest.mark.asyncio
 async def test_stdio_client_completes_initialize_and_tool_call(
     monkeypatch: pytest.MonkeyPatch,
