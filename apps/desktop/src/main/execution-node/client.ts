@@ -60,6 +60,8 @@ export interface NodeWebSocket {
   send(data: string): void
   /** 关闭连接。 */
   close(code?: number, reason?: string): void
+  /** 立即释放底层连接，不等待远端完成关闭握手。 */
+  terminate?(): void
   addEventListener(type: 'open', listener: () => void): void
   addEventListener(type: 'message', listener: (event: { data: unknown }) => void): void
   addEventListener(type: 'close', listener: () => void): void
@@ -398,7 +400,18 @@ export class ExecutionNodeClient {
     this.socketGeneration += 1
     const socket = this.socket
     this.socket = undefined
-    socket?.close(1000, 'node stopped')
+    if (!socket) return
+    try {
+      socket.terminate?.()
+      if (!socket.terminate) socket.close(1000, 'node stopped')
+    } catch {
+      // 强制关闭失败时仍尝试发送正常关闭帧。
+      try {
+        socket.close(1000, 'node stopped')
+      } catch {
+        // 连接可能已经关闭。
+      }
+    }
   }
 
   private async runJob(pending: PendingJob, controller: AbortController): Promise<void> {

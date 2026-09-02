@@ -19,6 +19,7 @@ class FakeWebSocket {
   public readyState = 0
   public sent: string[] = []
   public closed = false
+  public terminated = false
   private readonly listeners = new Map<string, Set<Listener>>()
 
   public constructor(public readonly url: string) {
@@ -45,6 +46,12 @@ class FakeWebSocket {
     this.closed = true
     this.readyState = 3
     this.emit('close')
+  }
+
+  public terminate(): void {
+    this.terminated = true
+    this.closed = true
+    this.readyState = 3
   }
 
   public serverOpen(): void {
@@ -771,6 +778,7 @@ describe('ExecutionNodeClient reconnection', () => {
 
     expect(harness.client.getState()).toBe('stopped')
     expect(socket.closed).toBe(true)
+    expect(socket.terminated).toBe(true)
     await flush()
     expect(harness.onJobSettled).toHaveBeenCalledWith('exec-6')
   })
