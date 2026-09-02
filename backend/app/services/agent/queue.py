@@ -27,6 +27,16 @@ if redis.call('get', KEYS[1]) == ARGV[1] then
 end
 return 0
 """
+_RECOVER_DELIVERY_SCRIPT = """
+if redis.call('get', KEYS[2]) then
+    return 0
+end
+if redis.call('lrem', KEYS[1], 1, ARGV[1]) == 0 then
+    return 0
+end
+redis.call('rpush', KEYS[3], ARGV[1])
+return 1
+"""
 
 
 class AsyncRedisLike(Protocol):
@@ -183,7 +193,7 @@ class AgentQueue:
         return (await self._redis.scard(self.pending_key(tenant_id, run_id))) > 0
 
     async def recover_inflight(self) -> list[QueueItem]:
-        """返回没有租约的 processing delivery，并从暂存列表移除。"""
+        """原子地把没有租约的 processing delivery 放回主队列。"""
 
         recovered: list[QueueItem] = []
         for payload in await self._redis.lrange(self.processing_key(), 0, -1):
@@ -193,13 +203,31 @@ class AgentQueue:
             if await self.is_cancelled(item.tenant_id, item.run_id):
                 await self.acknowledge(item)
                 continue
-            await self._redis.lrem(self.processing_key(), 1, payload)
-            await self._redis.srem(
-                self.pending_key(item.tenant_id, item.run_id),
-                f"{_identifier(item.tenant_id)}:{_identifier(item.run_id)}",
-            )
-            recovered.append(item)
+            recovered_now = await self._recover_delivery(payload, item)
+            if recovered_now:
+                recovered.append(item)
         return recovered
+
+    async def _recover_delivery(self, payload: str, item: QueueItem) -> bool:
+        """在 Redis 中回推 delivery，并保留 pending 标记直到 worker ack。"""
+
+        item_key = f"{_identifier(item.tenant_id)}:{_identifier(item.run_id)}"
+        evaluate = getattr(self._redis, "eval", None)
+        if callable(evaluate):
+            return bool(
+                await evaluate(
+                    _RECOVER_DELIVERY_SCRIPT,
+                    3,
+                    self.processing_key(),
+                    self.lease_key(item.tenant_id, item.run_id),
+                    self.queue_key(),
+                    payload,
+                    item_key,
+                )
+            )
+        await self._redis.rpush(self.queue_key(), payload)
+        await self._redis.lrem(self.processing_key(), 1, payload)
+        return True
 
     @staticmethod
     def _encode_item(item: QueueItem) -> str:

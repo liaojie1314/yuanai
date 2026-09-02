@@ -214,8 +214,6 @@ async def test_worker_delivery_is_recovered_before_lease_ack() -> None:
     item = await queue.dequeue()
     assert item == QueueItem(tenant_id, run_id)
     assert await queue.recover_inflight() == [item]
-
-    await queue.enqueue(tenant_id, run_id)
     assert await queue.dequeue() == item
 
 
