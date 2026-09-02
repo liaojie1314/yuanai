@@ -1,9 +1,11 @@
 # Agent Runtime Implementation Checklist
 
 This checklist records the locally verified code contracts for the Agent runtime. It is not the
-Phase 5 release gate: the phase remains blocked until the real external-model two-tool run,
-real Worker-crash recovery, and 5-minute disconnect recovery drills in
-`phase-5-agent-runtime.md` have evidence.
+Phase 5 release gate. Automated recovery drill tests now cover five-minute event replay and a
+forced exit of a test helper process, and an opt-in external-model drill covers two safe tools.
+The phase remains blocked until successful evidence exists for the real external-model two-tool run,
+the accepted Worker runtime crash recovery, and the five-minute disconnect recovery described in
+`phase-5-agent-runtime.md`.
 
 ## Verification
 
@@ -21,7 +23,7 @@ real Worker-crash recovery, and 5-minute disconnect recovery drills in
 - [x] Existing Chat, auth, file, and sharing contracts remain covered by their
       existing test suites.
 
-## Deferred Capabilities
+## Deferred Capabilities At The Phase 5 Boundary
 
 The runtime deliberately excludes MCP, cloud sandboxes, Shell, browser
 automation, real file writes, Desktop execution nodes, ToolConnection,

@@ -113,6 +113,22 @@ pnpm --filter @yuanai/desktop test:unit
 pnpm --filter @yuanai/desktop test:integration
 ```
 
+桌面执行节点的真实 Electron E2E 还需要后端 API 在 `YUANAI_API_URL`（默认
+`http://localhost:8000/api/v1`）可用、测试账号可创建或已配置登录凭据，以及 Linux 上已解锁且
+可用的桌面钥匙串。使用项目脚本运行，不要直接调用底层 Electron 或 Playwright 启动器：
+
+```bash
+pnpm --filter @yuanai/desktop test:e2e
+```
+
+该测试成功完成后才可记录配对、WSS challenge、本地审批、签名回调、ACK、取消、重连/重放和撤销
+的真实验收；后端不可达、safeStorage 不可用或测试被 skip 时均不是通过。当前验收记录中，测试在
+创建测试账号时因 `ECONNREFUSED 127.0.0.1:8000` 停止，因此这些桌面链路仍未验收。
+
+Browser Worker 的浏览器二进制必须来自已有系统安装或显式 `executablePath`，优先使用
+`/usr/bin/google-chrome`；不要运行 `playwright install` 下载浏览器。系统 Chrome 不存在时，记录
+环境阻塞并保留依赖与模型缓存。
+
 ### 访问地址
 
 | 服务               | 地址                                                                      |

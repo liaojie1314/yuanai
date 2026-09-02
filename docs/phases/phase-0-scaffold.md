@@ -929,8 +929,10 @@ pnpm add -D vitest @vitest/coverage-v8 @testing-library/react \
 
 # Playwright（E2E）
 pnpm add -D @playwright/test
-npx playwright install chromium firefox webkit
 ```
+
+本项目不下载 Playwright 浏览器。E2E 需要浏览器时使用已有系统浏览器（Linux 优先为
+`/usr/bin/google-chrome`）或测试配置中的已有 `executablePath`。
 
 创建 `playwright.config.ts`（参见 `docs/testing-standards.md` 第七节）。
 

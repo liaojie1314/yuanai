@@ -40,3 +40,10 @@ source of truth if Redis broadcast is unavailable.
 Backend integration and browser checks require PostgreSQL, Redis, and the web
 server. The local environment record documents service startup failures; do
 not treat an unavailable dependency as an application test pass.
+
+The recovery drill tests provide automated evidence for five-minute event
+replay and a forced exit of a test helper process. The external-model drill is
+opt-in because it sends a billed provider request. Neither test is a release
+acceptance of a deployed Worker, an external model, or a production failure
+recovery environment; record a successful run with its dependency versions and
+logs before checking the Phase 5 gate.
