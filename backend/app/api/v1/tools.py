@@ -365,7 +365,8 @@ async def execution_node_socket(websocket: WebSocket, token: str) -> None:
             while True:
                 for execution, message in await runtime.list_node_messages(node, db=db):
                     await websocket.send_json(message)
-                    await runtime.mark_node_offer_sent(execution, db=db)
+                    if message.get("type") == "job_offer":
+                        await runtime.mark_node_offer_sent(execution, db=db)
                 await db.commit()
                 try:
                     incoming = await asyncio.wait_for(websocket.receive_json(), timeout=5)

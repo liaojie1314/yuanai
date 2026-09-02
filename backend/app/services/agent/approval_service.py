@@ -406,7 +406,7 @@ class ApprovalService:
         request: ApprovalRequest | None = None
         if db is not None:
             request = await db.scalar(
-                select(ApprovalRequest).where(ApprovalRequest.id == approval_id)
+                select(ApprovalRequest).where(ApprovalRequest.id == approval_id).with_for_update()
             )
         if request is None:
             request = self._memory.get(approval_id)

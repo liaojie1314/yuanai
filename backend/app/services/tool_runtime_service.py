@@ -20,7 +20,7 @@ from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import JWTError, jwt
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -1285,8 +1285,21 @@ class ToolRuntimeService:
 
         if execution.status not in {ToolExecutionStatus.queued, ToolExecutionStatus.waiting}:
             raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
+        started_at = datetime.now(UTC)
+        result = await db.execute(
+            update(ToolExecution)
+            .where(
+                ToolExecution.id == execution.id,
+                ToolExecution.status.in_({ToolExecutionStatus.queued, ToolExecutionStatus.waiting}),
+            )
+            .values(status=ToolExecutionStatus.running, started_at=started_at)
+            .returning(ToolExecution.id)
+        )
+        if result.scalar_one_or_none() is None:
+            await db.refresh(execution)
+            raise ToolRuntimeError("TOOL_EXECUTION_NOT_STARTABLE")
         execution.status = ToolExecutionStatus.running
-        execution.started_at = datetime.now(UTC)
+        execution.started_at = started_at
         await db.flush()
 
     async def execute(
@@ -1685,6 +1698,9 @@ class ToolRuntimeService:
             ).all()
         )
         messages: list[tuple[ToolExecution, dict[str, object]]] = []
+        stale_delivery_before = datetime.now(UTC) - timedelta(
+            seconds=max(1, settings.execution_node_job_offer_ttl_seconds)
+        )
         for execution in executions:
             if (
                 execution.status
@@ -1715,6 +1731,27 @@ class ToolRuntimeService:
                     )
                 continue
             if execution.status is ToolExecutionStatus.queued:
+                claimed = await db.execute(
+                    update(ToolExecution)
+                    .where(
+                        ToolExecution.id == execution.id,
+                        ToolExecution.node_id == node.id,
+                        ToolExecution.status == ToolExecutionStatus.queued,
+                        or_(
+                            ToolExecution.node_delivery_status.is_(None),
+                            ToolExecution.node_delivery_status != "sent",
+                            ToolExecution.node_last_delivered_at < stale_delivery_before,
+                        ),
+                    )
+                    .values(
+                        node_delivery_status="sent",
+                        node_last_delivered_at=datetime.now(UTC),
+                    )
+                    .returning(ToolExecution.id)
+                )
+                if claimed.scalar_one_or_none() is None:
+                    continue
+                execution.node_delivery_status = "sent"
                 messages.append((execution, self.build_job_offer(execution, node=node)))
             elif execution.status is ToolExecutionStatus.running:
                 messages.append(

@@ -2,8 +2,10 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentStep, AgentStepKind, AgentStepStatus
 from app.models.approval import ApprovalRiskLevel, ApprovalStatus
@@ -128,6 +130,31 @@ async def test_approval_expiry_and_user_isolation() -> None:
     with pytest.raises(ApprovalExpiredError):
         await service.decide(request.id, user_id=owner, decision="approve")
     assert request.status is ApprovalStatus.expired
+
+
+@pytest.mark.asyncio
+async def test_database_approval_lookup_locks_the_row() -> None:
+    """数据库审批读取必须锁定行，避免并发决定或消费通过同一 pending 状态。"""
+
+    user_id = uuid.uuid4()
+    service = ApprovalService()
+    run, step = _run(user_id)
+    request = await service.create_request(
+        run=run,
+        step=step,
+        tool_name="dangerous_tool",
+        arguments={},
+        risk_level=ApprovalRiskLevel.high,
+        execution_location="cloud",
+        action_summary="test",
+    )
+    db = AsyncMock()
+    db.scalar.return_value = request
+
+    await service.approve(request.id, user_id=user_id, db=db)
+
+    statement = db.scalar.await_args.args[0]
+    assert "FOR UPDATE" in str(statement.compile(dialect=postgresql.dialect()))
 
 
 @pytest.mark.asyncio

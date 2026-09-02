@@ -301,6 +301,61 @@ async def test_node_cannot_complete_before_execution_is_running(
         )
 
 
+@pytest.mark.asyncio
+async def test_cancelled_execution_cannot_start_from_a_stale_object(
+    db: AsyncSession, test_user
+) -> None:
+    """取消提交后，另一个会话中的旧 queued 对象不能重新启动任务。"""
+
+    from app.core.database import AsyncSessionLocal
+
+    service = ToolRuntimeService()
+    node, _private_key, _token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    execution = await service.create_execution(
+        user_id=test_user.id,
+        tool_name="browser_open_url",
+        arguments={"url": "https://example.com"},
+        execution_location="desktop",
+        node_id=node.id,
+        db=db,
+    )
+    await db.commit()
+
+    async with AsyncSessionLocal() as cancel_db:
+        await service.cancel_execution(execution.id, user_id=test_user.id, db=cancel_db)
+
+    with pytest.raises(ToolRuntimeError, match="TOOL_EXECUTION_NOT_STARTABLE"):
+        await service.start_execution(execution, db=db)
+
+
+@pytest.mark.asyncio
+async def test_node_offer_is_claimed_once_until_delivery_lease_expires(
+    db: AsyncSession, test_user
+) -> None:
+    """同一 queued 任务在投递租约内只能被一个节点连接领取。"""
+
+    service = ToolRuntimeService()
+    node, _private_key, _token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    await service.create_execution(
+        user_id=test_user.id,
+        tool_name="browser_open_url",
+        arguments={"url": "https://example.com"},
+        execution_location="desktop",
+        node_id=node.id,
+        db=db,
+    )
+
+    first = await service.list_node_messages(node, db=db)
+    second = await service.list_node_messages(node, db=db)
+
+    assert [message["type"] for _execution, message in first] == ["job_offer"]
+    assert second == []
+
+
 def _renewal_signature(private_key: Ed25519PrivateKey, node_id: uuid.UUID, token: str) -> str:
     """按服务端规范生成令牌续期签名。"""
 
