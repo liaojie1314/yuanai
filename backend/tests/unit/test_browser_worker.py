@@ -59,7 +59,16 @@ def test_build_browser_request_pins_dns_and_defaults_to_same_origin(
 def test_browser_runtime_keeps_chromium_sandbox_enabled() -> None:
     """浏览器 Worker 不能通过启动参数关闭 Chromium 沙箱。"""
 
-    runtime = Path(__file__).parents[2] / "app" / "services" / "tools" / "browser_worker_runtime.mjs"
+    runtime = (
+        Path(__file__)
+        .parents[2]
+        .joinpath(
+            "app",
+            "services",
+            "tools",
+            "browser_worker_runtime.mjs",
+        )
+    )
     source = runtime.read_text()
 
     assert "--no-sandbox" not in source
