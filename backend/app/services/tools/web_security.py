@@ -251,21 +251,28 @@ def parse_html_document(html: str, *, base_url: str) -> dict[str, object]:
 async def fetch_public_html(url: str, *, timeout: float = 15.0) -> tuple[str, str]:
     """获取公网 HTML，并在重定向的每一跳上重复 SSRF 校验。"""
 
-    current = validate_public_url(url)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-        for _ in range(4):
-            response = await client.get(
-                current, headers={"Accept": "text/html,application/xhtml+xml"}
-            )
-            if response.is_redirect:
-                location = response.headers.get("location")
-                if not location:
-                    raise UrlPolicyError("Redirect location is missing")
-                current = validate_public_url(urljoin(current, location))
-                continue
-            response.raise_for_status()
-            content_type = response.headers.get("content-type", "")
-            if "html" not in content_type and "text/plain" not in content_type:
-                raise UrlPolicyError("Only HTML documents are supported")
-            return current, response.text[:_MAX_HTML_CHARS]
+    current = url
+    for _ in range(4):
+        current, address = resolve_public_url(current)
+        transport = create_pinned_http_transport(address)
+        try:
+            async with httpx.AsyncClient(
+                transport=transport, timeout=timeout, follow_redirects=False
+            ) as client:
+                response = await client.get(
+                    current, headers={"Accept": "text/html,application/xhtml+xml"}
+                )
+        finally:
+            await transport.aclose()
+        if response.is_redirect:
+            location = response.headers.get("location")
+            if not location:
+                raise UrlPolicyError("Redirect location is missing")
+            current = urljoin(current, location)
+            continue
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if "html" not in content_type and "text/plain" not in content_type:
+            raise UrlPolicyError("Only HTML documents are supported")
+        return current, response.text[:_MAX_HTML_CHARS]
     raise UrlPolicyError("Too many redirects")
