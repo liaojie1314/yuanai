@@ -24,6 +24,7 @@ from app.services.agent.event_service import EventStore
 from app.services.agent.queue import QueueItem
 from app.workers.agent_worker import AgentWorker, CancellationToken
 from app.workers.recovery_worker import RecoveryWorker
+from tests.conftest import TestSessionLocal
 from tests.support.agent_fault_worker import IsolatedAgentQueue, append_record, claim_side_effect
 
 
@@ -81,7 +82,9 @@ async def test_last_event_id_replays_terminal_events_persisted_five_minutes_apar
     ]
     db.add_all(events)
     await db.commit()
-    replayed = await EventStore().replay_after(run.id, after_sequence=1)
+    replayed = await EventStore(session_factory=TestSessionLocal).replay_after(
+        run.id, after_sequence=1
+    )
     assert [event.sequence for event in replayed] == [2, 3]
     assert replayed[-1].created_at - events[0].created_at == timedelta(minutes=5)
 
