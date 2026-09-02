@@ -277,7 +277,7 @@ async function execute(request) {
     browser = await playwright.chromium.launch({
       executablePath: request.executable_path,
       headless: true,
-      args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-quic', `--proxy-server=${proxy.address}`, '--proxy-bypass-list=<-loopback>'],
+      args: ['--disable-dev-shm-usage', '--disable-quic', `--proxy-server=${proxy.address}`, '--proxy-bypass-list=<-loopback>'],
     })
     context = await browser.newContext({ acceptDownloads: true, serviceWorkers: 'block' })
     const page = await context.newPage()
