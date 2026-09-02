@@ -160,6 +160,32 @@ def _normalize_allowed_domains(value: object, hostname: str) -> list[str]:
     return sorted(set(domains)) or [hostname]
 
 
+def _validate_pinned_hosts(value: object) -> dict[str, str]:
+    """校验 Worker 运行时使用的每个固定地址仍然是公网 IP。"""
+
+    if not isinstance(value, Mapping) or not value:
+        raise BrowserWorkerError("BROWSER_NAVIGATION_BLOCKED")
+    validated: dict[str, str] = {}
+    for host, address in value.items():
+        if not isinstance(host, str) or not isinstance(address, str):
+            raise BrowserWorkerError("BROWSER_NAVIGATION_BLOCKED")
+        try:
+            parsed = ipaddress.ip_address(address)
+        except ValueError as error:
+            raise BrowserWorkerError("BROWSER_NAVIGATION_BLOCKED") from error
+        if (
+            parsed.is_private
+            or parsed.is_loopback
+            or parsed.is_link_local
+            or parsed.is_reserved
+            or parsed.is_multicast
+            or parsed.is_unspecified
+        ):
+            raise BrowserWorkerError("BROWSER_NAVIGATION_BLOCKED")
+        validated[host] = str(parsed)
+    return validated
+
+
 def build_browser_request(arguments: Mapping[str, object], *, action: str) -> dict[str, object]:
     """校验浏览器请求并固定首个导航的 DNS 结果。"""
 
@@ -246,6 +272,7 @@ async def run_browser_worker(
 
     if not _WORKER_SCRIPT.is_file():
         raise BrowserWorkerError("BROWSER_WORKER_UNAVAILABLE")
+    _validate_pinned_hosts(request.get("pinned_hosts"))
     try:
         encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     except (TypeError, ValueError) as error:

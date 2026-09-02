@@ -49,8 +49,10 @@ function isPrivateAddress(address) {
   }
   if (isIP(address) === 6) {
     const normalized = address.toLowerCase()
+    if (normalized.startsWith('::ffff:')) return isPrivateAddress(normalized.slice(7))
     return normalized === '::' || normalized === '::1' || normalized.startsWith('fe80:') ||
-      normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('ff')
+      normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('ff') ||
+      normalized.startsWith('2001:db8:')
   }
   return true
 }
@@ -79,7 +81,11 @@ function createResolver(pinnedHosts, allowedHosts) {
       throw new BrowserError('BROWSER_REDIRECT_BLOCKED')
     }
     if (cache.has(normalized)) {
-      return cache.get(normalized)
+      const cached = cache.get(normalized)
+      if (typeof cached !== 'string' || isPrivateAddress(cached)) {
+        throw new BrowserError('BROWSER_NAVIGATION_BLOCKED')
+      }
+      return cached
     }
     if (isIP(normalized)) {
       if (isPrivateAddress(normalized)) {

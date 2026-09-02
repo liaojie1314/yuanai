@@ -74,6 +74,21 @@ def test_browser_runtime_keeps_chromium_sandbox_enabled() -> None:
     assert "--no-sandbox" not in source
 
 
+def test_browser_runtime_rejects_mapped_private_and_cached_addresses() -> None:
+    """DNS 缓存不能绕过 IPv4-mapped IPv6 私网检查。"""
+
+    runtime = (
+        Path(__file__)
+        .parents[2]
+        .joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
+    )
+    source = runtime.read_text()
+
+    assert "normalized.startsWith('::ffff:')" in source
+    assert "isPrivateAddress(normalized.slice(7))" in source
+    assert "isPrivateAddress(cached)" in source
+
+
 def test_build_browser_request_rejects_invalid_domain_policy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -85,6 +100,36 @@ def test_build_browser_request_rejects_invalid_domain_policy(
             {"url": "https://example.com", "allowed_domains": ["https://other.example"]},
             action="open",
         )
+
+
+@pytest.mark.asyncio
+async def test_worker_rejects_private_pinned_address_before_spawn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """即使绕过请求构造器，Worker 入口也不能接受私网 pinned 地址。"""
+
+    from app.services.tools import browser_worker
+
+    monkeypatch.setattr(browser_worker, "_WORKER_SCRIPT", Path(__file__))
+    with pytest.raises(BrowserWorkerError, match="BROWSER_NAVIGATION_BLOCKED"):
+        await browser_worker.run_browser_worker(
+            {
+                "pinned_hosts": {"example.com": "::ffff:127.0.0.1"},
+            }
+        )
+
+
+def test_browser_runtime_blocks_sensitive_form_field_names() -> None:
+    """浏览器填充不得触碰密码、令牌和支付验证字段。"""
+
+    runtime = (
+        Path(__file__)
+        .parents[2]
+        .joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
+    )
+    source = runtime.read_text()
+
+    assert "password|passcode|otp|token|secret|one-time" in source
 
 
 def test_browser_artifact_output_preserves_original_bytes() -> None:
