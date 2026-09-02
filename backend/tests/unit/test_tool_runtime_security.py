@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.approval import ApprovalRequest
 from app.models.tool_runtime import (
     ExecutionNodeStatus,
+    ToolConnection,
+    ToolConnectionKind,
+    ToolConnectionStatus,
     ToolExecutionStatus,
 )
 from app.services.agent.approval_service import ApprovalService
@@ -50,6 +53,142 @@ def _secret_registry() -> ToolRegistry:
         AsyncMock(return_value={"ok": True}),
     )
     return registry
+
+
+def _scoped_registry() -> ToolRegistry:
+    """构造一个需要连接 scope 的最小注册表。"""
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSpec(
+            name="scoped_tool",
+            description="测试连接 scope",
+            input_schema={"type": "object", "additionalProperties": False},
+            risk_level=ToolRisk.read,
+            execution_location="cloud",
+            required_scopes={"account.read"},
+        ),
+        AsyncMock(return_value={"ok": True}),
+    )
+    return registry
+
+
+async def _add_connection(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    scopes: list[str],
+    status: ToolConnectionStatus = ToolConnectionStatus.active,
+) -> ToolConnection:
+    """向测试数据库写入一个连接授权。"""
+
+    connection = ToolConnection(
+        user_id=user_id,
+        kind=ToolConnectionKind.api_key,
+        provider="test",
+        display_name="Test connection",
+        scopes=scopes,
+        status=status,
+        metadata_json={},
+    )
+    db.add(connection)
+    await db.flush()
+    return connection
+
+
+async def _create_scoped_execution(
+    service: ToolRuntimeService,
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    connection_id: uuid.UUID | None = None,
+) -> object:
+    """创建需要 scope 的手动执行请求。"""
+
+    return await service.create_manual_execution(
+        user_id=user_id,
+        tool_name="scoped_tool",
+        arguments={},
+        execution_location="cloud",
+        idempotency_key=None,
+        run_id=None,
+        connection_id=connection_id,
+        db=db,
+    )
+
+
+@pytest.mark.asyncio
+async def test_manual_execution_without_connection_rejects_required_scope(
+    db: AsyncSession, test_user
+) -> None:
+    """没有绑定连接时，所需 scope 必须 fail closed。"""
+
+    service = ToolRuntimeService(_scoped_registry())
+
+    with pytest.raises(ToolRuntimeError, match="TOOL_CONNECTION_SCOPE_REQUIRED"):
+        await _create_scoped_execution(service, db, user_id=test_user.id)
+
+
+@pytest.mark.asyncio
+async def test_manual_execution_allows_required_scope_from_active_connection(
+    db: AsyncSession, test_user
+) -> None:
+    """有效连接具备全部所需 scope 时允许手动执行。"""
+
+    connection = await _add_connection(db, user_id=test_user.id, scopes=["account.read"])
+    service = ToolRuntimeService(_scoped_registry())
+
+    execution = await _create_scoped_execution(
+        service, db, user_id=test_user.id, connection_id=connection.id
+    )
+
+    assert execution.status is ToolExecutionStatus.succeeded
+    assert execution.connection_id == connection.id
+
+
+@pytest.mark.asyncio
+async def test_manual_execution_rejects_revoked_connection(
+    db: AsyncSession, test_user
+) -> None:
+    """撤销连接不得继续授权工具执行。"""
+
+    connection = await _add_connection(
+        db,
+        user_id=test_user.id,
+        scopes=["account.read"],
+        status=ToolConnectionStatus.revoked,
+    )
+    service = ToolRuntimeService(_scoped_registry())
+
+    with pytest.raises(ToolRuntimeError, match="TOOL_CONNECTION_NOT_AUTHORIZED"):
+        await _create_scoped_execution(
+            service, db, user_id=test_user.id, connection_id=connection.id
+        )
+
+
+@pytest.mark.asyncio
+async def test_manual_execution_rejects_cross_tenant_connection(
+    db: AsyncSession, test_user
+) -> None:
+    """其他租户的连接不得授权当前用户执行工具。"""
+
+    from app.core.security import hash_password
+    from app.models.user import User
+
+    other_user = User(
+        email="other-scoped@example.com",
+        username="other-scoped",
+        hashed_password=hash_password("Test1234!"),
+    )
+    db.add(other_user)
+    await db.flush()
+    connection = await _add_connection(db, user_id=other_user.id, scopes=["account.read"])
+    service = ToolRuntimeService(_scoped_registry())
+
+    with pytest.raises(ToolRuntimeError, match="TOOL_CONNECTION_NOT_AUTHORIZED"):
+        await _create_scoped_execution(
+            service, db, user_id=test_user.id, connection_id=connection.id
+        )
 
 
 @pytest.mark.asyncio

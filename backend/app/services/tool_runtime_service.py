@@ -408,6 +408,7 @@ class ToolRuntimeService:
         run_id: uuid.UUID | None,
         db: AsyncSession,
         node_id: uuid.UUID | None = None,
+        connection_id: uuid.UUID | None = None,
     ) -> ToolExecution:
         """登记并执行手动工具请求，副作用工具保持等待审批。"""
         if run_id is not None:
@@ -416,6 +417,16 @@ class ToolRuntimeService:
             )
             if run is None:
                 raise ToolRuntimeError("AGENT_RUN_NOT_FOUND")
+        try:
+            spec = self.registry.get_spec(tool_name)
+        except ToolRegistrationError as error:
+            raise ToolRuntimeError("TOOL_NOT_FOUND") from error
+        await self._validate_manual_connection(
+            user_id=user_id,
+            connection_id=connection_id,
+            required_scopes=spec.required_scopes,
+            db=db,
+        )
         execution = await self.create_execution(
             user_id=user_id,
             tool_name=tool_name,
@@ -425,8 +436,8 @@ class ToolRuntimeService:
             run_id=run_id,
             node_id=node_id,
             idempotency_key=idempotency_key,
+            connection_id=connection_id,
         )
-        spec = self.registry.get_spec(tool_name)
         if execution_location == "desktop":
             # 桌面任务由节点本地用户逐次确认，无需云端审批记录。
             execution.node_delivery_status = "pending"
@@ -449,6 +460,33 @@ class ToolRuntimeService:
         await db.commit()
         await db.refresh(execution)
         return execution
+
+    async def _validate_manual_connection(
+        self,
+        *,
+        user_id: uuid.UUID,
+        connection_id: uuid.UUID | None,
+        required_scopes: set[str],
+        db: AsyncSession,
+    ) -> None:
+        """校验手动执行使用的当前租户连接及其 scope。"""
+
+        if connection_id is None:
+            if required_scopes:
+                raise ToolRuntimeError("TOOL_CONNECTION_SCOPE_REQUIRED")
+            return
+        connection = await db.scalar(
+            select(ToolConnection).where(
+                ToolConnection.id == connection_id,
+                ToolConnection.user_id == user_id,
+                ToolConnection.status == ToolConnectionStatus.active,
+            )
+        )
+        if connection is None:
+            raise ToolRuntimeError("TOOL_CONNECTION_NOT_AUTHORIZED")
+        missing_scopes = required_scopes - set(connection.scopes or [])
+        if missing_scopes:
+            raise ToolRuntimeError("TOOL_CONNECTION_SCOPE_MISSING")
 
     async def resume_approved_execution(
         self,
@@ -1219,6 +1257,7 @@ class ToolRuntimeService:
         step_id: uuid.UUID | None = None,
         node_id: uuid.UUID | None = None,
         idempotency_key: str | None = None,
+        connection_id: uuid.UUID | None = None,
     ) -> ToolExecution:
         """校验工具并创建 queued 审计记录；不执行未授权的位置。"""
 
@@ -1268,6 +1307,7 @@ class ToolRuntimeService:
             arguments_encrypted=None,
             arguments_hash=argument_hash,
             idempotency_key=idempotency_key,
+            connection_id=connection_id,
             node_id=node.id if node is not None else None,
             status=ToolExecutionStatus.queued,
             artifact_ids=[],
