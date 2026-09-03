@@ -78,9 +78,7 @@ def test_browser_runtime_rejects_mapped_private_and_cached_addresses() -> None:
     """DNS 缓存不能绕过 IPv4-mapped IPv6 私网检查。"""
 
     runtime = (
-        Path(__file__)
-        .parents[2]
-        .joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
+        Path(__file__).parents[2].joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
     )
     source = runtime.read_text()
 
@@ -123,9 +121,7 @@ def test_browser_runtime_blocks_sensitive_form_field_names() -> None:
     """浏览器填充不得触碰密码、令牌和支付验证字段。"""
 
     runtime = (
-        Path(__file__)
-        .parents[2]
-        .joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
+        Path(__file__).parents[2].joinpath("app", "services", "tools", "browser_worker_runtime.mjs")
     )
     source = runtime.read_text()
 
