@@ -11,6 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
@@ -47,6 +48,7 @@ router = APIRouter(prefix="/agent", tags=["agent"])
 _approvals = ApprovalService()
 _events = EventStore()
 _tools_runtime = ToolRuntimeService(build_phase6_registry(), secret_store=TenantSecretStore())
+_QUEUE_ENQUEUE_TIMEOUT_SECONDS = 0.45
 
 
 def _agent_enabled_for(user_id: uuid.UUID) -> bool:
@@ -68,10 +70,13 @@ async def _assistant(assistant_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> Ass
     return item
 
 
-async def _run(run_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> AgentRun:
-    item = await db.scalar(
-        select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
-    )
+async def _run(
+    run_id: uuid.UUID, user_id: uuid.UUID, db: DB, *, for_update: bool = False
+) -> AgentRun:
+    query = select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
+    if for_update:
+        query = query.with_for_update(of=AgentRun, skip_locked=False)
+    item = await db.scalar(query)
     if item is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return item
@@ -150,6 +155,7 @@ async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: 
             )
         )
         if existing is not None:
+            await _enqueue_run(current_user.id, existing.id)
             return existing
     run = AgentRun(
         user_id=current_user.id,
@@ -162,13 +168,36 @@ async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: 
         idempotency_key=req.idempotency_key,
     )
     db.add(run)
-    await db.commit()
-    await db.refresh(run)
     try:
-        await AgentQueue().enqueue(current_user.id, run.id)
-    except (OSError, RuntimeError, RedisError):
-        pass
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if req.idempotency_key is None:
+            raise
+        existing = await db.scalar(
+            select(AgentRun).where(
+                AgentRun.user_id == current_user.id,
+                AgentRun.idempotency_key == req.idempotency_key,
+            )
+        )
+        if existing is None:
+            raise
+        await _enqueue_run(current_user.id, existing.id)
+        return existing
+    await db.refresh(run)
+    await _enqueue_run(current_user.id, run.id)
     return run
+
+
+async def _enqueue_run(user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """在 500ms 内尽力入队；Run 已持久化，恢复 worker 可补投超时任务。"""
+
+    try:
+        await asyncio.wait_for(
+            AgentQueue().enqueue(user_id, run_id), timeout=_QUEUE_ENQUEUE_TIMEOUT_SECONDS
+        )
+    except (OSError, RuntimeError, RedisError, TimeoutError):
+        return
 
 
 @router.get("/runs", response_model=list[AgentRunResponse])
@@ -266,7 +295,7 @@ async def replay_events(
 
 @router.post("/runs/{run_id}/cancel", response_model=AgentRunResponse)
 async def cancel_run(run_id: uuid.UUID, current_user: CurrentUser, db: DB) -> AgentRun:
-    run = await _run(run_id, current_user.id, db)
+    run = await _run(run_id, current_user.id, db, for_update=True)
     if run.status not in {
         AgentRunStatus.succeeded,
         AgentRunStatus.failed,
@@ -274,11 +303,24 @@ async def cancel_run(run_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Ag
     }:
         run.status = AgentRunStatus.cancelled
         await db.commit()
-    try:
-        await AgentQueue().cancel(current_user.id, run.id)
-    except (OSError, RuntimeError, RedisError):
-        pass
+        await db.refresh(run)
+        await _events.append(
+            run.id,
+            "run_cancelled",
+            {"status": AgentRunStatus.cancelled.value, "reason": "user"},
+            tenant_id=current_user.id,
+        )
+    await _cancel_queued_run(current_user.id, run.id)
     return run
+
+
+async def _cancel_queued_run(user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """写入取消令牌，避免 Redis 故障覆盖已持久化的取消状态。"""
+
+    try:
+        await AgentQueue().cancel(user_id, run_id)
+    except (OSError, RuntimeError, RedisError):
+        return
 
 
 @router.post("/runs/{run_id}/input", response_model=AgentRunResponse)
