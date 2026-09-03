@@ -245,7 +245,7 @@ async def stream_events(
         seen: set[int] = set()
         cursor = last_event_id
         while True:
-            events = await _events.replay_after(run_id, cursor)
+            events = await _events.replay_after(run_id, cursor, session=db)
             for event in events:
                 if event.sequence <= cursor or event.sequence in seen:
                     continue
@@ -256,7 +256,9 @@ async def stream_events(
                 if event.event_type in {"run_completed", "run_failed", "run_cancelled"}:
                     yield "data: [DONE]\n\n"
                     return
-            status = await _events.get_run_status(run_id, tenant_id=current_user.id)
+            status = await _events.get_run_status(
+                run_id, tenant_id=current_user.id, session=db
+            )
             if status in {
                 AgentRunStatus.succeeded,
                 AgentRunStatus.failed,

@@ -375,11 +375,23 @@ async def test_event_stream_waits_for_events_created_after_connection(
             self.calls = 0
 
         async def get_run_status(
-            self, _run_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+            self,
+            _run_id: uuid.UUID,
+            *,
+            tenant_id: uuid.UUID | None = None,
+            session: AsyncSession | None = None,
         ) -> AgentRunStatus | None:
+            del tenant_id, session
             return AgentRunStatus.running
 
-        async def replay_after(self, _run_id: uuid.UUID, after_sequence: int) -> list[FakeEvent]:
+        async def replay_after(
+            self,
+            _run_id: uuid.UUID,
+            after_sequence: int,
+            *,
+            session: AsyncSession | None = None,
+        ) -> list[FakeEvent]:
+            del session
             self.calls += 1
             if after_sequence == 0:
                 return [FakeEvent(1, "run_started", {"status": "running"})]

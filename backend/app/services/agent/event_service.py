@@ -100,6 +100,7 @@ class EventStore:
         *,
         after_sequence: int = 0,
         limit: int = 500,
+        session: AsyncSession | None = None,
     ) -> list[AgentEvent]:
         """返回 sequence 大于给定游标的有序事件，用于断线重放。"""
 
@@ -111,13 +112,17 @@ class EventStore:
                 for event in self._memory_events.get(run_id, ())
                 if event.sequence > after_sequence
             ][:limit]
-        async with self._session_factory() as session:
-            result = await session.execute(
-                select(AgentEvent)
-                .where(AgentEvent.run_id == run_id, AgentEvent.sequence > after_sequence)
-                .order_by(AgentEvent.sequence)
-                .limit(limit)
-            )
+        query = (
+            select(AgentEvent)
+            .where(AgentEvent.run_id == run_id, AgentEvent.sequence > after_sequence)
+            .order_by(AgentEvent.sequence)
+            .limit(limit)
+        )
+        if session is not None:
+            result = await session.execute(query)
+            return list(result.scalars().all())
+        async with self._session_factory() as owned_session:
+            result = await owned_session.execute(query)
             return list(result.scalars().all())
 
     async def replay_after(
@@ -126,23 +131,32 @@ class EventStore:
         after_sequence: int,
         *,
         limit: int = 500,
+        session: AsyncSession | None = None,
     ) -> list[AgentEvent]:
         """返回指定 sequence 之后的事件，供 Last-Event-ID 使用。"""
 
-        return await self.replay(run_id, after_sequence=after_sequence, limit=limit)
+        return await self.replay(
+            run_id, after_sequence=after_sequence, limit=limit, session=session
+        )
 
     async def get_run_status(
-        self, run_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+        self,
+        run_id: uuid.UUID,
+        *,
+        tenant_id: uuid.UUID | None = None,
+        session: AsyncSession | None = None,
     ) -> AgentRunStatus | None:
         """查询 Run 状态，供长连接判断是否可以结束。"""
 
         if self._persist_override is not None:
             return None
-        async with self._session_factory() as session:
-            query = select(AgentRun.status).where(AgentRun.id == run_id)
-            if tenant_id is not None:
-                query = query.where(AgentRun.user_id == tenant_id)
+        query = select(AgentRun.status).where(AgentRun.id == run_id)
+        if tenant_id is not None:
+            query = query.where(AgentRun.user_id == tenant_id)
+        if session is not None:
             return cast(AgentRunStatus | None, await session.scalar(query))
+        async with self._session_factory() as owned_session:
+            return cast(AgentRunStatus | None, await owned_session.scalar(query))
 
     async def _persist_database(
         self,

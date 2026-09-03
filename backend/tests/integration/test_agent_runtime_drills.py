@@ -89,12 +89,24 @@ async def test_last_event_id_replays_terminal_events_persisted_five_minutes_apar
     assert replayed[-1].created_at - events[0].created_at == timedelta(minutes=5)
 
     class FakeEventStore:
-        async def replay_after(self, _run_id: uuid.UUID, after_sequence: int) -> list[AgentEvent]:
+        async def replay_after(
+            self,
+            _run_id: uuid.UUID,
+            after_sequence: int,
+            *,
+            session: AsyncSession | None = None,
+        ) -> list[AgentEvent]:
+            del session
             return [event for event in replayed if event.sequence > after_sequence]
 
         async def get_run_status(
-            self, _run_id: uuid.UUID, *, tenant_id: uuid.UUID | None = None
+            self,
+            _run_id: uuid.UUID,
+            *,
+            tenant_id: uuid.UUID | None = None,
+            session: AsyncSession | None = None,
         ) -> AgentRunStatus:
+            del tenant_id, session
             return AgentRunStatus.succeeded
 
     monkeypatch.setattr(agent_api, "_events", FakeEventStore())
