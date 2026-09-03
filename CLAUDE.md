@@ -110,12 +110,18 @@ yuanai/
 - [x] 明暗主题切换
 - [x] 全平台 UI 适配（Web / Mobile / Desktop / Tablet）
 
-## 当前交付状态（2026-08-13）
+## 当前交付状态（2026-09-03）
 
 Phase 4 Electron 桌面端已合入 `dev`：包含多窗口认证与聊天、真实后端 API、
 安全会话存储、Artifact、设置、托盘、快捷键和原生通知。Ubuntu 开发环境已完成
 功能与生产预览验证；Windows/macOS 安装包、签名、自动更新源和目标平台安装验收
 仍在发布前清单中。运行与验证方式见 [桌面端说明](apps/desktop/README.md)。
+
+Phase 5/6 收尾验收仍未全部放行：基线 `6bfe811` 下 Desktop 真实 E2E 为
+`1 passed (26.5s)`，覆盖配对、WSS challenge、本地审批、签名回调、ACK 和本次 Linux
+运行的正常收尾，但不覆盖取消、重连/重放或节点撤销。真实外部 MCP、部署 Worker 崩溃恢复、
+五分钟真实断线恢复、完整 Web 控制中心链路、系统性 Browser Worker 安全测试及故障注入稳定性
+仍未验收。Phase 7 尚未开始，可新开会话的前置条件仍未满足。
 
 ## 开发铁律
 

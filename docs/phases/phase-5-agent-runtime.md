@@ -5,13 +5,14 @@
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`；Mobile/Desktop 本阶段只保持协议兼容
 - **阶段定位**：在不破坏现有聊天功能的前提下，建立可持久化、可恢复、可审批的 Agent 最小闭环
 
-> **当前验收状态（2026-09-02）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
+> **当前验收状态（2026-09-03）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
 > Worker、Web Agent UI、自动化测试以及恢复故障注入演练测试。逐项已验证的代码合同记录见
 > [Phase 5 实施清单](./phase-5-agent-runtime-implementation-todo.md)，但它不是阶段放行结论。
 > `test_agent_runtime_drills.py` 已覆盖带五分钟时间间隔的事件重放，以及测试辅助子进程的强制退出、
 > 恢复重投和幂等副作用账本；`test_agent_external_model_drill.py` 提供显式授权后调用计费模型的
-> 两个安全工具演练。它们是自动化测试证据，不等同于已部署 Worker、真实外部模型或生产环境验收。
-> 当前 Phase 5 许可证仍为**阻塞**：缺少上述真实运行证据。只有对应测试结果或真实运行证据明确存在时
+> 两个安全工具演练。外部模型演练在显式开启并提供凭据时会真实调用 provider，但这些结果不等同于
+> 已部署 Worker/API 端到端或生产环境验收。
+> 当前 Phase 5 许可证仍为**阻塞**：缺少部署 Worker 和真实断线恢复证据。只有对应测试结果或真实运行证据明确存在时
 > 才能勾选本页验收项；不能用测试文件存在或构建成功替代恢复、审批或租户隔离证据。
 
 ---
@@ -537,17 +538,17 @@ backend/app/
 
 ### 当前证据索引
 
-| 验收域                                        | 证据                                                                                            | 状态                             |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------- |
-| Run 创建、幂等、功能开关                      | `backend/tests/integration/test_agent_api.py`                                                   | 已覆盖                           |
-| SSE 事件持久化与 `Last-Event-ID` 重放         | `backend/tests/integration/test_agent_api.py`、`backend/app/services/agent/event_service.py`    | 已覆盖                           |
-| 审批参数绑定、单次决定、过期与租户隔离        | `backend/tests/integration/test_agent_approval.py`、`backend/tests/unit/test_agent_approval.py` | 已覆盖                           |
-| 队列 lease、取消、恢复和幂等                  | `backend/tests/unit/test_agent_runtime_workers.py`                                              | 已覆盖                           |
-| 五分钟事件重放与测试子进程故障注入            | `backend/tests/integration/test_agent_runtime_drills.py`                                        | 自动化演练已编写；真实环境未验证 |
-| Web Agent 页面与 Chat 回归                    | `apps/web/src`、`apps/web/tests`、根目录前端测试脚本                                            | 已覆盖                           |
-| 真实模型驱动的完整 Agent 两工具链             | `backend/tests/integration/test_agent_external_model_drill.py`（显式开启且需要凭据）            | 测试入口已编写；真实运行未验证   |
-| 部署 Worker 强制退出后的恢复与 5 分钟断线演练 | 当前仅有测试辅助进程/集成演练证据                                                               | 未验证                           |
+| 验收域                                        | 证据                                                                                                 | 状态                                        |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Run 创建、幂等、功能开关                      | `backend/tests/integration/test_agent_api.py`                                                        | 自动化覆盖，非真实验收                      |
+| SSE 事件持久化与 `Last-Event-ID` 重放         | `backend/tests/integration/test_agent_api.py`、`backend/app/services/agent/event_service.py`         | 自动化覆盖，非真实验收                      |
+| 审批参数绑定、单次决定、过期与租户隔离        | `backend/tests/integration/test_agent_approval.py`、`backend/tests/unit/test_agent_approval.py`      | 自动化覆盖，非真实验收                      |
+| 队列 lease、取消、恢复和幂等                  | `backend/tests/unit/test_agent_runtime_workers.py`                                                   | 自动化覆盖，非真实验收                      |
+| 五分钟事件重放与测试子进程故障注入            | `backend/tests/integration/test_agent_runtime_drills.py`                                             | 自动化演练已编写；真实环境未验证            |
+| Web Agent 页面与 Chat 回归                    | `apps/web/src`、`apps/web/tests`、根目录前端测试脚本                                                 | 自动化覆盖，非真实验收                      |
+| 真实模型驱动的完整 Agent 两工具链             | `backend/tests/integration/test_agent_external_model_drill.py`（需显式开启并提供凭据；已有运行记录） | provider 两工具演练记录存在；部署链路未验证 |
+| 部署 Worker 强制退出后的恢复与 5 分钟断线演练 | 当前仅有测试辅助进程/集成演练证据                                                                    | 未验证                                      |
 
-因此，Phase 5 的代码合同和自动化测试门槛已具备，但“真实外部模型两工具链”和“真实进程
-故障演练”仍须在配置对应服务并使用待验收运行时单独完成，不能仅凭本地单元测试或故障注入测试
-宣称全部运行时验收通过。
+因此，Phase 5 已有一次真实 provider 两工具演练记录，但它不能替代部署 Worker/API 端到端证据。
+部署 Worker 崩溃恢复和五分钟真实断线恢复仍须在待验收运行时单独完成。自动化故障注入或时间戳
+模拟不能替代真实进程与网络恢复证据，当前不能宣称 Phase 5 全部运行时验收通过。
