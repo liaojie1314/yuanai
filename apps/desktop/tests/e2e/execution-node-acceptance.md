@@ -61,9 +61,8 @@ exercise cancellation, reconnect/replay, or node revocation; those remain
 covered only by Desktop unit/integration tests and are not real E2E acceptance.
 Windows/macOS packaging and signing were not tested.
 
-The E2E packaging directory generated during this run remains an ignored
-temporary output under `apps/desktop/dist`; it was not added to Git. The
-existing `apps/desktop/out` build output, dependencies, and model caches were
-preserved.
+The ignored temporary output under `apps/desktop/dist` was removed after the
+run and was not added to Git. The existing `apps/desktop/out` build output,
+dependencies, and model caches were preserved.
 
 Unrelated changes observed in `apps/web/` and `backend/` were preserved.
