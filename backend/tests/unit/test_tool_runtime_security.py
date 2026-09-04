@@ -147,9 +147,7 @@ async def test_manual_execution_allows_required_scope_from_active_connection(
 
 
 @pytest.mark.asyncio
-async def test_manual_execution_rejects_revoked_connection(
-    db: AsyncSession, test_user
-) -> None:
+async def test_manual_execution_rejects_revoked_connection(db: AsyncSession, test_user) -> None:
     """撤销连接不得继续授权工具执行。"""
 
     connection = await _add_connection(

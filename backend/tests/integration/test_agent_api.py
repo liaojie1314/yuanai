@@ -148,8 +148,7 @@ async def test_concurrent_idempotent_run_creation_returns_one_run(
 
     assert first.id == second.id
     count = await db.scalar(
-        select(AgentRun.id)
-        .where(
+        select(AgentRun.id).where(
             AgentRun.user_id == test_user.id,
             AgentRun.idempotency_key == "concurrent-idempotency-key",
         )

@@ -47,9 +47,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
-    op.execute(
-        sa.text("UPDATE mcp_servers SET status = 'revoked' WHERE connection_id IS NULL")
-    )
+    op.execute(sa.text("UPDATE mcp_servers SET status = 'revoked' WHERE connection_id IS NULL"))
 
 
 def downgrade() -> None:

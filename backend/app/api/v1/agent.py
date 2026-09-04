@@ -148,7 +148,7 @@ async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: 
     if req.parent_run_id is not None:
         await _run(req.parent_run_id, current_user.id, db)
     if req.idempotency_key:
-        existing = await db.scalar(
+        existing: AgentRun | None = await db.scalar(
             select(AgentRun).where(
                 AgentRun.user_id == current_user.id,
                 AgentRun.idempotency_key == req.idempotency_key,
@@ -256,9 +256,7 @@ async def stream_events(
                 if event.event_type in {"run_completed", "run_failed", "run_cancelled"}:
                     yield "data: [DONE]\n\n"
                     return
-            status = await _events.get_run_status(
-                run_id, tenant_id=current_user.id, session=db
-            )
+            status = await _events.get_run_status(run_id, tenant_id=current_user.id, session=db)
             if status in {
                 AgentRunStatus.succeeded,
                 AgentRunStatus.failed,
