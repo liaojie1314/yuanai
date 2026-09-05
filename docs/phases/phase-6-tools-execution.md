@@ -517,18 +517,18 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 ### 当前证据索引（2026-09-05）
 
-| 验收域                                                                       | 证据                                                                                                                                            | 状态                                                  |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`                                            | 自动化覆盖，非真实验收                                |
-| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                                                      | 模拟覆盖，真实外部模型链未验收                        |
-| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                                                   | 自动化覆盖，非真实验收                                |
-| MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`；外部协议探测记录（2026-09-02）                         | YuanAI 模拟集成覆盖；真实外部 MCP 应用链路未验收      |
-| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证）                               | 配对/执行/ACK 有证据；取消/重连/撤销未验收            |
-| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `1 passed (2m42s)`；Desktop 单元/集成测试                               | 配对至 ACK 和正常收尾有真实证据；取消/重连/撤销未验收 |
-| Web Tool Control Center                                                      | 组件测试 9 例与 Chromium E2E 3/3（受控路由 mock）                                                                                               | 自动化回归通过；完整认证真实数据链路未验收            |
-| 受控 Browser Worker（系统 Chrome、DOM/无障碍快照、动作与 Artifact）          | `backend/app/services/tools/browser_worker.py`、`backend/tests/unit/test_browser_worker.py`、`backend/tests/integration/test_browser_worker.py` | 代码与测试入口已提交；完整真实运行/安全验收待做       |
-| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | `backend/tests/integration/test_agent_runtime_drills.py` 提供恢复/重放演练；重连风暴尚未执行                                                    | 自动化演练已编写；稳定性未验证                        |
-| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 审批哈希绑定、幂等键、租户边界和 `required_scopes` 强制校验已有测试；Prompt injection 与故障注入尚未系统执行                                    | 部分覆盖                                              |
+| 验收域                                                                       | 证据                                                                                                                                           | 状态                                                  |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`                                           | 自动化覆盖，非真实验收                                |
+| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                                                     | 模拟覆盖，真实外部模型链未验收                        |
+| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                                                  | 自动化覆盖，非真实验收                                |
+| MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`；外部协议探测记录（2026-09-02）                        | YuanAI 模拟集成覆盖；真实外部 MCP 应用链路未验收      |
+| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证）                              | 配对/执行/ACK 有证据；取消/重连/撤销未验收            |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `1 passed (2m42s)`；Desktop 单元/集成测试                              | 配对至 ACK 和正常收尾有真实证据；取消/重连/撤销未验收 |
+| Web Tool Control Center                                                      | 组件测试 9 例与 Chromium E2E 3/3（受控路由 mock）                                                                                              | 自动化回归通过；完整认证真实数据链路未验收            |
+| 受控 Browser Worker（系统 Chrome、DOM/无障碍快照、动作与 Artifact）          | `backend/tests/integration/test_browser_worker.py` 在 2026-09-05 通过，系统 Chrome 真实打开公共页面并返回 DOM/无障碍快照；另有代码与自动化测试 | 真实只读运行有证据；完整安全验收待做                  |
+| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | `backend/tests/integration/test_agent_runtime_drills.py` 提供恢复/重放演练；重连风暴尚未执行                                                   | 自动化演练已编写；稳定性未验证                        |
+| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 审批哈希绑定、幂等键、租户边界和 `required_scopes` 强制校验已有测试；Prompt injection 与故障注入尚未系统执行                                   | 部分覆盖                                              |
 
 因此，Phase 6 许可证仍然阻塞：剩余工作为真实外部 MCP、认证 Web 控制中心完整链路、桌面
 取消/重连/撤销、故障注入稳定性与系统性安全测试，以及 Browser Worker 的完整安全灰度。
