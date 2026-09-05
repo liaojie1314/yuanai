@@ -6,9 +6,8 @@
  * 服务端持久化为 succeeded 且节点 ACK。运行前提：真实后端运行在
  * YUANAI_API_URL（默认 http://localhost:8000/api/v1），且后端允许创建测试账号。
  */
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
 import { _electron } from '@playwright/test'
@@ -121,11 +120,21 @@ async function openSettings(app: ElectronApplication): Promise<Page> {
   return app.windows()[app.windows().length - 1] as Page
 }
 
+async function executionSnapshot(
+  token: string,
+  executionId: string
+): Promise<Record<string, unknown> | undefined> {
+  const rows = (await api(token, 'GET', '/tool-executions?limit=20')) as unknown as Array<
+    Record<string, unknown>
+  >
+  return rows.find((row) => row['id'] === executionId)
+}
+
 test.describe('desktop execution node', () => {
-  test('pairs, executes an approved job, and acks the signed result', async () => {
-    test.setTimeout(240_000)
+  test('pairs, acknowledges approval and cancellation, then observes node revocation', async (_args, testInfo) => {
+    test.setTimeout(360_000)
     const user = await createTestUser()
-    const { app } = await launchApp()
+    const { app, userDataDir } = await launchApp()
     try {
       // safeStorage 需要已解锁的桌面钥匙串；无钥匙串的环境会按安全规则拒绝
       // 持久化并停留在登录页，此时跳过而不是伪造验收。
@@ -165,6 +174,10 @@ test.describe('desktop execution node', () => {
       })) as { id: string; status: string }
 
       await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await settings
+        .getByRole('heading', { name: '执行节点' })
+        .locator('..')
+        .screenshot({ path: testInfo.outputPath('execution-node-online.png') })
       await settings.getByRole('button', { name: '允许本次执行' }).click()
 
       await expect
@@ -191,8 +204,57 @@ test.describe('desktop execution node', () => {
           })
         )
       await expect(settings.getByText('在线')).toBeVisible()
+
+      const cancelledExecution = (await api(user.token, 'POST', '/tool-executions', {
+        toolName: 'browser_open_url',
+        arguments: { url: 'https://example.com/desktop-e2e-cancel' },
+        executionLocation: 'desktop',
+        nodeId: node.id,
+      })) as { id: string }
+
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await api(user.token, 'POST', `/tool-executions/${cancelledExecution.id}/cancel`)
+      await expect(settings.getByText('待确认任务')).toHaveCount(0, { timeout: 30_000 })
+      await expect
+        .poll(() => executionSnapshot(user.token, cancelledExecution.id), {
+          timeout: 45_000,
+          intervals: [1_000, 2_000, 5_000],
+        })
+        .toEqual(
+          expect.objectContaining({
+            id: cancelledExecution.id,
+            status: 'cancelled',
+            nodeDeliveryStatus: 'acknowledged',
+            nodeAcknowledgedAt: expect.any(String),
+          })
+        )
+
+      const revoked = await api(user.token, 'POST', `/execution-nodes/${node.id}/revoke`)
+      expect(revoked['status']).toBe('revoked')
+      const afterRevoke = await fetch(`${API_BASE_URL}/tool-executions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.token}` },
+        body: JSON.stringify({
+          toolName: 'browser_open_url',
+          arguments: { url: 'https://example.com/desktop-e2e-revoked' },
+          executionLocation: 'desktop',
+          nodeId: node.id,
+        }),
+      })
+      expect(afterRevoke.status).toBe(422)
+      await expect
+        .poll(
+          () =>
+            settings.evaluate(() =>
+              window.yuanai.executionNode.getStatus().then((snapshot) => snapshot.state)
+            ),
+          { timeout: 45_000, intervals: [1_000, 2_000, 5_000] }
+        )
+        .not.toBe('online')
     } finally {
       await app.close()
+      await api(user.token, 'DELETE', '/auth/me')
+      rmSync(userDataDir, { recursive: true, force: true })
     }
   })
 })
