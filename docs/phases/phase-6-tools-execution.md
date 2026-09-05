@@ -12,9 +12,9 @@
 > 隔离 stdio MCP Worker、Desktop 执行节点协议与 Electron 客户端、Web Tool Control Center，
 > 以及受控 Browser Worker。**本页验收标准尚未达成**：真实公共 Streamable HTTP MCP 的认证 API 后端
 > 链路已完成；Desktop 强制重启后的任务重投已有真实 E2E，执行节点重连风暴演练已在真实运行时通过，
-> 认证 Web 控制中心已用真实后端数据人工核验。完整 Web 控制中心链路（真实外部 MCP 经 UI 全流程）、
-> 结果级 spool 重放、云端编排加 Desktop 执行链、系统性安全测试与 Browser Worker 完整安全灰度仍未完成，
-> 进入 Phase 7 的许可证仍然阻塞。
+> 认证 Web 控制中心已用真实后端数据人工核验，云端编排加 Desktop 执行链已在真实 provider 运行时通过。
+> 完整 Web 控制中心链路（真实外部 MCP 经 UI 全流程）、结果级 spool 重放、系统性安全测试与
+> Browser Worker 完整安全灰度仍未完成，进入 Phase 7 的许可证仍然阻塞。
 > 勾选任何验收项前必须有代码、测试和真实运行证据；测试覆盖或构建成功本身不构成真实验收。
 
 | Wave                      | 当前状态                                                                           | 进入 Phase 7 的影响 |
@@ -537,10 +537,13 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 进程并以同一 profile 重启后，服务端在投递过期窗口后重新下发同一任务，批准后恰好完成一次并 ACK
 （`c9b5a1d`，`2 passed (2.8m)`）。同期以真实 FastAPI 运行时执行执行节点重连风暴演练：3 个真实配对节点
 并发 36 次快速重连零失败，风暴后投递、Ed25519 签名回传、ACK 与撤销拒绝全部正常；Browser Worker
-集成与安全单测套件复跑通过。这些是本地真实运行时证据，不构成生产部署放行。
+集成与安全单测套件复跑通过。真实 provider 驱动的 Agent Run 首次打通云端编排加 Desktop 执行链：
+模型规划并调用 browser_open_url，coordinator 选择在线桌面节点，网关投递后由节点签名回传并成功，
+该过程暴露并修复了 coordinator 从不选择桌面节点的缺陷（`fix(backend): route agent desktop tools
+to online nodes`，含节点选择单元测试与 agent 集成回归）。这些是本地真实运行时证据，不构成生产部署放行。
 
 因此，Phase 6 许可证仍然阻塞：剩余工作为真实外部 MCP 经认证 Web 控制中心的完整链路、
-结果级 spool 重放、云端编排加 Desktop 执行链、系统性安全测试（Prompt injection、审批后参数
-替换的系统性执行），以及 Browser Worker 的完整安全灰度。隔离 stdio Worker、受控 Browser Worker
+结果级 spool 重放、系统性安全测试（Prompt injection、审批后参数替换的系统性执行），以及
+Browser Worker 的完整安全灰度；生产部署环境验收也仍缺位。隔离 stdio Worker、受控 Browser Worker
 和真实外部 MCP 后端只读链路已有实现或记录，但不能将代码、协议探测、测试入口或 API-only 验证
 等同于生产环境放行。
