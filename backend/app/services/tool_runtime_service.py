@@ -1319,6 +1319,8 @@ class ToolRuntimeService:
             if node_id is None:
                 raise ToolRuntimeError("EXECUTION_NODE_REQUIRED")
             node = await self.get_node(node_id, user_id=user_id, db=db)
+            if node.status is ExecutionNodeStatus.revoked:
+                raise ToolRuntimeError("EXECUTION_NODE_REVOKED")
             self._validate_node_tool(node, tool_name)
         elif node_id is not None:
             raise ToolRuntimeError("EXECUTION_NODE_NOT_ALLOWED")

@@ -162,6 +162,27 @@ async def test_node_token_is_invalid_after_revoke_and_token_version_change(
 
 
 @pytest.mark.asyncio
+async def test_create_execution_rejects_revoked_node(db: AsyncSession, test_user: User) -> None:
+    """撤销的节点不能再接收新的桌面执行任务。"""
+
+    service = ToolRuntimeService()
+    node, _private_key_value, _token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    await service.revoke_execution_node(node.id, user_id=test_user.id, db=db)
+
+    with pytest.raises(ToolRuntimeError, match="EXECUTION_NODE_REVOKED"):
+        await service.create_execution(
+            user_id=test_user.id,
+            tool_name="browser_open_url",
+            arguments={"url": "https://example.com"},
+            execution_location="desktop",
+            node_id=node.id,
+            db=db,
+        )
+
+
+@pytest.mark.asyncio
 async def test_execution_arguments_are_aes_gcm_ciphertext_and_round_trip(
     db: AsyncSession, test_user
 ) -> None:
