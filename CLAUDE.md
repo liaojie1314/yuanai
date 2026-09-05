@@ -120,11 +120,15 @@ Phase 4 Electron 桌面端已合入 `dev`：包含多窗口认证与聊天、真
 本地自动化门禁已重新通过：根级运行时、类型、单元、集成、lint、格式、脚本和构建检查，后端串行
 pytest、mypy 与 Ruff，以及 Chromium Web E2E 33/33 和 Tool Control Center E2E 3/3。后两项使用
 受控路由 mock，只能证明 UI 回归。Phase 5/6 收尾验收仍未全部放行：当前分支的真实 Linux Desktop
-E2E 为 `1 passed (29s)`，覆盖配对、WSS challenge、本地审批、签名回调、ACK、取消确认和节点撤销；
-断线重连/重放仍未验收。YuanAI 认证 API 到真实公共 Streamable HTTP MCP 的连接、发现、显式启用、审批
-与文档只读调用已有后端证据，但不构成 Web 控制中心 UI 验收。部署 Worker 崩溃恢复、五分钟真实断线恢复、
-完整认证 Web 控制中心链路、系统性 Browser Worker 安全测试及故障注入稳定性仍未验收。Phase 7 尚未开始，其前置
-条件仍未满足。
+E2E 为 `2 passed (2.8m)`，覆盖配对、WSS challenge、本地审批、签名回调、ACK、取消确认、节点撤销，
+以及审批待决时强制重启后的任务重投与恰好一次完成（`c9b5a1d`）；结果级 spool 重放仍未真实覆盖。
+本地真实栈（隔离启用 Agent 配置）已完成部署形态等效演练：Worker 强制退出恢复、真实五分钟断线 SSE
+重连重放、审批恢复/取消/幂等/租户隔离与 Chat 回归；执行节点重连风暴演练（3 节点 36 次并发重连）
+与 Browser Worker 集成/安全套件复跑通过；认证 Web 控制中心已用真实后端数据人工核验工具目录、
+运行列表与审批卡片渲染。以上均为本地真实运行时证据，不构成生产部署放行。YuanAI 认证 API 到真实公共
+Streamable HTTP MCP 的连接、发现、显式启用、审批与文档只读调用已有后端证据，但真实外部 MCP 经
+Web 控制中心 UI 的完整链路仍未验收。云端编排加 Desktop 执行链、系统性安全测试及 Browser Worker
+完整安全灰度仍未验收。Phase 7 尚未开始，其前置条件仍未满足。
 
 ## 开发铁律
 

@@ -76,3 +76,31 @@ directories was moved to the system trash after the run and was not added to
 Git. Dependencies and model caches were preserved.
 
 Unrelated changes observed in `apps/web/` and `backend/` were preserved.
+
+## 2026-09-06 Forced-restart redelivery evidence
+
+Date: 2026-09-06
+Evidence branch: `feature/tools-execution@c9b5a1d`
+
+- `c9b5a1d test(desktop): cover forced restart job redelivery` adds a second
+  real Electron scenario and fixes both test callbacks to zero-parameter
+  signatures (`test.info()`), because the installed Playwright 1.61.1 rejects
+  bare first parameters at spec collection.
+- With the real backend running through `pnpm dev:real` and the verified X11/DBus
+  session, `pnpm --filter @yuanai/desktop test:e2e` passed `2 passed (2.8m)`:
+  the original pairing/approval/cancellation/revocation scenario (26.0s) and the
+  new forced-restart scenario (2.3m).
+- The new scenario kills the Electron process with SIGKILL while a
+  `browser_open_url` job is pending local approval, relaunches with the same
+  user-data profile, logs back in, waits for the node to return `online`, and
+  observes the server re-offering the same job after the delivery staleness
+  window. After approval the backend reported the original execution id as
+  `status=succeeded`, `nodeDeliveryStatus=acknowledged`, with a populated
+  `nodeAcknowledgedAt`, and a later check confirmed no duplicate approval or
+  second execution. A post-restart panel screenshot was inspected: node online
+  state, certificate validity, capabilities, and grant controls render without
+  overlap.
+- This is job-level redelivery evidence: an unapproved job survives a forced
+  client restart and completes exactly once. The result-spool replay path
+  (a signed terminal result re-sent after reconnect until ACK) is still covered
+  only by Desktop unit/integration tests and remains outside real E2E evidence.
