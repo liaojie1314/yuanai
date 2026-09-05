@@ -3,8 +3,10 @@
  *
  * 覆盖：登录 → 设置页启用执行节点（自配对 + Ed25519 登记 + WSS challenge）→
  * 通过 API 下发 browser_open_url 任务 → 本地审批允许 → 节点执行并签名回传 →
- * 服务端持久化为 succeeded 且节点 ACK。运行前提：真实后端运行在
- * YUANAI_API_URL（默认 http://localhost:8000/api/v1），且后端允许创建测试账号。
+ * 服务端持久化为 succeeded 且节点 ACK；以及审批待决时强制杀死进程后，
+ * 依赖服务端投递过期重投与节点身份持久化在重启后恢复同一任务且恰好完成一次。
+ * 运行前提：真实后端运行在 YUANAI_API_URL（默认 http://localhost:8000/api/v1），
+ * 且后端允许创建测试账号。
  */
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -87,17 +89,19 @@ async function api(
   return payload
 }
 
-async function launchApp(): Promise<{ app: ElectronApplication; userDataDir: string }> {
-  const userDataDir = mkdtempSync(join(tmpdir(), 'yuanai-desktop-e2e-'))
+async function launchApp(
+  userDataDir?: string
+): Promise<{ app: ElectronApplication; userDataDir: string }> {
+  const profileDir = userDataDir ?? mkdtempSync(join(tmpdir(), 'yuanai-desktop-e2e-'))
   const app = await _electron.launch({
     args: ['--password-store=gnome-libsecret', join(__dirname, '../../out/main/index.js')],
     env: {
       ...process.env,
       YUANAI_API_URL: API_BASE_URL,
-      YUANAI_USER_DATA_DIR: userDataDir,
+      YUANAI_USER_DATA_DIR: profileDir,
     },
   })
-  return { app, userDataDir }
+  return { app, userDataDir: profileDir }
 }
 
 async function login(app: ElectronApplication, user: TestUser): Promise<Page> {
@@ -120,6 +124,20 @@ async function openSettings(app: ElectronApplication): Promise<Page> {
   return app.windows()[app.windows().length - 1] as Page
 }
 
+/** 重启后的应用可能保留已登录会话；仅在登录窗口出现时重新登录。 */
+async function ensureLogin(app: ElectronApplication, user: TestUser): Promise<void> {
+  const firstWindow = await app.firstWindow()
+  await firstWindow.waitForLoadState('domcontentloaded')
+  const needsLogin = await firstWindow
+    .getByRole('textbox', { name: '邮箱' })
+    .waitFor({ state: 'visible', timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false)
+  if (!needsLogin) return
+  await login(app, user)
+  await firstWindow.close()
+}
+
 async function executionSnapshot(
   token: string,
   executionId: string
@@ -131,8 +149,9 @@ async function executionSnapshot(
 }
 
 test.describe('desktop execution node', () => {
-  test('pairs, acknowledges approval and cancellation, then observes node revocation', async (_args, testInfo) => {
+  test('pairs, acknowledges approval and cancellation, then observes node revocation', async () => {
     test.setTimeout(360_000)
+    const testInfo = test.info()
     const user = await createTestUser()
     const { app, userDataDir } = await launchApp()
     try {
@@ -253,6 +272,103 @@ test.describe('desktop execution node', () => {
         .not.toBe('online')
     } finally {
       await app.close()
+      await api(user.token, 'DELETE', '/auth/me')
+      rmSync(userDataDir, { recursive: true, force: true })
+    }
+  })
+
+  test('redelivers an unapproved job after a forced restart', async () => {
+    test.setTimeout(420_000)
+    const testInfo = test.info()
+    const user = await createTestUser()
+    const { app: firstApp, userDataDir } = await launchApp()
+    let app = firstApp
+    try {
+      await app.firstWindow()
+      const storageState = await app.evaluate(({ safeStorage }) => ({
+        available: safeStorage.isEncryptionAvailable(),
+        backend: safeStorage.getSelectedStorageBackend(),
+      }))
+      test.skip(
+        !storageState.available ||
+          (process.platform === 'linux' && storageState.backend === 'basic_text'),
+        '需要可用且已解锁的桌面钥匙串（safeStorage）才能运行'
+      )
+      const loginWindow = await login(app, user)
+      await loginWindow.close()
+      const settings = await openSettings(app)
+      await settings.getByRole('tab', { name: '桌面设置' }).click()
+      const nodeName = `E2E 重连节点 ${Date.now()}`
+      await settings.getByLabel('节点名称').fill(nodeName)
+      await settings.getByRole('button', { name: '启用执行节点' }).click()
+      await expect(settings.getByRole('heading', { name: '执行节点' })).toBeVisible()
+      await expect(settings.getByText('在线')).toBeVisible({ timeout: 30_000 })
+
+      const nodes = (await api(user.token, 'GET', '/execution-nodes')) as unknown as Array<{
+        id: string
+        name: string
+      }>
+      const node = nodes.find((candidate) => candidate.name === nodeName)
+      if (!node) throw new Error('paired node not registered on the backend')
+      const execution = (await api(user.token, 'POST', '/tool-executions', {
+        toolName: 'browser_open_url',
+        arguments: { url: 'https://example.com/desktop-e2e-replay' },
+        executionLocation: 'desktop',
+        nodeId: node.id,
+      })) as { id: string }
+
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+
+      // 审批待决时强制杀死进程：未答复任务只能依赖服务端重投与节点身份持久化恢复。
+      app.process().kill('SIGKILL')
+      app = (await launchApp(userDataDir)).app
+      await ensureLogin(app, user)
+      const restartedSettings = await openSettings(app)
+      await restartedSettings.getByRole('tab', { name: '桌面设置' }).click()
+      await expect(restartedSettings.getByText('在线')).toBeVisible({ timeout: 60_000 })
+
+      // 投递过期阈值（默认 120 秒）过后，服务端在活跃连接上重新下发 job_offer。
+      await expect(restartedSettings.getByText('待确认任务')).toBeVisible({
+        timeout: 180_000,
+      })
+      await restartedSettings.getByRole('button', { name: '允许本次执行' }).click()
+
+      await expect
+        .poll(
+          async () => {
+            const rows = (await api(
+              user.token,
+              'GET',
+              '/tool-executions?limit=20'
+            )) as unknown as Array<{
+              id: string
+              status: string
+              nodeDeliveryStatus: string | null
+              nodeAcknowledgedAt: string | null
+            }>
+            return rows.find((row) => row.id === execution.id)
+          },
+          { timeout: 45_000, intervals: [1_000, 2_000, 5_000] }
+        )
+        .toEqual(
+          expect.objectContaining({
+            id: execution.id,
+            status: 'succeeded',
+            nodeDeliveryStatus: 'acknowledged',
+            nodeAcknowledgedAt: expect.any(String),
+          })
+        )
+      // 完成后不出现重复审批或重复执行。
+      await restartedSettings.waitForTimeout(10_000)
+      await expect(restartedSettings.getByText('待确认任务')).toHaveCount(0)
+      const settled = await executionSnapshot(user.token, execution.id)
+      expect(settled).toEqual(expect.objectContaining({ id: execution.id, status: 'succeeded' }))
+      await restartedSettings
+        .getByRole('heading', { name: '执行节点' })
+        .locator('..')
+        .screenshot({ path: testInfo.outputPath('execution-node-replay.png') })
+    } finally {
+      await app.close().catch(() => {})
       await api(user.token, 'DELETE', '/auth/me')
       rmSync(userDataDir, { recursive: true, force: true })
     }
