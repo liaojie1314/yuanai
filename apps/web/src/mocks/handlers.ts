@@ -325,6 +325,25 @@ export const handlers = [
 
   http.get(`${BASE}/auth/me`, () => HttpResponse.json(mockUser)),
 
+  http.get(`${BASE}/auth/me/preferences`, () =>
+    HttpResponse.json({
+      theme: 'auto',
+      fontSize: 'medium',
+      density: 'standard',
+      timeFormat: '24h',
+      dateFormat: 'ymd',
+      language: 'zh-CN',
+    })
+  ),
+
+  http.get(`${BASE}/auth/me/stats`, () =>
+    HttpResponse.json({ totalConversations: Object.keys(conversations).length, totalMessages: 0 })
+  ),
+
+  http.get(`${BASE}/agent/assistants`, () => HttpResponse.json([])),
+
+  http.get(`${BASE}/chat/conversations/:id/media-tasks`, () => HttpResponse.json({ tasks: [] })),
+
   http.get(`${BASE}/chat/capabilities`, () =>
     HttpResponse.json({
       webSearch: { enabled: true, provider: 'searxng', reason: null },

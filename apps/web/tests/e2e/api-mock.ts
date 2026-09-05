@@ -427,11 +427,54 @@ export async function setupApiMocks(
     })
   })
 
+  await page.route('**/api/v1/auth/me/preferences**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        theme: 'auto',
+        fontSize: 'medium',
+        density: 'standard',
+        timeFormat: '24h',
+        dateFormat: 'ymd',
+        language: 'zh-CN',
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/auth/me/stats**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ totalConversations: 4, totalMessages: 8 }),
+    })
+  })
+
   await page.route(`${BASE}/auth/logout`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ message: '已退出登录' }),
+    })
+  })
+
+  // ── Chat page support ───────────────────────────────────────
+  // ChatInterface requests these resources as soon as an authenticated view
+  // mounts. Keeping them in the route-level fixture prevents a fallback
+  // request from reaching the real API and invalidating the mock session.
+  await page.route('**/api/v1/agent/assistants**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    })
+  })
+
+  await page.route(`${BASE}/chat/conversations/*/media-tasks`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ tasks: [] }),
     })
   })
 
