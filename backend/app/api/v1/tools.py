@@ -363,6 +363,7 @@ async def execution_node_socket(websocket: WebSocket, token: str) -> None:
         await db.commit()
         try:
             while True:
+                node = await runtime.authenticate_node(token, db=db)
                 for execution, message in await runtime.list_node_messages(node, db=db):
                     await websocket.send_json(message)
                     if message.get("type") == "job_offer":
@@ -374,6 +375,7 @@ async def execution_node_socket(websocket: WebSocket, token: str) -> None:
                     continue
                 if not isinstance(incoming, dict):
                     raise ToolRuntimeError("EXECUTION_NODE_MESSAGE_INVALID")
+                node = await runtime.authenticate_node(token, db=db)
                 response_message = await runtime.apply_node_message(node, incoming, db=db)
                 await db.commit()
                 await websocket.send_json(response_message)

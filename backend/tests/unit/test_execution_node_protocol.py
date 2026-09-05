@@ -162,6 +162,25 @@ async def test_node_token_is_invalid_after_revoke_and_token_version_change(
 
 
 @pytest.mark.asyncio
+async def test_node_authentication_refreshes_revocation_from_another_session(
+    db: AsyncSession, test_user: User
+) -> None:
+    """长连接轮询认证必须读取其他会话提交的撤销状态。"""
+
+    service = ToolRuntimeService()
+    node, _private_key_value, token = await _registered_node(
+        service, db, test_user, capabilities=["browser_open_url"]
+    )
+    await db.commit()
+
+    async with TestSessionLocal() as revoker_db:
+        await service.revoke_execution_node(node.id, user_id=test_user.id, db=revoker_db)
+
+    with pytest.raises(ToolRuntimeError, match="EXECUTION_NODE_REVOKED"):
+        await service.authenticate_node(token, db=db)
+
+
+@pytest.mark.asyncio
 async def test_create_execution_rejects_revoked_node(db: AsyncSession, test_user: User) -> None:
     """撤销的节点不能再接收新的桌面执行任务。"""
 

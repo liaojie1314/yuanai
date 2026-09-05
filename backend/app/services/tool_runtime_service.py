@@ -1678,7 +1678,11 @@ class ToolRuntimeService:
             token_version = raw_token_version
         except (JWTError, KeyError, TypeError, ValueError) as error:
             raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID") from error
-        node = await db.scalar(select(ExecutionNode).where(ExecutionNode.id == node_id))
+        node = await db.scalar(
+            select(ExecutionNode)
+            .where(ExecutionNode.id == node_id)
+            .execution_options(populate_existing=True)
+        )
         if node is None or node.public_key is None:
             raise ToolRuntimeError("EXECUTION_NODE_TOKEN_INVALID")
         if node.status is ExecutionNodeStatus.revoked or node.token_version != token_version:
