@@ -8,6 +8,7 @@ from time import monotonic
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
+from sqlalchemy import update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -516,3 +517,57 @@ async def test_admin_detail_redacts_user_identity_and_goal(
     assert "user_id" not in payload
     assert "goal" not in payload
     assert "包含不应暴露的用户目标" not in response.text
+
+
+@pytest.mark.asyncio
+async def test_event_append_does_not_block_behind_open_run_transaction(
+    db: AsyncSession, test_user: User
+) -> None:
+    """协调器持有未提交的 Run 行更新时，事件序号分配仍能立即提交。
+
+    Worker 侧协调器在整个执行期间持有未提交事务；事件持久化若对同一
+    Run 行加锁，会与自身事务形成进程内死锁，Worker 将永久挂起。
+    """
+    from app.services.agent.event_service import EventStore
+
+    assistant = await _assistant(db, test_user)
+    run = AgentRun(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        goal="事件追加不应等待 Run 行锁",
+        model="test-model",
+        status=AgentRunStatus.queued,
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+
+    engine = create_async_engine(
+        "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test",
+        poolclass=NullPool,
+    )
+    try:
+        holder_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with holder_factory() as holder:
+            await holder.execute(
+                sa_update(AgentRun)
+                .where(AgentRun.id == run.id)
+                .values(status=AgentRunStatus.running)
+            )
+            store = EventStore(session_factory=holder_factory, queue=None)
+
+            async def _append() -> None:
+                await asyncio.wait_for(
+                    store.append(run.id, "step_started", {"sequence": 1, "kind": "model"}),
+                    timeout=10.0,
+                )
+
+            await _append()
+            await holder.rollback()
+    finally:
+        await engine.dispose()
+
+    sequences = (
+        await db.scalars(select(AgentEvent.sequence).where(AgentEvent.run_id == run.id))
+    ).all()
+    assert sequences == [1]
