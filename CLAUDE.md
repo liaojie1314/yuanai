@@ -121,8 +121,9 @@ Phase 4 Electron 桌面端已合入 `dev`：包含多窗口认证与聊天、真
 pytest、mypy 与 Ruff，以及 Chromium Web E2E 33/33 和 Tool Control Center E2E 3/3。后两项使用
 受控路由 mock，只能证明 UI 回归。Phase 5/6 收尾验收仍未全部放行：当前分支的真实 Linux Desktop
 E2E 为 `1 passed (2m42s)`，覆盖配对、WSS challenge、本地审批、签名回调、ACK 和正常收尾，但不覆盖
-取消、重连/重放或节点撤销。真实外部 MCP、部署 Worker 崩溃恢复、五分钟真实断线恢复、完整认证 Web
-控制中心链路、系统性 Browser Worker 安全测试及故障注入稳定性仍未验收。Phase 7 尚未开始，其前置
+取消、重连/重放或节点撤销。YuanAI 认证 API 到真实公共 Streamable HTTP MCP 的连接、发现、显式启用、审批
+与文档只读调用已有后端证据，但不构成 Web 控制中心 UI 验收。部署 Worker 崩溃恢复、五分钟真实断线恢复、
+完整认证 Web 控制中心链路、系统性 Browser Worker 安全测试及故障注入稳定性仍未验收。Phase 7 尚未开始，其前置
 条件仍未满足。
 
 ## 开发铁律

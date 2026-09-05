@@ -224,8 +224,9 @@ yuanai/
 - 截至 2026-09-05，Phase 5 Agent Runtime 的代码合同、自动化测试和恢复故障注入演练已通过本地门禁；
   真实 provider 两工具演练有记录，但已部署 Worker 崩溃恢复和五分钟真实断线恢复仍未完成，不能仅凭测试入口或构建结果放行。
 - Phase 6 六个 Wave 已有不同程度的实现和测试：隔离 stdio Worker、受控 Browser Worker、Desktop
-  执行节点和 Web 工具控制中心均已进入代码/测试证据阶段；真实外部 MCP、完整 Web 控制中心链路、
-  Desktop 取消/重连/撤销、故障注入稳定性和系统性 Browser Worker 安全验收仍阻塞。当前分支的 Chromium
+  执行节点和 Web 工具控制中心均已进入代码/测试证据阶段。已通过 YuanAI 认证 API 连接真实公共
+  Streamable HTTP MCP，完成工具发现、显式启用、审批和文档只读调用；这不是 Web 控制中心 UI 验收。
+  完整 Web 控制中心链路、Desktop 取消/重连/撤销、故障注入稳定性和系统性 Browser Worker 安全验收仍阻塞。当前分支的 Chromium
   Web E2E 为 33/33、Tool Control Center E2E 为 3/3，均使用受控路由 mock，只是自动化回归证据。真实
   Desktop E2E 最新一次为 `1 passed (2m42s)`，当前边界见[执行节点验收记录](apps/desktop/tests/e2e/execution-node-acceptance.md)。
 - Phase 7 尚未开始；可新开会话的前置条件仍未满足，必须先完成 Phase 5/6 的真实运行与安全验收。
