@@ -59,6 +59,70 @@ def _mcp_response(*, changed: bool = False) -> dict[str, object]:
 
 
 @pytest.mark.asyncio
+async def test_mcp_streamable_http_accepts_sse_discovery_and_read_only_result(
+    db: AsyncSession, test_user, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Streamable HTTP MCP 的 SSE 响应可完成发现和只读调用。"""
+
+    monkeypatch.setattr(
+        "app.services.tool_runtime_service.validate_public_url", lambda value: value
+    )
+    calls: list[dict[str, object]] = []
+
+    async def handle(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        calls.append(payload)
+        response_payload = (
+            _mcp_response()
+            if payload["method"] == "tools/list"
+            else {
+                "jsonrpc": "2.0",
+                "id": payload["id"],
+                "result": {"content": [{"type": "text", "text": "read result"}]},
+            }
+        )
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=f"event: message\ndata: {json.dumps(response_payload)}\n\n",
+        )
+
+    service = ToolRuntimeService(mcp_transport=httpx.MockTransport(handle))
+    connection = ToolConnection(
+        user_id=test_user.id,
+        kind=ToolConnectionKind.mcp_http,
+        provider="streamable-example",
+        display_name="Streamable example MCP",
+        scopes=[],
+        metadata_json={},
+    )
+    db.add(connection)
+    await db.commit()
+    await db.refresh(connection)
+    server = await service.create_mcp_server(
+        user_id=test_user.id,
+        name="Streamable example MCP",
+        endpoint_url="https://example.com/mcp",
+        connection_id=connection.id,
+        db=db,
+    )
+
+    discovered = await service.discover_mcp_server(server.id, user_id=test_user.id, db=db)
+    assert discovered.status is McpServerStatus.active
+    await service.enable_mcp_tools(server.id, user_id=test_user.id, enabled_tools=["lookup"], db=db)
+    execution = await service.create_mcp_execution(
+        server.id,
+        user_id=test_user.id,
+        tool_name="lookup",
+        arguments={"query": "yuanai"},
+        db=db,
+    )
+
+    assert execution.status is ToolExecutionStatus.succeeded
+    assert [call["method"] for call in calls] == ["tools/list", "tools/call"]
+
+
+@pytest.mark.asyncio
 async def test_mcp_requires_explicit_enablement_and_pauses_on_schema_change(
     db: AsyncSession, test_user, monkeypatch: pytest.MonkeyPatch
 ) -> None:

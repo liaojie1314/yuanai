@@ -79,6 +79,45 @@ class ToolRuntimeError(RuntimeError):
     """Tool Runtime 可安全返回给 API 的领域错误。"""
 
 
+def parse_mcp_http_response(
+    response: httpx.Response, *, request_id: str | int
+) -> dict[str, object]:
+    """解析 JSON 或 SSE 格式的当前 MCP JSON-RPC 响应。"""
+
+    content_type = response.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if content_type != "text/event-stream":
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise ValueError("MCP response must be an object")
+        return cast(dict[str, object], payload)
+
+    data_lines: list[str] = []
+    for line in response.text.splitlines():
+        if line:
+            if line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())
+            continue
+        if not data_lines:
+            continue
+        try:
+            payload = json.loads("\n".join(data_lines))
+        except json.JSONDecodeError:
+            data_lines = []
+            continue
+        data_lines = []
+        if isinstance(payload, dict) and str(payload.get("id")) == str(request_id):
+            return cast(dict[str, object], payload)
+
+    if data_lines:
+        try:
+            payload = json.loads("\n".join(data_lines))
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict) and str(payload.get("id")) == str(request_id):
+            return cast(dict[str, object], payload)
+    raise ValueError("MCP SSE response did not include the requested JSON-RPC result")
+
+
 def _canonical_json(value: Mapping[str, object]) -> bytes:
     """生成协议签名使用的稳定 JSON 字节。"""
 
@@ -821,6 +860,7 @@ class ToolRuntimeService:
             raise ToolRuntimeError("MCP_CONNECTION_NOT_FOUND")
         try:
             connection = await self._mcp_connection(server, user_id=user_id, db=db)
+            payload_value: dict[str, object]
             if server.transport == "stdio":
                 if server.command is None:
                     raise ToolRuntimeError("MCP_STDIO_CONFIG_INVALID")
@@ -851,7 +891,7 @@ class ToolRuntimeService:
                     if response.is_redirect:
                         raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
                     response.raise_for_status()
-                    payload_value = response.json()
+                    payload_value = parse_mcp_http_response(response, request_id=1)
         except (httpx.HTTPError, StdioMcpError, TimeoutError, ValueError) as error:
             server.status = McpServerStatus.error
             await db.commit()
@@ -1059,6 +1099,7 @@ class ToolRuntimeService:
                 return execution
 
         try:
+            payload_value: dict[str, object]
             if server.transport == "stdio":
                 if server.command is None:
                     raise ToolRuntimeError("MCP_STDIO_CONFIG_INVALID")
@@ -1094,7 +1135,7 @@ class ToolRuntimeService:
                     if response.is_redirect:
                         raise ToolRuntimeError("MCP_REDIRECT_BLOCKED")
                     response.raise_for_status()
-                    payload_value = response.json()
+                    payload_value = parse_mcp_http_response(response, request_id=str(execution.id))
         except ToolRuntimeError:
             raise
         except (httpx.HTTPError, StdioMcpError, TimeoutError, ValueError, UrlPolicyError) as error:
@@ -1122,7 +1163,8 @@ class ToolRuntimeService:
             result_value = payload_value.get("result")
             if not isinstance(result_value, dict):
                 raise ToolRuntimeError("MCP_RESPONSE_INVALID")
-            encoded = json.dumps(result_value, ensure_ascii=False, separators=(",", ":"))
+            result_payload = cast(dict[str, object], result_value)
+            encoded = json.dumps(result_payload, ensure_ascii=False, separators=(",", ":"))
             if len(encoded.encode("utf-8")) > 32 * 1024:
                 execution.status = ToolExecutionStatus.failed
                 execution.error_code = "TOOL_OUTPUT_TOO_LARGE"
@@ -1137,7 +1179,7 @@ class ToolRuntimeService:
                     )
                 )
             else:
-                execution.result_json = result_value
+                execution.result_json = result_payload
                 execution.result_summary = "MCP 只读工具执行完成"
                 execution.status = ToolExecutionStatus.succeeded
         execution.started_at = execution.started_at or datetime.now(UTC)
@@ -1148,7 +1190,7 @@ class ToolRuntimeService:
                 ToolResult(
                     status="succeeded",
                     summary="MCP 只读工具执行完成",
-                    data=result_value,
+                    data=result_payload,
                     metrics=ToolMetrics(output_bytes=output_bytes),
                 )
             )
