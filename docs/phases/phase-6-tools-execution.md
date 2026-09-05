@@ -6,12 +6,12 @@
 - **执行范围**：按 Wave 分批修改 `backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`；Mobile 仅保持共享协议兼容，不实现本阶段的工具控制中心或本地执行节点。
 - **阶段定位**：让 Agent 从“会规划”升级为“能在受控边界内执行真实数字动作”
 
-> **当前实现状态（2026-09-03）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
+> **当前实现状态（2026-09-05）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
 > 当前 checkout 已在 `feature/tools-execution` 分支本地提交 Wave 1-6 的部分实现代码，包含
 > Tool Runtime 安全基础、云端只读/产出工具与受限 Python 沙箱、远程 Streamable HTTP MCP、
 > 隔离 stdio MCP Worker、Desktop 执行节点协议与 Electron 客户端、Web Tool Control Center，
 > 以及受控 Browser Worker。**本页验收标准尚未达成**：真实公共 Streamable HTTP MCP 的认证 API 后端
-> 链路已完成，但完整 Web 控制中心链路、Desktop 取消/重连/撤销、故障注入稳定性和系统性安全测试仍未完成，
+> 链路已完成，但完整 Web 控制中心链路、Desktop 重连/重放、故障注入稳定性和系统性安全测试仍未完成，
 > 进入 Phase 7 的许可证仍然阻塞。
 > 勾选任何验收项前必须有代码、测试和真实运行证据；测试覆盖或构建成功本身不构成真实验收。
 
@@ -20,7 +20,7 @@
 | 1. 共享契约与安全基础     | 代码已提交，契约测试通过                                                    | 阻塞                |
 | 2. 云端只读与产出工具     | 代码已提交，模拟链路测试通过                                                | 阻塞                |
 | 3. MCP 连接与路由         | HTTP + 隔离 stdio Worker 已实现；真实 MCP 后端只读链路有证据，Web UI 待验收 | 阻塞                |
-| 4. Desktop 执行节点       | 单个真实 E2E 已通过；取消、重连/重放、撤销仍未覆盖                          | 阻塞                |
+| 4. Desktop 执行节点       | 真实 E2E 已覆盖取消与撤销；重连/重放仍未覆盖                                | 阻塞                |
 | 5. Web 控制中心           | 页面/hooks/测试已提交；认证真实数据验收待做                                 | 阻塞                |
 | 6. 浏览器自动化与安全灰度 | 受控 Browser Worker 与系统 Chrome 集成测试已实现；完整安全验收待做          | 阻塞                |
 
@@ -524,14 +524,14 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 | 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                                                                                                           | 模拟覆盖，真实外部模型链未验收                             |
 | 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                                                                                                        | 自动化覆盖，非真实验收                                     |
 | MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`；2026-09-05 使用 YuanAI 认证 API 对真实公共 Streamable HTTP MCP 完成连接、发现、显式启用、审批和文档只读调用 | 真实后端只读链路有证据；Web 控制中心 UI 与完整场景仍未验收 |
-| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证）                                                                                    | 配对/执行/ACK 有证据；取消/重连/撤销未验收                 |
-| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `1 passed (2m42s)`；Desktop 单元/集成测试                                                                                    | 配对至 ACK 和正常收尾有真实证据；取消/重连/撤销未验收      |
+| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；`86d4123`、`b983d9b`；真实 Linux Electron E2E `1 passed (29s)`                                                                                 | 配对/执行/ACK/取消/撤销有真实证据；重连/重放未验收         |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `1 passed (29s)`；Desktop 单元/集成测试                                                                                      | 配对至 ACK、取消与撤销有真实证据；重连/重放未验收          |
 | Web Tool Control Center                                                      | 组件测试 9 例与 Chromium E2E 3/3（受控路由 mock）                                                                                                                                                    | 自动化回归通过；完整认证真实数据链路未验收                 |
 | 受控 Browser Worker（系统 Chrome、DOM/无障碍快照、动作与 Artifact）          | `backend/tests/integration/test_browser_worker.py` 在 2026-09-05 通过，系统 Chrome 真实打开公共页面并返回 DOM/无障碍快照；另有代码与自动化测试                                                       | 真实只读运行有证据；完整安全验收待做                       |
 | 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | `backend/tests/integration/test_agent_runtime_drills.py` 提供恢复/重放演练；重连风暴尚未执行                                                                                                         | 自动化演练已编写；稳定性未验证                             |
 | 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 审批哈希绑定、幂等键、租户边界和 `required_scopes` 强制校验已有测试；Prompt injection 与故障注入尚未系统执行                                                                                         | 部分覆盖                                                   |
 
 因此，Phase 6 许可证仍然阻塞：剩余工作为认证 Web 控制中心完整链路、桌面
-取消/重连/撤销、故障注入稳定性与系统性安全测试，以及 Browser Worker 的完整安全灰度。
+重连/重放、故障注入稳定性与系统性安全测试，以及 Browser Worker 的完整安全灰度。
 隔离 stdio Worker、受控 Browser Worker 和真实外部 MCP 后端只读链路已有实现或记录，但不能将代码、
 协议探测、测试入口或 API-only 验证等同于生产环境放行。

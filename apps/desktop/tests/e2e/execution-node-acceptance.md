@@ -1,7 +1,7 @@
 # Desktop Execution Node Acceptance Record
 
 Date: 2026-09-05
-Evidence branch: `feature/tools-execution@03f4423`
+Evidence branch: `feature/tools-execution@cd4f675`
 
 ## Changes
 
@@ -20,6 +20,13 @@ Evidence branch: `feature/tools-execution@03f4423`
   rejects manual execution without an authorized active connection and required
   scopes; this backend change is included in the branch baseline but is not a
   Desktop client change.
+- `86d4123 fix(backend): reject jobs for revoked nodes`
+  rejects new Desktop jobs for a revoked node before an execution record is created.
+- `b983d9b fix(backend): invalidate revoked node sessions`
+  refreshes a node's persisted status before WSS delivery and inbound messages,
+  so a revoked session cannot return to `online` through a stale identity map.
+- `cd4f675 test(desktop): cover execution cancellation and revocation`
+  expands the real Electron scenario with cancellation and node-revocation checks.
 
 ## Commands
 
@@ -31,7 +38,7 @@ All pnpm commands used Node.js `22.21.1` and pnpm `10.22.0`.
 - `pnpm --filter @yuanai/desktop typecheck`: passed.
 - `pnpm --filter @yuanai/desktop lint`: passed.
 - `pnpm --filter @yuanai/desktop build`: passed.
-- `pnpm --filter @yuanai/desktop test:e2e`: passed, `1 passed (2m42s)`.
+- `pnpm --filter @yuanai/desktop test:e2e`: passed, `1 passed (29s)`.
 - `pnpm --filter @yuanai/desktop exec playwright test --list`: found one
   Electron E2E test in `tests/e2e/execution-node.spec.ts`.
 
@@ -56,10 +63,13 @@ reported `status=succeeded`, `nodeDeliveryStatus=acknowledged`, and a populated
 execution, signed result, ACK path, and clean test completion.
 
 The current single E2E covers pairing, WSS challenge, local approval, signed
-result delivery, ACK, and clean teardown on this Linux runtime. It does not
-exercise cancellation, reconnect/replay, or node revocation; those remain
-covered only by Desktop unit/integration tests and are not real E2E acceptance.
-Windows/macOS packaging and signing were not tested.
+result delivery, ACK, pre-approval cancellation with a server acknowledgment,
+and node revocation on this Linux runtime. After revocation, a new Desktop job
+was rejected with HTTP 422 and the already connected client left `online`, which
+is real evidence that its WSS session was invalidated. The E2E still does not
+exercise a network disconnect followed by replay; that remains covered only by
+Desktop unit/integration tests and is not real E2E acceptance. Windows/macOS
+packaging and signing were not tested.
 
 The ignored temporary output under `apps/desktop/dist`, `out`, and E2E result
 directories was moved to the system trash after the run and was not added to

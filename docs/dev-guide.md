@@ -121,8 +121,8 @@ pnpm --filter @yuanai/desktop test:integration
 pnpm --filter @yuanai/desktop test:e2e
 ```
 
-截至 2026-09-05，当前分支的真实 Linux 运行记录为 `1 passed (2m42s)`，覆盖配对、WSS challenge、
-本地审批、签名回调、ACK 和正常收尾。该单个 E2E 不覆盖取消、重连/重放或节点撤销；这些仍不能仅凭
+截至 2026-09-05，当前分支的真实 Linux 运行记录为 `1 passed (29s)`，覆盖配对、WSS challenge、
+本地审批、签名回调、ACK、取消确认和节点撤销。该单个 E2E 仍不覆盖断线重连/重放；该项不能仅凭
 Desktop 单元/集成测试记录为真实验收。后端不可达、safeStorage 不可用或测试被 skip 时均不是通过。
 重启后必须先验证可用的 X11 会话；本次使用 `DISPLAY=:1`，而不是历史 `:0`。完整边界见
 [执行节点验收记录](../apps/desktop/tests/e2e/execution-node-acceptance.md)。
