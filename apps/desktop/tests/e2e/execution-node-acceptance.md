@@ -1,7 +1,7 @@
 # Desktop Execution Node Acceptance Record
 
-Date: 2026-09-03
-Baseline: `feature/tools-execution@6bfe811`
+Date: 2026-09-05
+Evidence branch: `feature/tools-execution@03f4423`
 
 ## Changes
 
@@ -31,7 +31,7 @@ All pnpm commands used Node.js `22.21.1` and pnpm `10.22.0`.
 - `pnpm --filter @yuanai/desktop typecheck`: passed.
 - `pnpm --filter @yuanai/desktop lint`: passed.
 - `pnpm --filter @yuanai/desktop build`: passed.
-- `pnpm --filter @yuanai/desktop test:e2e`: passed, `1 passed (26.5s)`.
+- `pnpm --filter @yuanai/desktop test:e2e`: passed, `1 passed (2m42s)`.
 - `pnpm --filter @yuanai/desktop exec playwright test --list`: found one
   Electron E2E test in `tests/e2e/execution-node.spec.ts`.
 
@@ -47,9 +47,9 @@ local cancellation, result ACK and spool replay, reconnect backoff, resource
 grants, and IPC allowlisting. The new auth-storage regression test verifies
 that changing Electron's `userData` path changes the encrypted session target.
 
-With the real backend already running, existing test credentials, the current
-X11 display (`:0`), and the user DBus Secret Service, the E2E passed the
-safeStorage gate, logged in, created a node that the backend reported as
+With the real backend already running, an existing local test account, the
+verified post-restart X11 display (`:1`), and the user DBus Secret Service, the
+E2E passed the safeStorage gate, logged in, created a node that the backend reported as
 `online`, and delivered `browser_open_url`. A backend snapshot for the run
 reported `status=succeeded`, `nodeDeliveryStatus=acknowledged`, and a populated
 `nodeAcknowledgedAt`, which is evidence for the pairing/challenge, approval,
@@ -61,8 +61,8 @@ exercise cancellation, reconnect/replay, or node revocation; those remain
 covered only by Desktop unit/integration tests and are not real E2E acceptance.
 Windows/macOS packaging and signing were not tested.
 
-The ignored temporary output under `apps/desktop/dist` was removed after the
-run and was not added to Git. The existing `apps/desktop/out` build output,
-dependencies, and model caches were preserved.
+The ignored temporary output under `apps/desktop/dist`, `out`, and E2E result
+directories was moved to the system trash after the run and was not added to
+Git. Dependencies and model caches were preserved.
 
 Unrelated changes observed in `apps/web/` and `backend/` were preserved.

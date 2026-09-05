@@ -515,7 +515,7 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 **进入 Phase 7 的许可证**：Wave 1-6 的出口条件全部满足，至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
 
-### 当前证据索引（2026-09-03）
+### 当前证据索引（2026-09-05）
 
 | 验收域                                                                       | 证据                                                                                                                                            | 状态                                                  |
 | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
@@ -524,8 +524,8 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 | 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                                                   | 自动化覆盖，非真实验收                                |
 | MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`；外部协议探测记录（2026-09-02）                         | YuanAI 模拟集成覆盖；真实外部 MCP 应用链路未验收      |
 | Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；真实后端 12 步链路演练（2026-08-30，含真实 WSS 与签名验证）                               | 配对/执行/ACK 有证据；取消/重连/撤销未验收            |
-| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；基线 `6bfe811` 下真实 E2E `1 passed (26.5s)`；Desktop 单元/集成测试                      | 配对至 ACK 和正常收尾有真实证据；取消/重连/撤销未验收 |
-| Web Tool Control Center                                                      | `apps/web/src/components/agent/ToolControlCenter.tsx` + 组件测试 9 例                                                                           | 组件自动化覆盖；完整认证链路未验收                    |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `1 passed (2m42s)`；Desktop 单元/集成测试                               | 配对至 ACK 和正常收尾有真实证据；取消/重连/撤销未验收 |
+| Web Tool Control Center                                                      | 组件测试 9 例与 Chromium E2E 3/3（受控路由 mock）                                                                                               | 自动化回归通过；完整认证真实数据链路未验收            |
 | 受控 Browser Worker（系统 Chrome、DOM/无障碍快照、动作与 Artifact）          | `backend/app/services/tools/browser_worker.py`、`backend/tests/unit/test_browser_worker.py`、`backend/tests/integration/test_browser_worker.py` | 代码与测试入口已提交；完整真实运行/安全验收待做       |
 | 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | `backend/tests/integration/test_agent_runtime_drills.py` 提供恢复/重放演练；重连风暴尚未执行                                                    | 自动化演练已编写；稳定性未验证                        |
 | 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 审批哈希绑定、幂等键、租户边界和 `required_scopes` 强制校验已有测试；Prompt injection 与故障注入尚未系统执行                                    | 部分覆盖                                              |

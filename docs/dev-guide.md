@@ -121,10 +121,11 @@ pnpm --filter @yuanai/desktop test:integration
 pnpm --filter @yuanai/desktop test:e2e
 ```
 
-当前真实验收记录为基线 `6bfe811` 下 `1 passed (26.5s)`，覆盖配对、WSS challenge、本地审批、
-签名回调、ACK 和本次 Linux 运行的正常收尾。该单个 E2E 不覆盖取消、重连/重放或节点撤销；这些
-仍不能仅凭 Desktop 单元/集成测试记录为真实验收。后端不可达、safeStorage 不可用或测试被 skip
-时均不是通过。完整边界见[执行节点验收记录](../apps/desktop/tests/e2e/execution-node-acceptance.md)。
+截至 2026-09-05，当前分支的真实 Linux 运行记录为 `1 passed (2m42s)`，覆盖配对、WSS challenge、
+本地审批、签名回调、ACK 和正常收尾。该单个 E2E 不覆盖取消、重连/重放或节点撤销；这些仍不能仅凭
+Desktop 单元/集成测试记录为真实验收。后端不可达、safeStorage 不可用或测试被 skip 时均不是通过。
+重启后必须先验证可用的 X11 会话；本次使用 `DISPLAY=:1`，而不是历史 `:0`。完整边界见
+[执行节点验收记录](../apps/desktop/tests/e2e/execution-node-acceptance.md)。
 
 Browser Worker 的浏览器二进制必须来自已有系统安装或显式 `executablePath`，优先使用
 `/usr/bin/google-chrome`；不要运行 `playwright install` 下载浏览器。系统 Chrome 不存在时，记录
