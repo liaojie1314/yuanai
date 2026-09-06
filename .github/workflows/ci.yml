@@ -116,6 +116,12 @@ jobs:
       - name: Install backend dependencies
         working-directory: backend
         run: uv sync --locked
+      # stdio MCP 单测会真实启动 bubblewrap 沙箱；runner 需要安装并放开非特权 userns
+      - name: Install sandbox runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Ruff
         working-directory: backend
         run: uv run ruff check .
