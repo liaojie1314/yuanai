@@ -6,6 +6,7 @@ import asyncio
 import logging
 import uuid
 from asyncio.subprocess import DEVNULL
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from subprocess import SubprocessError
@@ -29,10 +30,16 @@ from app.models.media_generation_task import (
 from app.models.message import Message, MessageRole
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
+    MediaLyricsGenerationError,
+    MediaLyricsProviderUnavailableError,
     MediaProviderError,
     MediaProviderUnavailableError,
     create_agnes_video,
+    generate_ace_step_music,
     generate_agnes_image,
+    generate_elevenlabs_music,
+    generate_huggingface_music,
+    generate_local_music,
     get_agnes_video,
 )
 from app.services.push_service import send_to_user
@@ -46,6 +53,7 @@ VIDEO_DEFAULT_OPTIONS: dict[str, str | int] = {
     "resolution": "720p",
     "durationSeconds": 5,
 }
+MUSIC_DEFAULT_OPTIONS: dict[str, str | int] = {"durationSeconds": 30}
 _IMAGE_OPTION_VALUES: dict[str, set[str | int]] = {
     "size": {"1K", "2K", "3K", "4K"},
     "ratio": {"1:1", "3:4", "4:3", "16:9", "9:16", "2:3", "3:2", "21:9"},
@@ -55,6 +63,7 @@ _VIDEO_OPTION_VALUES: dict[str, set[str | int]] = {
     "resolution": {"480p", "720p", "1080p"},
     "durationSeconds": {3, 5, 10, 18},
 }
+_MUSIC_OPTION_VALUES: dict[str, set[str | int]] = {"durationSeconds": {30}}
 _VIDEO_SIZE_PRESETS: dict[str, dict[str, tuple[int, int]]] = {
     "3:2": {"480p": (720, 480), "720p": (1152, 768), "1080p": (1620, 1080)},
     "16:9": {"480p": (832, 448), "720p": (1280, 720), "1080p": (1920, 1080)},
@@ -71,6 +80,7 @@ _MEDIA_EXTENSIONS = {
     "image/webp": "webp",
     "image/gif": "gif",
     "video/mp4": "mp4",
+    "audio/mpeg": "mp3",
 }
 _VIDEO_POSTER_MIME_TYPE = "image/jpeg"
 
@@ -95,10 +105,15 @@ class MediaGenerationOutputError(RuntimeError):
     """provider 返回的结果无法安全复制到 YuanAI 对象存储。"""
 
 
-def _task_model(kind: MediaGenerationType) -> str:
-    """返回只允许由专用任务 API 调用的 Agnes 模型 ID。"""
+def _task_model(kind: MediaGenerationType, options: Mapping[str, object] | None = None) -> str:
+    """返回只允许由专用任务 API 调用的媒体模型 ID。"""
     if kind is MediaGenerationType.image:
         return "agnes-image-2.1-flash"
+    if kind is MediaGenerationType.music:
+        lyrics = options.get("lyrics") if options is not None else None
+        if isinstance(lyrics, str) and lyrics.strip():
+            return "ace-step-v15-local"
+        return "musicgen-small-local"
     return "agnes-video-v2.0"
 
 
@@ -106,6 +121,8 @@ def _placeholder_content(kind: MediaGenerationType) -> str:
     """返回 provider 无关的 assistant 任务卡占位文案。"""
     if kind is MediaGenerationType.image:
         return "正在生成图片"
+    if kind is MediaGenerationType.music:
+        return "正在生成音乐"
     return "正在生成视频"
 
 
@@ -113,6 +130,8 @@ def _completed_content(kind: MediaGenerationType) -> str:
     """返回媒体任务成功后的简洁 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "图片生成完成"
+    if kind is MediaGenerationType.music:
+        return "音乐生成完成"
     return "视频生成完成"
 
 
@@ -120,6 +139,8 @@ def _failed_content(kind: MediaGenerationType) -> str:
     """返回媒体任务失败后的 provider 无关 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "图片生成失败"
+    if kind is MediaGenerationType.music:
+        return "音乐生成失败"
     return "视频生成失败"
 
 
@@ -127,27 +148,46 @@ def _canceled_content(kind: MediaGenerationType) -> str:
     """返回用户取消媒体任务后的 assistant 卡片文案。"""
     if kind is MediaGenerationType.image:
         return "已取消图片生成"
+    if kind is MediaGenerationType.music:
+        return "已取消音乐生成"
     return "已取消视频生成"
 
 
 def _normalized_options(request: CreateMediaGenerationRequest) -> dict[str, str | int]:
-    """验证并填充图片或视频的已支持选项，拒绝未经审查的 provider 参数。"""
+    """验证并填充媒体选项；歌词只允许出现在音乐任务中。"""
     if len(request.prompt) > settings.media_prompt_max_chars:
         raise MediaGenerationValidationError("提示词超过允许长度")
 
     if request.type is MediaGenerationType.image:
         defaults = IMAGE_DEFAULT_OPTIONS
         allowed_values = _IMAGE_OPTION_VALUES
+        allowed_keys = set(allowed_values)
+    elif request.type is MediaGenerationType.music:
+        if request.source_file_ids:
+            raise MediaGenerationValidationError("音乐生成不支持参考图片")
+        defaults = MUSIC_DEFAULT_OPTIONS
+        allowed_values = _MUSIC_OPTION_VALUES
+        allowed_keys = set(allowed_values) | {"lyrics"}
     else:
         defaults = VIDEO_DEFAULT_OPTIONS
         allowed_values = _VIDEO_OPTION_VALUES
+        allowed_keys = set(allowed_values)
 
-    unknown = set(request.options).difference(allowed_values)
+    unknown = set(request.options).difference(allowed_keys)
     if unknown:
         raise MediaGenerationValidationError("包含不支持的生成参数")
 
     normalized = dict(defaults)
     for name, value in request.options.items():
+        if request.type is MediaGenerationType.music and name == "lyrics":
+            if not isinstance(value, str):
+                raise MediaGenerationValidationError("歌词参数无效")
+            lyrics = value.strip()
+            if lyrics and len(lyrics) > settings.media_music_lyrics_max_chars:
+                raise MediaGenerationValidationError("歌词超过允许长度")
+            if lyrics:
+                normalized[name] = lyrics
+            continue
         if value not in allowed_values[name]:
             raise MediaGenerationValidationError("生成参数不受支持")
         normalized[name] = value
@@ -268,7 +308,7 @@ async def create_media_task(
         conv_id=conversation.id,
         role=MessageRole.assistant,
         content=_placeholder_content(request.type),
-        model=_task_model(request.type),
+        model=_task_model(request.type, options),
         # 与用户提问明确错开，保证所有客户端都把任务卡渲染为该轮回复。
         created_at=now + timedelta(microseconds=1),
     )
@@ -281,7 +321,7 @@ async def create_media_task(
         message_id=assistant_message.id,
         source_message_id=user_message.id,
         kind=request.type,
-        model=_task_model(request.type),
+        model=_task_model(request.type, options),
         prompt=request.prompt,
         request_options=cast(dict[str, object], options),
         source_file_ids=source_file_ids,
@@ -341,7 +381,7 @@ async def cancel_media_task(
 
 
 def _option_int(task: MediaGenerationTask, key: str) -> int:
-    """读取已在创建阶段验证的整数任务选项。"""
+    """读取已在创建任务时验证的整数选项。"""
     value = task.request_options.get(key)
     if isinstance(value, bool):
         raise MediaGenerationValidationError("任务参数无效")
@@ -351,11 +391,48 @@ def _option_int(task: MediaGenerationTask, key: str) -> int:
 
 
 def _option_string(task: MediaGenerationTask, key: str) -> str:
-    """读取已在创建阶段验证的字符串任务选项。"""
+    """读取已在创建任务时验证的字符串选项。"""
     value = task.request_options.get(key)
     if isinstance(value, str) and value:
         return value
     raise MediaGenerationValidationError("任务参数无效")
+
+
+async def _generate_music(
+    task: MediaGenerationTask,
+    duration_seconds: int,
+    *,
+    on_progress: Callable[[int], Awaitable[None]] | None = None,
+    on_provider_task_id: Callable[[str], Awaitable[None]] | None = None,
+) -> tuple[bytes, str]:
+    """按是否填写歌词选择 ACE-Step 或纯音乐 provider。"""
+    duration_ms = duration_seconds * 1_000
+    lyrics = task.request_options.get("lyrics")
+    if isinstance(lyrics, str) and lyrics.strip():
+        return await generate_ace_step_music(
+            task.prompt,
+            lyrics,
+            duration_ms=duration_ms,
+            provider_task_id=task.provider_task_id,
+            on_progress=on_progress,
+            on_task_id=on_provider_task_id,
+        )
+    provider = settings.media_music_provider.strip().lower()
+    if provider == "local":
+        return await generate_local_music(task.prompt, duration_ms=duration_ms)
+
+    try:
+        if provider == "elevenlabs":
+            return await generate_elevenlabs_music(task.prompt, duration_ms=duration_ms)
+        return await generate_huggingface_music(task.prompt, duration_ms=duration_ms)
+    except (MediaProviderError, MediaProviderUnavailableError) as primary_error:
+        if not settings.media_music_fallback_to_local:
+            raise
+        logger.warning("Music provider %s failed; using local MusicGen fallback", provider)
+        try:
+            return await generate_local_music(task.prompt, duration_ms=duration_ms)
+        except (MediaProviderError, MediaProviderUnavailableError) as fallback_error:
+            raise fallback_error from primary_error
 
 
 async def _claim_next_task() -> uuid.UUID | None:
@@ -384,12 +461,12 @@ async def _claim_next_task() -> uuid.UUID | None:
         if task is None:
             return None
 
-        was_interrupted_image = (
+        was_interrupted_task = (
             task.status is MediaGenerationStatus.running
-            and task.kind is MediaGenerationType.image
+            and task.kind in {MediaGenerationType.image, MediaGenerationType.music}
             and task.provider_task_id is None
         )
-        if was_interrupted_image and task.attempt_count >= 2:
+        if was_interrupted_task and task.attempt_count >= 2:
             task.status = MediaGenerationStatus.failed
             task.error_code = "MEDIA_WORKER_RECOVERY_EXHAUSTED"
             task.error_message = "生成任务恢复失败，请重试"
@@ -398,7 +475,7 @@ async def _claim_next_task() -> uuid.UUID | None:
             await db.commit()
             return None
 
-        if task.status is MediaGenerationStatus.queued or was_interrupted_image:
+        if task.status is MediaGenerationStatus.queued or was_interrupted_task:
             task.attempt_count += 1
         task.status = MediaGenerationStatus.running
         task.lease_expires_at = now + timedelta(seconds=settings.media_worker_lease_seconds)
@@ -453,6 +530,57 @@ async def _persist_provider_output(task: MediaGenerationTask, url: str) -> None:
     task.result_poster_s3_key = None
     if mime_type == "video/mp4":
         await _persist_video_poster(task, data)
+
+
+async def _persist_audio_output(
+    task: MediaGenerationTask, data: bytes, mime_type: str, duration_seconds: float
+) -> None:
+    """将 provider 音频转成 MP3 后保存，不持久化 provider 临时地址。"""
+    if mime_type not in {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/flac"} or not data:
+        raise MediaGenerationOutputError()
+    if len(data) > settings.media_max_output_bytes:
+        raise MediaGenerationOutputError()
+    if mime_type != "audio/mpeg":
+        with TemporaryDirectory(prefix="yuanai-music-") as temporary_directory:
+            source_path = Path(temporary_directory) / "source.audio"
+            output_path = Path(temporary_directory) / "output.mp3"
+            await asyncio.to_thread(source_path.write_bytes, data)
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    settings.media_ffmpeg_path,
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-nostdin",
+                    "-y",
+                    "-i",
+                    str(source_path),
+                    "-codec:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "128k",
+                    "-t",
+                    "30",
+                    str(output_path),
+                    stdout=DEVNULL,
+                    stderr=DEVNULL,
+                )
+                await process.wait()
+            except (OSError, SubprocessError) as error:
+                raise MediaGenerationOutputError() from error
+            if process.returncode != 0:
+                raise MediaGenerationOutputError()
+            data = await asyncio.to_thread(output_path.read_bytes)
+            if not data or len(data) > settings.media_max_output_bytes:
+                raise MediaGenerationOutputError()
+    key = f"generated/{task.user_id}/{task.id}.mp3"
+    # 转码后对象内容已经是 MP3，不能继续沿用 provider 的 WAV/FLAC MIME。
+    mime_type = "audio/mpeg"
+    await storage.put_object(key, data, mime_type)
+    task.result_s3_key = key
+    task.result_mime_type = mime_type
+    task.result_duration_seconds = duration_seconds
+    task.result_poster_s3_key = None
 
 
 async def _extract_video_poster(video_data: bytes) -> bytes | None:
@@ -557,9 +685,16 @@ async def _discard_canceled_result(db: AsyncSession, task: MediaGenerationTask) 
 
 def _failure_message(kind: MediaGenerationType, code: str) -> str:
     """将媒体领域错误码映射为不暴露 provider 细节的用户可读提示。"""
-    label = "图片" if kind is MediaGenerationType.image else "视频"
+    label = (
+        "图片"
+        if kind is MediaGenerationType.image
+        else "音乐"
+        if kind is MediaGenerationType.music
+        else "视频"
+    )
     messages = {
         "MEDIA_PROVIDER_UNAVAILABLE": "媒体生成服务尚未配置，请稍后重试",
+        "MEDIA_LYRICS_PROVIDER_UNAVAILABLE": "歌词音乐服务未启动，请先启动本机 ACE-Step",
         "MEDIA_PROVIDER_CREATE_FAILED": f"暂时无法创建{label}任务，请稍后重试",
         "MEDIA_PROVIDER_POLL_FAILED": f"无法继续查询{label}生成进度，请重试",
         "MEDIA_PROVIDER_GENERATION_FAILED": f"{label}生成未完成，请调整描述后重试",
@@ -610,6 +745,29 @@ async def _retry_video_poll(db: AsyncSession, task: MediaGenerationTask) -> None
     await db.commit()
 
 
+async def _retry_music_poll(db: AsyncSession, task: MediaGenerationTask) -> None:
+    """保留 ACE-Step 任务 ID，等待本机服务恢复后继续查询。"""
+    locked_task = await _lock_task_for_finalization(db, task)
+    if locked_task is None:
+        return
+    if locked_task.status is MediaGenerationStatus.canceled:
+        await _discard_canceled_result(db, locked_task)
+        return
+    locked_task.poll_failure_count += 1
+    if locked_task.poll_failure_count >= max(1, settings.ace_step_max_poll_failures):
+        locked_task.status = MediaGenerationStatus.failed
+        locked_task.error_code = "MEDIA_PROVIDER_POLL_FAILED"
+        locked_task.error_message = _failure_message(locked_task.kind, "MEDIA_PROVIDER_POLL_FAILED")
+        locked_task.lease_expires_at = None
+        await _set_message_content(db, locked_task, _failed_content(locked_task.kind))
+    else:
+        locked_task.status = MediaGenerationStatus.running
+        locked_task.lease_expires_at = datetime.now(UTC) + timedelta(
+            seconds=settings.ace_step_poll_interval_seconds
+        )
+    await db.commit()
+
+
 async def _complete_task(db: AsyncSession, task: MediaGenerationTask) -> None:
     """将已持久化成果标为完成，并复用现有跨端通知通道。"""
     locked_task = await _lock_task_for_finalization(db, task)
@@ -625,7 +783,13 @@ async def _complete_task(db: AsyncSession, task: MediaGenerationTask) -> None:
     locked_task.error_message = None
     await _set_message_content(db, locked_task, _completed_content(locked_task.kind))
     await db.commit()
-    title = "图片生成完成" if locked_task.kind is MediaGenerationType.image else "视频生成完成"
+    title = (
+        "图片生成完成"
+        if locked_task.kind is MediaGenerationType.image
+        else "音乐生成完成"
+        if locked_task.kind is MediaGenerationType.music
+        else "视频生成完成"
+    )
     await send_to_user(
         db,
         locked_task.user_id,
@@ -639,7 +803,7 @@ async def _complete_task(db: AsyncSession, task: MediaGenerationTask) -> None:
 
 
 async def _process_claimed_task(task_id: uuid.UUID) -> None:
-    """执行已租约认领任务的一次图片生成或视频轮询。"""
+    """执行已租约认领任务的一次图片、音乐生成或视频轮询。"""
     async with AsyncSessionLocal() as db:
         task = await db.get(MediaGenerationTask, task_id)
         if task is None or task.status is MediaGenerationStatus.canceled:
@@ -654,6 +818,71 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                     image_urls=image_urls,
                 )
                 await _persist_provider_output(task, result.url)
+                await _complete_task(db, task)
+                return
+
+            if task.kind is MediaGenerationType.music:
+                duration_seconds = _option_int(task, "durationSeconds")
+                has_lyrics = isinstance(task.request_options.get("lyrics"), str) and bool(
+                    str(task.request_options.get("lyrics", "")).strip()
+                )
+
+                async def persist_music_progress(progress: int) -> None:
+                    """回写 ACE-Step 队列进度，同时避免恢复已取消任务。"""
+                    result = await db.execute(
+                        select(MediaGenerationTask)
+                        .where(MediaGenerationTask.id == task.id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    current = result.scalar_one_or_none()
+                    if current is None or current.status is MediaGenerationStatus.canceled:
+                        return
+                    current.status = MediaGenerationStatus.running
+                    current.progress = max(current.progress, min(95, progress))
+                    current.lease_expires_at = datetime.now(UTC) + timedelta(
+                        seconds=max(120, settings.media_worker_lease_seconds)
+                    )
+                    task.status = current.status
+                    task.progress = current.progress
+                    task.lease_expires_at = current.lease_expires_at
+                    await db.commit()
+
+                async def persist_music_provider_task_id(provider_task_id: str) -> None:
+                    """持久化 ACE-Step ID，使进程重启后继续查询原任务。"""
+                    result = await db.execute(
+                        select(MediaGenerationTask)
+                        .where(MediaGenerationTask.id == task.id)
+                        .with_for_update()
+                        .execution_options(populate_existing=True)
+                    )
+                    current = result.scalar_one_or_none()
+                    if current is None or current.status is MediaGenerationStatus.canceled:
+                        return
+                    current.provider_task_id = provider_task_id
+                    current.status = MediaGenerationStatus.running
+                    current.progress = max(current.progress, 5)
+                    current.lease_expires_at = datetime.now(UTC) + timedelta(
+                        seconds=max(120, settings.media_worker_lease_seconds)
+                    )
+                    task.provider_task_id = current.provider_task_id
+                    task.status = current.status
+                    task.progress = current.progress
+                    task.lease_expires_at = current.lease_expires_at
+                    await db.commit()
+
+                music_data, mime_type = await _generate_music(
+                    task,
+                    duration_seconds,
+                    on_progress=persist_music_progress if has_lyrics else None,
+                    on_provider_task_id=persist_music_provider_task_id if has_lyrics else None,
+                )
+                await _persist_audio_output(
+                    task,
+                    music_data,
+                    mime_type,
+                    float(duration_seconds),
+                )
                 await _complete_task(db, task)
                 return
 
@@ -694,11 +923,22 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                 seconds=settings.media_video_poll_interval_seconds
             )
             await db.commit()
+        except MediaLyricsProviderUnavailableError:
+            await _fail_task(db, task, "MEDIA_LYRICS_PROVIDER_UNAVAILABLE")
+        except MediaLyricsGenerationError:
+            await _fail_task(db, task, "MEDIA_PROVIDER_GENERATION_FAILED")
         except MediaProviderUnavailableError:
             await _fail_task(db, task, "MEDIA_PROVIDER_UNAVAILABLE")
         except MediaProviderError:
             if task.kind is MediaGenerationType.video and task.provider_video_id is not None:
                 await _retry_video_poll(db, task)
+            elif (
+                task.kind is MediaGenerationType.music
+                and task.provider_task_id is not None
+                and isinstance(task.request_options.get("lyrics"), str)
+                and bool(str(task.request_options.get("lyrics", "")).strip())
+            ):
+                await _retry_music_poll(db, task)
             else:
                 await _fail_task(db, task, "MEDIA_PROVIDER_CREATE_FAILED")
         except MediaGenerationOutputError:

@@ -11,6 +11,7 @@ import {
   Notification,
   nativeTheme,
   protocol,
+  safeStorage,
   shell,
   Tray,
 } from 'electron'
@@ -36,6 +37,9 @@ import { DesktopAppearanceService } from './system/desktop-appearance'
 import { DesktopUpdaterService } from './system/desktop-updater'
 import { createTrayController, type TrayController } from './tray'
 import { installCloseToTrayBehavior } from './windows/close-to-tray'
+import { ExecutionNodeGrantStore } from './execution-node/grants'
+import { ExecutionNodeIdentityStore } from './execution-node/identity-store'
+import { ExecutionNodeService } from './execution-node/service'
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -48,14 +52,25 @@ protocol.registerSchemesAsPrivileged([
   },
 ])
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('password-store', 'gnome-libsecret')
+}
+
 const trustedWebContents = createTrustedWebContentsRegistry()
 const pendingDeepLinks: ParsedDeepLink[] = []
 let windowManager: WindowManager | undefined
 let desktopSystem: DesktopSystemService | undefined
 let desktopAppearance: DesktopAppearanceService | undefined
 let desktopUpdater: DesktopUpdaterService | undefined
+let executionNodeService: ExecutionNodeService | undefined
 let trayController: TrayController | undefined
 let isQuitting = false
+
+// 端到端测试通过该环境变量隔离用户数据目录，避免读写真实安装实例的会话。
+const isolatedUserData = process.env['YUANAI_USER_DATA_DIR']
+if (isolatedUserData) {
+  app.setPath('userData', isolatedUserData)
+}
 
 function trayIconPath(): string {
   return app.isPackaged
@@ -143,6 +158,7 @@ app.whenReady().then(() => {
   })
   desktopSystem = new DesktopSystemService({
     app,
+    appVersion: __APP_VERSION__,
     actionRegistry: createDesktopActionRegistry({
       toggleMainWindow: () => windowManager?.toggleMainWindow(),
     }),
@@ -182,6 +198,21 @@ app.whenReady().then(() => {
     onQuit: quitApplication,
     onShowMain: () => windowManager?.focusMain(),
   })
+  const executionNodeIdentityStore = new ExecutionNodeIdentityStore({ app, safeStorage })
+  const executionNodeGrants = new ExecutionNodeGrantStore({ app, safeStorage })
+  executionNodeService = new ExecutionNodeService({
+    identityStore: executionNodeIdentityStore,
+    grants: executionNodeGrants,
+    runtimeConfig,
+    app,
+    appVersion: __APP_VERSION__,
+    dialog,
+    shell,
+    onStatus: (status) =>
+      trustedWebContents.forEach((webContents) =>
+        webContents.send(IPC.events.executionNode, status)
+      ),
+  })
   setupIpc({
     ipcMain,
     guard: createIpcInvocationGuard({
@@ -215,6 +246,7 @@ app.whenReady().then(() => {
     shell,
     systemService: desktopSystem,
     updaterService: desktopUpdater,
+    executionNodeService,
     windows: {
       openLogin: () => windowManager?.open('login'),
       openRegister: () => windowManager?.open('register'),
@@ -232,6 +264,9 @@ app.whenReady().then(() => {
   void desktopUpdater.start().catch((error: unknown) => {
     console.error('Desktop updater startup failed', error)
   })
+  void executionNodeService.start().catch((error: unknown) => {
+    console.error('Execution node startup failed', error)
+  })
   void authStorage
     .getItem('yuanai-auth')
     .then((session) => windowManager?.open(session ? 'main' : 'login'))
@@ -246,6 +281,7 @@ app.whenReady().then(() => {
     desktopSystem?.dispose()
     desktopAppearance?.dispose()
     mediaPermissionPrompt.dispose()
+    executionNodeService?.stop()
     unregisterAppScheme()
     unregisterSelectedFileScheme()
   })

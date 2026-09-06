@@ -56,7 +56,7 @@ const mdRules = {
  *
  * - `react-native-markdown-display` 已内置 GFM + 表格 + 引用等
  * - 覆盖 `fence` (```lang) 与 `code_block` (4-space indent) 两个规则为自定义 CodeBlock
- * - 流式态：末块尾部追加光标（用 `▊` + 静态展示；MVP 不做动画避免与 markdown 排版冲突）
+ * - 流式态：末块尾部追加光标（用 `▊` + 静态展示；当前不做动画避免与 markdown 排版冲突）
  * - memo：流式期间列表高频重渲染，历史块 props 不变直接跳过（只有末块重新 parse）
  *
  * 块级职责划分：

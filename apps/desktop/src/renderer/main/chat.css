@@ -10,6 +10,7 @@
   --desktop-brand-hover: #2563eb;
   --desktop-brand-light: #eff6ff;
   --desktop-brand-border: #bfdbfe;
+  --desktop-danger: #dc2626;
   --desktop-border: #dbe7f6;
   --desktop-font-size: 13px;
   color: var(--desktop-fg);
@@ -36,6 +37,7 @@
   --desktop-brand-hover: #93c5fd;
   --desktop-brand-light: #1e3a5f;
   --desktop-brand-border: #28588f;
+  --desktop-danger: #fca5a5;
   --desktop-border: #2a3648;
   color-scheme: dark;
 }
@@ -2650,6 +2652,7 @@ textarea:focus-visible {
 }
 
 .desktop-chat__composer-shell {
+  position: relative;
   width: min(calc(100% - 40px), 800px);
   flex: 0 0 auto;
   margin: 0 auto 12px;
@@ -2695,18 +2698,55 @@ textarea:focus-visible {
 
 /* 媒体规格置于输入卡上方，模式由底部工具栏图标切换。 */
 .desktop-chat__media-options {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 2;
   display: flex;
-  min-height: 30px;
+  min-height: 24px;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 0 4px 5px;
+  padding: 0 4px 2px;
 }
 
 .desktop-chat__media-options > span {
   flex: 0 0 auto;
   color: var(--desktop-fg-subtle);
   font-size: 11px;
+}
+
+.desktop-chat__media-status {
+  min-height: 24px;
+  gap: 5px;
+  padding-bottom: 2px;
+  color: var(--desktop-brand-hover);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.desktop-chat__media-status > span {
+  color: var(--desktop-fg-subtle);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.desktop-chat__music-lyrics {
+  width: 100%;
+  min-height: 64px;
+  max-height: 120px;
+  padding: 8px 16px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--desktop-border);
+  background: transparent;
+  color: var(--desktop-fg);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: 0;
+}
+.desktop-chat__music-lyrics::placeholder {
+  color: var(--desktop-fg-subtle);
 }
 
 .desktop-chat__media-options > button {
@@ -2884,7 +2924,7 @@ textarea:focus-visible {
 .desktop-chat__media-task > .is-error {
   display: block;
   padding: 0 12px 10px;
-  color: #dc2626;
+  color: var(--desktop-danger);
 }
 .desktop-chat__media-progress {
   height: 3px;
@@ -2900,6 +2940,36 @@ textarea:focus-visible {
   position: relative;
   width: 100%;
   max-height: 380px;
+}
+.desktop-chat__media-audio-shell {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.desktop-chat__media-audio {
+  display: block;
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 40px;
+}
+.desktop-chat__media-audio-download {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  place-items: center;
+  border: 1px solid var(--desktop-border);
+  border-radius: 6px;
+  color: var(--desktop-fg-muted);
+  background: var(--desktop-bg-muted);
+}
+.desktop-chat__media-audio-download:hover,
+.desktop-chat__media-audio-download:focus-visible {
+  color: var(--desktop-brand-hover);
+  border-color: var(--desktop-brand-border);
+  background: var(--desktop-brand-light);
 }
 .desktop-chat__media-result {
   display: block;

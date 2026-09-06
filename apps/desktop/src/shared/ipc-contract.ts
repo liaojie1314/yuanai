@@ -183,6 +183,56 @@ export interface DesktopMediaPermissionResponse {
   granted: boolean
 }
 
+/** 执行节点客户端状态机的全部状态。 */
+export type DesktopExecutionNodeState =
+  'idle' | 'registering' | 'connecting' | 'online' | 'reconnecting' | 'error' | 'stopped'
+
+/** 可安全展示给 renderer 的执行节点任务视图；不含真实路径与凭证。 */
+export interface DesktopExecutionNodeJobView {
+  /** 服务端执行 ID。 */
+  executionId: string
+  /** 工具名。 */
+  toolName: string
+  /** 已解密的任务参数。 */
+  arguments: Record<string, unknown>
+  /** 任务有效期 ISO 字符串。 */
+  expiresAt: string
+}
+
+/** 可安全展示给 renderer 的资源授权视图；只含稳定 resource_id。 */
+export interface DesktopExecutionNodeGrantView {
+  /** 稳定资源 ID。 */
+  resourceId: string
+  /** 资源类型。 */
+  kind: 'file' | 'directory'
+  /** 不含路径的展示名称。 */
+  displayName: string
+  /** 创建时间 ISO 字符串。 */
+  createdAt: string
+}
+
+/** 执行节点的净化状态快照，绝不包含私钥、令牌与真实路径。 */
+export interface DesktopExecutionNodeStatus {
+  /** 客户端状态机状态。 */
+  state: DesktopExecutionNodeState
+  /** 已配对节点的服务端 ID；未配对时缺省。 */
+  nodeId?: string
+  /** 节点显示名称；未配对时缺省。 */
+  name?: string
+  /** 节点声明的能力白名单。 */
+  capabilities: string[]
+  /** 正在本地执行的任务；无则为 null。 */
+  currentJob: DesktopExecutionNodeJobView | null
+  /** 等待用户审批的任务；无则为 null。 */
+  pendingJob: DesktopExecutionNodeJobView | null
+  /** 最近一次错误码；无则为 null。 */
+  lastError: string | null
+  /** 节点令牌过期时间；未配对时为 null。 */
+  tokenExpiresAt: string | null
+  /** 当前有效的资源授权列表。 */
+  grants: DesktopExecutionNodeGrantView[]
+}
+
 /** 允许由主进程打开的固定帮助链接。 */
 export type ExternalLinkId = 'documentation' | 'repository' | 'feedback' | 'privacy'
 
@@ -238,6 +288,15 @@ export const IPC = {
     openExternal: 'shell:open-external',
     openExternalUrl: 'shell:open-external-url',
   },
+  executionNode: {
+    getStatus: 'execution-node:get-status',
+    register: 'execution-node:register',
+    disconnect: 'execution-node:disconnect',
+    removeNode: 'execution-node:remove-node',
+    respondJob: 'execution-node:respond-job',
+    createGrant: 'execution-node:create-grant',
+    revokeGrant: 'execution-node:revoke-grant',
+  },
   events: {
     authChanged: 'event:auth-changed',
     prefsChanged: 'event:prefs-changed',
@@ -250,5 +309,6 @@ export const IPC = {
     notificationNavigate: 'event:notification-navigate',
     updater: 'event:updater',
     mediaPermissionRequested: 'event:media-permission-requested',
+    executionNode: 'event:execution-node',
   },
 } as const

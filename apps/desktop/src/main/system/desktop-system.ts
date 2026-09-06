@@ -47,6 +47,8 @@ export interface DesktopSystemOptions {
   actionRegistry: DesktopActionRegistry
   /** 当前 Electron 平台。 */
   platform: NodeJS.Platform
+  /** 构建期注入的 package.json 版本号；缺失时退回 Electron 运行时版本。 */
+  appVersion?: string
   /** 可选的原生通知实现。 */
   notifications?: DesktopNotificationApi
 }
@@ -75,7 +77,10 @@ export class DesktopSystemService {
 
   /** 获取可安全发送给 renderer 的应用信息。 */
   public getInfo(): DesktopAppInfo {
-    return { platform: this.options.platform, version: this.options.app.getVersion() }
+    return {
+      platform: this.options.platform,
+      version: this.options.appVersion ?? this.options.app.getVersion(),
+    }
   }
 
   /** 替换全局快捷键，仅在注册成功后写入偏好。 */

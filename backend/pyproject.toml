@@ -22,6 +22,10 @@ dependencies = [
     "python-docx>=1.1.0",
     "openpyxl>=3.1.0",
     "qrcode[pil]>=7.4.2",
+    "accelerate>=0.26.0",
+    "soundfile>=0.12.1",
+    "torch==2.6.0",
+    "transformers==4.48.3",
 ]
 
 [project.optional-dependencies]

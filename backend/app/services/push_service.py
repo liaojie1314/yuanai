@@ -88,7 +88,7 @@ async def _send_web(db: AsyncSession, user_id: object, payload: dict[str, object
                 dead_endpoints.append(sub.endpoint)
             else:
                 logger.warning("web push 发送失败 (status=%s): %s", status, e)
-        except Exception as e:  # noqa: BLE001 - 收尾阶段不能让推送异常冒泡打断响应
+        except Exception as e:  # noqa: BLE001 - 推送异常不能冒泡打断响应
             logger.warning("web push 发送异常: %s", e)
 
     if dead_endpoints:
@@ -135,7 +135,7 @@ async def _send_expo(db: AsyncSession, user_id: object, payload: dict[str, objec
                 dead_tokens.append(row.token)
             else:
                 logger.warning("expo push ticket 错误: %s", ticket)
-    except Exception as e:  # noqa: BLE001 - 收尾阶段不能让推送异常冒泡打断响应
+    except Exception as e:  # noqa: BLE001 - 推送异常不能冒泡打断响应
         logger.warning("expo push 发送异常: %s", e)
 
     if dead_tokens:

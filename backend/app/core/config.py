@@ -1,5 +1,6 @@
 from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SearchProviderName = Literal["auto", "searxng", "brave", "tavily", "disabled"]
@@ -53,6 +54,31 @@ class Settings(BaseSettings):
     agnes_api_key: str = ""
     # AssemblyAI 语音转写 key，使用 ASSEMBLYAI_API_KEY 环境变量注入，不提交到仓库
     assemblyai_api_key: str = ""
+    # ElevenLabs Music key，使用 ELEVENLABS_API_KEY 环境变量注入，不提交到仓库
+    elevenlabs_api_key: str = ""
+    # Hugging Face Inference API token，使用 HF_TOKEN 环境变量注入，不提交到仓库
+    hf_token: str = ""
+    huggingface_music_model: str = "facebook/musicgen-small"
+    huggingface_music_base_url: str = "https://router.huggingface.co/hf-inference"
+    # 本机 ACE-Step REST 服务；仅歌词音乐任务使用，不把模型加载进 FastAPI。
+    ace_step_base_url: str = "http://127.0.0.1:8001"
+    ace_step_api_key: str = ""
+    ace_step_model: str = "acestep-v15-turbo"
+    ace_step_timeout_seconds: int = 900
+    ace_step_poll_interval_seconds: float = 2.0
+    ace_step_max_attempts: int = 3
+    ace_step_max_poll_failures: int = 5
+    # local 使用本机 MusicGen；huggingface/elevenlabs 为显式远程 provider。
+    media_music_provider: str = "local"
+    media_music_local_model: str = "facebook/musicgen-small"
+    media_music_local_device: str = "auto"
+    # 生产任务只读已缓存模型，避免 Hugging Face 网络重试把任务卡在 0%。
+    media_music_local_files_only: bool = True
+    media_music_local_max_new_tokens: int = 1_500
+    media_music_fallback_to_local: bool = True
+    media_music_max_attempts: int = 4
+    media_music_retry_delay_seconds: float = 2.0
+    media_music_lyrics_max_chars: int = 4_000
     # 视觉模型以内联 data URL 接收图片，避免云端模型无法访问内网对象存储 URL。
     ai_inline_image_max_bytes: int = 10 * 1024 * 1024
 
@@ -68,6 +94,7 @@ class Settings(BaseSettings):
     media_worker_poll_interval_seconds: float = 1.0
     media_worker_lease_seconds: int = 60
     media_image_timeout_seconds: int = 90
+    media_music_timeout_seconds: int = 120
     media_video_poll_timeout_seconds: int = 20
     media_video_poll_interval_seconds: float = 5.0
     media_video_max_poll_failures: int = 5
@@ -75,6 +102,27 @@ class Settings(BaseSettings):
     media_ffmpeg_path: str = "ffmpeg"
     media_video_poster_timeout_seconds: int = 12
     media_video_poster_max_bytes: int = 2 * 1024 * 1024
+
+    # 工具 Artifact 下载链接的短期签名有效期。
+    tool_artifact_url_ttl_seconds: int = 300
+
+    # SecretStore 主密钥；只用于数据库 Secret 的 AES-GCM 加解密，不回退到 JWT 密钥。
+    secret_store_encryption_key: str = ""
+
+    # stdio MCP 只允许部署显式列出的可执行文件，空值表示关闭此 transport。
+    mcp_stdio_command_allowlist: str = ""
+    mcp_stdio_max_arguments: int = 16
+    mcp_stdio_timeout_seconds: float = 30.0
+    mcp_stdio_max_output_bytes: int = 64 * 1024
+
+    # Desktop 节点注册、握手和任务回传协议。
+    execution_node_token_expire_minutes: int = 60
+    execution_node_challenge_timeout_seconds: int = 10
+    execution_node_job_offer_ttl_seconds: int = 120
+    execution_node_result_max_bytes: int = 64 * 1024
+    execution_node_protocol_version: str = "1"
+    execution_node_min_protocol_version: str = "1"
+    execution_node_encryption_key: str = ""
 
     # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
     search_provider: SearchProviderName = "auto"
@@ -107,6 +155,16 @@ class Settings(BaseSettings):
     verify_code_send_interval_seconds: int = 60
     # 测试环境后门：非空时跳过真实发送和 Redis 校验，任何 6 位数字都视作正确
     verify_code_debug_bypass: str = ""
+
+    @model_validator(mode="after")
+    def _require_separated_execution_node_key(self) -> "Settings":
+        """生产模式必须使用独立于 JWT 签名密钥的节点参数加密密钥。"""
+
+        if not self.debug and not self.execution_node_encryption_key:
+            raise ValueError(
+                "EXECUTION_NODE_ENCRYPTION_KEY must be configured when debug is disabled"
+            )
+        return self
 
     # ── 三方登录 / OAuth ──────────────────────────────────────
     # GitHub OAuth App：在 GitHub Settings → Developer settings → OAuth Apps 创建

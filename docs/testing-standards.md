@@ -70,8 +70,12 @@ pnpm add -D vitest @vitest/coverage-v8 @testing-library/react \
 # Web app（额外 Playwright）
 cd apps/web
 pnpm add -D @playwright/test
-npx playwright install chromium firefox webkit
 ```
+
+本项目不下载 Playwright 浏览器。需要浏览器二进制时，优先使用已有的
+`/usr/bin/google-chrome`，或通过项目测试配置提供已有 `executablePath`；先确认文件存在且可执行。
+缺少系统浏览器时应记录环境阻塞或按测试合同明确 skip，不能把下载浏览器后的本地结果当作默认验收
+环境，也不要直接运行 `playwright install`。
 
 ### Vitest 配置
 
@@ -729,6 +733,21 @@ describe('对话流程', () => {
 **位置**：`apps/web/tests/e2e/`  
 **触发时机**：仅在 CI 的 PR to main/dev 时运行，本地开发不强制
 
+E2E 必须使用完整运行环境和项目 `package.json` 脚本。测试通过是测试实际执行并完成断言；由于
+后端不可达、safeStorage 不可用、浏览器二进制缺失或外部凭据缺失而 skip/提前失败，均只能记录为
+未验收或环境阻塞，不能标记为通过。
+
+### Desktop Electron E2E
+
+```bash
+pnpm --filter @yuanai/desktop test:e2e
+```
+
+该脚本会按 Desktop 的 package script 构建 unpacked 应用并运行 Electron E2E。真实执行节点验收
+还要求后端 API、测试账号和可用的 safeStorage；Browser Worker 相关测试使用已有系统 Chrome 或
+已有 `executablePath`，不下载 Playwright 浏览器。配对、WSS challenge、Job 接收、本地审批、
+签名回调、ACK、取消、重连/重放和撤销必须以成功完成的真实 E2E 记录作为证据。
+
 ### 配置 `apps/web/playwright.config.ts`
 
 ```typescript
@@ -1275,6 +1294,13 @@ class TestStream:
 - [ ] 模型切换 → 下次发送使用新模型
 - [ ] 文件上传 → 预览 → 随消息发送
 - [ ] 主题切换持久化（刷新后保留）
+
+### 新增用户可见能力的跨端 UI 验收
+
+- [ ] 每个新增的用户可见文案均通过对应客户端既有 i18n 资源提供；不在组件中硬编码某一语言。
+- [ ] Web、Mobile、Desktop 分别确认本阶段范围内的入口、进行中、成功、失败和不可用状态；不支持的端必须在规格中明确排除。
+- [ ] 新增组件使用语义主题 token，浅色和深色主题下的正文、禁用态、状态色与焦点态均保持可读；不得以原始颜色值绕开主题系统。
+- [ ] 至少有一个自动化断言覆盖英文资源下的新增关键控件文案，另有一个断言覆盖新增状态色来自主题 token 或 CSS 变量。
 
 ### 后端集成测试（pytest）
 

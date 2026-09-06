@@ -1,0 +1,297 @@
+"""受控工具运行时 API schema。"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Literal
+
+from pydantic import AliasChoices, Field, field_validator, model_validator
+
+from app.schemas.agent import AgentSchema
+
+
+class ToolCatalogResponse(AgentSchema):
+    """客户端工具目录项；不含任何密钥。"""
+
+    name: str
+    version: str = "1.0.0"
+    description: str
+    input_schema: dict[str, object]
+    output_schema: dict[str, object] | None
+    risk_level: str
+    side_effect: str
+    execution_location: str
+    execution_locations: list[str]
+    required_scopes: list[str]
+    timeout_seconds: int
+    max_output_bytes: int
+    idempotent: bool
+    supports_cancel: bool
+    tags: list[str]
+
+
+class ToolConnectionCreateRequest(AgentSchema):
+    """创建连接请求；服务端只保存 secret_ref，不接受明文 secret。"""
+
+    kind: str = Field(pattern="^(oauth|api_key|mcp_http|mcp_stdio|desktop_local)$")
+    provider: str = Field(min_length=1, max_length=100)
+    display_name: str = Field(min_length=1, max_length=120)
+    secret_ref: str | None = Field(default=None, max_length=200)
+    scopes: list[str] = Field(default_factory=list, max_length=50)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ToolConnectionResponse(AgentSchema):
+    """连接安全响应。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    kind: str
+    provider: str
+    display_name: str
+    secret_ref: str | None
+    scopes: list[str]
+    status: str
+    metadata: dict[str, object] = Field(
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+        serialization_alias="metadata",
+    )
+    last_verified_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ToolExecuteRequest(AgentSchema):
+    """手动执行工具请求；外部副作用仍必须走审批。"""
+
+    tool_name: str = Field(min_length=1, max_length=100)
+    arguments: dict[str, object] = Field(default_factory=dict)
+    execution_location: str = Field(default="cloud", pattern="^(cloud|desktop)$")
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=120)
+    run_id: uuid.UUID | None = None
+    node_id: uuid.UUID | None = None
+
+
+class ToolExecutionResponse(AgentSchema):
+    """工具执行审计快照。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    run_id: uuid.UUID | None
+    step_id: uuid.UUID | None
+    tool_name: str
+    tool_version: str
+    connection_id: uuid.UUID | None
+    mcp_server_id: uuid.UUID | None
+    execution_location: str
+    node_id: uuid.UUID | None
+    risk_level: str
+    side_effect: str
+    arguments_preview: dict[str, object]
+    arguments_hash: str
+    idempotency_key: str | None
+    status: str
+    result_summary: str | None
+    result_json: dict[str, object] | None
+    artifact_ids: list[str]
+    error_code: str | None
+    error_message: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    node_delivery_status: str | None
+    node_progress: int | None
+    node_last_delivered_at: datetime | None
+    node_acknowledged_at: datetime | None
+    created_at: datetime
+
+
+class ArtifactResponse(AgentSchema):
+    """Artifact 元数据和短期访问地址。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    run_id: uuid.UUID | None
+    tool_execution_id: uuid.UUID | None
+    kind: str
+    name: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    sensitivity: str
+    retention_policy: str
+    expires_at: datetime | None
+    preview: dict[str, object] | None = Field(
+        validation_alias=AliasChoices("preview", "preview_json"),
+        serialization_alias="preview",
+    )
+    download_url: str
+    created_at: datetime
+
+
+class ExecutionNodePairRequest(AgentSchema):
+    """创建桌面节点配对挑战。"""
+
+    name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=40)
+    app_version: str = Field(min_length=1, max_length=40)
+    capabilities: list[str] = Field(default_factory=list, max_length=100)
+
+
+class ExecutionNodeResponse(AgentSchema):
+    """桌面节点安全响应。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    name: str
+    platform: str
+    app_version: str
+    capabilities: list[str]
+    status: str
+    last_seen_at: datetime | None
+    policy: dict[str, object]
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExecutionNodePairResponse(ExecutionNodeResponse):
+    """仅创建时返回一次的配对码。"""
+
+    pairing_code: str
+    expires_at: datetime
+
+
+class ExecutionNodeRegisterRequest(AgentSchema):
+    """使用一次性配对码登记 Desktop 节点公钥。"""
+
+    pairing_code: str = Field(min_length=20, max_length=100)
+    public_key: str = Field(min_length=40, max_length=100)
+    name: str = Field(min_length=1, max_length=120)
+    platform: str = Field(min_length=1, max_length=40)
+    app_version: str = Field(min_length=1, max_length=40)
+    capabilities: list[str] = Field(default_factory=list, max_length=100)
+    protocol_version: str = Field(min_length=1, max_length=20)
+
+
+class ExecutionNodeRegisterResponse(AgentSchema):
+    """节点登记成功后获得的短期会话凭证。"""
+
+    node_id: uuid.UUID
+    user_id: uuid.UUID
+    node_token: str
+    expires_at: datetime
+    protocol_version: str
+
+
+class ExecutionNodeTokenRenewalRequest(AgentSchema):
+    """节点使用登记私钥签署旧令牌以换取新会话凭证。"""
+
+    node_id: uuid.UUID
+    token: str = Field(min_length=20, max_length=2048)
+    signature: str = Field(min_length=80, max_length=200)
+
+
+class ExecutionNodeTokenResponse(AgentSchema):
+    """节点令牌续期结果。"""
+
+    node_id: uuid.UUID
+    node_token: str
+    expires_at: datetime
+    protocol_version: str
+
+
+class ResourceGrantCreateRequest(AgentSchema):
+    """桌面资源授权元数据；真实路径只保存在节点本地。"""
+
+    node_id: uuid.UUID
+    kind: str = Field(pattern="^(file|directory|browser_profile|application)$")
+    resource_id: str = Field(min_length=1, max_length=200)
+    display_name: str = Field(min_length=1, max_length=200)
+    scopes: list[str] = Field(default_factory=list, max_length=50)
+
+
+class ResourceGrantResponse(AgentSchema):
+    """资源授权安全响应。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    node_id: uuid.UUID
+    kind: str
+    resource_id: str
+    display_name: str
+    scopes: list[str]
+    revoked_at: datetime | None
+    created_at: datetime
+
+
+class McpServerCreateRequest(AgentSchema):
+    """添加远程 HTTP 或受控 stdio MCP Server。"""
+
+    name: str = Field(min_length=1, max_length=120)
+    transport: Literal["streamable_http", "stdio"] = "streamable_http"
+    endpoint_url: str | None = Field(default=None, max_length=500)
+    command: str | None = Field(default=None, max_length=255)
+    command_args: list[str] = Field(default_factory=list, max_length=16)
+    connection_id: uuid.UUID
+
+    @model_validator(mode="after")
+    def validate_transport_fields(self) -> McpServerCreateRequest:
+        """确保 transport 只使用对应的连接和启动字段。"""
+
+        if self.transport == "streamable_http" and not self.endpoint_url:
+            raise ValueError("endpoint_url is required for HTTP MCP")
+        if self.transport == "stdio" and (not self.command or self.endpoint_url is not None):
+            raise ValueError("stdio MCP requires command and forbids endpoint_url")
+        if self.transport == "streamable_http" and (self.command or self.command_args):
+            raise ValueError("HTTP MCP forbids command fields")
+        return self
+
+    @field_validator("endpoint_url")
+    @classmethod
+    def reject_credentials_in_url(cls, value: str | None) -> str | None:
+        """拒绝把用户名或密码写进远程 MCP URL。"""
+
+        if value is None:
+            return None
+        if "@" in value.split("//", 1)[-1].split("/", 1)[0]:
+            raise ValueError("MCP endpoint cannot contain credentials")
+        return value
+
+
+class McpServerResponse(AgentSchema):
+    """MCP Server schema 快照。"""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    connection_id: uuid.UUID | None
+    name: str
+    endpoint_url: str | None
+    command: str | None
+    command_args: list[str]
+    transport: str
+    status: str
+    schema_snapshot: dict[str, object] | None
+    schema_hash: str | None
+    enabled_tools: list[str]
+    metadata: dict[str, object] = Field(
+        validation_alias=AliasChoices("metadata_json", "metadata"),
+        serialization_alias="metadata",
+    )
+    last_verified_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class McpToolExecuteRequest(AgentSchema):
+    """调用已验证并明确启用的 MCP 工具。"""
+
+    tool_name: str = Field(min_length=1, max_length=100)
+    arguments: dict[str, object] = Field(default_factory=dict)
+    run_id: uuid.UUID | None = None
+    approval_id: uuid.UUID | None = None
+
+
+class McpEnableToolsRequest(AgentSchema):
+    """明确启用 MCP 工具列表。"""
+
+    enabled_tools: list[str] = Field(default_factory=list, max_length=100)

@@ -49,3 +49,25 @@ export {
 export * from './useFileUpload'
 export * from './useFilePreview'
 export * from './useAgentRun'
+export {
+  isTerminalToolExecution,
+  useCancelToolExecution,
+  useCreateMcpServer,
+  useCreateResourceGrant,
+  useCreateToolConnection,
+  useDeleteArtifact,
+  useDeleteToolConnection,
+  useDiscoverMcpServer,
+  useEnableMcpTools,
+  useExecutionNodes,
+  useExecuteMcpTool,
+  useExecuteTool,
+  useMcpServers,
+  usePairExecutionNode,
+  useResourceGrants,
+  useRevokeExecutionNode,
+  useToolArtifacts,
+  useToolCatalog,
+  useToolConnections,
+  useToolExecutions,
+} from './useToolQueries'

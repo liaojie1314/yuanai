@@ -44,7 +44,9 @@ TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_o
 _TRUNCATE_SQL = text(
     "TRUNCATE TABLE qr_login_events, qr_login_challenges, message_files, messages, "
     "file_upload_sessions, files, "
-    "conversation_shares, conversations, users RESTART IDENTITY CASCADE"
+    "conversation_shares, conversations, tool_executions, artifacts, resource_grants, "
+    "execution_nodes, mcp_servers, tool_connections, secret_records, users "
+    "RESTART IDENTITY CASCADE"
 )
 
 

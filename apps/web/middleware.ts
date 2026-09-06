@@ -22,6 +22,11 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.next()
   }
 
+  // The empty chat home renders a read-only guest shell; persisted conversations remain protected.
+  if (pathname === '/chat') {
+    return NextResponse.next()
+  }
+
   const auth = request.cookies.get('yuanai-auth')
   if (!auth?.value) {
     const loginUrl = new URL('/login', request.url)

@@ -228,6 +228,16 @@ textarea:focus-visible {
   color: #243149;
   font-size: 14px;
 }
+/* 标题与描述同组：分隔线整体移到描述下方。 */
+.settings-block-header {
+  border-bottom: 1px solid var(--desktop-settings-divider);
+}
+.settings-block-header h3 {
+  border-bottom: 0;
+}
+.settings-block-header .settings-field-hint {
+  margin: 0 20px 10px;
+}
 .settings-block--danger {
   border-color: #fecaca;
 }
@@ -267,6 +277,7 @@ textarea:focus-visible {
   border-radius: 5px;
   font-size: 13px;
   font-weight: 650;
+  white-space: nowrap;
 }
 .settings-button {
   padding: 0 12px;
@@ -404,6 +415,12 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
 }
+/* 纯按钮组：避免首个按钮落入 1fr 栅格列被拉伸错位。 */
+.settings-inline-field--actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .settings-icon-button {
   display: grid;
   width: 38px;
@@ -426,10 +443,19 @@ textarea:focus-visible {
 }
 .settings-field-hint,
 .settings-field-feedback {
-  margin: -10px 20px 20px;
+  margin: 0 20px 16px;
   color: #718096;
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* 紧跟输入框的提示收紧上间距；跟随标题或分隔行的提示保持正常间距，避免压线。 */
+.settings-field + .settings-field-hint,
+.settings-field + .settings-field-feedback {
+  margin-top: -10px;
+}
+.settings-row + .settings-field-hint {
+  margin-top: 2px;
 }
 .settings-field-feedback {
   color: #2563eb;
@@ -1004,4 +1030,38 @@ textarea:focus-visible {
   .settings-dialog-backdrop {
     padding: 14px;
   }
+}
+
+.settings-spin {
+  animation: settings-spin 1s linear infinite;
+}
+
+@keyframes settings-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.settings-grant-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.settings-grant-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--desktop-settings-border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.settings-grant-list li span:nth-child(2) {
+  color: var(--settings-muted, inherit);
+  font-size: 12px;
 }

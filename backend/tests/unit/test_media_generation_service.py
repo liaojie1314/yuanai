@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
@@ -20,12 +21,21 @@ from app.models.media_generation_task import (
 from app.models.message import Message
 from app.models.user import User
 from app.schemas.media_generation import CreateMediaGenerationRequest
-from app.services.ai_service import AgnesImageResult, MediaProviderError
+from app.services.ai_service import (
+    AgnesImageResult,
+    MediaLyricsGenerationError,
+    MediaProviderError,
+    MediaProviderUnavailableError,
+)
 from tests.conftest import TestSessionLocal
 
 
 async def _create_task(
-    db: AsyncSession, user: User, *, kind: MediaGenerationType = MediaGenerationType.image
+    db: AsyncSession,
+    user: User,
+    *,
+    kind: MediaGenerationType = MediaGenerationType.image,
+    lyrics: str | None = None,
 ) -> MediaGenerationTask:
     """创建可由 worker 认领的测试媒体任务。"""
     conversation = Conversation(user_id=user.id, title="媒体 worker 测试", model="agnes-2.5-flash")
@@ -39,6 +49,7 @@ async def _create_task(
             conversation_id=conversation.id,
             type=kind,
             prompt="测试媒体生成",
+            options={"lyrics": lyrics} if lyrics is not None else {},
         ),
         db=db,
     )
@@ -88,6 +99,207 @@ async def test_image_worker_persists_output_and_notifies(
     assert completed.result_s3_key == f"generated/{task.user_id}/{task.id}.png"
     assert await _message_content(db, completed) == "图片生成完成"
     notify.assert_awaited_once()
+
+
+async def test_music_worker_persists_mp3_output_and_notifies(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """音乐任务保存 MP3 到用户隔离的 generated 前缀并完成通知。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.music)
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    monkeypatch.setattr(media_service.settings, "media_music_provider", "local")
+    monkeypatch.setattr(
+        media_service,
+        "generate_local_music",
+        AsyncMock(return_value=(b"mp3-bytes", "audio/mpeg")),
+    )
+    put_object = AsyncMock()
+    notify = AsyncMock()
+    monkeypatch.setattr(media_service.storage, "put_object", put_object)
+    monkeypatch.setattr(media_service, "send_to_user", notify)
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    completed = await _load_task(db, task.id)
+    assert completed.status is MediaGenerationStatus.succeeded
+    assert completed.result_s3_key == f"generated/{task.user_id}/{task.id}.mp3"
+    assert completed.result_mime_type == "audio/mpeg"
+    assert completed.result_duration_seconds == 30
+    assert await _message_content(db, completed) == "音乐生成完成"
+    put_object.assert_awaited_once_with(completed.result_s3_key, b"mp3-bytes", "audio/mpeg")
+    notify.assert_awaited_once()
+
+
+async def test_wav_music_output_is_persisted_with_mp3_mime(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """WAV/FLAC provider 输出转码后必须以 audio/mpeg 写入对象存储。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.music)
+
+    class FakeProcess:
+        returncode = 0
+
+        async def wait(self) -> None:
+            output_path = Path(str(fake_args[-1]))
+            output_path.write_bytes(b"mp3-bytes")
+
+    fake_args: tuple[object, ...] = ()
+
+    async def fake_create_subprocess_exec(*args: object, **kwargs: object) -> FakeProcess:
+        nonlocal fake_args
+        fake_args = args
+        del kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(
+        media_service.asyncio, "create_subprocess_exec", fake_create_subprocess_exec
+    )
+    put_object = AsyncMock()
+    monkeypatch.setattr(media_service.storage, "put_object", put_object)
+
+    await media_service._persist_audio_output(task, b"wav-bytes", "audio/wav", 30)
+
+    put_object.assert_awaited_once_with(
+        f"generated/{task.user_id}/{task.id}.mp3", b"mp3-bytes", "audio/mpeg"
+    )
+    assert task.result_mime_type == "audio/mpeg"
+
+
+async def test_remote_music_falls_back_to_local_musicgen(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """远程 provider 失败时应自动使用本机 MusicGen 完成任务。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.music)
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    monkeypatch.setattr(media_service.settings, "media_music_provider", "huggingface")
+    monkeypatch.setattr(media_service.settings, "media_music_fallback_to_local", True)
+    remote = AsyncMock(side_effect=MediaProviderUnavailableError())
+    local = AsyncMock(return_value=(b"local-wav", "audio/wav"))
+    monkeypatch.setattr(media_service, "generate_huggingface_music", remote)
+    monkeypatch.setattr(media_service, "generate_local_music", local)
+    monkeypatch.setattr(media_service, "_persist_audio_output", AsyncMock())
+    monkeypatch.setattr(media_service, "send_to_user", AsyncMock())
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    completed = await _load_task(db, task.id)
+    assert completed.status is MediaGenerationStatus.succeeded
+    remote.assert_awaited_once()
+    local.assert_awaited_once_with(task.prompt, duration_ms=30_000)
+
+
+async def test_lyrics_music_persists_ace_step_task_id_for_poll_recovery(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ACE-Step 已提交后暂时失败时，worker 必须保留任务 ID 以便后续恢复。"""
+    task = await _create_task(
+        db, test_user, kind=MediaGenerationType.music, lyrics="[Verse]\n回到夏天"
+    )
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    monkeypatch.setattr(media_service.settings, "ace_step_max_poll_failures", 3)
+
+    async def submit_then_fail(
+        _prompt: str,
+        _lyrics: str,
+        **kwargs: object,
+    ) -> tuple[bytes, str]:
+        callback = kwargs["on_task_id"]
+        assert callable(callback)
+        await callback("ace-task-1")
+        raise MediaProviderError()
+
+    monkeypatch.setattr(media_service, "generate_ace_step_music", submit_then_fail)
+    monkeypatch.setattr(media_service, "generate_local_music", AsyncMock())
+    monkeypatch.setattr(media_service, "send_to_user", AsyncMock())
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    retrying = await _load_task(db, task.id)
+    assert retrying.status is MediaGenerationStatus.running
+    assert retrying.provider_task_id == "ace-task-1"
+    assert retrying.poll_failure_count == 1
+    media_service.generate_local_music.assert_not_awaited()
+
+
+async def test_lyrics_music_terminal_provider_failure_does_not_retry_polling(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ACE-Step 已给出终态失败时不能伪装成短暂轮询断连。"""
+    task = await _create_task(
+        db, test_user, kind=MediaGenerationType.music, lyrics="[Verse]\\n回到夏天"
+    )
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+
+    async def submit_then_fail(
+        _prompt: str,
+        _lyrics: str,
+        **kwargs: object,
+    ) -> tuple[bytes, str]:
+        callback = kwargs["on_task_id"]
+        assert callable(callback)
+        await callback("ace-task-terminal-failure")
+        raise MediaLyricsGenerationError()
+
+    monkeypatch.setattr(media_service, "generate_ace_step_music", submit_then_fail)
+    monkeypatch.setattr(media_service, "send_to_user", AsyncMock())
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    failed = await _load_task(db, task.id)
+    assert failed.status is MediaGenerationStatus.failed
+    assert failed.provider_task_id == "ace-task-terminal-failure"
+    assert failed.poll_failure_count == 0
+    assert failed.error_code == "MEDIA_PROVIDER_GENERATION_FAILED"
+    assert failed.error_message == "音乐生成未完成，请调整描述后重试"
+
+
+async def test_lyrics_music_never_falls_back_to_instrumental(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """歌词任务失败时不能静默改用 MusicGen 生成无歌词音乐。"""
+    task = await _create_task(
+        db, test_user, kind=MediaGenerationType.music, lyrics="[Verse]\n新的歌"
+    )
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    ace_step = AsyncMock(side_effect=MediaProviderError())
+    local = AsyncMock()
+    monkeypatch.setattr(media_service, "generate_ace_step_music", ace_step)
+    monkeypatch.setattr(media_service, "generate_local_music", local)
+    monkeypatch.setattr(media_service, "send_to_user", AsyncMock())
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    failed = await _load_task(db, task.id)
+    assert failed.status is MediaGenerationStatus.failed
+    ace_step.assert_awaited_once()
+    local.assert_not_awaited()
+
+
+async def test_music_task_rejects_provider_options_and_source_files(
+    db: AsyncSession, test_user: User
+) -> None:
+    """音乐仅接受固定时长，且不能携带图片/视频参数或附件。"""
+    conversation = Conversation(user_id=test_user.id, title="音乐参数测试", model="agnes-2.5-flash")
+    db.add(conversation)
+    await db.commit()
+    await db.refresh(conversation)
+    with pytest.raises(media_service.MediaGenerationValidationError):
+        await media_service.create_media_task(
+            user_id=test_user.id,
+            conversation_id=conversation.id,
+            request=CreateMediaGenerationRequest(
+                conversation_id=conversation.id,
+                type=MediaGenerationType.music,
+                prompt="测试",
+                options={"durationSeconds": 5},
+            ),
+            db=db,
+        )
 
 
 async def test_video_output_persists_optional_poster_without_blocking_result(

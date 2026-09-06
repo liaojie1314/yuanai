@@ -59,6 +59,43 @@ type MsgRecord = {
   createdAt: string
 }
 
+type ToolCenterState = 'populated' | 'empty' | 'failure'
+
+interface ApiMockOptions {
+  toolCenterState?: ToolCenterState
+}
+
+type ToolConnectionFixture = Record<string, unknown> & {
+  id: string
+  kind: string
+  provider: string
+  displayName: string
+  secretRef: string | null
+}
+
+type McpServerFixture = Record<string, unknown> & {
+  id: string
+  schemaSnapshot: Record<string, unknown> | null
+  enabledTools: string[]
+}
+
+type ExecutionNodeFixture = Record<string, unknown> & {
+  id: string
+  status: string
+}
+
+type ToolExecutionFixture = Record<string, unknown> & {
+  id: string
+  status: 'queued' | 'cancelled' | 'succeeded'
+  finishedAt: string | null
+}
+
+type ApprovalFixture = Record<string, unknown> & {
+  id: string
+  status: string
+  decidedAt: string | null
+}
+
 function makeInitialConvs(): ConvRecord[] {
   return [
     {
@@ -139,12 +176,223 @@ function makeInitialMsgs(): Record<string, MsgRecord[]> {
 }
 
 /** Set up all API mocks via Playwright route interception. */
-export async function setupApiMocks(page: Page): Promise<{
+export async function setupApiMocks(
+  page: Page,
+  options: ApiMockOptions = {}
+): Promise<{
   convs: ConvRecord[]
   msgs: Record<string, MsgRecord[]>
 }> {
   const convs = makeInitialConvs()
   const msgs = makeInitialMsgs()
+  const toolCenterState = options.toolCenterState ?? 'populated'
+
+  const toolCatalog = [
+    {
+      name: 'yuanai.web.search',
+      version: '1.0.0',
+      description: '搜索公开网页并返回结构化结果',
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      riskLevel: 'read',
+      sideEffect: 'none',
+      executionLocation: 'cloud',
+      executionLocations: ['cloud'],
+      requiredScopes: [],
+      timeoutSeconds: 60,
+      maxOutputBytes: 100000,
+      idempotent: true,
+      supportsCancel: true,
+      tags: ['web', 'search'],
+    },
+    {
+      name: 'yuanai.files.write',
+      version: '1.0.0',
+      description: '在 Agent 工作区生成文件',
+      inputSchema: { type: 'object' },
+      outputSchema: { type: 'object' },
+      riskLevel: 'local_write',
+      sideEffect: 'write',
+      executionLocation: 'cloud',
+      executionLocations: ['cloud'],
+      requiredScopes: ['workspace.write'],
+      timeoutSeconds: 60,
+      maxOutputBytes: 100000,
+      idempotent: true,
+      supportsCancel: true,
+      tags: ['files'],
+    },
+  ]
+  const toolConnections: ToolConnectionFixture[] = [
+    {
+      id: 'tool-conn-1',
+      userId: 'user-e2e-001',
+      kind: 'mcp_http',
+      provider: 'docs',
+      displayName: 'Docs MCP HTTP',
+      secretRef: 'db://secret-ref',
+      scopes: ['docs.read'],
+      status: 'active',
+      metadata: {},
+      lastVerifiedAt: '2026-08-31T08:00:00Z',
+      createdAt: '2026-08-30T08:00:00Z',
+      updatedAt: '2026-08-31T08:00:00Z',
+    },
+    {
+      id: 'tool-conn-2',
+      userId: 'user-e2e-001',
+      kind: 'mcp_stdio',
+      provider: 'local-tools',
+      displayName: 'Local stdio',
+      secretRef: null,
+      scopes: [],
+      status: 'active',
+      metadata: {},
+      lastVerifiedAt: null,
+      createdAt: '2026-08-30T08:00:00Z',
+      updatedAt: '2026-08-30T08:00:00Z',
+    },
+  ]
+  const mcpServers: McpServerFixture[] = [
+    {
+      id: 'mcp-1',
+      userId: 'user-e2e-001',
+      connectionId: 'tool-conn-1',
+      name: 'Docs MCP',
+      endpointUrl: 'https://mcp.example.com/mcp',
+      command: null,
+      commandArgs: [],
+      transport: 'streamable_http',
+      status: 'active',
+      schemaSnapshot: null,
+      schemaHash: null,
+      enabledTools: [],
+      metadata: {},
+      lastVerifiedAt: null,
+      createdAt: '2026-08-30T08:00:00Z',
+      updatedAt: '2026-08-30T08:00:00Z',
+    },
+  ]
+  const executionNodes: ExecutionNodeFixture[] = [
+    {
+      id: 'node-1',
+      userId: 'user-e2e-001',
+      name: 'Office Desktop',
+      platform: 'linux',
+      appVersion: '0.1.0',
+      capabilities: ['browser_open_url'],
+      status: 'offline',
+      lastSeenAt: '2026-08-30T08:00:00Z',
+      policy: { allowed_tools: ['browser_open_url'], allowed_resource_ids: ['grant-1'] },
+      createdAt: '2026-08-30T08:00:00Z',
+      updatedAt: '2026-08-30T08:00:00Z',
+    },
+  ]
+  const resourceGrants = [
+    {
+      id: 'grant-1',
+      userId: 'user-e2e-001',
+      nodeId: 'node-1',
+      kind: 'directory',
+      resourceId: 'workspace://agent',
+      displayName: 'Agent workspace',
+      scopes: ['read', 'write'],
+      revokedAt: null,
+      createdAt: '2026-08-30T08:00:00Z',
+    },
+  ]
+  const toolExecutions: ToolExecutionFixture[] = [
+    {
+      id: 'exec-1',
+      userId: 'user-e2e-001',
+      runId: null,
+      stepId: null,
+      toolName: 'yuanai.web.search',
+      toolVersion: '1.0.0',
+      connectionId: null,
+      mcpServerId: null,
+      executionLocation: 'cloud',
+      nodeId: null,
+      riskLevel: 'read',
+      sideEffect: 'none',
+      argumentsPreview: { query: 'Phase 6' },
+      argumentsHash: 'hash-1',
+      idempotencyKey: null,
+      status: 'succeeded',
+      resultSummary: '找到 3 条结果',
+      resultJson: { status: 'succeeded', summary: '找到 3 条结果', data: { count: 3 } },
+      artifactIds: ['artifact-1'],
+      errorCode: null,
+      errorMessage: null,
+      startedAt: '2026-08-31T08:10:00Z',
+      finishedAt: '2026-08-31T08:10:03Z',
+      createdAt: '2026-08-31T08:10:00Z',
+    },
+    {
+      id: 'exec-2',
+      userId: 'user-e2e-001',
+      runId: null,
+      stepId: null,
+      toolName: 'yuanai.files.write',
+      toolVersion: '1.0.0',
+      connectionId: null,
+      mcpServerId: null,
+      executionLocation: 'cloud',
+      nodeId: null,
+      riskLevel: 'local_write',
+      sideEffect: 'write',
+      argumentsPreview: { name: 'report.md' },
+      argumentsHash: 'hash-2',
+      idempotencyKey: null,
+      status: 'queued',
+      resultSummary: null,
+      resultJson: null,
+      artifactIds: [],
+      errorCode: null,
+      errorMessage: null,
+      startedAt: null,
+      finishedAt: null,
+      createdAt: '2026-08-31T08:11:00Z',
+    },
+  ]
+  const artifacts = [
+    {
+      id: 'artifact-1',
+      userId: 'user-e2e-001',
+      runId: null,
+      toolExecutionId: 'exec-1',
+      kind: 'document',
+      name: 'report.md',
+      mimeType: 'text/markdown',
+      sizeBytes: 2048,
+      sha256: 'sha256-report',
+      sensitivity: 'personal',
+      retentionPolicy: 'default',
+      expiresAt: '2026-09-30T08:00:00Z',
+      preview: { lines: ['# Report', 'Generated by tool runtime'] },
+      downloadUrl: `${BASE}/artifacts/artifact-1/content?expires=1&token=e2e`,
+      createdAt: '2026-08-31T08:10:03Z',
+    },
+  ]
+  const approvals: ApprovalFixture[] = [
+    {
+      id: 'approval-1',
+      runId: null,
+      stepId: null,
+      userId: 'user-e2e-001',
+      toolName: 'yuanai.files.write',
+      executionLocation: 'cloud',
+      riskLevel: 'local_write',
+      actionSummary: '在 Agent 工作区生成 report.md',
+      argumentsPreview: { name: 'report.md' },
+      payloadHash: 'approval-hash',
+      status: 'pending',
+      expiresAt: '2026-09-01T08:20:00Z',
+      decidedAt: null,
+      decisionNote: null,
+      createdAt: '2026-08-31T08:12:00Z',
+    },
+  ]
 
   // ── Auth ────────────────────────────────────────────────────
   await page.route(`${BASE}/auth/login`, async (route) => {
@@ -179,11 +427,281 @@ export async function setupApiMocks(page: Page): Promise<{
     })
   })
 
+  await page.route('**/api/v1/auth/me/preferences**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        theme: 'auto',
+        fontSize: 'medium',
+        density: 'standard',
+        timeFormat: '24h',
+        dateFormat: 'ymd',
+        language: 'zh-CN',
+      }),
+    })
+  })
+
+  await page.route('**/api/v1/auth/me/stats**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ totalConversations: 4, totalMessages: 8 }),
+    })
+  })
+
   await page.route(`${BASE}/auth/logout`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({ message: '已退出登录' }),
+    })
+  })
+
+  // ── Chat page support ───────────────────────────────────────
+  // ChatInterface requests these resources as soon as an authenticated view
+  // mounts. Keeping them in the route-level fixture prevents a fallback
+  // request from reaching the real API and invalidating the mock session.
+  await page.route('**/api/v1/agent/assistants**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    })
+  })
+
+  await page.route(`${BASE}/chat/conversations/*/media-tasks`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ tasks: [] }),
+    })
+  })
+
+  // ── Tool Control Center ──────────────────────────────────────
+  const toolCenterFailure = toolCenterState === 'failure'
+  const toolCenterEmpty = toolCenterState === 'empty'
+  const toolCenterResponse = <T>(data: T): T | { detail: string } =>
+    toolCenterFailure ? { detail: 'Tool Control Center fixture failure' } : data
+  const toolCenterStatus = toolCenterFailure ? 500 : 200
+
+  await page.route(`${BASE}/tools/catalog`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : toolCatalog)),
+    })
+  })
+
+  await page.route(`${BASE}/tool-connections`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const input = (await route.request().postDataJSON()) as Record<string, unknown>
+      const created = {
+        ...toolConnections[0],
+        id: `tool-conn-${Date.now()}`,
+        kind: String(input['kind'] ?? 'api_key'),
+        provider: String(input['provider'] ?? ''),
+        displayName: String(input['displayName'] ?? ''),
+        secretRef: typeof input['secretRef'] === 'string' ? input['secretRef'] : null,
+      }
+      toolConnections.unshift(created)
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      })
+      return
+    }
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : toolConnections)),
+    })
+  })
+
+  await page.route(`${BASE}/tool-connections/*`, async (route) => {
+    const id = route.request().url().split('/').pop()
+    const index = toolConnections.findIndex((connection) => connection.id === id)
+    if (index >= 0) toolConnections.splice(index, 1)
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.route(`${BASE}/mcp-servers`, async (route) => {
+    if (route.request().method() === 'POST') {
+      const input = (await route.request().postDataJSON()) as Record<string, unknown>
+      const created = {
+        ...mcpServers[0],
+        id: `mcp-${Date.now()}`,
+        name: input['name'],
+        transport: input['transport'],
+        connectionId: input['connectionId'],
+        endpointUrl: input['endpointUrl'] ?? null,
+        command: input['command'] ?? null,
+        commandArgs: input['commandArgs'] ?? [],
+        schemaSnapshot: null,
+        enabledTools: [],
+      }
+      mcpServers.unshift(created)
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify(created),
+      })
+      return
+    }
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : mcpServers)),
+    })
+  })
+
+  await page.route(`${BASE}/mcp-servers/*/discover`, async (route) => {
+    const server = mcpServers.find((item) => route.request().url().includes(item.id))
+    if (!server) {
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Not found' }),
+      })
+      return
+    }
+    server.schemaSnapshot = {
+      tools: [
+        {
+          name: 'search_docs',
+          description: 'Search documentation',
+          inputSchema: { type: 'object' },
+          annotations: { readOnlyHint: true },
+        },
+      ],
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(server),
+    })
+  })
+
+  await page.route(`${BASE}/mcp-servers/*/tools`, async (route) => {
+    const server = mcpServers.find((item) => route.request().url().includes(item.id))
+    const input = (await route.request().postDataJSON()) as { enabledTools: string[] }
+    if (server) server.enabledTools = input.enabledTools
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(server),
+    })
+  })
+
+  await page.route(`${BASE}/execution-nodes`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : executionNodes)),
+    })
+  })
+
+  await page.route(`${BASE}/execution-nodes/pair`, async (route) => {
+    const input = (await route.request().postDataJSON()) as Record<string, string>
+    const pairing = {
+      ...executionNodes[0],
+      id: `node-${Date.now()}`,
+      name: input['name'],
+      platform: input['platform'],
+      appVersion: input['appVersion'],
+      pairingCode: 'pairing-code-e2e',
+      expiresAt: '2026-09-01T08:30:00Z',
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: 'application/json',
+      body: JSON.stringify(pairing),
+    })
+  })
+
+  await page.route(`${BASE}/execution-nodes/*/revoke`, async (route) => {
+    const node = executionNodes.find((item) => route.request().url().includes(item.id))
+    if (node) node.status = 'revoked'
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(node),
+    })
+  })
+
+  await page.route(`${BASE}/resource-grants`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : resourceGrants)),
+    })
+  })
+
+  await page.route(`${BASE}/tool-executions**`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : toolExecutions)),
+    })
+  })
+
+  await page.route(`${BASE}/tool-executions/*/cancel`, async (route) => {
+    const execution = toolExecutions.find((item) => route.request().url().includes(item.id))
+    if (execution) {
+      execution.status = 'cancelled'
+      execution.finishedAt = '2026-09-01T08:15:00Z'
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(execution),
+    })
+  })
+
+  await page.route(`${BASE}/artifacts`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : artifacts)),
+    })
+  })
+
+  await page.route(`${BASE}/artifacts/*/content**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'text/markdown',
+      headers: { 'Content-Disposition': 'attachment; filename="report.md"' },
+      body: '# Report\nGenerated by tool runtime',
+    })
+  })
+
+  await page.route(`${BASE}/artifacts/*`, async (route) => {
+    const id = route.request().url().split('/').pop()
+    const index = artifacts.findIndex((artifact) => artifact.id === id)
+    if (index >= 0) artifacts.splice(index, 1)
+    await route.fulfill({ status: 204 })
+  })
+
+  await page.route(`${BASE}/agent/approvals`, async (route) => {
+    await route.fulfill({
+      status: toolCenterStatus,
+      contentType: 'application/json',
+      body: JSON.stringify(toolCenterResponse(toolCenterEmpty ? [] : approvals)),
+    })
+  })
+
+  await page.route(`${BASE}/agent/approvals/*`, async (route) => {
+    const approval = approvals.find((item) => route.request().url().includes(item.id))
+    const input = (await route.request().postDataJSON()) as { decision: 'approve' | 'deny' }
+    if (approval) {
+      approval.status = input.decision === 'approve' ? 'approved' : 'denied'
+      approval.decidedAt = '2026-09-01T08:15:00Z'
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(approval),
     })
   })
 

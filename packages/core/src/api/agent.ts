@@ -131,16 +131,17 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
   let handle: StreamHandle | undefined
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined
   let closed = false
+  let terminalNotified = false
   const terminalStatuses = new Set<AgentRun['status']>(['succeeded', 'failed', 'cancelled'])
   const scheduleReconnect = (): void => {
-    if (closed || reconnectTimer !== undefined) return
+    if (closed || terminalNotified || reconnectTimer !== undefined) return
     reconnectTimer = setTimeout(() => {
       reconnectTimer = undefined
       connect()
     }, 1000)
   }
   const connect = (): void => {
-    if (closed) return
+    if (closed || terminalNotified) return
     const token = getAccessToken()
     const headers: Record<string, string> = {
       Accept: 'text/event-stream',
@@ -159,6 +160,7 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
             void getAgentRun(id)
               .then((run) => {
                 if (terminalStatuses.has(run.status)) {
+                  terminalNotified = true
                   handlers.onTerminal?.(run)
                 } else {
                   scheduleReconnect()
@@ -190,7 +192,12 @@ export function openAgentEventStream(id: string, handlers: AgentEventHandlers): 
               message.event === 'run_failed' ||
               message.event === 'run_cancelled'
             ) {
-              void getAgentRun(id).then((run) => handlers.onTerminal?.(run))
+              void getAgentRun(id).then((run) => {
+                if (terminalStatuses.has(run.status) && !terminalNotified) {
+                  terminalNotified = true
+                  handlers.onTerminal?.(run)
+                }
+              })
             }
           } catch (error) {
             handlers.onError?.(error instanceof Error ? error : new Error(String(error)))

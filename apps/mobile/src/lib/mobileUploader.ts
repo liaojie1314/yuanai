@@ -39,7 +39,7 @@ export type UploadProgressCallback = (progress: number) => void
 const DIRECT_THRESHOLD = 10 * 1024 * 1024
 /** 单片大小 —— 与后端 upload_chunk_size_bytes 一致（S3 要求 ≥ 5MB） */
 const CHUNK_SIZE = 5 * 1024 * 1024
-/** hash 阶段每次读入的字节数（base64 解码后）；过大易触发 OOM */
+/** 计算哈希时每次读入的字节数（base64 解码后）；过大易触发 OOM */
 const HASH_READ_BYTES = 2 * 1024 * 1024
 
 /** base64 → 字节数组（RN 无 atob 的环境用查表实现，避免引入 polyfill） */

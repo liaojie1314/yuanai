@@ -2,6 +2,7 @@ import {
   Globe,
   Image as ImageIcon,
   Mic,
+  Music,
   Paperclip,
   Send,
   Sparkles,
@@ -21,6 +22,7 @@ import {
 } from 'react-native'
 
 import { usePrefsStore } from '@yuanai/core/stores'
+import { MediaMusicDurationSeconds } from '@yuanai/types'
 import type {
   MediaGenerationOptions,
   MediaGenerationType,
@@ -40,7 +42,7 @@ import { useTheme } from '@/theme/useTheme'
 import { useTranslation } from 'react-i18next'
 import { useAttachments } from '@/hooks/useAttachments'
 
-type ComposerMode = 'chat' | 'image' | 'video'
+type ComposerMode = 'chat' | 'image' | 'video' | 'music'
 
 const IMAGE_SIZES: readonly MediaImageSize[] = ['1K', '2K', '3K', '4K']
 const IMAGE_RATIOS: readonly MediaImageRatio[] = [
@@ -179,6 +181,8 @@ export function ChatInput({
   const [videoRatio, setVideoRatio] = useState<MediaVideoAspectRatio>('3:2')
   const [videoResolution, setVideoResolution] = useState<MediaVideoResolution>('720p')
   const [videoDuration, setVideoDuration] = useState<MediaVideoDurationSeconds>(5)
+  const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
+  const [musicLyrics, setMusicLyrics] = useState('')
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
   const inputRef = useRef<TextInput>(null)
   const dialog = useDialog()
@@ -188,7 +192,7 @@ export function ChatInput({
   const setShowThinking = usePrefsStore((s) => s.setShowThinking)
 
   const { attachments, openAttachSheet, remove, clear, getFileIds, isUploading } = useAttachments(
-    disabled || disableAttachments
+    disabled || disableAttachments || composerMode === 'music'
   )
 
   const appendVoiceTranscript = useCallback((text: string): void => {
@@ -219,21 +223,35 @@ export function ChatInput({
   const handleSend = (): void => {
     const content = value.trim()
     if ((!content && !hasReadyAttachment) || disabled || isUploading) return
-    const fileIds = getFileIds()
+    if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
+      toast.show(t('chat.media.lyricsRequired'), 3200)
+      return
+    }
+    const fileIds = composerMode === 'music' ? [] : getFileIds()
     if (composerMode !== 'chat') {
       if (mediaTaskCreating || !onCreateMediaTask) return
-      if (attachments.some((attachment) => !attachment.mimeType.startsWith('image/'))) {
-        toast.show('图片和视频生成只能使用图片作为参考素材', 3200)
+      if (
+        composerMode !== 'music' &&
+        attachments.some((attachment) => !attachment.mimeType.startsWith('image/'))
+      ) {
+        toast.show(t('chat.media.imageOnlyReferences'), 3200)
         return
       }
       const options: MediaGenerationOptions =
         composerMode === 'image'
           ? { size: imageSize, ratio: imageRatio }
-          : {
-              aspectRatio: videoRatio,
-              resolution: videoResolution,
-              durationSeconds: videoDuration,
-            }
+          : composerMode === 'video'
+            ? {
+                aspectRatio: videoRatio,
+                resolution: videoResolution,
+                durationSeconds: videoDuration,
+              }
+            : {
+                durationSeconds: MediaMusicDurationSeconds,
+                ...(musicLyricsMode === 'lyrics' && musicLyrics.trim()
+                  ? { lyrics: musicLyrics.trim() }
+                  : {}),
+              }
       void onCreateMediaTask({
         content,
         type: composerMode,
@@ -243,10 +261,14 @@ export function ChatInput({
         .then((created) => {
           if (!created) return
           setValue('')
+          if (composerMode === 'music' && musicLyricsMode === 'lyrics') setMusicLyrics('')
           clear()
         })
         .catch((error: unknown) => {
-          toast.show(error instanceof Error ? error.message : '创建生成任务失败', 3200)
+          toast.show(
+            error instanceof Error ? error.message : t('chat.media.createTaskFailed'),
+            3200
+          )
         })
       return
     }
@@ -259,6 +281,7 @@ export function ChatInput({
   }
 
   const toggleMediaMode = (mode: Exclude<ComposerMode, 'chat'>): void => {
+    if (mode === 'music' && composerMode !== 'music' && attachments.length > 0) clear()
     setComposerMode((previous) => (previous === mode ? 'chat' : mode))
   }
 
@@ -306,7 +329,13 @@ export function ChatInput({
         <View
           style={[styles.mediaOptions, { borderColor: theme.border.default }]}
           accessibilityRole="tablist"
-          accessibilityLabel={composerMode === 'image' ? '图片生成规格' : '视频生成规格'}
+          accessibilityLabel={
+            composerMode === 'image'
+              ? t('chat.media.imageGenerationSpecs')
+              : composerMode === 'video'
+                ? t('chat.media.videoGenerationSpecs')
+                : t('chat.media.musicGenerationSpecs')
+          }
         >
           <ScrollView
             horizontal
@@ -316,40 +345,77 @@ export function ChatInput({
             {composerMode === 'image' ? (
               <>
                 <MediaOptionGroup
-                  label="清晰度"
+                  label={t('chat.media.quality')}
                   value={imageSize}
                   values={IMAGE_SIZES}
                   onChange={setImageSize}
                 />
                 <MediaOptionGroup
-                  label="比例"
+                  label={t('chat.media.ratio')}
                   value={imageRatio}
                   values={IMAGE_RATIOS}
                   onChange={setImageRatio}
                 />
               </>
-            ) : (
+            ) : composerMode === 'video' ? (
               <>
                 <MediaOptionGroup
-                  label="画幅"
+                  label={t('chat.media.aspectRatio')}
                   value={videoRatio}
                   values={VIDEO_RATIOS}
                   onChange={setVideoRatio}
                 />
                 <MediaOptionGroup
-                  label="清晰度"
+                  label={t('chat.media.quality')}
                   value={videoResolution}
                   values={VIDEO_RESOLUTIONS}
                   onChange={setVideoResolution}
                 />
                 <MediaOptionGroup
-                  label="时长"
+                  label={t('chat.media.duration')}
                   value={videoDuration}
                   values={VIDEO_DURATIONS}
                   onChange={setVideoDuration}
-                  suffix=" 秒"
+                  suffix={t('chat.media.seconds')}
                 />
               </>
+            ) : (
+              <View style={styles.mediaOptionGroup}>
+                <Text style={[styles.mediaOptionLabel, { color: theme.text.muted }]}>
+                  {t('chat.media.musicMode')}
+                </Text>
+                {(['instrumental', 'lyrics'] as const).map((mode) => {
+                  const active = musicLyricsMode === mode
+                  return (
+                    <Pressable
+                      key={mode}
+                      onPress={() => setMusicLyricsMode(mode)}
+                      style={[
+                        styles.mediaOption,
+                        { backgroundColor: active ? theme.brand.selected : theme.bg.elevated },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        mode === 'lyrics'
+                          ? t('chat.media.withLyricsMode')
+                          : t('chat.media.instrumentalMode')
+                      }
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text
+                        style={[
+                          styles.mediaOptionText,
+                          { color: active ? theme.brand.selectedFg : theme.text.secondary },
+                        ]}
+                      >
+                        {mode === 'lyrics'
+                          ? t('chat.media.withLyrics')
+                          : t('chat.media.instrumental')}
+                      </Text>
+                    </Pressable>
+                  )
+                })}
+              </View>
             )}
           </ScrollView>
         </View>
@@ -367,14 +433,21 @@ export function ChatInput({
         <View style={styles.tools}>
           <Pressable
             onPress={handlePaperclip}
+            disabled={disabled || disableAttachments || composerMode === 'music'}
             hitSlop={6}
             style={[
               styles.toolBtn,
               {
                 backgroundColor: attachments.length > 0 ? theme.brand.selected : theme.bg.elevated,
+                opacity: disabled || disableAttachments || composerMode === 'music' ? 0.45 : 1,
               },
             ]}
-            accessibilityLabel={t('chat.attach')}
+            accessibilityLabel={
+              composerMode === 'music' ? t('chat.media.attachmentsUnavailable') : t('chat.attach')
+            }
+            accessibilityState={{
+              disabled: disabled || disableAttachments || composerMode === 'music',
+            }}
           >
             <Paperclip
               size={17}
@@ -470,7 +543,11 @@ export function ChatInput({
                   },
                 ]}
                 accessibilityRole="tab"
-                accessibilityLabel={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                accessibilityLabel={
+                  composerMode === 'image'
+                    ? t('chat.media.exitImageGeneration')
+                    : t('chat.media.imageGeneration')
+                }
                 accessibilityState={{
                   selected: composerMode === 'image',
                   disabled: mediaControlsDisabled,
@@ -494,7 +571,11 @@ export function ChatInput({
                   },
                 ]}
                 accessibilityRole="tab"
-                accessibilityLabel={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                accessibilityLabel={
+                  composerMode === 'video'
+                    ? t('chat.media.exitVideoGeneration')
+                    : t('chat.media.videoGeneration')
+                }
                 accessibilityState={{
                   selected: composerMode === 'video',
                   disabled: mediaControlsDisabled,
@@ -505,17 +586,63 @@ export function ChatInput({
                   color={composerMode === 'video' ? theme.brand.selectedFg : theme.text.secondary}
                 />
               </Pressable>
+              <Pressable
+                onPress={() => toggleMediaMode('music')}
+                disabled={mediaControlsDisabled}
+                hitSlop={6}
+                style={[
+                  styles.toolBtn,
+                  {
+                    backgroundColor:
+                      composerMode === 'music' ? theme.brand.selected : theme.bg.elevated,
+                    opacity: mediaControlsDisabled ? 0.45 : 1,
+                  },
+                ]}
+                accessibilityRole="tab"
+                accessibilityLabel={
+                  composerMode === 'music'
+                    ? t('chat.media.exitMusicGeneration')
+                    : t('chat.media.musicGeneration')
+                }
+                accessibilityState={{
+                  selected: composerMode === 'music',
+                  disabled: mediaControlsDisabled,
+                }}
+              >
+                <Music
+                  size={17}
+                  color={composerMode === 'music' ? theme.brand.selectedFg : theme.text.secondary}
+                />
+              </Pressable>
             </>
           ) : null}
         </View>
 
         {/* 输入行 */}
+        {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
+          <TextInput
+            value={musicLyrics}
+            onChangeText={setMusicLyrics}
+            placeholder={t('chat.media.lyricsPlaceholder')}
+            placeholderTextColor={theme.text.muted}
+            style={[styles.musicLyricsInput, { color: theme.text.primary }]}
+            multiline
+            maxLength={4000}
+            editable={!disabled && !mediaTaskCreating}
+            textAlignVertical="top"
+            accessibilityLabel={t('chat.media.lyrics')}
+          />
+        ) : null}
         <View style={styles.inputRow}>
           <TextInput
             ref={inputRef}
             value={value}
             onChangeText={setValue}
-            placeholder={t('chat.inputPlaceholder')}
+            placeholder={
+              composerMode === 'music'
+                ? t('chat.media.musicPromptPlaceholder')
+                : t('chat.inputPlaceholder')
+            }
             placeholderTextColor={theme.text.muted}
             style={[
               styles.input,
@@ -562,10 +689,16 @@ export function ChatInput({
 
 const styles = StyleSheet.create({
   wrap: {
+    position: 'relative',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
   mediaOptions: {
+    position: 'absolute',
+    right: 0,
+    bottom: '100%',
+    left: 0,
+    zIndex: 2,
     marginBottom: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -576,6 +709,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   mediaOptionGroup: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  mediaStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  mediaStatusText: { fontSize: 11 },
   mediaOptionLabel: { fontSize: 11 },
   mediaOption: {
     minHeight: 26,
@@ -586,6 +721,7 @@ const styles = StyleSheet.create({
   },
   mediaOptionText: { fontSize: 11, fontWeight: '600' },
   card: {
+    position: 'relative',
     borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: spacing.md,
@@ -615,6 +751,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.sm,
     paddingTop: spacing.xs,
+  },
+  musicLyricsInput: {
+    minHeight: 64,
+    maxHeight: 120,
+    paddingHorizontal: 4,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,

@@ -5,6 +5,16 @@
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`；Mobile/Desktop 本阶段只保持协议兼容
 - **阶段定位**：在不破坏现有聊天功能的前提下，建立可持久化、可恢复、可审批的 Agent 最小闭环
 
+> **当前验收状态（2026-09-03）**：当前 checkout 已包含 Phase 5 Runtime 的实现、迁移、
+> Worker、Web Agent UI、自动化测试以及恢复故障注入演练测试。逐项已验证的代码合同记录见
+> [Phase 5 实施清单](./phase-5-agent-runtime-implementation-todo.md)，但它不是阶段放行结论。
+> `test_agent_runtime_drills.py` 已覆盖带五分钟时间间隔的事件重放，以及测试辅助子进程的强制退出、
+> 恢复重投和幂等副作用账本；`test_agent_external_model_drill.py` 提供显式授权后调用计费模型的
+> 两个安全工具演练。外部模型演练在显式开启并提供凭据时会真实调用 provider，但这些结果不等同于
+> 已部署 Worker/API 端到端或生产环境验收。
+> 当前 Phase 5 许可证仍为**阻塞**：缺少部署 Worker 和真实断线恢复证据。只有对应测试结果或真实运行证据明确存在时
+> 才能勾选本页验收项；不能用测试文件存在或构建成功替代恢复、审批或租户隔离证据。
+
 ---
 
 ## 1. 已确认的产品与技术决策
@@ -316,36 +326,33 @@ POST /api/v1/agent/runs
 Idempotency-Key: <client-generated>
 
 HTTP/1.1 202 Accepted
-{"run_id":"uuid","status":"queued","events_url":"/api/v1/agent/runs/uuid/events"}
+{"run_id":"uuid","status":"queued","events_url":"/api/v1/agent/runs/uuid/stream"}
 ```
 
 ```http
-GET /api/v1/agent/runs/{run_id}/events
+GET /api/v1/agent/runs/{run_id}/stream
 Last-Event-ID: 42
 Accept: text/event-stream
 ```
 
-服务端先从 `agent_events` 重放 `sequence > Last-Event-ID`，再订阅 Redis 广播；Redis 消息丢失时仍可从数据库补齐。
+服务端先从 `agent_events` 重放 `sequence > Last-Event-ID`，再轮询可恢复事件；Redis 只负责
+队列和广播提示，消息丢失时仍可从数据库补齐。`GET /agent/runs/{run_id}/events` 是同一游标的
+JSON 回放端点，供列表/补拉使用，不是 SSE 端点。
 
 ### 8.2 事件清单
 
-| SSE event           | 核心字段                                                       |
-| ------------------- | -------------------------------------------------------------- |
-| `run_start`         | `run_id`, `model`, `max_steps`                                 |
-| `step_start`        | `step_id`, `sequence`, `kind`                                  |
-| `thinking_delta`    | `token`                                                        |
-| `content_delta`     | `token`                                                        |
-| `tool_call_start`   | `tool_execution_id`, `name`, `risk_level`                      |
-| `tool_call_delta`   | `tool_execution_id`, `args_chunk`                              |
-| `approval_required` | `approval_id`, `summary`, `expires_at`                         |
-| `tool_call_end`     | `tool_execution_id`, `status`, `result_preview`, `duration_ms` |
-| `input_required`    | `request_id`, `question`                                       |
-| `artifact_created`  | `artifact_id`, `name`, `mime_type`                             |
-| `run_waiting`       | `reason`                                                       |
-| `run_end`           | `status`, `usage`, `finish_reason`                             |
-| `error`             | `code`, `message`, `retryable`                                 |
+| 当前 SSE event      | 核心字段                                |
+| ------------------- | --------------------------------------- |
+| `run_started`       | `model`, `max_steps`                    |
+| `step_started`      | `sequence`, `kind`，工具步骤另带 `name` |
+| `approval_required` | `tool_name`, `execution_location`       |
+| `tool_completed`    | `name`, `status`                        |
+| `run_completed`     | `status`, `content`                     |
 
-事件字段统一使用 `snake_case`。现有 `/chat/stream` 协议保持不变，`packages/core` 新增 `useAgentRun`，不要继续扩大 `useStream` 的职责。
+当前失败或取消的流以 `[DONE]` 结束，客户端随后读取 Run 快照确认终态；这是当前实现边界，
+不是未来 Tool Runtime 的完整事件字典。事件字段统一使用 `snake_case`。Phase 6 如需扩展
+`tool_call_*`、Artifact 或浏览器事件，必须先在共享类型、SSE 和 JSON 回放端点中一并定义并测试。
+现有 `/chat/stream` 协议保持不变，`packages/core` 的 `useAgentRun` 不应扩大 `useStream` 的职责。
 
 ---
 
@@ -362,7 +369,8 @@ Accept: text/event-stream
 | POST  | `/agent/runs`                    | 创建 Run，返回 202    |
 | GET   | `/agent/runs/{id}`               | Run 当前快照          |
 | GET   | `/agent/runs/{id}/steps`         | Step 列表             |
-| GET   | `/agent/runs/{id}/events`        | 可重放 SSE            |
+| GET   | `/agent/runs/{id}/stream`        | 可重放 SSE            |
+| GET   | `/agent/runs/{id}/events`        | 按游标返回 JSON 事件  |
 | POST  | `/agent/runs/{id}/cancel`        | 取消 Run              |
 | POST  | `/agent/runs/{id}/input`         | 回答澄清问题          |
 | POST  | `/agent/approvals/{id}/decision` | 批准或拒绝            |
@@ -527,3 +535,28 @@ backend/app/
 - [ ] `ruff`、`mypy`、ESLint、TypeScript typecheck 和相关测试全部通过
 
 **进入 Phase 6 的许可证**：上述验收全部通过，尤其是审批暂停/恢复、SSE 重放、崩溃恢复和租户隔离集成测试。
+
+### 当前证据索引（2026-09-05）
+
+| 验收域                                        | 证据                                                                                                                                                                                  | 状态                                         |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| Run 创建、幂等、功能开关                      | `backend/tests/integration/test_agent_api.py`                                                                                                                                         | 自动化覆盖，非真实验收                       |
+| SSE 事件持久化与 `Last-Event-ID` 重放         | `backend/tests/integration/test_agent_api.py`、`backend/app/services/agent/event_service.py`                                                                                          | 自动化覆盖，非真实验收                       |
+| 审批参数绑定、单次决定、过期与租户隔离        | `backend/tests/integration/test_agent_approval.py`、`backend/tests/unit/test_agent_approval.py`；2026-09-05 本地真实栈（隔离启用 Agent 配置）审批恢复、拒绝、取消与跨用户隔离演练通过 | 自动化覆盖；本地真实栈已演练；部署环境未验证 |
+| 队列 lease、取消、恢复和幂等                  | `backend/tests/unit/test_agent_runtime_workers.py`                                                                                                                                    | 自动化覆盖，非真实验收                       |
+| 五分钟事件重放与测试子进程故障注入            | `backend/tests/integration/test_agent_runtime_drills.py`；2026-09-05 本地真实栈完成真实五分钟断线 SSE 重连、事件重放与最终结果恢复，以及真实 Worker 进程强制退出后的自动恢复与幂等    | 本地真实运行时已验证；生产部署未验证         |
+| Web Agent 页面与 Chat 回归                    | `apps/web/src`、`apps/web/tests`、根目录前端测试脚本                                                                                                                                  | 自动化覆盖，非真实验收                       |
+| 本地静态与回归门禁                            | 根级运行时、类型、单元、集成、lint、格式、脚本和构建检查；后端串行 pytest、mypy 与 Ruff；Chromium Web E2E 33/33                                                                       | 自动化回归通过，非真实验收                   |
+| 真实模型驱动的完整 Agent 两工具链             | `backend/tests/integration/test_agent_external_model_drill.py` 在 2026-09-05 显式开启后通过，真实 provider 完成两个无副作用工具调用                                                   | provider 两工具演练通过；部署链路未验证      |
+| 部署 Worker 强制退出后的恢复与 5 分钟断线演练 | 本地真实栈（隔离启用 Agent 的本地运行时）已于 2026-09-05 完成等效演练；生产/部署运行时仍未验证                                                                                        | 本地已验证；部署环境未验收                   |
+
+2026-09-05 补充：在隔离启用 Agent 的本地真实栈上完成了部署形态等效演练——真实 Worker 进程
+强制退出后由恢复任务重新入队并恰好完成一次、真实五分钟网络断线后 SSE 以 `Last-Event-ID` 重连且
+事件与最终结果不丢失不重复、审批恢复/拒绝/取消、幂等键防重、跨用户租户隔离与 Chat 回归。这些是
+本地真实运行时证据，仍不能替代生产部署环境的验收。
+
+因此，Phase 5 已有一次真实 provider 两工具演练记录与本地真实栈恢复演练记录，但它们不能替代
+部署 Worker/API 端到端证据。生产部署环境的崩溃恢复和五分钟断线恢复仍须在待验收运行时单独完成。
+自动化故障注入或时间戳模拟不能替代真实进程与网络恢复证据，当前不能宣称 Phase 5 全部运行时验收通过。
+2026-09-05 的 Desktop 节点取消与撤销 E2E 属于 Phase 6 执行边界证据，不能用于推断本页的
+部署 Worker 恢复或五分钟 Agent SSE 断线验收已经完成。

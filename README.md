@@ -1,7 +1,7 @@
 # 元AI
 
 多端 AI 聊天应用，功能对标 ChatGPT。支持 Web、Android、iOS、Windows、macOS、Linux，
-接入 DeepSeek、Agnes、OpenAI 与 Anthropic 等模型，并提供文件理解、语音输入、图片/视频
+接入 DeepSeek、Agnes、OpenAI 与 Anthropic 等模型，并提供文件理解、语音输入、图片/视频/音乐
 生成和可配置联网搜索。
 
 ## 技术栈
@@ -117,6 +117,26 @@ ANTHROPIC_API_KEY=sk-ant-xxxxx  # Claude 3.5 Sonnet（可选）
 
 详细说明、各平台注册步骤、新增模型方法见 [AI 大模型接入指南](docs/ai-providers.md)。
 
+### 配置 AI 音乐生成
+
+音乐生成默认使用本机 Hugging Face MusicGen，不需要 API Token：
+
+```dotenv
+# backend/.env
+MEDIA_MUSIC_PROVIDER=local
+MEDIA_MUSIC_LOCAL_MODEL=facebook/musicgen-small
+MEDIA_MUSIC_LOCAL_DEVICE=auto
+```
+
+本机 GPU 会优先用于纯音乐生成；没有 CUDA 时可以改为 `cpu`，但速度会明显变慢。音乐支持
+固定 30 秒的纯音乐和歌词歌曲：纯音乐使用本机 MusicGen，歌词歌曲使用独立的本机 ACE-Step
+服务。模型安装、三端使用方式、远程失败降级和 provider 注意事项见
+[媒体生成与音乐配置](docs/media-generation.md)。未配置 `HF_TOKEN` 或 `ELEVENLABS_API_KEY`
+时，图片、视频和普通聊天仍可使用，默认本机 MusicGen 也不依赖第三方 Key；歌词模式需要
+ACE-Step 服务运行。Hugging Face 远程 provider 和 ElevenLabs 仅作为显式配置的实验/备用
+方案，其中 ElevenLabs 不保证包含免费 Music API 额度。ACE-Step 建议使用至少 6 GB
+可用显存；4 GB 显卡不能稳定完成歌词推理，可按媒体配置文档使用 CPU-only 启动回退。
+
 ## 联网搜索
 
 聊天输入框的“联网搜索”可以独立于“思考”开关使用。已检索的来源保存在该次回复的
@@ -162,18 +182,22 @@ docker compose up -d searxng
 
 ## 文档
 
-| 文档                                               | 说明                           |
-| -------------------------------------------------- | ------------------------------ |
-| [开发运行指南](docs/dev-guide.md)                  | Mock / 全栈模式详细启动步骤    |
-| [AI 大模型接入指南](docs/ai-providers.md)          | API Key 配置与新增模型         |
-| [架构设计](docs/architecture.md)                   | 系统架构与数据流               |
-| [API 设计](docs/api-design.md)                     | 后端接口规范                   |
-| [UI 规范](docs/ui-spec.md)                         | 设计系统与组件规范             |
-| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md) | 桌面端实施状态与验收边界       |
-| [桌面端说明](apps/desktop/README.md)               | Electron 启动、测试与打包      |
-| [发版与 CI/CD](docs/release.md)                    | release-it、Secrets 与 Actions |
-| [跨端排障记录](docs/troubleshooting.md)            | 已解决问题和真机调试方法       |
-| [RUNNING.md](RUNNING.md)                           | 完整的从零部署参考手册         |
+| 文档                                                                      | 说明                                     |
+| ------------------------------------------------------------------------- | ---------------------------------------- |
+| [开发运行指南](docs/dev-guide.md)                                         | Mock / 全栈模式详细启动步骤              |
+| [AI 大模型接入指南](docs/ai-providers.md)                                 | API Key 配置与新增模型                   |
+| [媒体生成与音乐配置](docs/media-generation.md)                            | 图片、视频、音乐任务与本机 MusicGen 配置 |
+| [架构设计](docs/architecture.md)                                          | 系统架构与数据流                         |
+| [API 设计](docs/api-design.md)                                            | 后端接口规范                             |
+| [UI 规范](docs/ui-spec.md)                                                | 设计系统与组件规范                       |
+| [Phase 4 — 桌面端](docs/phases/phase-4-desktop.md)                        | 桌面端实施状态与验收边界                 |
+| [Phase 5 — Agent Runtime](docs/phases/phase-5-agent-runtime.md)           | Agent 运行时与验收证据                   |
+| [Phase 6 — 工具与执行](docs/phases/phase-6-tools-execution.md)            | 六个 Wave 与进入 Phase 7 的门槛          |
+| [Phase 7 — 记忆与自动化](docs/phases/phase-7-memory-skills-automation.md) | 后续阶段入口条件                         |
+| [桌面端说明](apps/desktop/README.md)                                      | Electron 启动、测试与打包                |
+| [发版与 CI/CD](docs/release.md)                                           | release-it、Secrets 与 Actions           |
+| [跨端排障记录](docs/troubleshooting.md)                                   | 已解决问题和真机调试方法                 |
+| [RUNNING.md](RUNNING.md)                                                  | 完整的从零部署参考手册                   |
 
 ## 目录结构
 
@@ -194,3 +218,21 @@ yuanai/
     ├── dev.mjs     # 全栈一键启动（跨平台）
     └── dev.sh      # 全栈一键启动（Unix bash 版）
 ```
+
+## Agent 阶段边界
+
+- 截至 2026-09-05，Phase 5 Agent Runtime 的代码合同、自动化测试和恢复故障注入演练已通过本地门禁；
+  真实 provider 两工具演练有记录，但已部署 Worker 崩溃恢复和五分钟真实断线恢复仍未完成，不能仅凭测试入口或构建结果放行。
+- Phase 6 六个 Wave 已有不同程度的实现和测试：隔离 stdio Worker、受控 Browser Worker、Desktop
+  执行节点和 Web 工具控制中心均已进入代码/测试证据阶段。已通过 YuanAI 认证 API 连接真实公共
+  Streamable HTTP MCP，完成工具发现、显式启用、审批和文档只读调用；这不是 Web 控制中心 UI 验收。
+  Desktop 重连/重放、故障注入与文件授权已有真实 E2E 与演练证据（最新 `3 passed (3.0m)`，含强制重启
+  任务重投与系统选择器文件授权→真实读取→未授权拒绝；执行节点重连风暴与结果级 spool 重放演练通过；
+  搜索→提取→分析→报告四步链经真实 provider 跑通并产出 Artifact）。系统性 Browser Worker 安全验收、
+  Prompt injection 等系统性安全测试与生产部署环境验收仍阻塞。Chromium Web E2E 33/33 与 Tool Control
+  Center E2E 3/3 使用受控路由 mock，只是自动化回归证据。当前边界见[执行节点验收记录](apps/desktop/tests/e2e/execution-node-acceptance.md)。
+- Phase 7 尚未开始；可新开会话的前置条件仍未满足，必须先完成 Phase 5/6 的真实运行与安全验收。
+- 音乐生成是独立媒体能力，不计入 Phase 6 的 Wave 或进入 Phase 7 的许可证。
+
+详见 [Phase 5](docs/phases/phase-5-agent-runtime.md)、[Phase 6](docs/phases/phase-6-tools-execution.md)
+和 [Phase 7](docs/phases/phase-7-memory-skills-automation.md)。

@@ -4,6 +4,8 @@ import type {
   DesktopAppInfo,
   DesktopAppearanceState,
   DesktopArtifactPayload,
+  DesktopExecutionNodeGrantView,
+  DesktopExecutionNodeStatus,
   DesktopMediaPermissionRequest,
   DesktopMediaPermissionResponse,
   DesktopRendererPreferences,
@@ -83,6 +85,21 @@ export interface YuanaiApi {
   oauth: {
     start: (provider: DesktopOAuthProvider) => Promise<void>
   }
+  executionNode: {
+    getStatus: () => Promise<DesktopExecutionNodeStatus>
+    register: (input: {
+      pairingCode: string
+      name: string
+      capabilities?: string[]
+    }) => Promise<DesktopExecutionNodeStatus>
+    disconnect: () => Promise<void>
+    removeNode: () => Promise<void>
+    respondJob: (input: { executionId: string; decision: 'accept' | 'reject' }) => Promise<void>
+    createGrant: (input: {
+      kind: 'file' | 'directory'
+    }) => Promise<DesktopExecutionNodeGrantView | null>
+    revokeGrant: (input: { resourceId: string }) => Promise<void>
+  }
   events: {
     onAuthChanged: (listener: (hasSession: boolean) => void) => () => void
     onOAuthResult: (listener: (result: DesktopOAuthResult) => void) => () => void
@@ -95,6 +112,7 @@ export interface YuanaiApi {
       listener: (request: DesktopMediaPermissionRequest) => void
     ) => () => void
     onUpdater: (listener: (status: DesktopUpdateStatus) => void) => () => void
+    onExecutionNodeEvent: (listener: (status: DesktopExecutionNodeStatus) => void) => () => void
   }
 }
 
@@ -181,6 +199,15 @@ export const api: YuanaiApi = {
   oauth: {
     start: (provider) => ipcRenderer.invoke(IPC.oauth.start, provider),
   },
+  executionNode: {
+    getStatus: () => ipcRenderer.invoke(IPC.executionNode.getStatus),
+    register: (input) => ipcRenderer.invoke(IPC.executionNode.register, input),
+    disconnect: () => ipcRenderer.invoke(IPC.executionNode.disconnect),
+    removeNode: () => ipcRenderer.invoke(IPC.executionNode.removeNode),
+    respondJob: (input) => ipcRenderer.invoke(IPC.executionNode.respondJob, input),
+    createGrant: (input) => ipcRenderer.invoke(IPC.executionNode.createGrant, input),
+    revokeGrant: (input) => ipcRenderer.invoke(IPC.executionNode.revokeGrant, input),
+  },
   events: {
     onAuthChanged: (listener) => {
       const wrappedListener = (_event: unknown, hasSession: boolean): void => listener(hasSession)
@@ -228,6 +255,12 @@ export const api: YuanaiApi = {
         listener(status)
       ipcRenderer.on(IPC.events.updater, wrappedListener)
       return () => ipcRenderer.removeListener(IPC.events.updater, wrappedListener)
+    },
+    onExecutionNodeEvent: (listener) => {
+      const wrappedListener = (_event: unknown, status: DesktopExecutionNodeStatus): void =>
+        listener(status)
+      ipcRenderer.on(IPC.events.executionNode, wrappedListener)
+      return () => ipcRenderer.removeListener(IPC.events.executionNode, wrappedListener)
     },
   },
 }

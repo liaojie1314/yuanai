@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { loginViaForm } from './api-mock'
+import { loginViaForm, setupApiMocks } from './api-mock'
 
 /** 通过真实登录表单建立认证状态，覆盖中间件和客户端持久化链路。 */
 async function setupAuth(page: Page): Promise<void> {
@@ -282,6 +282,7 @@ test.describe('Chat interface', () => {
 
 test.describe('Guest chat interface', () => {
   test('does not populate a prompt from welcome shortcuts', async ({ page }) => {
+    await setupApiMocks(page)
     await page.goto('/chat')
 
     const capability = page.locator('.ch-cap').filter({ hasText: '文件分析' })

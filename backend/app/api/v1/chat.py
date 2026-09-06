@@ -182,8 +182,6 @@ async def list_messages(conv_id: uuid.UUID, current_user: CurrentUser, db: DB) -
     }
 
 
-
-
 @router.post("/stream")
 async def stream_chat_endpoint(
     req: SendMessageRequest, current_user: CurrentUser, db: DB
@@ -383,7 +381,7 @@ async def _generate_sse(
             elif event_type == "content":
                 if not isinstance(value, str):
                     continue
-                # 首个正文 token 到达时，思考阶段结束——记录耗时
+                # 首个正文 token 到达时，思考内容结束——记录耗时
                 if thinking_start_at is not None and thinking_duration_ms is None:
                     thinking_duration_ms = int((time.monotonic() - thinking_start_at) * 1000)
                 full_content += value

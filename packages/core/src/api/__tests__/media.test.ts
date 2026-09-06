@@ -89,4 +89,22 @@ describe('media task API', () => {
       '/media/tasks/task-1/cancel',
     ])
   })
+
+  it('accepts the fixed music task contract on the existing media endpoint', async () => {
+    await expect(
+      createMediaTask({
+        conversationId: 'conv-1',
+        type: 'music',
+        prompt: '舒缓钢琴',
+        options: { durationSeconds: 30 },
+      })
+    ).resolves.toEqual(mediaTask)
+
+    expect(JSON.parse(String(requests[0]?.data))).toEqual({
+      conversationId: 'conv-1',
+      type: 'music',
+      prompt: '舒缓钢琴',
+      options: { durationSeconds: 30 },
+    })
+  })
 })

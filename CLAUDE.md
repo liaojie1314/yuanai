@@ -110,12 +110,29 @@ yuanai/
 - [x] 明暗主题切换
 - [x] 全平台 UI 适配（Web / Mobile / Desktop / Tablet）
 
-## 当前交付状态（2026-08-13）
+## 当前交付状态（2026-09-06）
 
 Phase 4 Electron 桌面端已合入 `dev`：包含多窗口认证与聊天、真实后端 API、
 安全会话存储、Artifact、设置、托盘、快捷键和原生通知。Ubuntu 开发环境已完成
 功能与生产预览验证；Windows/macOS 安装包、签名、自动更新源和目标平台安装验收
 仍在发布前清单中。运行与验证方式见 [桌面端说明](apps/desktop/README.md)。
+
+本地自动化门禁已全部通过：根级运行时、类型、单元、集成、lint、格式、脚本和构建检查，后端串行
+pytest、mypy 与 Ruff，以及 Chromium Web E2E 33/33 和 Tool Control Center E2E 3/3。后两项使用
+受控路由 mock，只能证明 UI 回归。真实 Linux Desktop E2E 为 `3 passed (3.0m)`：配对、WSS
+challenge、本地审批、签名回调、ACK、取消确认、节点撤销（`c9b5a1d`）、审批待决时强制重启后的
+任务重投与恰好一次完成，以及系统选择器文件授权→真实文件读取与未授权拒绝
+（`test(desktop): cover native-selector file grants`）。真实 provider 四步云链
+（搜索→提取→分析→报告 Artifact）已打通并产出真实 Artifact；SearXNG bing 引擎 302 问题已修复
+（`fix(config): route searxng bing to cn endpoint`）。本地真实栈（隔离启用 Agent 配置）已完成
+部署形态等效演练：Worker 强制退出恢复、真实五分钟断线 SSE 重连重放、审批恢复/取消/幂等/租户隔离
+与 Chat 回归；执行节点重连风暴演练（3 节点 36 次并发重连）、结果级 spool 重放演练（节点回传后
+断连→重连→重发→ACK，Run 仍成功）与 Browser Worker 集成/安全套件复跑通过；认证 Web 控制中心
+已用真实后端数据人工核验工具目录、运行列表与审批卡片渲染。以上均为本地真实运行时证据，不构成
+生产部署放行。YuanAI 认证 API 到真实公共 Streamable HTTP MCP 的连接、发现、显式启用、审批与
+文档只读调用已有后端证据，但真实外部 MCP 经 Web 控制中心 UI 的完整链路仍未验收。系统性安全
+测试（Prompt injection、审批后参数替换的系统性执行）、Browser Worker 完整安全灰度以及生产部署
+环境验收仍未完成。Phase 7 尚未开始，其前置条件按 Phase 6 文档记录为准。
 
 ## 开发铁律
 

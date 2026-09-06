@@ -26,6 +26,15 @@ class ToolRisk(StrEnum):
     privileged = "privileged"
 
 
+class SideEffect(StrEnum):
+    """工具是否产生外部或本地副作用。"""
+
+    none = "none"
+    local_write = "local_write"
+    external = "external"
+    destructive = "destructive"
+
+
 class ExecutionLocation(StrEnum):
     """工具允许执行的位置。"""
 
@@ -57,6 +66,13 @@ class ToolError(RuntimeError):
         super().__init__(message or code.value)
 
 
+class ToolErrorPayload(BaseModel):
+    """可安全序列化到 ToolResult 的错误信息。"""
+
+    code: str
+    message: str
+
+
 class ToolRegistrationError(ValueError):
     """工具注册失败，例如重复注册。"""
 
@@ -77,12 +93,21 @@ class ToolExecutionError(ToolError):
     """工具执行超时、输出过大或内部失败。"""
 
 
+ExecutionLocationName = Literal["cloud", "desktop", "mcp_remote"]
+
+
+def _default_execution_locations() -> set[ExecutionLocationName]:
+    """返回内置工具的默认执行位置。"""
+
+    return {"cloud"}
+
+
 class ToolSpec(BaseModel):
     """描述一个可由代码显式注册的工具。"""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    name: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_]{0,99}$")
+    name: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_.-]{0,99}$")
     description: str = Field(min_length=1, max_length=500)
     input_schema: dict[str, object]
     output_schema: dict[str, object] | None = None
@@ -90,6 +115,52 @@ class ToolSpec(BaseModel):
     execution_location: Literal["cloud", "desktop", "either"]
     timeout_seconds: int = Field(default=30, ge=0, le=300)
     idempotent: bool = True
+    side_effect: SideEffect = SideEffect.none
+    execution_locations: set[ExecutionLocationName] = Field(
+        default_factory=_default_execution_locations
+    )
+    required_scopes: set[str] = Field(default_factory=set)
+    max_output_bytes: int = Field(default=32 * 1024, ge=1, le=50 * 1024 * 1024)
+    supports_cancel: bool = True
+    tags: set[str] = Field(default_factory=set)
+
+
+class ArtifactRef(BaseModel):
+    """工具结果引用的外置 Artifact。"""
+
+    id: str
+    name: str
+    kind: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+
+
+class Citation(BaseModel):
+    """工具结果中的可信来源引用。"""
+
+    title: str
+    url: str
+    snippet: str = ""
+
+
+class ToolMetrics(BaseModel):
+    """一次工具执行的非敏感性能指标。"""
+
+    duration_ms: int = 0
+    output_bytes: int = 0
+
+
+class ToolResult(BaseModel):
+    """所有受控工具统一返回的结构化结果。"""
+
+    status: Literal["succeeded", "failed", "cancelled", "partial"]
+    summary: str
+    data: dict[str, object] | list[object] | None = None
+    artifacts: list[ArtifactRef] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    metrics: ToolMetrics = Field(default_factory=ToolMetrics)
+    error: ToolErrorPayload | None = None
 
 
 class ToolContext:

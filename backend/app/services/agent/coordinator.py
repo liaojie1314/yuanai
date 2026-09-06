@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Protocol
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_run import (
@@ -20,9 +21,15 @@ from app.models.agent_run import (
     AgentStepKind,
     AgentStepStatus,
 )
-from app.models.approval import ApprovalRiskLevel
+from app.models.approval import ApprovalRequest, ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
+from app.models.tool_runtime import (
+    ExecutionNode,
+    ExecutionNodeStatus,
+    ToolExecution,
+    ToolExecutionStatus,
+)
 from app.services import ai_service
 from app.services.agent.approval_service import (
     ApprovalError,
@@ -43,6 +50,8 @@ from app.services.ai_service import (
     ToolCallStart,
     UsageDelta,
 )
+from app.services.secret_store import TenantSecretStore
+from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
 from app.tools.contracts import (
     ToolContext,
     ToolError,
@@ -132,6 +141,7 @@ class AgentCoordinator:
         self._tool_timeout_seconds = tool_timeout_seconds
         self._approval_service = approval_service or ApprovalService()
         self._metrics = metrics or AgentMetrics()
+        self._tool_runtime = ToolRuntimeService(tool_registry, secret_store=TenantSecretStore())
 
     async def run(
         self,
@@ -300,6 +310,56 @@ class AgentCoordinator:
                     spec = self._tool_registry.get_spec(call.name)
                 except ToolRegistrationError as error:
                     return self._failure(run, AgentErrorCode.TOOL_FAILED, error.code.value, error)
+                execution_location = (
+                    "cloud" if spec.execution_location == "either" else spec.execution_location
+                )
+                execution: ToolExecution | None = None
+                if db is not None:
+                    if approval_id is not None:
+                        approval_request = await db.scalar(
+                            select(ApprovalRequest).where(
+                                ApprovalRequest.id == approval_id,
+                                ApprovalRequest.run_id == run.id,
+                                ApprovalRequest.user_id == run.user_id,
+                            )
+                        )
+                        if approval_request is not None:
+                            execution = await db.scalar(
+                                select(ToolExecution)
+                                .where(
+                                    ToolExecution.run_id == run.id,
+                                    ToolExecution.step_id == approval_request.step_id,
+                                    ToolExecution.tool_name == call.name,
+                                    ToolExecution.status == ToolExecutionStatus.waiting,
+                                )
+                                .order_by(ToolExecution.created_at.desc())
+                            )
+                    try:
+                        if execution is None:
+                            desktop_node_id: uuid.UUID | None = None
+                            if execution_location == "desktop":
+                                desktop_node = await self._select_desktop_node(
+                                    run.user_id, call.name, db
+                                )
+                                if desktop_node is None:
+                                    return self._failure(
+                                        run,
+                                        AgentErrorCode.TOOL_FAILED,
+                                        "EXECUTION_NODE_REQUIRED",
+                                    )
+                                desktop_node_id = desktop_node.id
+                            execution = await self._tool_runtime.create_execution(
+                                user_id=run.user_id,
+                                tool_name=call.name,
+                                arguments=arguments,
+                                execution_location=execution_location,
+                                db=db,
+                                run_id=run.id,
+                                step_id=run.steps[-1].id,
+                                node_id=desktop_node_id,
+                            )
+                    except ToolRuntimeError as error:
+                        return self._failure(run, AgentErrorCode.TOOL_FAILED, str(error), error)
                 decision = self._policy.decide(spec)
                 if not decision.allowed:
                     if approval_id is None:
@@ -311,7 +371,7 @@ class AgentCoordinator:
                             status=AgentStepStatus.waiting,
                             input_json={
                                 "name": call.name,
-                                "execution_location": spec.execution_location,
+                                "execution_location": execution_location,
                             },
                         )
                         run.current_step += 1
@@ -322,15 +382,21 @@ class AgentCoordinator:
                             tool_name=call.name,
                             arguments=arguments,
                             risk_level=self._approval_risk(spec.risk_level),
-                            execution_location=spec.execution_location,
+                            execution_location=execution_location,
                             action_summary=f"执行工具 {call.name}",
                             db=db,
                         )
+                        if execution is not None and db is not None:
+                            execution.step_id = approval_step.id
+                            execution.status = ToolExecutionStatus.waiting
+                            execution.error_code = AgentErrorCode.TOOL_APPROVAL_REQUIRED.value
+                            execution.error_message = "工具执行需要审批"
+                            await db.flush()
                         run.status = AgentRunStatus.waiting_approval
                         await self._emit(
                             run,
                             "approval_required",
-                            {"tool_name": call.name, "execution_location": spec.execution_location},
+                            {"tool_name": call.name, "execution_location": execution_location},
                         )
                         return CoordinatorResult(
                             status=AgentRunStatus.waiting_approval,
@@ -343,7 +409,7 @@ class AgentCoordinator:
                             user_id=run.user_id,
                             tool_name=call.name,
                             arguments=arguments,
-                            execution_location=spec.execution_location,
+                            execution_location=execution_location,
                             db=db,
                         )
                     except ApprovalPayloadMismatchError as error:
@@ -354,33 +420,71 @@ class AgentCoordinator:
                         return self._failure(run, AgentErrorCode.APPROVAL_DENIED, str(error), error)
                 run.current_step += 1
                 self._add_step(run, AgentStepKind.tool, {"name": call.name, "arguments": arguments})
+                desktop_dispatch: ToolExecution | None = None
+                output: dict[str, object] | list[object] = {}
+                if execution is not None and db is not None:
+                    if execution_location == "desktop":
+                        # 桌面执行保持 queued，由网关投递给节点；本地不得代为执行。
+                        desktop_dispatch = execution
+                    else:
+                        try:
+                            await self._tool_runtime.start_execution(execution, db=db)
+                        except ToolRuntimeError as error:
+                            return self._failure(run, AgentErrorCode.TOOL_FAILED, str(error), error)
                 await self._emit(
                     run,
                     "step_started",
                     {"sequence": run.current_step, "kind": "tool", "name": call.name},
                 )
-                try:
+                if desktop_dispatch is not None and db is not None:
                     remaining = self._remaining_duration(started)
                     timeout = min(self._tool_timeout_seconds, float(spec.timeout_seconds))
                     if remaining is not None:
                         timeout = min(timeout, remaining)
-                    output = await asyncio.wait_for(
-                        self._tool_registry.execute(
-                            call.name,
-                            arguments,
-                            context=ToolContext(user_id=run.user_id, db=db),
-                        ),
-                        timeout=timeout,
+                    desktop_result = await self._await_desktop_execution(
+                        desktop_dispatch, timeout_seconds=timeout, db=db
                     )
-                except TimeoutError as error:
-                    return self._failure(run, AgentErrorCode.TOOL_TIMEOUT, "工具执行超时", error)
-                except ToolError as error:
-                    code = (
-                        AgentErrorCode.TOOL_TIMEOUT
-                        if error.code is ToolErrorCode.TIMEOUT
-                        else AgentErrorCode.TOOL_FAILED
-                    )
-                    return self._failure(run, code, error.code.value, error)
+                    if isinstance(desktop_result, CoordinatorResult):
+                        return desktop_result
+                    output = desktop_result
+                else:
+                    try:
+                        remaining = self._remaining_duration(started)
+                        timeout = min(self._tool_timeout_seconds, float(spec.timeout_seconds))
+                        if remaining is not None:
+                            timeout = min(timeout, remaining)
+                        output = await asyncio.wait_for(
+                            self._tool_registry.execute(
+                                call.name,
+                                arguments,
+                                context=ToolContext(user_id=run.user_id, db=db),
+                            ),
+                            timeout=timeout,
+                        )
+                    except TimeoutError as error:
+                        if execution is not None and db is not None:
+                            await self._tool_runtime.fail_execution(
+                                execution,
+                                code=AgentErrorCode.TOOL_TIMEOUT.value,
+                                message="工具执行超时",
+                                db=db,
+                            )
+                        return self._failure(
+                            run, AgentErrorCode.TOOL_TIMEOUT, "工具执行超时", error
+                        )
+                    except ToolError as error:
+                        if execution is not None and db is not None:
+                            await self._tool_runtime.fail_execution(
+                                execution, code=error.code.value, message=str(error), db=db
+                            )
+                        code = (
+                            AgentErrorCode.TOOL_TIMEOUT
+                            if error.code is ToolErrorCode.TIMEOUT
+                            else AgentErrorCode.TOOL_FAILED
+                        )
+                        return self._failure(run, code, error.code.value, error)
+                    if execution is not None and db is not None:
+                        await self._tool_runtime.complete_success(execution, output=output, db=db)
                 output_text = json.dumps(output, ensure_ascii=False, separators=(",", ":"))
                 tool_calls_summary.append(
                     {"name": call.name, "arguments": arguments, "output": output}
@@ -558,6 +662,67 @@ class AgentCoordinator:
         if isinstance(cancellation, asyncio.Event):
             return cancellation.is_set()
         return await cancellation()
+
+    @staticmethod
+    async def _select_desktop_node(
+        user_id: uuid.UUID, tool_name: str, db: AsyncSession
+    ) -> ExecutionNode | None:
+        """选择允许该工具的在线桌面节点；无匹配节点时返回 None。"""
+
+        nodes = await db.scalars(
+            select(ExecutionNode).where(
+                ExecutionNode.user_id == user_id,
+                ExecutionNode.status == ExecutionNodeStatus.online,
+            )
+        )
+        for node in nodes:
+            policy = node.policy if isinstance(node.policy, dict) else {}
+            allowed_tools = policy.get("allowed_tools")
+            if isinstance(allowed_tools, list) and tool_name in allowed_tools:
+                return node
+        return None
+
+    async def _await_desktop_execution(
+        self, execution: ToolExecution, *, timeout_seconds: float, db: AsyncSession
+    ) -> dict[str, object] | CoordinatorResult:
+        """等待桌面节点回写终态；超时按工具超时失败，结果取统一结果的 data。
+
+        执行记录由本会话写入，必须先提交，网关扫描才能看见并投递给节点。
+        """
+
+        await db.commit()
+        deadline = time.monotonic() + max(1.0, timeout_seconds)
+        while time.monotonic() < deadline:
+            await db.refresh(execution)
+            if execution.status is ToolExecutionStatus.succeeded:
+                result = execution.result_json if isinstance(execution.result_json, dict) else {}
+                data = result.get("data")
+                if isinstance(data, dict):
+                    return data
+                summary = result.get("summary")
+                return {"summary": summary} if isinstance(summary, str) else {}
+            if execution.status in {
+                ToolExecutionStatus.failed,
+                ToolExecutionStatus.cancelled,
+            }:
+                return CoordinatorResult(
+                    status=AgentRunStatus.failed,
+                    error_code=AgentErrorCode.TOOL_FAILED,
+                    error_message=execution.error_message or execution.error_code or "工具执行失败",
+                )
+            await asyncio.sleep(0.5)
+        await self._tool_runtime.fail_execution(
+            execution,
+            code=AgentErrorCode.TOOL_TIMEOUT.value,
+            message="桌面节点执行超时",
+            db=db,
+        )
+        await db.commit()
+        return CoordinatorResult(
+            status=AgentRunStatus.failed,
+            error_code=AgentErrorCode.TOOL_TIMEOUT,
+            error_message="桌面节点执行超时",
+        )
 
     @staticmethod
     def _model_error_code(code: str) -> AgentErrorCode:

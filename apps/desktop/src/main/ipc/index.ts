@@ -11,6 +11,8 @@ import type { NativeClipboard } from './clipboard'
 import { registerDialogIpcHandlers } from './dialog'
 import type { NativeFileDialog } from './dialog'
 import type { NativeDesktopCapturer } from './dialog'
+import { registerExecutionNodeIpcHandlers } from './execution-node'
+import type { ExecutionNodeServiceIpc } from './execution-node'
 import type { IpcInvocationGuard, TrustedWebContentsRegistry } from './guards'
 import { registerMediaPermissionIpcHandlers } from './media-permission'
 import { registerOAuthIpcHandlers } from './oauth'
@@ -63,6 +65,8 @@ export interface SetupIpcOptions {
   shell: ExternalShell
   /** 正式安装包的更新服务；开发测试可不提供。 */
   updaterService?: DesktopUpdaterService
+  /** 桌面执行节点服务；未启用执行节点功能时可不提供。 */
+  executionNodeService?: ExecutionNodeServiceIpc
   /** 命名窗口的受限打开能力。 */
   windows: NamedWindowController
 }
@@ -111,6 +115,13 @@ export function setupIpc(options: SetupIpcOptions): void {
       ipcMain: options.ipcMain,
       guard: options.guard,
       updaterService: options.updaterService,
+    })
+  }
+  if (options.executionNodeService) {
+    registerExecutionNodeIpcHandlers({
+      ipcMain: options.ipcMain,
+      guard: options.guard,
+      executionNodeService: options.executionNodeService,
     })
   }
   registerWindowIpcHandlers(

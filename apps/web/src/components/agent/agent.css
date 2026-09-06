@@ -449,3 +449,22 @@
     display: none;
   }
 }
+
+.agent-header-side {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.agent-header-side .agent-btn {
+  border: 1px solid var(--brand-b);
+  background: var(--surface);
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.agent-header-side .agent-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}

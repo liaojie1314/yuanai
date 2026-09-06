@@ -1,5 +1,5 @@
 import { Minus, Square, X } from 'lucide-react'
-import { useEffect, type ReactElement, type ReactNode } from 'react'
+import { useLayoutEffect, type ReactElement, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { DESKTOP_PRODUCT_NAME } from './i18n'
@@ -32,7 +32,7 @@ export function DesktopTitlebar({ children }: { children: ReactNode }): ReactEle
             : ''
   const title = windowLabel ? `${windowLabel} - ${DESKTOP_PRODUCT_NAME}` : DESKTOP_PRODUCT_NAME
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.title = title
   }, [title])
 

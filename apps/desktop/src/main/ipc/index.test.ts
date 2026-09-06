@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { IpcMainInvokeEvent, WebContents, WebFrameMain } from 'electron'
 
 import { DEFAULT_DESKTOP_PREFERENCES, IPC } from '../../shared/ipc-contract'
+import type { DesktopExecutionNodeStatus } from '../../shared/ipc-contract'
 import type { AppRuntimeConfig } from '../../shared/runtime-config'
 import { createIpcInvocationGuard, createTrustedWebContentsRegistry } from './guards'
 import { setupIpc } from './index'
@@ -45,6 +46,15 @@ function setupTestIpc(): {
   selectedFiles: { register: ReturnType<typeof vi.fn>; take: ReturnType<typeof vi.fn> }
   onSessionChanged: ReturnType<typeof vi.fn>
   systemService: DesktopSystemService
+  executionNodeService: {
+    getStatus: ReturnType<typeof vi.fn>
+    register: ReturnType<typeof vi.fn>
+    disconnect: ReturnType<typeof vi.fn>
+    removeNode: ReturnType<typeof vi.fn>
+    respondJob: ReturnType<typeof vi.fn>
+    createGrant: ReturnType<typeof vi.fn>
+    revokeGrant: ReturnType<typeof vi.fn>
+  }
   shell: { openExternal: ReturnType<typeof vi.fn> }
   mediaPermissionPrompt: { respond: ReturnType<typeof vi.fn> }
   currentWindow: {
@@ -161,6 +171,33 @@ function setupTestIpc(): {
   } as unknown as DesktopAppearanceService
 
   const shell = { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }
+  const executionNodeService = {
+    getStatus: vi
+      .fn<() => Promise<typeof EXECUTION_NODE_STATUS>>()
+      .mockResolvedValue({ ...EXECUTION_NODE_STATUS, grants: [...EXECUTION_NODE_STATUS.grants] }),
+    register: vi
+      .fn<() => Promise<typeof EXECUTION_NODE_STATUS>>()
+      .mockResolvedValue({ ...EXECUTION_NODE_STATUS, grants: [...EXECUTION_NODE_STATUS.grants] }),
+    disconnect: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    removeNode: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    respondJob: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    createGrant: vi
+      .fn<
+        () => Promise<{
+          resourceId: string
+          kind: 'file'
+          displayName: string
+          createdAt: string
+        } | null>
+      >()
+      .mockResolvedValue({
+        resourceId: 'res-1',
+        kind: 'file' as const,
+        displayName: '报告.pdf',
+        createdAt: '2026-08-30T00:00:00.000Z',
+      }),
+    revokeGrant: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+  }
   const mediaPermissionPrompt = {
     respond:
       vi.fn<(sender: WebContents, response: { requestId: string; granted: boolean }) => boolean>(),
@@ -187,6 +224,7 @@ function setupTestIpc(): {
     mediaPermissionPrompt: mediaPermissionPrompt as unknown as InAppMediaPermissionPrompt,
     shell,
     systemService,
+    executionNodeService,
     windows,
   })
 
@@ -201,6 +239,7 @@ function setupTestIpc(): {
     selectedFiles,
     onSessionChanged,
     systemService,
+    executionNodeService,
     shell,
     mediaPermissionPrompt,
     currentWindow,
@@ -224,6 +263,18 @@ const CLEARED_SESSION = JSON.stringify({
   version: 0,
 })
 
+const EXECUTION_NODE_STATUS: DesktopExecutionNodeStatus = {
+  state: 'online',
+  nodeId: '0d9d1a2b-0000-4000-8000-000000000001',
+  name: '办公桌电脑',
+  capabilities: ['browser_open_url'],
+  currentJob: null,
+  pendingJob: null,
+  lastError: null,
+  tokenExpiresAt: '2026-08-30T12:00:00.000Z',
+  grants: [],
+}
+
 describe('secure IPC handlers', () => {
   it('registers fixed auth, clipboard, dialog, preference, runtime, system, and window channels', () => {
     const { handlers } = setupTestIpc()
@@ -246,6 +297,13 @@ describe('secure IPC handlers', () => {
         IPC.runtime.getConfig,
         IPC.shell.openExternal,
         IPC.shell.openExternalUrl,
+        IPC.executionNode.createGrant,
+        IPC.executionNode.disconnect,
+        IPC.executionNode.getStatus,
+        IPC.executionNode.register,
+        IPC.executionNode.removeNode,
+        IPC.executionNode.respondJob,
+        IPC.executionNode.revokeGrant,
         IPC.system.getInfo,
         IPC.system.setAutoLaunch,
         IPC.system.setGlobalShortcut,
@@ -579,6 +637,89 @@ describe('secure IPC handlers', () => {
 
     await expect(handler(createEvent(sender), 'unknown')).rejects.toThrow('IPC_PAYLOAD_INVALID')
     expect(windows.openOAuth).toHaveBeenCalledOnce()
+  })
+
+  it('returns the sanitized execution node status only to trusted callers', async () => {
+    const { executionNodeService, handlers, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.executionNode.getStatus)
+
+    await expect(handler(createEvent(sender))).resolves.toEqual(EXECUTION_NODE_STATUS)
+    expect(executionNodeService.getStatus).toHaveBeenCalledOnce()
+    await expect(handler(createEvent(sender), 'unexpected')).rejects.toThrow('IPC_PAYLOAD_INVALID')
+    await expect(handler(createEvent(createWebContents(2)))).rejects.toThrow('IPC_UNTRUSTED_SENDER')
+  })
+
+  it('validates execution node register payloads before touching the service', async () => {
+    const { executionNodeService, handlers, sender } = setupTestIpc()
+    const handler = getHandler(handlers, IPC.executionNode.register)
+
+    await expect(
+      handler(createEvent(sender), { pairingCode: 'pairing-code', name: '办公桌电脑' })
+    ).resolves.toEqual(EXECUTION_NODE_STATUS)
+    expect(executionNodeService.register).toHaveBeenCalledWith({
+      pairingCode: 'pairing-code',
+      name: '办公桌电脑',
+    })
+    await expect(
+      handler(createEvent(sender), {
+        pairingCode: 'pairing-code',
+        name: '办公桌电脑',
+        capabilities: ['browser_open_url'],
+      })
+    ).resolves.toEqual(EXECUTION_NODE_STATUS)
+    expect(executionNodeService.register).toHaveBeenLastCalledWith({
+      pairingCode: 'pairing-code',
+      name: '办公桌电脑',
+      capabilities: ['browser_open_url'],
+    })
+    await expect(
+      handler(createEvent(sender), { pairingCode: 'pairing-code', name: '办公桌电脑', extra: 1 })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+    await expect(
+      handler(createEvent(sender), { pairingCode: 'pairing-code', capabilities: [] })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+    await expect(handler(createEvent(sender), { pairingCode: '', name: 'x' })).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    expect(executionNodeService.register).toHaveBeenCalledTimes(2)
+  })
+
+  it('validates job decisions and grant payloads for the execution node', async () => {
+    const { executionNodeService, handlers, sender } = setupTestIpc()
+    const respond = getHandler(handlers, IPC.executionNode.respondJob)
+    const createGrant = getHandler(handlers, IPC.executionNode.createGrant)
+    const revokeGrant = getHandler(handlers, IPC.executionNode.revokeGrant)
+    const disconnect = getHandler(handlers, IPC.executionNode.disconnect)
+    const removeNode = getHandler(handlers, IPC.executionNode.removeNode)
+
+    await expect(
+      respond(createEvent(sender), { executionId: 'exec-1', decision: 'accept' })
+    ).resolves.toBeUndefined()
+    expect(executionNodeService.respondJob).toHaveBeenCalledWith({
+      executionId: 'exec-1',
+      decision: 'accept',
+    })
+    await expect(
+      respond(createEvent(sender), { executionId: 'exec-1', decision: 'maybe' })
+    ).rejects.toThrow('IPC_PAYLOAD_INVALID')
+
+    await expect(createGrant(createEvent(sender), { kind: 'directory' })).resolves.toMatchObject({
+      resourceId: 'res-1',
+      displayName: '报告.pdf',
+    })
+    await expect(createGrant(createEvent(sender), { kind: 'browser' })).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    await expect(revokeGrant(createEvent(sender), { resourceId: 'res-1' })).resolves.toBeUndefined()
+    await expect(revokeGrant(createEvent(sender), { resourceId: '' })).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+
+    await expect(disconnect(createEvent(sender))).resolves.toBeUndefined()
+    await expect(removeNode(createEvent(sender), 'unexpected')).rejects.toThrow(
+      'IPC_PAYLOAD_INVALID'
+    )
+    expect(executionNodeService.removeNode).not.toHaveBeenCalled()
   })
 
   it('closes the loading window when the system browser cannot open', async () => {

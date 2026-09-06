@@ -80,6 +80,35 @@ class TestMediaGenerationTasks:
         assert card["resultUrl"] is None
         assert card["resultPosterUrl"] is None
 
+    async def test_created_music_task_uses_fixed_contract(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """音乐任务 API 固定模型、时长和任务卡文案。"""
+        conversation_id = await _create_conversation(client, auth_headers)
+        response = await client.post(
+            "/api/v1/media/tasks",
+            headers=auth_headers,
+            json={"conversationId": conversation_id, "type": "music", "prompt": "舒缓钢琴"},
+        )
+        assert response.status_code == 201, response.text
+        task = response.json()
+        assert task["type"] == "music"
+        assert task["model"] == "musicgen-small-local"
+        assert task["options"] == {"durationSeconds": 30}
+
+        invalid = await client.post(
+            "/api/v1/media/tasks",
+            headers=auth_headers,
+            json={
+                "conversationId": conversation_id,
+                "type": "music",
+                "prompt": "舒缓钢琴",
+                "options": {"durationSeconds": 5},
+            },
+        )
+        assert invalid.status_code == 422
+        assert invalid.json()["detail"]["code"] == "MEDIA_TASK_INVALID"
+
     async def test_media_timeline_keeps_user_before_task_for_legacy_equal_timestamps(
         self,
         client: AsyncClient,

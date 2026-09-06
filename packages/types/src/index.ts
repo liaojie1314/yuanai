@@ -184,7 +184,7 @@ export interface MessageFile {
 }
 
 /** 可恢复媒体生成任务的类型。 */
-export type MediaGenerationType = 'image' | 'video'
+export type MediaGenerationType = 'image' | 'video' | 'music'
 
 /** 可恢复媒体生成任务的稳定生命周期状态。 */
 export type MediaGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
@@ -204,13 +204,18 @@ export type MediaVideoResolution = '480p' | '720p' | '1080p'
 /** Agnes Video V2.0 的受限时长预设，后端会转换为有效的 `8n + 1` 帧数。 */
 export type MediaVideoDurationSeconds = 3 | 5 | 10 | 18
 
+/** 本应用音乐生成的固定时长；歌词模式由本机 ACE-Step 负责演唱。 */
+export const MediaMusicDurationSeconds = 30 as const
+
 /** 媒体任务的已校验规格，字段由任务类型决定。 */
 export interface MediaGenerationOptions {
   size?: MediaImageSize
   ratio?: MediaImageRatio
   aspectRatio?: MediaVideoAspectRatio
   resolution?: MediaVideoResolution
-  durationSeconds?: MediaVideoDurationSeconds
+  durationSeconds?: MediaVideoDurationSeconds | typeof MediaMusicDurationSeconds
+  /** 音乐模式的歌词；为空时使用纯音乐 provider。 */
+  lyrics?: string
 }
 
 /** 创建媒体任务所需的跨端输入，不包含任何 provider URL 或本地路径。 */
@@ -231,7 +236,8 @@ export interface MediaGenerationTask {
   /** 发起此任务的用户消息；旧任务迁移失败时可为空。 */
   sourceMessageId: string | null
   type: MediaGenerationType
-  model: 'agnes-image-2.1-flash' | 'agnes-video-v2.0'
+  model:
+    'agnes-image-2.1-flash' | 'agnes-video-v2.0' | 'musicgen-small-local' | 'ace-step-v15-local'
   prompt: string
   options: MediaGenerationOptions
   /** 仅用于恢复任务的引用标识，不包含对象存储路径。 */
@@ -597,8 +603,10 @@ export interface AgentEvent {
 /** 脱敏审批请求。 */
 export interface ApprovalRequest {
   id: string
-  runId: string
-  stepId: string
+  /** 绑定 Agent Run 的审批有值；独立工具审批为 null。 */
+  runId: string | null
+  /** 绑定 Agent Step 的审批有值；独立工具审批为 null。 */
+  stepId: string | null
   userId: string
   toolName: string
   executionLocation: string
@@ -611,4 +619,255 @@ export interface ApprovalRequest {
   decidedAt: string | null
   decisionNote: string | null
   createdAt: string
+}
+
+// ============ 工具运行时（Tool Runtime） ============
+
+/** 工具风险等级（后端 ToolRisk 枚举）。 */
+export type ToolRiskLevel =
+  | 'read'
+  | 'local_write'
+  | 'reversible_write'
+  | 'external_side_effect'
+  | 'destructive'
+  | 'financial'
+  | 'privileged'
+
+/** 工具执行请求允许的位置；目录展示还可能出现 `either`（两端皆可）。 */
+export type ToolExecutionLocation = 'cloud' | 'desktop'
+
+/** 工具执行生命周期状态（后端 ToolExecutionStatus 枚举）。 */
+export type ToolExecutionStatus =
+  'queued' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+
+/** 桌面执行节点状态（后端 ExecutionNodeStatus 枚举）。 */
+export type ExecutionNodeStatus = 'offline' | 'online' | 'revoked' | 'update_required'
+
+/** 工具连接的凭证或服务类型（后端 ToolConnectionKind 枚举）。 */
+export type ToolConnectionKind = 'oauth' | 'api_key' | 'mcp_http' | 'mcp_stdio' | 'desktop_local'
+
+/** 客户端工具目录项（GET /tools/catalog），不含任何密钥。 */
+export interface ToolCatalogItem {
+  name: string
+  version: string
+  description: string
+  inputSchema: Record<string, unknown>
+  outputSchema: Record<string, unknown> | null
+  riskLevel: ToolRiskLevel
+  sideEffect: string
+  executionLocation: ToolExecutionLocation | 'either'
+  executionLocations: string[]
+  requiredScopes: string[]
+  timeoutSeconds: number
+  maxOutputBytes: number
+  idempotent: boolean
+  supportsCancel: boolean
+  tags: string[]
+}
+
+/** 用户连接的安全响应（POST/GET /tool-connections），永不包含明文凭证。 */
+export interface ToolConnection {
+  id: string
+  userId: string
+  kind: ToolConnectionKind
+  provider: string
+  displayName: string
+  secretRef: string | null
+  scopes: string[]
+  status: string
+  metadata: Record<string, unknown>
+  lastVerifiedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** 工具结果引用的外置 Artifact；字段由后端 ToolResult 契约按 snake_case 原样返回。 */
+export interface ToolResultArtifactRef {
+  id: string
+  name: string
+  kind: string
+  mime_type: string
+  size_bytes: number
+  sha256: string
+}
+
+/** 工具结果中的可信来源引用。 */
+export interface ToolResultCitation {
+  title: string
+  url: string
+  snippet: string
+}
+
+/** 一次工具执行的非敏感性能指标；字段由后端契约按 snake_case 原样返回。 */
+export interface ToolResultMetrics {
+  duration_ms: number
+  output_bytes: number
+}
+
+/** 可安全序列化到工具结果中的错误信息。 */
+export interface ToolResultError {
+  code: string
+  message: string
+}
+
+/**
+ * 受控工具的统一结果载荷（后端 ToolResult 契约，JSON 字段为 snake_case）。
+ * 注意：`ToolExecution.resultJson` 标准形状是本类型，但部分原始工具/MCP 结果
+ * 可能未经统一包装直接写入，消费前请先判别。
+ */
+export interface ToolResultPayload {
+  status: 'succeeded' | 'failed' | 'cancelled' | 'partial'
+  summary: string
+  data: Record<string, unknown> | unknown[] | null
+  artifacts: ToolResultArtifactRef[]
+  citations: ToolResultCitation[]
+  metrics: ToolResultMetrics
+  error: ToolResultError | null
+}
+
+/** 工具执行审计快照（POST/GET /tool-executions、POST /mcp-servers/:id/execute）。 */
+export interface ToolExecution {
+  id: string
+  userId: string
+  runId: string | null
+  stepId: string | null
+  toolName: string
+  toolVersion: string
+  connectionId: string | null
+  mcpServerId: string | null
+  /** 执行位置：`cloud` / `desktop`，MCP 远程执行为 `mcp_remote`。 */
+  executionLocation: string
+  nodeId: string | null
+  /** 后端 schema 为自由字符串：目录枚举见 {@link ToolRiskLevel}，MCP 工具还可能是 `high`。 */
+  riskLevel: string
+  sideEffect: string
+  argumentsPreview: Record<string, unknown>
+  argumentsHash: string
+  idempotencyKey: string | null
+  status: ToolExecutionStatus
+  resultSummary: string | null
+  resultJson: ToolResultPayload | Record<string, unknown> | null
+  artifactIds: string[]
+  errorCode: string | null
+  errorMessage: string | null
+  startedAt: string | null
+  finishedAt: string | null
+  nodeDeliveryStatus: string | null
+  nodeProgress: number | null
+  nodeLastDeliveredAt: string | null
+  nodeAcknowledgedAt: string | null
+  createdAt: string
+}
+
+/** Artifact 元数据和短期访问地址（GET/DELETE /artifacts）。 */
+export interface ArtifactMeta {
+  id: string
+  userId: string
+  runId: string | null
+  toolExecutionId: string | null
+  kind: string
+  name: string
+  mimeType: string
+  sizeBytes: number
+  sha256: string
+  sensitivity: string
+  retentionPolicy: string
+  expiresAt: string | null
+  preview: Record<string, unknown> | null
+  downloadUrl: string
+  createdAt: string
+}
+
+/**
+ * 桌面执行节点的云端策略；后端 JSONB 里以 snake_case 键原样存储并返回。
+ * `allowed_tools` 与节点 capabilities 取交集生效，`allowed_resource_ids` 对应本机资源授权。
+ */
+export interface ExecutionNodePolicy {
+  allowed_tools: string[]
+  allowed_resource_ids: string[]
+}
+
+/** 桌面执行节点的安全响应（GET /execution-nodes、POST .../revoke）。 */
+export interface ExecutionNode {
+  id: string
+  userId: string
+  name: string
+  platform: string
+  appVersion: string
+  capabilities: string[]
+  status: ExecutionNodeStatus
+  lastSeenAt: string | null
+  policy: ExecutionNodePolicy
+  createdAt: string
+  updatedAt: string
+}
+
+/** 创建配对挑战的响应：节点信息附加仅显示一次的配对码与过期时间。 */
+export interface ExecutionNodePairing extends ExecutionNode {
+  pairingCode: string
+  expiresAt: string
+}
+
+/** 节点登记成功后获得的短期会话凭证（POST /execution-nodes/register）。 */
+export interface ExecutionNodeRegistration {
+  nodeId: string
+  userId: string
+  nodeToken: string
+  expiresAt: string
+  protocolVersion: string
+}
+
+/** 节点令牌续期结果（POST /execution-nodes/token）。 */
+export interface ExecutionNodeTokenRenewal {
+  nodeId: string
+  nodeToken: string
+  expiresAt: string
+  protocolVersion: string
+}
+
+/** 本机资源授权元数据（POST/GET /resource-grants），不含真实本地路径。 */
+export interface ResourceGrant {
+  id: string
+  userId: string
+  nodeId: string
+  kind: string
+  resourceId: string
+  displayName: string
+  scopes: string[]
+  revokedAt: string | null
+  createdAt: string
+}
+
+/** MCP schema 快照中单个工具的摘要（由 POST /mcp-servers/:id/discover 生成）。 */
+export interface McpToolSummary {
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  /** MCP 协议注解，键名按协议原样保存。 */
+  annotations: {
+    readOnlyHint?: boolean
+    destructiveHint?: boolean
+    idempotentHint?: boolean
+  }
+}
+
+/** 远程 MCP Server 的 schema 快照与明确启用的工具集合。 */
+export interface McpServer {
+  id: string
+  userId: string
+  connectionId: string | null
+  name: string
+  endpointUrl: string | null
+  command: string | null
+  commandArgs: string[]
+  transport: 'streamable_http' | 'stdio'
+  status: string
+  /** 发现得到的 schema 快照，标准形状为 `{ tools: McpToolSummary[] }`。 */
+  schemaSnapshot: ({ tools?: McpToolSummary[] } & Record<string, unknown>) | null
+  schemaHash: string | null
+  enabledTools: string[]
+  metadata: Record<string, unknown>
+  lastVerifiedAt: string | null
+  createdAt: string
+  updatedAt: string
 }

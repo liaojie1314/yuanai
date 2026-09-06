@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator
@@ -10,6 +11,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
@@ -31,16 +33,22 @@ from app.schemas.agent import (
 )
 from app.services.agent.approval_service import (
     ApprovalAlreadyDecidedError,
+    ApprovalError,
     ApprovalExpiredError,
     ApprovalNotFoundError,
     ApprovalService,
 )
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue
+from app.services.secret_store import TenantSecretStore
+from app.services.tool_runtime_service import ToolRuntimeService
+from app.tools.builtin import build_phase6_registry
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 _approvals = ApprovalService()
 _events = EventStore()
+_tools_runtime = ToolRuntimeService(build_phase6_registry(), secret_store=TenantSecretStore())
+_QUEUE_ENQUEUE_TIMEOUT_SECONDS = 0.45
 
 
 def _agent_enabled_for(user_id: uuid.UUID) -> bool:
@@ -62,10 +70,13 @@ async def _assistant(assistant_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> Ass
     return item
 
 
-async def _run(run_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> AgentRun:
-    item = await db.scalar(
-        select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
-    )
+async def _run(
+    run_id: uuid.UUID, user_id: uuid.UUID, db: DB, *, for_update: bool = False
+) -> AgentRun:
+    query = select(AgentRun).where(AgentRun.id == run_id, AgentRun.user_id == user_id)
+    if for_update:
+        query = query.with_for_update(of=AgentRun, skip_locked=False)
+    item = await db.scalar(query)
     if item is None:
         raise HTTPException(status_code=404, detail="Agent run not found")
     return item
@@ -137,13 +148,14 @@ async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: 
     if req.parent_run_id is not None:
         await _run(req.parent_run_id, current_user.id, db)
     if req.idempotency_key:
-        existing = await db.scalar(
+        existing: AgentRun | None = await db.scalar(
             select(AgentRun).where(
                 AgentRun.user_id == current_user.id,
                 AgentRun.idempotency_key == req.idempotency_key,
             )
         )
         if existing is not None:
+            await _enqueue_run(current_user.id, existing.id)
             return existing
     run = AgentRun(
         user_id=current_user.id,
@@ -156,13 +168,36 @@ async def create_run(req: AgentRunCreateRequest, current_user: CurrentUser, db: 
         idempotency_key=req.idempotency_key,
     )
     db.add(run)
-    await db.commit()
-    await db.refresh(run)
     try:
-        await AgentQueue().enqueue(current_user.id, run.id)
-    except (OSError, RuntimeError, RedisError):
-        pass
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        if req.idempotency_key is None:
+            raise
+        existing = await db.scalar(
+            select(AgentRun).where(
+                AgentRun.user_id == current_user.id,
+                AgentRun.idempotency_key == req.idempotency_key,
+            )
+        )
+        if existing is None:
+            raise
+        await _enqueue_run(current_user.id, existing.id)
+        return existing
+    await db.refresh(run)
+    await _enqueue_run(current_user.id, run.id)
     return run
+
+
+async def _enqueue_run(user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """在 500ms 内尽力入队；Run 已持久化，恢复 worker 可补投超时任务。"""
+
+    try:
+        await asyncio.wait_for(
+            AgentQueue().enqueue(user_id, run_id), timeout=_QUEUE_ENQUEUE_TIMEOUT_SECONDS
+        )
+    except (OSError, RuntimeError, RedisError, TimeoutError):
+        return
 
 
 @router.get("/runs", response_model=list[AgentRunResponse])
@@ -205,17 +240,31 @@ async def stream_events(
     last_event_id: int = Header(default=0, alias="Last-Event-ID"),
 ) -> StreamingResponse:
     await _run(run_id, current_user.id, db)
-    events = await _events.replay_after(run_id, last_event_id)
 
     async def generate() -> AsyncGenerator[str, None]:
         seen: set[int] = set()
-        for event in events:
-            if event.sequence in seen:
-                continue
-            seen.add(event.sequence)
-            data = json.dumps(event.payload, ensure_ascii=False)
-            yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {data}\n\n"
-        yield "data: [DONE]\n\n"
+        cursor = last_event_id
+        while True:
+            events = await _events.replay_after(run_id, cursor, session=db)
+            for event in events:
+                if event.sequence <= cursor or event.sequence in seen:
+                    continue
+                seen.add(event.sequence)
+                cursor = event.sequence
+                data = json.dumps(event.payload, ensure_ascii=False)
+                yield f"id: {event.sequence}\nevent: {event.event_type}\ndata: {data}\n\n"
+                if event.event_type in {"run_completed", "run_failed", "run_cancelled"}:
+                    yield "data: [DONE]\n\n"
+                    return
+            status = await _events.get_run_status(run_id, tenant_id=current_user.id, session=db)
+            if status in {
+                AgentRunStatus.succeeded,
+                AgentRunStatus.failed,
+                AgentRunStatus.cancelled,
+            }:
+                yield "data: [DONE]\n\n"
+                return
+            await asyncio.sleep(0.25)
 
     return StreamingResponse(
         generate(),
@@ -246,7 +295,7 @@ async def replay_events(
 
 @router.post("/runs/{run_id}/cancel", response_model=AgentRunResponse)
 async def cancel_run(run_id: uuid.UUID, current_user: CurrentUser, db: DB) -> AgentRun:
-    run = await _run(run_id, current_user.id, db)
+    run = await _run(run_id, current_user.id, db, for_update=True)
     if run.status not in {
         AgentRunStatus.succeeded,
         AgentRunStatus.failed,
@@ -254,11 +303,24 @@ async def cancel_run(run_id: uuid.UUID, current_user: CurrentUser, db: DB) -> Ag
     }:
         run.status = AgentRunStatus.cancelled
         await db.commit()
-    try:
-        await AgentQueue().cancel(current_user.id, run.id)
-    except (OSError, RuntimeError, RedisError):
-        pass
+        await db.refresh(run)
+        await _events.append(
+            run.id,
+            "run_cancelled",
+            {"status": AgentRunStatus.cancelled.value, "reason": "user"},
+            tenant_id=current_user.id,
+        )
+    await _cancel_queued_run(current_user.id, run.id)
     return run
+
+
+async def _cancel_queued_run(user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+    """写入取消令牌，避免 Redis 故障覆盖已持久化的取消状态。"""
+
+    try:
+        await AgentQueue().cancel(user_id, run_id)
+    except (OSError, RuntimeError, RedisError):
+        return
 
 
 @router.post("/runs/{run_id}/input", response_model=AgentRunResponse)
@@ -288,13 +350,42 @@ async def decide_approval(
         item = await _approvals.decide(
             approval_id, user_id=current_user.id, decision=req.decision, note=req.note, db=db
         )
+        run = None
+        if item.tool_execution_id is not None:
+            await _approvals.resolve_tool_execution(item, user_id=current_user.id, db=db)
+            if req.decision == "approve":
+                await _tools_runtime.resume_approved_execution(
+                    item.tool_execution_id, user_id=current_user.id, db=db
+                )
+        else:
+            run = await _approvals.resume_after_decision(item, user_id=current_user.id, db=db)
     except ApprovalNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except ApprovalExpiredError as error:
         raise HTTPException(status_code=410, detail=str(error)) from error
     except ApprovalAlreadyDecidedError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+    except ApprovalError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     await db.commit()
+    if run is not None and run.status is AgentRunStatus.queued:
+        try:
+            await AgentQueue().enqueue(current_user.id, run.id)
+        except (OSError, RuntimeError, RedisError):
+            pass
+        await _events.append(
+            run.id,
+            "approval_resolved",
+            {"approval_id": str(item.id), "decision": "approve"},
+            tenant_id=current_user.id,
+        )
+    elif run is not None:
+        await _events.append(
+            run.id,
+            "run_cancelled",
+            {"status": AgentRunStatus.cancelled.value, "reason": "approval_denied"},
+            tenant_id=current_user.id,
+        )
     return item
 
 

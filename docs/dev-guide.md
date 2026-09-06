@@ -68,30 +68,23 @@ pnpm dev:mock
 
 - Docker Desktop 已安装并运行
 - 已在 `backend/.env` 中配置至少一个 AI 提供商的 API Key → 详见 [AI 大模型接入指南](ai-providers.md)
+- 音乐生成默认使用本机 MusicGen；歌词歌曲需另外启动本机 ACE-Step 服务。两种模式都固定
+  30 秒，任务默认只读已缓存模型并有界超时，安装、GPU/CPU 配置、ACE-Step 启动和远程实验
+  方案见 [媒体生成与音乐配置](media-generation.md)
 
 ### 启动步骤
 
 ```bash
-# 1. 启动基础设施（pnpm dev:real 会自动生成 SearXNG 密钥）
-docker compose up -d
-
-# 2. 进入后端目录
-cd backend
-
-# 3. 安装 Python 依赖（首次）
-uv sync
-
-# 4. 执行数据库迁移（首次或新版本后执行）
-uv run alembic upgrade head
-
-# 5. 启动后端（开发模式，支持热重载）
-uv run uvicorn app.main:app --reload --port 8000
-
-# 6. 另开终端，启动 Web 前端
-cd ..
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1" > apps/web/.env.local
-pnpm --filter @yuanai/web dev
+# 一键启动 Docker Compose 基础设施、迁移、FastAPI 和 Web
+pnpm dev:real
 ```
+
+`pnpm dev:real` 会启动 PostgreSQL（宿主机 `5433`）、Redis、MinIO 和 SearXNG，然后执行
+迁移并启动后端和 Web。后端集成测试使用同一个 Compose PostgreSQL 中的 `yuanai_test` 数据库；
+测试前先让真实栈运行，不要把连接地址改回宿主机 `5432`。歌词音乐还需要另开终端执行
+`ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step`。低显存 GPU 无法完成 ACE-Step
+推理时，不要反复重试同一任务；改用[媒体生成与音乐配置](media-generation.md#设备与低显存配置)
+中的 CPU-only 启动命令。
 
 ### 启动桌面端
 
@@ -119,6 +112,24 @@ pnpm --filter @yuanai/desktop preview
 pnpm --filter @yuanai/desktop test:unit
 pnpm --filter @yuanai/desktop test:integration
 ```
+
+桌面执行节点的真实 Electron E2E 还需要后端 API 在 `YUANAI_API_URL`（默认
+`http://localhost:8000/api/v1`）可用、测试账号可创建或已配置登录凭据，以及 Linux 上已解锁且
+可用的桌面钥匙串。使用项目脚本运行，不要直接调用底层 Electron 或 Playwright 启动器：
+
+```bash
+pnpm --filter @yuanai/desktop test:e2e
+```
+
+截至 2026-09-05，当前分支的真实 Linux 运行记录为 `1 passed (29s)`，覆盖配对、WSS challenge、
+本地审批、签名回调、ACK、取消确认和节点撤销。该单个 E2E 仍不覆盖断线重连/重放；该项不能仅凭
+Desktop 单元/集成测试记录为真实验收。后端不可达、safeStorage 不可用或测试被 skip 时均不是通过。
+重启后必须先验证可用的 X11 会话；本次使用 `DISPLAY=:1`，而不是历史 `:0`。完整边界见
+[执行节点验收记录](../apps/desktop/tests/e2e/execution-node-acceptance.md)。
+
+Browser Worker 的浏览器二进制必须来自已有系统安装或显式 `executablePath`，优先使用
+`/usr/bin/google-chrome`；不要运行 `playwright install` 下载浏览器。系统 Chrome 不存在时，记录
+环境阻塞并保留依赖与模型缓存。
 
 ### 访问地址
 

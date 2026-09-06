@@ -63,3 +63,8 @@ apps/desktop/out/
 apps/desktop/release/
 apps/desktop/test-results/
 apps/desktop/playwright-report/
+
+# Understand-Anything 知识图谱与 archify 图表（本地分析产物，不入库）
+.ua/
+.codex/
+diagrams/

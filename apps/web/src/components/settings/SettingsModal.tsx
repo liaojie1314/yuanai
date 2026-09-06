@@ -38,6 +38,7 @@ import {
   useUnlinkGoogle,
 } from '@yuanai/core/hooks'
 import { API_BASE_URL } from '@yuanai/core/api'
+import { APP_VERSION } from '@/lib/app-version'
 import { usePrefsStore } from '@yuanai/core/stores'
 import type { FontSize, Density, ThemeChoice } from '@yuanai/core/stores'
 import type { UserPreferences } from '@yuanai/core/api'
@@ -570,7 +571,9 @@ export default function SettingsModal({
                 </div>
               ))}
             </div>
-            <div className="st-nav-ft">{tc('appName')} v1.0.0</div>
+            <div className="st-nav-ft">
+              {tc('appName')} v{APP_VERSION}
+            </div>
           </aside>
 
           {/* ── Right content ── */}
@@ -1161,7 +1164,7 @@ export default function SettingsModal({
                 <div className="st-about-brand">
                   <div className="st-about-logo">元</div>
                   <div className="st-about-name">{tc('appName')}</div>
-                  <div className="st-about-ver">v1.0.0</div>
+                  <div className="st-about-ver">v{APP_VERSION}</div>
                 </div>
 
                 <div className="st-blk">

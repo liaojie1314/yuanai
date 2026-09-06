@@ -429,6 +429,44 @@ afterEach(() => {
 })
 
 describe('desktop chat', () => {
+  it('submits the fixed music task payload and disables attachments in music mode', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '音乐生成' }))
+
+    expect(screen.getByText('MusicGen（本机）')).toBeInTheDocument()
+    expect(screen.queryByText('音乐生成 · 30 秒')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '音乐模式不支持附件' })).toBeDisabled()
+    expect(screen.getByTestId('attachment-input')).toBeDisabled()
+
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '生成一段轻快的器乐音乐')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await waitFor(() => {
+      expect(chat.createMediaTask).toHaveBeenCalledWith({
+        conversationId: 'conversation-1',
+        type: 'music',
+        prompt: '生成一段轻快的器乐音乐',
+        options: { durationSeconds: 30 },
+        sourceFileIds: [],
+      })
+    })
+    expect(chat.send).not.toHaveBeenCalled()
+  })
+
+  it('keeps image and video composer modes available beside music', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '图片生成' }))
+    expect(screen.getByText('Agnes Image 2.1 Flash')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '退出图片生成' }))
+    await user.click(screen.getByRole('button', { name: '视频生成' }))
+    expect(screen.getByText('Agnes Video V2.0')).toBeInTheDocument()
+  })
+
   it('shows an in-app update prompt and lets users skip a minor release', async () => {
     const user = userEvent.setup()
     render(<App />)

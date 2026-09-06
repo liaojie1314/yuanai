@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { mockFs, mockSafeStorage } = vi.hoisted(() => ({
+const { mockFs, mockSafeStorage, mockUserDataPath } = vi.hoisted(() => ({
   mockSafeStorage: {
     decryptString: vi.fn<(value: Buffer) => string>(),
     encryptString: vi.fn<(value: string) => Buffer>(),
@@ -14,10 +14,11 @@ const { mockFs, mockSafeStorage } = vi.hoisted(() => ({
     unlink: vi.fn<() => Promise<void>>(),
     writeFile: vi.fn<() => Promise<void>>(),
   },
+  mockUserDataPath: { value: '/tmp/yuanai-test' },
 }))
 
 vi.mock('electron', () => ({
-  app: { getPath: () => '/tmp/yuanai-test' },
+  app: { getPath: () => mockUserDataPath.value },
   safeStorage: mockSafeStorage,
 }))
 vi.mock('node:fs/promises', () => ({ ...mockFs, default: mockFs }))
@@ -25,6 +26,7 @@ vi.mock('node:fs/promises', () => ({ ...mockFs, default: mockFs }))
 import { authStorage } from './auth-storage'
 
 beforeEach(() => {
+  mockUserDataPath.value = '/tmp/yuanai-test'
   mockSafeStorage.isEncryptionAvailable.mockReturnValue(true)
   mockSafeStorage.getSelectedStorageBackend.mockReturnValue('kwallet')
   mockSafeStorage.encryptString.mockReturnValue(Buffer.from('ciphertext'))
@@ -54,6 +56,19 @@ describe('authStorage', () => {
       { mode: 0o600 }
     )
     expect(mockFs.rename).toHaveBeenCalledOnce()
+  })
+
+  it('resolves the user data path after Electron changes it', async () => {
+    await authStorage.setItem('yuanai-auth', 'first-token')
+    mockUserDataPath.value = '/tmp/yuanai-test-isolated'
+
+    await authStorage.setItem('yuanai-auth', 'second-token')
+
+    expect(mockFs.writeFile).toHaveBeenLastCalledWith(
+      expect.stringContaining('/tmp/yuanai-test-isolated/session.enc.'),
+      Buffer.from('ciphertext'),
+      { mode: 0o600 }
+    )
   })
 
   it('moves unreadable encrypted data aside and returns null', async () => {

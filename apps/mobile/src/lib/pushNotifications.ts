@@ -41,8 +41,8 @@ export async function loadNotifPref(key: string, def: boolean): Promise<boolean>
 
 async function getExpoPushToken(): Promise<string | null> {
   const projectId = Constants.expoConfig?.extra?.['eas']?.['projectId'] as string | undefined
-  // dev 阶段 app.json 里是占位符，getExpoPushTokenAsync 会白耗一次网络再抛错，
-  // 直接短路；EAS 关联真实 projectId 后自动生效
+  // app.json 使用占位 projectId 时，getExpoPushTokenAsync 会白耗一次网络再抛错，
+  // 直接短路；EAS 关联真实 projectId 后自动生效。
   if (!projectId || projectId === 'PROJECT_ID_PLACEHOLDER') return null
   try {
     const res = await Notifications.getExpoPushTokenAsync({ projectId })

@@ -22,6 +22,7 @@
     "dev": "turbo run dev",
     "dev:mock": "pnpm --filter @yuanai/web dev:mock",
     "dev:real": "node scripts/dev.mjs",
+    "dev:ace-step": "node scripts/dev-ace-step.mjs",
     "dev:desktop": "node scripts/dev-desktop.mjs",
     "dev:mobile": "node scripts/dev-mobile.mjs",
     "dev:mobile:mock": "node scripts/dev-mobile-mock.mjs",

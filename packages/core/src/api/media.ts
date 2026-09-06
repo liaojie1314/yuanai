@@ -2,7 +2,7 @@ import type { CreateMediaGenerationTaskInput, MediaGenerationTask } from '@yuana
 
 import { apiClient } from './client.js'
 
-/** 创建一张会话内可恢复的 Agnes 图片或视频生成任务。 */
+/** 创建一张会话内可恢复的图片、视频或音乐生成任务。 */
 export async function createMediaTask(
   input: CreateMediaGenerationTaskInput
 ): Promise<MediaGenerationTask> {

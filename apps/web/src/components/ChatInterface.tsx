@@ -41,6 +41,7 @@ import {
 } from '@yuanai/core/hooks'
 import { filterChatModels } from '@yuanai/core/utils'
 import type { AIModel, MessageFile } from '@yuanai/types'
+import { MediaMusicDurationSeconds } from '@yuanai/types'
 import type { MockMessage, MockConversation } from '@yuanai/core/stores'
 import {
   SquarePen,
@@ -79,6 +80,7 @@ import {
   Ghost,
   Image,
   Video,
+  Music,
   Bot,
 } from 'lucide-react'
 
@@ -88,6 +90,11 @@ import { useVoiceInput } from '@/hooks/useVoiceInput'
 import { captureScreenshot, isCameraSupported, isScreenCaptureSupported } from '@/lib/mediaCapture'
 import { CameraModal } from '@/components/chat/CameraModal'
 import { createAgentRun, listAssistants } from '@yuanai/core/api'
+import {
+  buildMediaTaskInput,
+  mediaComposerAllowsAttachments,
+  type MediaComposerMode,
+} from '@/components/chat/mediaComposer'
 
 // ── Types ────────────────────────────────────────────
 interface Model {
@@ -120,13 +127,31 @@ interface AttachFile {
   error?: string
 }
 
-type ComposerMode = 'chat' | 'agent' | 'image' | 'video'
+type ComposerMode = 'chat' | 'agent' | MediaComposerMode
+
+const COMPOSER_MODE_STORAGE_KEY = 'yuanai-composer-mode'
+const MUSIC_LYRICS_MODE_STORAGE_KEY = 'yuanai-music-lyrics-mode'
+
+function isComposerMode(value: string | null): value is ComposerMode {
+  return (
+    value === 'chat' ||
+    value === 'agent' ||
+    value === 'image' ||
+    value === 'video' ||
+    value === 'music'
+  )
+}
+
+function isMusicLyricsMode(value: string | null): value is 'instrumental' | 'lyrics' {
+  return value === 'instrumental' || value === 'lyrics'
+}
 
 const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
 const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
 const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
 const VIDEO_RESOLUTIONS = ['480p', '720p', '1080p'] as const
 const VIDEO_DURATIONS = [3, 5, 10, 18] as const
+const MUSIC_MODES = ['instrumental', 'lyrics'] as const
 
 /** 输入框上方的紧凑媒体规格分段选择。 */
 function OptionGroup<T extends string | number>({
@@ -135,12 +160,14 @@ function OptionGroup<T extends string | number>({
   values,
   onChange,
   suffix = '',
+  formatValue,
 }: {
   label: string
   value: T
   values: readonly T[]
   onChange(value: T): void
   suffix?: string
+  formatValue?: (value: T) => string
 }): JSX.Element {
   return (
     <div className="ch-media-option-group">
@@ -153,7 +180,7 @@ function OptionGroup<T extends string | number>({
             className={item === value ? 'active' : ''}
             onClick={() => onChange(item)}
           >
-            {item}
+            {formatValue?.(item) ?? item}
             {suffix}
           </button>
         ))}
@@ -390,12 +417,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const openFilePreview = useArtifactStore((s) => s.openFilePreview)
   const [webSearch, setWebSearch] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
+  const [composerModeHydrated, setComposerModeHydrated] = useState(false)
   const [agentEnabled, setAgentEnabled] = useState(false)
   const [imageSize, setImageSize] = useState<(typeof IMAGE_SIZES)[number]>('1K')
   const [imageRatio, setImageRatio] = useState<(typeof IMAGE_RATIOS)[number]>('1:1')
   const [videoRatio, setVideoRatio] = useState<(typeof VIDEO_RATIOS)[number]>('3:2')
   const [videoResolution, setVideoResolution] = useState<(typeof VIDEO_RESOLUTIONS)[number]>('720p')
   const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
+  const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
+  const [musicLyrics, setMusicLyrics] = useState('')
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
   const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
   const [modelDropOpen, setModelDropOpen] = useState(false)
@@ -432,6 +462,20 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   useEffect(() => {
     if (webSearchCapability && !webSearchCapability.enabled) setWebSearch(false)
   }, [webSearchCapability])
+
+  useEffect(() => {
+    const savedMode = sessionStorage.getItem(COMPOSER_MODE_STORAGE_KEY)
+    if (isComposerMode(savedMode)) setComposerMode(savedMode)
+    const savedMusicLyricsMode = sessionStorage.getItem(MUSIC_LYRICS_MODE_STORAGE_KEY)
+    if (isMusicLyricsMode(savedMusicLyricsMode)) setMusicLyricsMode(savedMusicLyricsMode)
+    setComposerModeHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!composerModeHydrated) return
+    sessionStorage.setItem(COMPOSER_MODE_STORAGE_KEY, composerMode)
+    sessionStorage.setItem(MUSIC_LYRICS_MODE_STORAGE_KEY, musicLyricsMode)
+  }, [composerMode, composerModeHydrated, musicLyricsMode])
 
   // ── Scroll FAB ──
   const [showScrollFab, setShowScrollFab] = useState(false)
@@ -633,7 +677,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
   const toggleTemporary = (): void => {
     // 不要把 router.push / 其他 setState 放进 setTemporary 的 updater —— React
-    // 会在渲染阶段调用 updater，router.push 会向 Router 派发状态更新，
+    // React 渲染期间调用 updater，router.push 会向 Router 派发状态更新，
     // 触发 "Cannot update Router while rendering ChatInterface" 警告。
     const next = !temporary
     setTemporary(next)
@@ -757,13 +801,22 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
       return
     }
     const hasImageAttachment = files.some((file) => file.type === 'image')
-    const isMediaMode = composerMode !== 'chat'
+    const isMediaMode =
+      composerMode === 'image' || composerMode === 'video' || composerMode === 'music'
     if (isMediaMode && temporary) {
-      toast.error('临时对话不支持图片或视频生成')
+      toast.error(t('media.temporaryUnavailable'))
       return
     }
-    if (isMediaMode && files.some((file) => file.type !== 'image')) {
-      toast.error('图片和视频生成只能使用 PNG、JPEG、WebP 或 GIF 参考图')
+    if (composerMode === 'music' && files.length > 0) {
+      toast.error(t('media.attachmentsUnavailableMessage'))
+      return
+    }
+    if (composerMode === 'music' && musicLyricsMode === 'lyrics' && !musicLyrics.trim()) {
+      toast.error(t('media.lyricsRequired'))
+      return
+    }
+    if (isMediaMode && composerMode !== 'music' && files.some((file) => file.type !== 'image')) {
+      toast.error(t('media.imageOnlyReferences'))
       return
     }
     if (!isMediaMode && hasImageAttachment && !activeModel.supportsVision) {
@@ -910,20 +963,29 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
 
     if (isMediaMode) {
       try {
-        await createMediaTask.mutateAsync({
-          conversationId: convId,
-          type: composerMode,
-          prompt: text,
-          options:
+        await createMediaTask.mutateAsync(
+          buildMediaTaskInput(
+            convId,
+            composerMode,
+            text,
             composerMode === 'image'
               ? { size: imageSize, ratio: imageRatio }
-              : {
-                  aspectRatio: videoRatio,
-                  resolution: videoResolution,
-                  durationSeconds: videoDuration,
-                },
-          sourceFileIds: fileIds,
-        })
+              : composerMode === 'music'
+                ? {
+                    durationSeconds: MediaMusicDurationSeconds,
+                    ...(musicLyricsMode === 'lyrics' && musicLyrics.trim()
+                      ? { lyrics: musicLyrics.trim() }
+                      : {}),
+                  }
+                : {
+                    aspectRatio: videoRatio,
+                    resolution: videoResolution,
+                    durationSeconds: videoDuration,
+                  },
+            fileIds
+          )
+        )
+        if (composerMode === 'music' && musicLyricsMode === 'lyrics') setMusicLyrics('')
         virtuosoRef.current?.scrollToIndex({ index: 'LAST', align: 'end', behavior: 'smooth' })
       } catch (error) {
         toast.error(error instanceof Error ? error.message : '创建生成任务失败')
@@ -1699,16 +1761,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         {/* Input area */}
         <div className="ch-composer-shell">
           {composerMode === 'image' ? (
-            <div className="ch-media-options-wrap" aria-label="图片生成规格">
+            <div className="ch-media-options-wrap" aria-label={t('media.imageGenerationSpecs')}>
               <div className="ch-media-options">
                 <OptionGroup<(typeof IMAGE_SIZES)[number]>
-                  label="清晰度"
+                  label={t('media.quality')}
                   value={imageSize}
                   values={IMAGE_SIZES}
                   onChange={setImageSize}
                 />
                 <OptionGroup<(typeof IMAGE_RATIOS)[number]>
-                  label="比例"
+                  label={t('media.ratio')}
                   value={imageRatio}
                   values={IMAGE_RATIOS}
                   onChange={setImageRatio}
@@ -1717,26 +1779,41 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             </div>
           ) : null}
           {composerMode === 'video' ? (
-            <div className="ch-media-options-wrap" aria-label="视频生成规格">
+            <div className="ch-media-options-wrap" aria-label={t('media.videoGenerationSpecs')}>
               <div className="ch-media-options">
                 <OptionGroup<(typeof VIDEO_RATIOS)[number]>
-                  label="画幅"
+                  label={t('media.aspectRatio')}
                   value={videoRatio}
                   values={VIDEO_RATIOS}
                   onChange={setVideoRatio}
                 />
                 <OptionGroup<(typeof VIDEO_RESOLUTIONS)[number]>
-                  label="清晰度"
+                  label={t('media.quality')}
                   value={videoResolution}
                   values={VIDEO_RESOLUTIONS}
                   onChange={setVideoResolution}
                 />
                 <OptionGroup<(typeof VIDEO_DURATIONS)[number]>
-                  label="时长"
+                  label={t('media.duration')}
                   value={videoDuration}
                   values={VIDEO_DURATIONS}
                   onChange={setVideoDuration}
-                  suffix=" 秒"
+                  suffix={t('media.seconds')}
+                />
+              </div>
+            </div>
+          ) : null}
+          {composerMode === 'music' ? (
+            <div className="ch-media-options-wrap" aria-label={t('media.musicGenerationMode')}>
+              <div className="ch-media-options">
+                <OptionGroup<(typeof MUSIC_MODES)[number]>
+                  label={t('media.musicMode')}
+                  value={musicLyricsMode}
+                  values={MUSIC_MODES}
+                  onChange={setMusicLyricsMode}
+                  formatValue={(mode) =>
+                    mode === 'instrumental' ? t('media.instrumental') : t('media.withLyrics')
+                  }
                 />
               </div>
             </div>
@@ -1795,6 +1872,17 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                   )}
                 </div>
               )}
+              {composerMode === 'music' && musicLyricsMode === 'lyrics' ? (
+                <textarea
+                  className="ch-music-lyrics-ta"
+                  aria-label={t('media.lyrics')}
+                  placeholder={t('media.lyricsPlaceholder')}
+                  rows={3}
+                  value={musicLyrics}
+                  onChange={(event) => setMusicLyrics(event.target.value)}
+                  disabled={!isLoggedIn}
+                />
+              ) : null}
               <textarea
                 ref={inputRef}
                 className="ch-input-ta"
@@ -1806,7 +1894,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       : voiceInput.status === 'transcribing'
                         ? '正在转写…'
                         : isLoggedIn
-                          ? t('inputPlaceholder')
+                          ? composerMode === 'music'
+                            ? t('media.musicPromptPlaceholder')
+                            : t('inputPlaceholder')
                           : t('inputPlaceholderLoggedOut')
                 }
                 rows={1}
@@ -1819,8 +1909,27 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 <button
                   ref={attachBtnRef}
                   className={`ch-in-btn ${attachMenuOpen ? 'on' : ''}`}
-                  title={temporary ? t('temporary.filesDisabled') : '添加附件'}
-                  disabled={!isLoggedIn || temporary}
+                  title={
+                    composerMode === 'music'
+                      ? t('media.attachmentsUnavailable')
+                      : temporary
+                        ? t('temporary.filesDisabled')
+                        : '添加附件'
+                  }
+                  aria-label={
+                    composerMode === 'music' ? t('media.attachmentsUnavailable') : '添加附件'
+                  }
+                  disabled={
+                    !isLoggedIn ||
+                    temporary ||
+                    !mediaComposerAllowsAttachments(
+                      composerMode === 'music'
+                        ? 'music'
+                        : composerMode === 'video'
+                          ? 'video'
+                          : 'image'
+                    )
+                  }
                   onClick={() => setAttachMenuOpen((v) => !v)}
                   aria-haspopup="menu"
                   aria-expanded={attachMenuOpen}
@@ -1864,6 +1973,34 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     <Mic size={18} />
                   )}
                 </button>
+                <button
+                  className={`ch-in-btn ${composerMode === 'music' ? 'on' : ''}`}
+                  title={
+                    composerMode === 'music'
+                      ? t('media.exitMusicGenerator')
+                      : t('media.musicGenerator')
+                  }
+                  aria-label={
+                    composerMode === 'music'
+                      ? t('media.exitMusicGenerator')
+                      : t('media.musicGenerator')
+                  }
+                  aria-pressed={composerMode === 'music'}
+                  disabled={
+                    !isLoggedIn ||
+                    temporary ||
+                    uploading ||
+                    createMediaTask.isPending ||
+                    composerMode === 'agent'
+                  }
+                  onClick={() => {
+                    setComposerMode((mode) => (mode === 'music' ? 'chat' : 'music'))
+                    setFiles([])
+                    setAttachMenuOpen(false)
+                  }}
+                >
+                  <Music size={18} />
+                </button>
                 {composerMode === 'chat' ? (
                   <>
                     <button
@@ -1903,8 +2040,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 </button>
                 <button
                   className={`ch-in-btn ${composerMode === 'image' ? 'on' : ''}`}
-                  title={composerMode === 'image' ? '退出图片生成' : '图片生成'}
-                  aria-label={composerMode === 'image' ? '退出图片生成' : '图片生成'}
+                  title={
+                    composerMode === 'image'
+                      ? t('media.exitImageGenerator')
+                      : t('media.imageGenerator')
+                  }
+                  aria-label={
+                    composerMode === 'image'
+                      ? t('media.exitImageGenerator')
+                      : t('media.imageGenerator')
+                  }
                   aria-pressed={composerMode === 'image'}
                   disabled={
                     !isLoggedIn ||
@@ -1919,8 +2064,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 </button>
                 <button
                   className={`ch-in-btn ${composerMode === 'video' ? 'on' : ''}`}
-                  title={composerMode === 'video' ? '退出视频生成' : '视频生成'}
-                  aria-label={composerMode === 'video' ? '退出视频生成' : '视频生成'}
+                  title={
+                    composerMode === 'video'
+                      ? t('media.exitVideoGenerator')
+                      : t('media.videoGenerator')
+                  }
+                  aria-label={
+                    composerMode === 'video'
+                      ? t('media.exitVideoGenerator')
+                      : t('media.videoGenerator')
+                  }
                   aria-pressed={composerMode === 'video'}
                   disabled={
                     !isLoggedIn ||
@@ -1949,7 +2102,13 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     <span className="ch-media-model">Agent</span>
                   ) : (
                     <span className="ch-media-model">
-                      {composerMode === 'image' ? 'Agnes Image 2.1 Flash' : 'Agnes Video V2.0'}
+                      {composerMode === 'image'
+                        ? 'Agnes Image 2.1 Flash'
+                        : composerMode === 'video'
+                          ? 'Agnes Video V2.0'
+                          : musicLyricsMode === 'lyrics'
+                            ? t('media.aceStepLocal')
+                            : t('media.musicGenLocal')}
                     </span>
                   )}
                   {charCount > 0 && (

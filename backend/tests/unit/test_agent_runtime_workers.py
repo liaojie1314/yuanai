@@ -6,13 +6,15 @@ import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import pytest
 
+import app.workers.agent_worker as agent_worker_module
 from app.models.agent_run import AgentRunStatus
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue, QueueItem
-from app.workers.agent_worker import AgentWorker, CancellationToken
+from app.workers.agent_worker import AgentWorker, CancellationToken, execute_agent_run
 from app.workers.recovery_worker import RecoveryWorker
 
 
@@ -212,8 +214,6 @@ async def test_worker_delivery_is_recovered_before_lease_ack() -> None:
     item = await queue.dequeue()
     assert item == QueueItem(tenant_id, run_id)
     assert await queue.recover_inflight() == [item]
-
-    await queue.enqueue(tenant_id, run_id)
     assert await queue.dequeue() == item
 
 
@@ -316,6 +316,91 @@ async def test_worker_stops_on_cancellation_and_releases_lease() -> None:
 
     assert calls == []
     assert await queue.lease_owner(tenant_id, run_id) is None
+
+
+@pytest.mark.asyncio
+async def test_default_worker_handler_executes_agent_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """未注入 handler 时，生产 worker 必须调用 Agent Run 执行器。"""
+
+    redis = FakeRedis()
+    queue = AgentQueue(redis)
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    await queue.enqueue(tenant_id, run_id)
+    calls: list[QueueItem] = []
+
+    async def execute(item: QueueItem, _token: CancellationToken) -> None:
+        calls.append(item)
+
+    monkeypatch.setattr(agent_worker_module, "execute_agent_run", execute)
+    worker = AgentWorker(queue)
+
+    assert await worker.run_once(asyncio.Event()) is True
+    assert calls == [QueueItem(tenant_id, run_id)]
+
+
+@pytest.mark.asyncio
+async def test_worker_execution_uses_controlled_tool_registry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Worker 创建协调器时应加载全部受控工具，而不是仅加载基础工具。"""
+
+    tenant_id = uuid.uuid4()
+    run_id = uuid.uuid4()
+    run = SimpleNamespace(
+        id=run_id,
+        user_id=tenant_id,
+        assistant_id=uuid.uuid4(),
+    )
+    assistant = SimpleNamespace(instructions="使用受控工具")
+    expected_registry = object()
+    captured: dict[str, object] = {}
+
+    class FakeSession:
+        """为 Worker 路径提供最小数据库会话。"""
+
+        def __init__(self) -> None:
+            self._results = iter((run, assistant, None))
+
+        async def __aenter__(self) -> FakeSession:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def scalar(self, _statement: object) -> object | None:
+            return next(self._results)
+
+        async def commit(self) -> None:
+            captured["committed"] = True
+
+    class FakeCoordinator:
+        """记录 Worker 注入协调器的注册表。"""
+
+        def __init__(self, *, tool_registry: object, event_store: object) -> None:
+            captured["registry"] = tool_registry
+            captured["event_store"] = event_store
+
+        async def run(self, *_args: object, **kwargs: object) -> None:
+            captured["approval_id"] = kwargs["approval_id"]
+
+    monkeypatch.setattr(agent_worker_module, "AsyncSessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(agent_worker_module, "AgentCoordinator", FakeCoordinator)
+    monkeypatch.setattr(
+        agent_worker_module,
+        "build_phase6_registry",
+        lambda: expected_registry,
+        raising=False,
+    )
+
+    await execute_agent_run(
+        QueueItem(tenant_id=tenant_id, run_id=run_id),
+        SimpleNamespace(is_cancelled=lambda: False),
+    )
+
+    assert captured["registry"] is expected_registry
+    assert captured["approval_id"] is None
+    assert captured["committed"] is True
 
 
 @pytest.mark.asyncio

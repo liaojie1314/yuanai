@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
+import re
 from collections.abc import Mapping
 
 from app.tools.contracts import (
@@ -25,6 +26,30 @@ def _schema_error() -> ToolValidationError:
     """构造不泄漏参数内容的统一 schema 错误。"""
 
     return ToolValidationError()
+
+
+def _validate_pattern(value: str, schema: Mapping[str, object]) -> None:
+    """按 JSON Schema 语义执行未锚定的 pattern 子串匹配。"""
+
+    pattern = schema.get("pattern")
+    if not isinstance(pattern, str):
+        return
+    try:
+        if re.search(pattern, value) is None:
+            raise _schema_error()
+    except re.error as error:
+        raise _schema_error() from error
+
+
+def _validate_number_bounds(value: int | float, schema: Mapping[str, object]) -> None:
+    """校验数值字段的 minimum 和 maximum 边界。"""
+
+    minimum = schema.get("minimum")
+    maximum = schema.get("maximum")
+    if isinstance(minimum, (int, float)) and not isinstance(minimum, bool) and value < minimum:
+        raise _schema_error()
+    if isinstance(maximum, (int, float)) and not isinstance(maximum, bool) and value > maximum:
+        raise _schema_error()
 
 
 def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
@@ -58,12 +83,15 @@ def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
             raise _schema_error()
         if isinstance(max_length, int) and len(value) > max_length:
             raise _schema_error()
+        _validate_pattern(value, schema)
     elif expected_type == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
             raise _schema_error()
+        _validate_number_bounds(value, schema)
     elif expected_type == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise _schema_error()
+        _validate_number_bounds(value, schema)
     elif expected_type == "boolean":
         if not isinstance(value, bool):
             raise _schema_error()
@@ -83,6 +111,18 @@ def _validate_schema(value: object, schema: Mapping[str, object]) -> None:
     enum = schema.get("enum")
     if isinstance(enum, list) and value not in enum:
         raise _schema_error()
+
+
+def validate_arguments_against_schema(
+    arguments: Mapping[str, object], schema: Mapping[str, object]
+) -> dict[str, object]:
+    """验证外部工具 schema 的有限 JSON Schema 子集。"""
+
+    if not isinstance(arguments, Mapping):
+        raise ToolValidationError()
+    arguments_dict = dict(arguments)
+    _validate_schema(arguments_dict, schema)
+    return arguments_dict
 
 
 class ToolRegistry:
@@ -116,6 +156,18 @@ class ToolRegistry:
 
         return [self._specs[name] for name in sorted(self._specs)]
 
+    def validate_arguments(self, name: str, arguments: ToolArguments) -> dict[str, object]:
+        """校验工具参数并返回普通字典，供审计和执行共用。"""
+
+        spec = self.get_spec(name)
+        try:
+            arguments_dict = validate_arguments_against_schema(arguments, spec.input_schema)
+        except ToolValidationError:
+            raise
+        except (TypeError, ValueError) as error:
+            raise ToolValidationError() from error
+        return arguments_dict
+
     async def execute(
         self,
         name: str,
@@ -126,15 +178,7 @@ class ToolRegistry:
         """校验参数并在工具声明的时间边界内执行一次调用。"""
 
         spec = self.get_spec(name)
-        if not isinstance(arguments, Mapping):
-            raise ToolValidationError()
-        arguments_dict = dict(arguments)
-        try:
-            _validate_schema(arguments_dict, spec.input_schema)
-        except ToolValidationError:
-            raise
-        except (TypeError, ValueError) as error:
-            raise ToolValidationError() from error
+        arguments_dict = self.validate_arguments(name, arguments)
 
         handler = self._handlers[name]
         execution_context = context or ToolContext()
@@ -161,7 +205,8 @@ class ToolRegistry:
             encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
         except (TypeError, ValueError) as error:
             raise ToolExecutionError(ToolErrorCode.EXECUTION_FAILED) from error
-        if len(encoded.encode("utf-8")) > self._max_output_bytes:
+        output_limit = min(self._max_output_bytes, spec.max_output_bytes)
+        if len(encoded.encode("utf-8")) > output_limit:
             raise ToolExecutionError(ToolErrorCode.OUTPUT_TOO_LARGE)
         if not isinstance(result, (dict, list)):
             raise ToolExecutionError(ToolErrorCode.EXECUTION_FAILED)

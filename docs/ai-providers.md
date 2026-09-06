@@ -11,6 +11,10 @@
 | `gpt-4o`                     | GPT-4o            | OpenAI    | [platform.openai.com](https://platform.openai.com/api-keys)          |
 | `claude-3-5-sonnet-20241022` | Claude 3.5 Sonnet | Anthropic | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
 
+音乐生成不属于文本模型列表，默认使用本机 Hugging Face `facebook/musicgen-small` 模型，
+不需要 API Token。远程 Hugging Face 实验 provider 的 Token、配置、三端使用方式以及
+排队/限流处理见[媒体生成与音乐配置](media-generation.md)。
+
 ---
 
 ## 快速配置（以 DeepSeek 为例）

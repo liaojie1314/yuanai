@@ -8,9 +8,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "icon": "./assets/icon.png",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "updates": {
       "url": "https://u.expo.dev/PROJECT_ID_PLACEHOLDER",
       "checkAutomatically": "ON_LOAD",
@@ -31,9 +29,7 @@
         "ITSAppUsesNonExemptEncryption": false,
         "CFBundleAllowMixedLocalizations": true
       },
-      "associatedDomains": [
-        "applinks:yuanai.example.com"
-      ],
+      "associatedDomains": ["applinks:yuanai.example.com"],
       "config": {
         "usesNonExemptEncryption": false
       }
@@ -65,10 +61,7 @@
               "host": "yuanai.example.com"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
     },

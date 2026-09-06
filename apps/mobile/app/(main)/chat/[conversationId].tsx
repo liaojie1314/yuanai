@@ -53,7 +53,7 @@ import { useTheme } from '@/theme/useTheme'
  * - `useMessages(convId)`   → 历史消息（TanStack Query）
  * - `useStream().send(...)` → SSE 触发；hook 内部会把 delta 分派到 chat store
  * - `useChatStore`          → 读 streamingConvId 判断本页是否处于流式态
- * - `useModels()`           → 取默认模型；MVP 未做手动选择
+ * - `useModels()`           → 取默认模型；当前未做手动选择
  *
  * 消息交互状态都放在本屏（对齐 web `ChatInterface`），MessageList 保持纯展示：
  * - `versionIdxs`          → 每个 pair 当前展示第几个回答版本

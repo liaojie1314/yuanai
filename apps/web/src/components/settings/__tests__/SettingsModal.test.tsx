@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl'
 import zhCN from '@/i18n/locales/zh-CN.json'
 import en from '@/i18n/locales/en.json'
 import SettingsModal from '@/components/settings/SettingsModal'
+import { APP_VERSION } from '@/lib/app-version'
 
 // ── Module mocks ─────────────────────────────────────
 vi.mock('@/i18n/client', async (importOriginal) => {
@@ -425,6 +426,6 @@ describe('SettingsModal', () => {
     const user = userEvent.setup()
     renderWithI18n(<SettingsModal open={true} onClose={onClose} />, 'zh-CN')
     await navigateTo(user, '关于与帮助')
-    expect(screen.getByText('v1.0.0')).toBeInTheDocument()
+    expect(screen.getByText(`v${APP_VERSION}`)).toBeInTheDocument()
   })
 })

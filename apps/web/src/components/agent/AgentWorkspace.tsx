@@ -3,6 +3,8 @@
 import { useMemo, useState, type FormEvent, type JSX } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { useTranslations } from '@/i18n/client'
 import {
   Bot,
   Check,
@@ -424,6 +426,7 @@ export default function AgentWorkspace({
   const createMutation = useCreateAgentRun()
   const [goal, setGoal] = useState('')
   const [selectedRunId, setSelectedRunId] = useState(initialRunId ?? '')
+  const toolsT = useTranslations('tools')
   const runs = mode === 'admin' ? (adminQuery.data ?? []) : (runsQuery.data ?? [])
   const selected = selectedRunId || runs[0]?.id || ''
   const approvals = approvalQuery.data ?? []
@@ -459,7 +462,12 @@ export default function AgentWorkspace({
               : '查看任务进度、工具调用和需要你确认的动作。'}
           </p>
         </div>
-        <Bot size={28} />
+        <div className="agent-header-side">
+          <Link className="agent-btn" href="/agent/tools">
+            {toolsT('title')}
+          </Link>
+          <Bot size={28} />
+        </div>
       </header>
       {mode === 'runs' ? (
         <form className="agent-create-form" onSubmit={createRun}>

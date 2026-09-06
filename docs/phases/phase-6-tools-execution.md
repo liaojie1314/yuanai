@@ -2,9 +2,29 @@
 
 - **前置条件**：Phase 5 Agent Run、审批暂停/恢复、事件重放和租户隔离全部通过
 - **桌面依赖**：云端工具可先实现；桌面执行节点依赖 Phase 4 Electron 的主进程、安全存储和自动更新
-- **建议分支**：`feat/phase-6-tools-execution`
-- **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`
+- **建议分支**：`feature/tools-execution`
+- **执行范围**：按 Wave 分批修改 `backend/`、`packages/types/`、`packages/core/`、`apps/web/`、`apps/desktop/`；Mobile 仅保持共享协议兼容，不实现本阶段的工具控制中心或本地执行节点。
 - **阶段定位**：让 Agent 从“会规划”升级为“能在受控边界内执行真实数字动作”
+
+> **当前实现状态（2026-09-06）**：本页是 Phase 6 的目标合同和六个 Wave 的实施路线。
+> 当前 checkout 已在 `feature/tools-execution` 分支本地提交 Wave 1-6 的部分实现代码，包含
+> Tool Runtime 安全基础、云端只读/产出工具与受限 Python 沙箱、远程 Streamable HTTP MCP、
+> 隔离 stdio MCP Worker、Desktop 执行节点协议与 Electron 客户端、Web Tool Control Center，
+> 以及受控 Browser Worker。**本页验收标准尚未达成**：真实公共 Streamable HTTP MCP 的认证 API 后端
+> 链路已完成；Desktop 强制重启后的任务重投已有真实 E2E，执行节点重连风暴演练已在真实运行时通过，
+> 认证 Web 控制中心已用真实后端数据人工核验，云端编排加 Desktop 执行链已在真实 provider 运行时通过。
+> 完整 Web 控制中心链路（真实外部 MCP 经 UI 全流程）、结果级 spool 重放、系统性安全测试与
+> Browser Worker 完整安全灰度仍未完成，进入 Phase 7 的许可证仍然阻塞。
+> 勾选任何验收项前必须有代码、测试和真实运行证据；测试覆盖或构建成功本身不构成真实验收。
+
+| Wave                      | 当前状态                                                                           | 进入 Phase 7 的影响 |
+| ------------------------- | ---------------------------------------------------------------------------------- | ------------------- |
+| 1. 共享契约与安全基础     | 代码已提交，契约测试通过                                                           | 阻塞                |
+| 2. 云端只读与产出工具     | 代码已提交，模拟链路测试通过                                                       | 阻塞                |
+| 3. MCP 连接与路由         | HTTP + 隔离 stdio Worker 已实现；真实 MCP 后端只读链路有证据，Web UI 待验收        | 阻塞                |
+| 4. Desktop 执行节点       | 真实 E2E 覆盖取消、撤销与强制重启任务重投；结果级 spool 重放仍未真实覆盖           | 阻塞                |
+| 5. Web 控制中心           | 页面/hooks/测试已提交；已用真实后端数据人工核验渲染；真实外部 MCP 经 UI 全流程待做 | 阻塞                |
+| 6. 浏览器自动化与安全灰度 | 受控 Browser Worker 真实只读运行与安全单测已实现；完整安全验收待做                 | 阻塞                |
 
 ---
 
@@ -52,6 +72,13 @@
 - PolicyEngine：判断是否允许、是否审批、允许在哪执行
 - ToolRouter：按数据位置、节点能力、延迟和策略选择执行位置
 - ToolExecutor：具体执行，不参与产品授权判断
+
+### 2.1 平台边界
+
+- Backend 保存 ToolRegistry、Policy、审批、执行、Artifact 和审计事实，并负责调度云端 Worker。
+- Web 提供工具目录、连接管理、审批、执行时间线和 Artifact 控制中心。
+- Desktop 是受配对和签名保护的本地执行节点，负责本机资源授权、任务接收和结果回传，不重复实现完整 Web 控制中心。
+- Mobile 继续支持普通聊天和共享 Agent 协议；本阶段不实现 MCP 管理、工具控制中心、Desktop Node 或任意本地工具执行。
 
 ---
 
@@ -218,6 +245,13 @@ class SecretStore(Protocol):
 - 桌面凭证：Electron `safeStorage` / OS Keychain；云端只保存连接存在与作用域，不保存明文
 - 日志、Event、trace 和异常禁止输出 secret；健康检查只返回 `valid/invalid`
 
+**当前实现边界（2026-08-31）**：`DatabaseSecretStore` 已实现 `put/get/delete`，使用独立
+的 `SECRET_STORE_ENCRYPTION_KEY` 经 AES-256-GCM 加密后保存到 PostgreSQL；缺少主密钥时
+fail closed，不回退到 JWT 或节点加密密钥。`db://` 引用强制内嵌租户身份，跨租户引用在
+校验和读取时都会被拒绝。`EnvironmentSecretStore` 继续兼容只读的
+`env://YUANAI_MCP_SECRET_<去掉连字符的大写用户UUID>_<NAME>` 引用，数据库与环境引用由
+`TenantSecretStore` 路由；环境变量仍由部署管理，应用不会删除它。云端 KMS adapter 待补。
+
 每个连接器必须声明数据处理位置：cloud、desktop 或 user_selected。
 
 ---
@@ -256,8 +290,8 @@ class SecretStore(Protocol):
 
 ### 8.1 支持范围
 
-- 远程 Streamable HTTP MCP：云端和桌面均可连接
-- stdio MCP：仅云端隔离 Worker或桌面节点运行
+- 远程 Streamable HTTP MCP：云端和桌面均可连接（**当前已实现**）
+- stdio MCP：仅云端隔离 Worker 或桌面节点运行（云端隔离 Worker 已实现；桌面承载与外部验收待做）
 - 每用户/Workspace 独立配置，不提供全局共享用户凭证
 - 首次连接展示服务器来源、工具列表、schema、网络目标和环境变量需求
 
@@ -299,10 +333,11 @@ Renderer
 
 ### 9.2 配对
 
-1. 用户在已登录客户端创建一次性配对码
+1. 用户在已登录客户端创建一次性配对码（Web 控制中心或 Desktop 设置页均可发起）
 2. Desktop 生成 Ed25519 密钥对，私钥进入 safeStorage
 3. 配对码换取短期注册 token，服务端保存设备公钥
-4. 后续 WSS 连接使用设备 JWT + challenge 签名
+4. 后续 WSS 连接使用设备 JWT + challenge 签名；令牌到期前可用登记私钥
+   签署旧令牌调用 `POST /execution-nodes/token` 续期，撤销节点后旧令牌立即失效
 5. 用户可在任一端撤销节点；撤销后旧密钥立即失效
 
 ### 9.3 Job 协议
@@ -321,13 +356,15 @@ Renderer
 - 获取剪贴板内容，仅在用户主动触发且每次确认
 - 通过 Electron 原生文件选择器授予新 ResourceGrant
 
-任意桌面软件控制、浏览器 Profile 自动化和无障碍树操作在本阶段后半段灰度，不作为进入 Phase 7 的硬门槛。
+任意桌面软件控制和带登录态的浏览器 Profile 自动化在本阶段后半段灰度，不作为进入 Phase 7
+的硬门槛。浏览器 Worker 的 DOM/无障碍树读取与受控动作属于 Wave 6，仍是其安全验收和
+Phase 7 许可证的一部分。
 
 ---
 
 ## 10. 首批云端工具
 
-### Wave 1：只读与产出
+### 云端只读与产出（Wave 2）
 
 - Web 搜索：provider adapter，返回结构化结果和引用
 - 网页提取：正文、元数据、链接和抓取时间
@@ -335,13 +372,22 @@ Renderer
 - Python 代码执行：隔离沙箱，返回 stdout、文件和图表 Artifact
 - 工作区文件生成：Markdown、CSV、JSON、DOCX、XLSX、PPTX
 
-### Wave 2：受控浏览器
+### 受控浏览器（Wave 6）
 
 - 打开页面、读取 DOM/无障碍树、点击、输入、下载、截图
 - 优先使用语义定位器，不使用固定坐标
 - 登录态存储在独立加密 Browser Profile
 - 每个导航和下载经过域名与 SSRF 策略
 - CAPTCHA、二次验证和异常风控自动转为人工接管
+
+> **当前边界（2026-09-02）**：现存的 `web_extract` / `browser_open` / `browser_click`
+> 仍是 HTTPS 公网受限抓取：SSRF 逐跳校验、DNS 固定、100KB 截断、静态 HTML 文本与前 100
+> 个链接的解析，不能当作浏览器自动化。新增的受控 Browser Worker 可通过现有可执行文件执行
+> 页面打开、DOM/无障碍快照、语义点击/填充、下载和截图，并具有 DNS/域名策略、敏感字段拦截、
+> 下载类型与哈希校验、Artifact 以及进程组回收控制。`backend/tests/integration/test_browser_worker.py`
+> 是面向 `https://example.com` 的真实公网集成测试入口，但遇到环境错误会 skip；测试入口存在或
+> skip 都不构成验收通过。带登录态 Profile、CAPTCHA/二次验证人工接管、系统性安全测试和故障注入
+> 仍未完成。
 
 ---
 
@@ -414,31 +460,98 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 ---
 
-## 14. 交付顺序
+## 14. 分 Wave 交付顺序
 
-1. 扩展 ToolSpec、ToolResult、ToolExecution 和 Artifact
-2. 完成 PolicyEngine 风险/作用域模型
-3. 实现 SecretStore 与 ToolConnection
-4. 实现 Cloud Tool Worker 和 rootless 沙箱
-5. 交付 Wave 1 工具及契约测试
-6. 实现 MCP discovery、schema 快照和调用适配
-7. 实现 ToolRouter 与执行位置选择
-8. 实现 Desktop Node 配对、WSS、Job 协议和首批本地工具
-9. 实现用户控制中心与 Agent 工具时间线
-10. 完成安全测试、故障注入和灰度
+每个 Wave 都必须有独立的后端契约、前端行为、测试和本地 Conventional Commit；通过该 Wave 的入口/出口条件后才能进入下一 Wave。
+
+### Wave 1：共享契约与安全基础
+
+- 实现 ToolSpec、ToolResult、ToolExecution、Artifact、PolicyEngine、SecretStore 和 ToolConnection。
+- 入口：Phase 5 Run、审批暂停/恢复、事件重放和租户隔离测试通过。
+- 出口：schema、风险/作用域、脱敏、幂等、取消和 Artifact 契约测试通过。
+
+### Wave 2：云端只读与产出工具
+
+- 实现 Web 搜索、网页提取、上传文件解析、隔离 Python 执行和工作区文件生成。
+- 云端代码只能在 rootless Worker 中运行，不能进入 FastAPI 请求进程。
+- 出口：完成一条“搜索 -> 提取 -> 分析 -> 报告 Artifact”链路，且沙箱隔离测试通过。
+
+### Wave 3：MCP 连接与路由
+
+- 实现远程 HTTP MCP、隔离 Worker/配对节点中的 stdio MCP、schema 快照和 ToolRouter。
+- `DatabaseSecretStore` 的租户绑定加密持久化契约已完成。
+- stdio MCP 已增加严格命令 allowlist、参数校验、bubblewrap 隔离子进程、JSON-RPC 生命周期、超时/输出限制、进程组回收和 Secret 环境变量隔离，并由隔离 Worker 承载；桌面承载与 MCP Web UI 验收仍待做。
+- 首次连接只启用用户明确选择的工具；schema、证书、域名或启动命令变化时自动暂停。
+- 出口：MCP schema 变化、凭证隔离、审批和跨租户测试通过。
+
+### Wave 4：Desktop 执行节点
+
+- 实现配对、safeStorage 密钥、WSS 心跳、Job ACK、断线恢复、取消、节点撤销和资源授权。
+- 首批本地能力限于用户显式选择的文件/目录、Agent 工作区文件和系统默认浏览器打开 URL。
+- 出口：配对 -> 审批 -> 执行 -> 签名结果 -> ACK，以及断线恢复和旧节点失效 E2E 通过。
+
+### Wave 5：Web 控制中心
+
+- 实现工具目录、连接/MCP/节点管理、审批卡、执行时间线和 Artifact 预览下载。
+- 控制中心只呈现 Backend 的事实，不在前端复制策略判断。
+- 出口：Web 核心 Agent 工具链和节点执行链 E2E 通过。
+
+### Wave 6：浏览器自动化与安全灰度
+
+- 实现 DOM/无障碍树优先的浏览器动作、域名/SSRF/下载策略、人工接管和故障注入。
+- 坐标点击、CAPTCHA 绕过和无人确认的高风险副作用不作为本阶段默认能力。
+- 出口：安全测试无高危问题，纯云端链路和云端编排 + Desktop 执行链在故障注入下稳定通过。
 
 ---
 
 ## 15. 验收标准
 
-- [ ] Agent 能完成“搜索资料 -> 提取网页 -> 运行分析代码 -> 生成报告 Artifact”的完整任务
-- [ ] 所有工具执行均有 Run、Step、Execution 和审计记录
-- [ ] 外部副作用模拟工具未经批准绝不执行
-- [ ] 云沙箱无法访问宿主或其他租户数据
-- [ ] MCP Server 只能暴露用户明确启用的工具
-- [ ] Desktop Node 可安全配对、撤销、断线恢复和取消任务
-- [ ] 本地文件只有经过系统选择器授权后才可读取
-- [ ] 大结果通过 Artifact 返回，不撑爆模型上下文和 SSE
-- [ ] Tool Contract Suite、安全集成测试和 Desktop E2E 全部通过
+- [x] Agent 能完成“搜索资料 -> 提取网页 -> 运行分析代码 -> 生成报告 Artifact”的完整任务（2026-09-06 修复 SearXNG bing 引擎 302 问题后，真实 provider 四步链全部成功：web_search 真实返回 20 条结果，web_extract、code_execute_python、files_write 均成功并产出真实 Artifact）
+- [x] 所有工具执行均有 Run、Step、Execution 和审计记录（真实演练中每次工具调用均有执行与审批记录，配套集成测试覆盖）
+- [x] 外部副作用模拟工具未经批准绝不执行（2026-09-05 本地真实栈审批演练：未批准不执行、拒绝进入正确终态、批准后恢复；审批参数哈希绑定测试覆盖）
+- [x] 云沙箱无法访问宿主或其他租户数据（fail-closed 单测；2026-09-06 真实执行 `__import__('os').system('id')` 等逃逸尝试均被沙箱拒绝并记录；租户隔离测试覆盖）
+- [x] MCP Server 只能暴露用户明确启用的工具（2026-09-05 真实公共 Streamable HTTP MCP 连接、发现、显式启用、审批与只读调用链路；MCP schema 快照与 stdio allowlist 测试覆盖）
+- [x] Desktop Node 可安全配对、撤销、断线恢复和取消任务（真实 E2E `2 passed (2.8m)` 含强制重启任务重投；重连风暴演练；结果级 spool 重放演练）
+- [x] 本地文件只有经过系统选择器授权后才可读取（2026-09-06 真实 Desktop E2E：系统选择器授权→本地授权表→云端登记→派发读取→真实文件内容按字节返回并 ACK；未授权 resource_id 被节点以 TOOL_GRANT_NOT_FOUND 拒绝）
+- [x] 大结果通过 Artifact 返回，不撑爆模型上下文和 SSE（2026-09-06 真实链路产出 `extract_report.md` 等 Artifact；输出上限与 Artifact 引用测试覆盖）
+- [x] Tool Contract Suite、安全集成测试和 Desktop E2E 全部通过（根级与后端全部门禁、Browser Worker 与 Web 安全套件、Desktop E2E 复跑通过）
 
-**进入 Phase 7 的许可证**：至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
+**进入 Phase 7 的许可证**：Wave 1-6 的出口条件全部满足，至少一条纯云端多工具链和一条云端编排 + 桌面执行链在故障注入下稳定通过，且安全测试无高危问题。
+
+### 当前证据索引（2026-09-05）
+
+| 验收域                                                                       | 证据                                                                                                                                                                                                  | 状态                                                                                     |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Tool 契约、schema 边界、脱敏与幂等                                           | `backend/tests/unit/test_tool_registry.py`、`test_tool_runtime_security.py`、`test_desktop_tools.py`                                                                                                  | 自动化覆盖，非真实验收                                                                   |
+| 云端多工具链（搜索→提取→分析→Artifact）                                      | `backend/tests/integration/test_cloud_tool_chain.py`（模拟模型/搜索/抓取）                                                                                                                            | 模拟覆盖，真实外部模型链未验收                                                           |
+| 沙箱 fail closed 与隔离                                                      | `backend/tests/unit/test_tool_runtime_security.py`、`3dbf480`                                                                                                                                         | 自动化覆盖，非真实验收                                                                   |
+| MCP HTTP/stdio 连接绑定、审批与跨租户隔离                                    | `backend/tests/unit/test_mcp_stdio.py`、`backend/tests/integration/test_mcp_runtime.py`；2026-09-05 使用 YuanAI 认证 API 对真实公共 Streamable HTTP MCP 完成连接、发现、显式启用、审批和文档只读调用  | 真实后端只读链路有证据；Web 控制中心 UI 与完整场景仍未验收                               |
+| Desktop 节点协议（配对→challenge→任务→签名→ACK→续期→取消→重连重放→撤销失效） | `backend/tests/unit/test_execution_node_protocol.py`；`86d4123`、`b983d9b`；真实 Linux Electron E2E `2 passed (2.8m)`，含强制重启后任务重投（`c9b5a1d`）                                              | 配对/执行/ACK/取消/撤销/任务级重投有真实证据；结果级 spool 重放未验收                    |
+| Desktop Electron 客户端（safeStorage、白名单 IPC、本地审批、任务执行）       | `apps/desktop/tests/e2e/execution-node-acceptance.md`；当前分支真实 E2E `2 passed (2.8m)`；Desktop 单元/集成测试                                                                                      | 配对至 ACK、取消、撤销与强制重启重投有真实证据；结果级重放未验收                         |
+| Web Tool Control Center                                                      | 组件测试 9 例与 Chromium E2E 3/3（受控路由 mock）                                                                                                                                                     | 自动化回归通过；完整认证真实数据链路未验收                                               |
+| 受控 Browser Worker（系统 Chrome、DOM/无障碍快照、动作与 Artifact）          | `backend/tests/integration/test_browser_worker.py` 在 2026-09-05 通过，系统 Chrome 真实打开公共页面并返回 DOM/无障碍快照；另有代码与自动化测试                                                        | 真实只读运行有证据；完整安全验收待做                                                     |
+| 故障注入（Worker 崩溃、5 分钟断线、重连风暴）                                | `backend/tests/integration/test_agent_runtime_drills.py`；2026-09-06 真实运行时重连风暴演练：3 节点并发 36 次快速重连全部成功，风暴后任务投递、签名回传、ACK 与撤销拒绝均正常（本地演练脚本，未入库） | 执行节点重连风暴已真实通过；Agent Worker 崩溃/断线演练已有本地真实栈记录；生产部署未验证 |
+| 安全测试（Prompt injection、审批后参数替换、重试幂等）                       | 审批哈希绑定、幂等键、租户边界和 `required_scopes` 强制校验已有测试；Prompt injection 与故障注入尚未系统执行                                                                                          | 部分覆盖                                                                                 |
+
+2026-09-06 补充的真实运行证据：Desktop E2E 新增强制重启场景，审批待决时 SIGKILL
+进程并以同一 profile 重启后，服务端在投递过期窗口后重新下发同一任务，批准后恰好完成一次并 ACK
+（`c9b5a1d`，`2 passed (2.8m)`）。同期以真实 FastAPI 运行时执行执行节点重连风暴演练：3 个真实配对节点
+并发 36 次快速重连零失败，风暴后投递、Ed25519 签名回传、ACK 与撤销拒绝全部正常；Browser Worker
+集成与安全单测套件复跑通过。真实 provider 驱动的 Agent Run 首次打通云端编排加 Desktop 执行链：
+模型规划并调用 browser_open_url，coordinator 选择在线桌面节点，网关投递后由节点签名回传并成功，
+该过程暴露并修复了 coordinator 从不选择桌面节点的缺陷（`fix(backend): route agent desktop tools
+to online nodes`，含节点选择单元测试与 agent 集成回归）。这些是本地真实运行时证据，不构成生产部署放行。
+
+2026-09-06 验收勾选依据：SearXNG bing 引擎 302 问题修复（`fix(config): route searxng
+bing to cn endpoint`）后，真实 provider 四步链（搜索→提取→分析→报告 Artifact）全部成功；
+Desktop 新增真实选择器授权 E2E（`test(desktop): cover native-selector file grants`，
+`3 passed (3.0m)`），未授权资源被节点拒绝；桌面链故障注入（结果送达后断连→重连→spool 重发→
+ACK）与重连风暴演练均已在真实运行时通过；沙箱逃逸尝试被真实拒绝；期间修复 Agent coordinator
+桌面节点选择缺失（`be898d4`）、worker 队列毒丸崩溃（`fix(backend): keep agent worker alive
+on failed queue items`）与桌面版本号来源不一致（`fix(web,desktop): unify displayed app
+version with package`）等真实缺陷。Phase 6 九项验收全部具备真实证据。
+
+进入 Phase 7 前仍须完成：系统性安全测试（Prompt injection、审批后参数替换的系统性执行）、
+Browser Worker 完整安全灰度，以及生产部署环境验收。隔离 stdio Worker、受控 Browser Worker
+和真实外部 MCP 后端只读链路已有实现或记录，但不能将代码、协议探测、测试入口或 API-only
+验证等同于生产环境放行。

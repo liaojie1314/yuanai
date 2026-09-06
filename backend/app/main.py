@@ -17,6 +17,7 @@ from app.api.v1 import (
     notifications,
     qr_login,
     share,
+    tools,
     voice,
 )
 from app.api.v1 import files as files_router
@@ -40,7 +41,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         try:
             await storage.ensure_bucket()
         except Exception:
-            # 冷启动阶段 MinIO 可能尚未就绪，稍后请求时再报错即可
+            # 应用启动时 MinIO 可能尚未就绪，稍后请求时再报错即可
             pass
     stop_media_worker = asyncio.Event()
     media_worker = asyncio.create_task(run_media_generation_worker(stop_media_worker))
@@ -93,6 +94,7 @@ app.include_router(files_router.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(admin_agent.router, prefix="/api/v1")
+app.include_router(tools.router, prefix="/api/v1")
 
 
 @app.get("/health")
