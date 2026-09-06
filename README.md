@@ -226,10 +226,11 @@ yuanai/
 - Phase 6 六个 Wave 已有不同程度的实现和测试：隔离 stdio Worker、受控 Browser Worker、Desktop
   执行节点和 Web 工具控制中心均已进入代码/测试证据阶段。已通过 YuanAI 认证 API 连接真实公共
   Streamable HTTP MCP，完成工具发现、显式启用、审批和文档只读调用；这不是 Web 控制中心 UI 验收。
-  完整 Web 控制中心链路、Desktop 重连/重放、故障注入稳定性和系统性 Browser Worker 安全验收仍阻塞。当前分支的 Chromium
-  Web E2E 为 33/33、Tool Control Center E2E 为 3/3，均使用受控路由 mock，只是自动化回归证据。真实
-  Desktop E2E 最新一次为 `1 passed (29s)`，已覆盖配对、WSS challenge、本地审批、签名回调、ACK、取消确认和节点撤销；
-  它不覆盖断线重连/重放。当前边界见[执行节点验收记录](apps/desktop/tests/e2e/execution-node-acceptance.md)。
+  Desktop 重连/重放、故障注入与文件授权已有真实 E2E 与演练证据（最新 `3 passed (3.0m)`，含强制重启
+  任务重投与系统选择器文件授权→真实读取→未授权拒绝；执行节点重连风暴与结果级 spool 重放演练通过；
+  搜索→提取→分析→报告四步链经真实 provider 跑通并产出 Artifact）。系统性 Browser Worker 安全验收、
+  Prompt injection 等系统性安全测试与生产部署环境验收仍阻塞。Chromium Web E2E 33/33 与 Tool Control
+  Center E2E 3/3 使用受控路由 mock，只是自动化回归证据。当前边界见[执行节点验收记录](apps/desktop/tests/e2e/execution-node-acceptance.md)。
 - Phase 7 尚未开始；可新开会话的前置条件仍未满足，必须先完成 Phase 5/6 的真实运行与安全验收。
 - 音乐生成是独立媒体能力，不计入 Phase 6 的 Wave 或进入 Phase 7 的许可证。
 
