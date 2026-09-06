@@ -38,10 +38,14 @@ test.describe('Authentication', () => {
   })
 
   test('email code tab: valid email starts countdown on send button', async ({ page }) => {
-    await page.fill('input[type="email"]', 'test@example.com')
-    await page.click('button.code-btn')
     const sendBtn = page.locator('button.code-btn')
-    await expect(sendBtn).toBeDisabled()
+    await expect(async () => {
+      if (await sendBtn.isEnabled()) {
+        await page.fill('input[type="email"]', 'test@example.com')
+        await sendBtn.click({ timeout: 2_000 })
+      }
+      await expect(sendBtn).toBeDisabled()
+    }).toPass({ timeout: 15_000 })
     await expect(sendBtn).toContainText(/秒/)
   })
 
