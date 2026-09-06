@@ -12,9 +12,14 @@ search:
   safe_search: 2
 
 # 默认海外引擎在当前开发网络经常超时；显式启用可无密钥访问的中文通用搜索。
+# bing 会对数据中心出口 302 到 cn.bing.com，而引擎客户端不跟随跨域重定向，
+# 因此直接以 cn.bing.com 作为 base_url，避免拿到空的重定向页。
 # 仍保留 SearXNG 默认设置，部署方可以在自己的配置中覆盖或添加其他引擎。
 engines:
   - name: baidu
     disabled: false
   - name: sogou
     disabled: false
+  - name: bing
+    disabled: false
+    base_url: https://cn.bing.com
