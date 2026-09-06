@@ -1,14 +1,18 @@
 # Phase 7 - 长期记忆、知识库、Skills 与主动自动化
 
-- **前置条件**：Phase 6 工具链、审批、沙箱和执行节点达到验收标准
-- **建议分支**：`feat/phase-7-memory-skills-automation`
+- **前置条件**：Phase 6 工具链、审批、沙箱和执行节点达到验收标准；Phase 6 文档中仍开放的
+  系统性安全测试、Browser Worker 安全灰度与生产部署验收完成后方可开工
+- **建议分支**：`feature/phase-7-memory-skills-automation`
 - **执行范围**：`backend/`、`packages/types/`、`packages/core/`、`apps/web/`，Mobile/Desktop 补对应控制界面
 - **阶段定位**：让 Agent 从“一次性执行器”成长为了解用户、复用经验并能主动工作的长期助理
 
-> **阶段入口状态（2026-09-05）**：Phase 7 暂未获准开工，可新开会话的前置条件仍未满足。Desktop 取消与节点撤销已有
-> 真实 E2E 证据，但不能替代 Phase 6 所需的重连/重放、故障注入与安全验收。其前置条件是 Phase 6 六个
-> Wave 的出口条件全部通过，包括至少一条纯云端多工具链、一条云端编排加 Desktop 执行链、
-> 故障注入稳定性和无高危安全问题。当前状态见 [Phase 6 工具与执行](./phase-6-tools-execution.md)。
+> **阶段入口状态（2026-09-07）**：Phase 7 暂未获准开工。Phase 6 九个验收项已全部勾选并有真实证据
+> （含强制重启任务重投、结果级 spool 重放、重连风暴演练、系统选择器文件授权 E2E、真实 provider
+> 四步链），相关提交已合入 `dev` 且远程 CI 三项 job 通过；但这不构成 Phase 7 开工许可。仍开放
+> 的前置条件以 Phase 6 文档为准：系统性安全测试（Prompt injection、审批后参数替换的系统性
+> 执行）、Browser Worker 完整安全灰度，以及生产/部署环境验收。另有“真实外部 MCP 经 Web 控制
+> 中心 UI 的完整链路”一项开放边界，随 Phase 6 收尾一并补验。当前状态见
+> [Phase 6 工具与执行](./phase-6-tools-execution.md)。
 
 ---
 
@@ -282,6 +286,10 @@ draft -> validating -> active -> deprecated
 - 自动化的审批请求必须通过 Push/Email/In-app 通知
 - 超过等待期限后按策略取消，不得自动降级为更高权限
 
+等待、审批与恰好一次完成语义直接复用 Phase 5/6 已交付的机制：Agent Run 状态机、审批
+payload hash fail-closed 校验、执行节点投递/ACK 与结果 spool 重放。本阶段只新增触发器类型、
+等待期限策略和通知渠道，不重复实现执行语义。
+
 ---
 
 ## 9. 用户体验
@@ -354,6 +362,16 @@ draft -> validating -> active -> deprecated
 - 需要审批/桌面节点时正确等待并通知
 - Webhook 签名、重放保护、限流和畸形 payload
 
+### 11.5 环境与门禁
+
+Phase 5/6 收尾期间真实发生过的本地与 CI 环境差异，必须在本阶段开工时纳入验收，而不是合并期才暴露：
+
+- 全部验收以远程 CI（Frontend / Web E2E smoke / Backend）全绿为准，不依赖开发者本地环境
+- 测试环境的密钥与连接配置一律由 `tests/conftest.py` 提供；任何测试不得假设 `backend/.env` 存在
+- 沙箱类用例依赖系统 bubblewrap：CI 已安装并放开非特权 userns；新增沙箱能力时同步维护该 CI 步骤
+- Web E2E 以全量用例（Chromium + Mobile Safari）为口径；WebKit 引擎限制（例如 route.fulfill 的附件响应不触发 download 事件）在用例内显式分流并注明原因
+- `pnpm-lock.yaml` 有变更时必须先通过 `pnpm install --frozen-lockfile` 验证再提交，防止合并损坏锁文件
+
 ---
 
 ## 12. 验收标准
@@ -366,5 +384,6 @@ draft -> validating -> active -> deprecated
 - [ ] 自动化需要审批或本机资源时会等待并通知，不会越权
 - [ ] pgvector + FTS 混合检索达到项目设定的离线评测阈值
 - [ ] 记忆、知识和 Skills 的敏感内容不会进入普通日志/trace
+- [ ] 上述验收在远程 CI 全绿达成，测试不依赖开发者本地 .env 或手工环境
 
 **进入 Phase 8 的许可证**：记忆删除、知识 ACL、Skill 版本回滚和定时任务幂等四类关键集成测试全部通过。
