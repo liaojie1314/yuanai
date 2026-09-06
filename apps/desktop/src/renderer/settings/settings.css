@@ -228,6 +228,16 @@ textarea:focus-visible {
   color: #243149;
   font-size: 14px;
 }
+/* 标题与描述同组：分隔线整体移到描述下方。 */
+.settings-block-header {
+  border-bottom: 1px solid var(--desktop-settings-divider);
+}
+.settings-block-header h3 {
+  border-bottom: 0;
+}
+.settings-block-header .settings-field-hint {
+  margin: 0 20px 10px;
+}
 .settings-block--danger {
   border-color: #fecaca;
 }

@@ -115,8 +115,10 @@ export function ExecutionNodeSection(): JSX.Element {
 
   return (
     <section className="settings-block">
-      <h3>{t('desktop.executionNode.title')}</h3>
-      <p className="settings-field-hint">{t('desktop.executionNode.description')}</p>
+      <div className="settings-block-header">
+        <h3>{t('desktop.executionNode.title')}</h3>
+        <p className="settings-field-hint">{t('desktop.executionNode.description')}</p>
+      </div>
       {configured && status ? (
         <>
           <div className="settings-row">
