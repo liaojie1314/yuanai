@@ -173,6 +173,10 @@ class AgentWorker:
             await self._handler(item, token)
         except AgentRunCancelledError:
             logger.info("Agent Run %s cancelled", item.run_id)
+        except Exception:
+            # 单个队列项失效（如 Run 记录已随用户删除）不能毒死 worker 进程；
+            # 记录后继续消费后续队列项。
+            logger.exception("Agent Run %s processing failed", item.run_id)
         finally:
             finished.set()
             renewal.cancel()
