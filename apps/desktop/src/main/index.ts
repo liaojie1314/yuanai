@@ -158,6 +158,7 @@ app.whenReady().then(() => {
   })
   desktopSystem = new DesktopSystemService({
     app,
+    appVersion: __APP_VERSION__,
     actionRegistry: createDesktopActionRegistry({
       toggleMainWindow: () => windowManager?.toggleMainWindow(),
     }),

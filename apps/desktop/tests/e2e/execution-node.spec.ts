@@ -8,7 +8,7 @@
  * 运行前提：真实后端运行在 YUANAI_API_URL（默认 http://localhost:8000/api/v1），
  * 且后端允许创建测试账号。
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test'
@@ -321,6 +321,13 @@ test.describe('desktop execution node', () => {
 
       // 审批待决时强制杀死进程：未答复任务只能依赖服务端重投与节点身份持久化恢复。
       app.process().kill('SIGKILL')
+      await expect
+        .poll(() => app.process().killed || app.process().exitCode !== null, { timeout: 15_000 })
+        .toBe(true)
+      // SIGKILL 可能残留单例锁，不清除会让重启实例直接退出。
+      for (const lock of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+        rmSync(join(userDataDir, lock), { force: true })
+      }
       app = (await launchApp(userDataDir)).app
       await ensureLogin(app, user)
       const restartedSettings = await openSettings(app)
@@ -369,6 +376,121 @@ test.describe('desktop execution node', () => {
         .screenshot({ path: testInfo.outputPath('execution-node-replay.png') })
     } finally {
       await app.close().catch(() => {})
+      await api(user.token, 'DELETE', '/auth/me')
+      rmSync(userDataDir, { recursive: true, force: true })
+    }
+  })
+
+  test('reads a local file only after the native-selector grant', async () => {
+    test.setTimeout(360_000)
+    const user = await createTestUser()
+    const { app, userDataDir } = await launchApp()
+    try {
+      await app.firstWindow()
+      const storageState = await app.evaluate(({ safeStorage }) => ({
+        available: safeStorage.isEncryptionAvailable(),
+        backend: safeStorage.getSelectedStorageBackend(),
+      }))
+      test.skip(
+        !storageState.available ||
+          (process.platform === 'linux' && storageState.backend === 'basic_text'),
+        '需要可用且已解锁的桌面钥匙串（safeStorage）才能运行'
+      )
+      const loginWindow = await login(app, user)
+      await loginWindow.close()
+      const settings = await openSettings(app)
+      await settings.getByRole('tab', { name: '桌面设置' }).click()
+      const nodeName = `E2E 授权节点 ${Date.now()}`
+      await settings.getByLabel('节点名称').fill(nodeName)
+      await settings.getByRole('button', { name: '启用执行节点' }).click()
+      await expect(settings.getByRole('heading', { name: '执行节点' })).toBeVisible()
+      await expect(settings.getByText('在线')).toBeVisible({ timeout: 30_000 })
+      await expect(settings.getByText('还没有授权本机资源')).toBeVisible()
+
+      const grantedFile = join(userDataDir, 'granted-secret.txt')
+      const grantedContent = `e2e-grant-marker-${Date.now()}`
+      writeFileSync(grantedFile, grantedContent, 'utf8')
+      // 系统选择器原生对话框在 E2E 中指向预置文件；授权链路（IPC→本地授权表→云端登记）保持真实。
+      await app.evaluate(({ dialog }, filePath) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filePath] })
+      }, grantedFile)
+      await settings.getByRole('button', { name: '授权文件…' }).click()
+      await expect(settings.getByText('granted-secret.txt')).toBeVisible({ timeout: 15_000 })
+
+      const grants = (await api(user.token, 'GET', '/resource-grants')) as unknown as Array<{
+        nodeId: string
+        resourceId: string
+        displayName: string
+      }>
+      const grant = grants.find((candidate) => candidate.displayName === 'granted-secret.txt')
+      if (!grant) throw new Error('grant was not registered on the backend')
+
+      const execution = (await api(user.token, 'POST', '/tool-executions', {
+        toolName: 'read_granted_file',
+        arguments: { resource_id: grant.resourceId },
+        executionLocation: 'desktop',
+        nodeId: grant.nodeId,
+      })) as { id: string }
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await settings.getByRole('button', { name: '允许本次执行' }).click()
+      await expect
+        .poll(
+          async () => {
+            const rows = (await api(
+              user.token,
+              'GET',
+              '/tool-executions?limit=20'
+            )) as unknown as Array<{
+              id: string
+              status: string
+              resultJson: { data?: { size_bytes?: number } } | null
+            }>
+            return rows.find((row) => row.id === execution.id)
+          },
+          { timeout: 45_000, intervals: [1_000, 2_000, 5_000] }
+        )
+        .toEqual(
+          expect.objectContaining({
+            id: execution.id,
+            status: 'succeeded',
+            resultJson: expect.objectContaining({
+              data: expect.objectContaining({
+                size_bytes: Buffer.byteLength(grantedContent, 'utf8'),
+              }),
+            }),
+          })
+        )
+
+      const denied = (await api(user.token, 'POST', '/tool-executions', {
+        toolName: 'read_granted_file',
+        arguments: { resource_id: 'e2e-not-granted-resource' },
+        executionLocation: 'desktop',
+        nodeId: grant.nodeId,
+      })) as { id: string }
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await settings.getByRole('button', { name: '允许本次执行' }).click()
+      await expect
+        .poll(
+          async () => {
+            const rows = (await api(
+              user.token,
+              'GET',
+              '/tool-executions?limit=20'
+            )) as unknown as Array<{ id: string; status: string; errorMessage: string | null }>
+            return rows.find((row) => row.id === denied.id)
+          },
+          { timeout: 45_000, intervals: [1_000, 2_000, 5_000] }
+        )
+        .toEqual(
+          expect.objectContaining({
+            id: denied.id,
+            status: 'failed',
+            errorMessage: expect.stringContaining('TOOL_GRANT_NOT_FOUND'),
+          })
+        )
+      await expect(settings.getByText('还没有授权本机资源')).toHaveCount(0)
+    } finally {
+      await app.close()
       await api(user.token, 'DELETE', '/auth/me')
       rmSync(userDataDir, { recursive: true, force: true })
     }

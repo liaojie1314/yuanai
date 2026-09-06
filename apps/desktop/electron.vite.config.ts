@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
@@ -10,9 +11,20 @@ const rendererInputs = Object.fromEntries(
   RENDERER_ENTRIES.map((entry) => [entry, resolve(rendererRoot, entry, 'index.html')])
 )
 
+// 以 package.json 版本注入构建期常量；dev/E2E 以文件路径启动 Electron 时
+// app.getVersion() 会退回 Electron 自身版本，不能用作品版本来源。
+const { version: appVersion } = JSON.parse(
+  readFileSync(resolve(__dirname, 'package.json'), 'utf8')
+) as {
+  version: string
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+    },
     build: {
       outDir: 'out/main',
       rollupOptions: {
