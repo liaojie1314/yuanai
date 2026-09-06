@@ -417,12 +417,21 @@ test.describe('desktop execution node', () => {
       await settings.getByRole('button', { name: '授权文件…' }).click()
       await expect(settings.getByText('granted-secret.txt')).toBeVisible({ timeout: 15_000 })
 
-      const grants = (await api(user.token, 'GET', '/resource-grants')) as unknown as Array<{
-        nodeId: string
-        resourceId: string
-        displayName: string
-      }>
-      const grant = grants.find((candidate) => candidate.displayName === 'granted-secret.txt')
+      let grant: { nodeId: string; resourceId: string; displayName: string } | undefined
+      await expect
+        .poll(
+          async () => {
+            const grants = (await api(user.token, 'GET', '/resource-grants')) as unknown as Array<{
+              nodeId: string
+              resourceId: string
+              displayName: string
+            }>
+            grant = grants.find((candidate) => candidate.displayName === 'granted-secret.txt')
+            return grant?.resourceId ?? ''
+          },
+          { timeout: 20_000, intervals: [1_000, 2_000, 5_000] }
+        )
+        .not.toBe('')
       if (!grant) throw new Error('grant was not registered on the backend')
 
       const execution = (await api(user.token, 'POST', '/tool-executions', {
@@ -476,7 +485,11 @@ test.describe('desktop execution node', () => {
               user.token,
               'GET',
               '/tool-executions?limit=20'
-            )) as unknown as Array<{ id: string; status: string; errorMessage: string | null }>
+            )) as unknown as Array<{
+              id: string
+              status: string
+              resultJson: { error?: { code?: string } } | null
+            }>
             return rows.find((row) => row.id === denied.id)
           },
           { timeout: 45_000, intervals: [1_000, 2_000, 5_000] }
@@ -485,7 +498,9 @@ test.describe('desktop execution node', () => {
           expect.objectContaining({
             id: denied.id,
             status: 'failed',
-            errorMessage: expect.stringContaining('TOOL_GRANT_NOT_FOUND'),
+            resultJson: expect.objectContaining({
+              error: expect.objectContaining({ code: 'TOOL_GRANT_NOT_FOUND' }),
+            }),
           })
         )
       await expect(settings.getByText('还没有授权本机资源')).toHaveCount(0)
