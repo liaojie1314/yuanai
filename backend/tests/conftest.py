@@ -17,6 +17,8 @@ from sqlalchemy.pool import NullPool
 
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
+# 生产模式校验要求独立于 JWT 的节点参数加密密钥；测试给固定派生源即可
+os.environ["EXECUTION_NODE_ENCRYPTION_KEY"] = "test-execution-node-encryption-key"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["QR_LOGIN_API_BASE_URL"] = "http://127.0.0.1:8000/api/v1"
 # 模型目录集成测试使用虚拟凭据，避免 CI 因没有真实 provider key 而返回空目录。
