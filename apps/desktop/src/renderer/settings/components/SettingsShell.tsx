@@ -8,7 +8,14 @@ import {
   UserRound,
   type LucideIcon,
 } from 'lucide-react'
-import { useRef, type KeyboardEvent, type ReactNode, type ReactElement } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type ReactElement,
+} from 'react'
 import { useTranslation } from 'react-i18next'
 
 /** 设置页面的固定分区标识。 */
@@ -45,7 +52,21 @@ export function SettingsShell({
 }: SettingsShellProps): ReactElement {
   const { t } = useTranslation()
   const buttonRefs = useRef(new Map<SettingsSectionId, HTMLButtonElement>())
+  const [appVersion, setAppVersion] = useState('')
   const items = SETTINGS_ITEMS.map((item) => ({ ...item, label: t(item.labelKey) }))
+
+  useEffect(() => {
+    let cancelled = false
+    window.yuanai.system
+      .getInfo()
+      .then((info) => {
+        if (!cancelled) setAppVersion(info.version)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function selectSection(section: SettingsSectionId): void {
     onSectionChange(section)
@@ -114,7 +135,9 @@ export function SettingsShell({
             </div>
           ))}
         </div>
-        <p className="desktop-settings__nav-footer">{t('common.appName')} v1.0.0</p>
+        <p className="desktop-settings__nav-footer">
+          {appVersion ? `${t('common.appName')} v${appVersion}` : t('common.appName')}
+        </p>
       </nav>
       <header className="desktop-settings__mobile-header">
         <h1>{t('settings.title')}</h1>

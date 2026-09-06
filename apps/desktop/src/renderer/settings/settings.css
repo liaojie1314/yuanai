@@ -267,6 +267,7 @@ textarea:focus-visible {
   border-radius: 5px;
   font-size: 13px;
   font-weight: 650;
+  white-space: nowrap;
 }
 .settings-button {
   padding: 0 12px;
@@ -404,6 +405,12 @@ textarea:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
 }
+/* 纯按钮组：避免首个按钮落入 1fr 栅格列被拉伸错位。 */
+.settings-inline-field--actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .settings-icon-button {
   display: grid;
   width: 38px;
@@ -430,6 +437,11 @@ textarea:focus-visible {
   color: #718096;
   font-size: 12px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* 提示行紧跟分隔行时不再上叠到边框上。 */
+.settings-row + .settings-field-hint {
+  margin-top: 2px;
 }
 .settings-field-feedback {
   color: #2563eb;

@@ -132,7 +132,7 @@ export function ExecutionNodeSection(): JSX.Element {
                   : ''}
               </p>
             </div>
-            <div className="settings-inline-field">
+            <div className="settings-inline-field settings-inline-field--actions">
               <button
                 type="button"
                 className="settings-button settings-button--secondary"
@@ -215,7 +215,7 @@ export function ExecutionNodeSection(): JSX.Element {
               <strong>{t('desktop.executionNode.grants')}</strong>
               <p>{t('desktop.executionNode.description')}</p>
             </div>
-            <div className="settings-inline-field">
+            <div className="settings-inline-field settings-inline-field--actions">
               <button
                 type="button"
                 className="settings-button settings-button--secondary"
