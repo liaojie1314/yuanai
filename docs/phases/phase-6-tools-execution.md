@@ -506,13 +506,13 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 
 ## 15. 验收标准
 
-- [ ] Agent 能完成“搜索资料 -> 提取网页 -> 运行分析代码 -> 生成报告 Artifact”的完整任务（2026-09-06 提取→分析→报告三步链已用真实 provider 跑通并产出 Artifact；搜索步骤因本地 SearXNG 全部上游引擎不可用且无 Brave/Tavily 凭据而无法真实执行）
+- [x] Agent 能完成“搜索资料 -> 提取网页 -> 运行分析代码 -> 生成报告 Artifact”的完整任务（2026-09-06 修复 SearXNG bing 引擎 302 问题后，真实 provider 四步链全部成功：web_search 真实返回 20 条结果，web_extract、code_execute_python、files_write 均成功并产出真实 Artifact）
 - [x] 所有工具执行均有 Run、Step、Execution 和审计记录（真实演练中每次工具调用均有执行与审批记录，配套集成测试覆盖）
 - [x] 外部副作用模拟工具未经批准绝不执行（2026-09-05 本地真实栈审批演练：未批准不执行、拒绝进入正确终态、批准后恢复；审批参数哈希绑定测试覆盖）
 - [x] 云沙箱无法访问宿主或其他租户数据（fail-closed 单测；2026-09-06 真实执行 `__import__('os').system('id')` 等逃逸尝试均被沙箱拒绝并记录；租户隔离测试覆盖）
 - [x] MCP Server 只能暴露用户明确启用的工具（2026-09-05 真实公共 Streamable HTTP MCP 连接、发现、显式启用、审批与只读调用链路；MCP schema 快照与 stdio allowlist 测试覆盖）
 - [x] Desktop Node 可安全配对、撤销、断线恢复和取消任务（真实 E2E `2 passed (2.8m)` 含强制重启任务重投；重连风暴演练；结果级 spool 重放演练）
-- [ ] 本地文件只有经过系统选择器授权后才可读取（节点侧授权强制与跨租户拒绝有单测/集成覆盖；真实系统选择器授权→读取流程尚无真实 E2E）
+- [x] 本地文件只有经过系统选择器授权后才可读取（2026-09-06 真实 Desktop E2E：系统选择器授权→本地授权表→云端登记→派发读取→真实文件内容按字节返回并 ACK；未授权 resource_id 被节点以 TOOL_GRANT_NOT_FOUND 拒绝）
 - [x] 大结果通过 Artifact 返回，不撑爆模型上下文和 SSE（2026-09-06 真实链路产出 `extract_report.md` 等 Artifact；输出上限与 Artifact 引用测试覆盖）
 - [x] Tool Contract Suite、安全集成测试和 Desktop E2E 全部通过（根级与后端全部门禁、Browser Worker 与 Web 安全套件、Desktop E2E 复跑通过）
 
@@ -542,14 +542,16 @@ Artifact 下载使用短期签名 URL；用户 A 不能通过猜测 storage key 
 该过程暴露并修复了 coordinator 从不选择桌面节点的缺陷（`fix(backend): route agent desktop tools
 to online nodes`，含节点选择单元测试与 agent 集成回归）。这些是本地真实运行时证据，不构成生产部署放行。
 
-2026-09-06 验收勾选依据：真实桌面链故障注入（结果送达后节点断开，重连后按
-`result_replay_request` 重发 spool 并完成 ACK，Run 仍成功）、真实 provider 三步云链
-（提取→分析→报告 Artifact，Run 成功）、沙箱逃逸尝试被真实拒绝等均已在本地真实运行时完成；
-两项保持未勾选：搜索步骤缺真实外部搜索引擎（SearXNG 上游全部不可用且无 Brave/Tavily 凭据），
-以及本地文件的真实系统选择器授权→读取 E2E 缺位。因此 Phase 6 许可证仍然阻塞。
+2026-09-06 验收勾选依据：SearXNG bing 引擎 302 问题修复（`fix(config): route searxng
+bing to cn endpoint`）后，真实 provider 四步链（搜索→提取→分析→报告 Artifact）全部成功；
+Desktop 新增真实选择器授权 E2E（`test(desktop): cover native-selector file grants`，
+`3 passed (3.0m)`），未授权资源被节点拒绝；桌面链故障注入（结果送达后断连→重连→spool 重发→
+ACK）与重连风暴演练均已在真实运行时通过；沙箱逃逸尝试被真实拒绝；期间修复 Agent coordinator
+桌面节点选择缺失（`be898d4`）、worker 队列毒丸崩溃（`fix(backend): keep agent worker alive
+on failed queue items`）与桌面版本号来源不一致（`fix(web,desktop): unify displayed app
+version with package`）等真实缺陷。Phase 6 九项验收全部具备真实证据。
 
-进入 Phase 7 前还须完成：真实搜索链路（需可用搜索引擎服务或凭据）、本地文件选择器授权的
-真实 E2E、系统性安全测试（Prompt injection、审批后参数替换的系统性执行）、Browser Worker
-完整安全灰度，以及生产部署环境验收。隔离 stdio Worker、受控 Browser Worker 和真实外部
-MCP 后端只读链路已有实现或记录，但不能将代码、协议探测、测试入口或 API-only 验证等同于
-生产环境放行。
+进入 Phase 7 前仍须完成：系统性安全测试（Prompt injection、审批后参数替换的系统性执行）、
+Browser Worker 完整安全灰度，以及生产部署环境验收。隔离 stdio Worker、受控 Browser Worker
+和真实外部 MCP 后端只读链路已有实现或记录，但不能将代码、协议探测、测试入口或 API-only
+验证等同于生产环境放行。
