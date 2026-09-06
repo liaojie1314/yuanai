@@ -49,6 +49,8 @@ export interface ExecutionNodeServiceOptions {
   runtimeConfig: { apiBaseUrl: string }
   /** Electron app 能力。 */
   app: ExecutionNodeServiceApp
+  /** 构建期注入的 package.json 版本号，配对与注册必须使用同一来源。 */
+  appVersion: string
   /** 原生文件与目录选择器。 */
   dialog: ExecutionNodeFileDialog
   /** 系统默认浏览器调用能力。 */
@@ -76,6 +78,7 @@ export class ExecutionNodeService {
   private readonly identityStore: ExecutionNodeIdentityStore
   private readonly grants: ExecutionNodeGrantStore
   private readonly app: ExecutionNodeServiceApp
+  private readonly appVersion: string
   private readonly dialog: ExecutionNodeFileDialog
   private readonly onStatus: (status: DesktopExecutionNodeStatus) => void
   private readonly client: ExecutionNodeClient
@@ -86,6 +89,7 @@ export class ExecutionNodeService {
     this.identityStore = options.identityStore
     this.grants = options.grants
     this.app = options.app
+    this.appVersion = options.appVersion
     this.dialog = options.dialog
     this.onStatus = options.onStatus
     const jobsExecutor =
@@ -173,7 +177,7 @@ export class ExecutionNodeService {
       pairingCode: input.pairingCode,
       name: input.name,
       platform: process.platform,
-      appVersion: this.app.getVersion(),
+      appVersion: this.appVersion,
       capabilities: requested,
     })
     return this.buildStatus()

@@ -185,6 +185,7 @@ function createHarness(
     grants: grants.store,
     runtimeConfig: { apiBaseUrl: API_BASE },
     app: { getPath: () => '/tmp/yuanai-test', getVersion: () => '0.1.0' },
+    appVersion: '0.1.0',
     dialog,
     shell: { openExternal: vi.fn(async () => {}) },
     onStatus: (status) => statuses.push(status),

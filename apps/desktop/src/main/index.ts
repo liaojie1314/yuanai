@@ -205,6 +205,7 @@ app.whenReady().then(() => {
     grants: executionNodeGrants,
     runtimeConfig,
     app,
+    appVersion: __APP_VERSION__,
     dialog,
     shell,
     onStatus: (status) =>

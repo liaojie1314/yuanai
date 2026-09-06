@@ -433,13 +433,17 @@ textarea:focus-visible {
 }
 .settings-field-hint,
 .settings-field-feedback {
-  margin: -10px 20px 20px;
+  margin: 0 20px 16px;
   color: #718096;
   font-size: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-/* 提示行紧跟分隔行时不再上叠到边框上。 */
+/* 紧跟输入框的提示收紧上间距；跟随标题或分隔行的提示保持正常间距，避免压线。 */
+.settings-field + .settings-field-hint,
+.settings-field + .settings-field-feedback {
+  margin-top: -10px;
+}
 .settings-row + .settings-field-hint {
   margin-top: 2px;
 }
