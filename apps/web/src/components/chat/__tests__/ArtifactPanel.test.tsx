@@ -165,9 +165,9 @@ describe('ArtifactPanel', () => {
     const viewport = lightbox.querySelector('.ch-ap-lightbox-viewport')
     if (!viewport) throw new Error('expected lightbox viewport')
     const image = within(lightbox).getByRole('img', { name: 'one.png' })
-    Object.defineProperty(image, 'getBoundingClientRect', {
-      configurable: true,
-      value: () => ({ height: 300, width: 400 }),
+    Object.defineProperties(image, {
+      naturalHeight: { configurable: true, value: 300 },
+      naturalWidth: { configurable: true, value: 400 },
     })
     Object.defineProperties(viewport, {
       clientHeight: { configurable: true, value: 300 },
@@ -180,7 +180,8 @@ describe('ArtifactPanel', () => {
     fireEvent.load(image)
     expect(within(lightbox).getByRole('button', { name: '缩小图片' })).toBeEnabled()
     fireEvent.wheel(viewport, { deltaY: -100 })
-    expect(image).toHaveStyle({ width: '500px', height: '375px' })
+    expect(image).toHaveStyle({ width: '500px' })
+    expect(image.style.height).toBe('')
     fireEvent(
       viewport,
       createPointerEvent('pointerdown', { clientX: 300, clientY: 200, pointerId: 1 })
@@ -197,7 +198,8 @@ describe('ArtifactPanel', () => {
     expect(viewport.scrollTop).toBe(70)
     fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
     fireEvent.click(within(lightbox).getByRole('button', { name: '缩小图片' }))
-    expect(image).toHaveStyle({ width: '300px', height: '225px' })
+    expect(image).toHaveStyle({ width: '300px' })
+    expect(image.style.height).toBe('')
     fireEvent.click(within(lightbox).getByRole('button', { name: '下一个图片' }))
     expect(useArtifactStore.getState().payload).toMatchObject({
       fileId: 'file-2',

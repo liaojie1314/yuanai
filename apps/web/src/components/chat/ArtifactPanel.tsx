@@ -95,12 +95,21 @@ function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, 
     panRef.current = null
     setBaseSize(null)
     setIsPanning(false)
+    if (viewportRef.current) {
+      viewportRef.current.scrollLeft = 0
+      viewportRef.current.scrollTop = 0
+    }
   }, [sourceUrl, zoomed])
 
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>): void => {
-    const { height, width } = event.currentTarget.getBoundingClientRect()
-    if (width <= 0 || height <= 0) return
-    setBaseSize({ width, height })
+    const image = event.currentTarget
+    const { naturalHeight, naturalWidth } = image
+    if (naturalWidth <= 0 || naturalHeight <= 0) return
+    const viewport = viewportRef.current
+    const availableWidth = Math.max(1, viewport?.clientWidth ?? naturalWidth)
+    const availableHeight = Math.max(1, viewport?.clientHeight ?? naturalHeight)
+    const fitScale = Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight)
+    setBaseSize({ width: naturalWidth * fitScale, height: naturalHeight * fitScale })
   }
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -143,12 +152,7 @@ function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, 
     setIsPanning(false)
   }
 
-  const imageStyle = baseSize
-    ? {
-        width: `${Math.round(baseSize.width * zoomScale)}px`,
-        height: `${Math.round(baseSize.height * zoomScale)}px`,
-      }
-    : undefined
+  const imageStyle = baseSize ? { width: `${Math.round(baseSize.width * zoomScale)}px` } : undefined
 
   return {
     viewportRef,
@@ -209,6 +213,10 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
   const selectFile = (index: number): void => {
     const next = previewFiles[index]
     if (!next) return
+    if (imageCanvas.viewportRef.current) {
+      imageCanvas.viewportRef.current.scrollLeft = 0
+      imageCanvas.viewportRef.current.scrollTop = 0
+    }
     setZoomed(false)
     setZoomScale(1)
     openFilePreview({
