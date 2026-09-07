@@ -2171,6 +2171,8 @@
   box-shadow: var(--shadow-popup);
   padding: 5px;
   min-width: 150px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
   animation: dropin 0.16s ease both;
 }
 .ch-cvm-row {

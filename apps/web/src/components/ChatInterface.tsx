@@ -1,6 +1,16 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback, useMemo, startTransition, type JSX } from 'react'
+import {
+  useState,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+  useMemo,
+  startTransition,
+  type JSX,
+} from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -305,6 +315,20 @@ interface ChatInterfaceProps {
   initialConvId?: string
 }
 
+/** 将会话菜单限制在视口内，确保边缘位置仍可完整操作。 */
+export function clampCvMenuPosition(
+  position: { top: number; left: number },
+  menuSize: { width: number; height: number },
+  viewport: { width: number; height: number }
+): { top: number; left: number } {
+  const maxLeft = Math.max(8, viewport.width - menuSize.width - 8)
+  const maxTop = Math.max(8, viewport.height - menuSize.height - 8)
+  return {
+    top: Math.min(Math.max(position.top, 8), maxTop),
+    left: Math.min(Math.max(position.left, 8), maxLeft),
+  }
+}
+
 // ── Main component ────────────────────────────────────
 export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JSX.Element {
   const router = useRouter()
@@ -431,6 +455,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [modelDropOpen, setModelDropOpen] = useState(false)
   const [userPanelOpen, setUserPanelOpen] = useState(false)
   const [cvMenuOpen, setCvMenuOpen] = useState<string | null>(null)
+  const cvMenuRef = useRef<HTMLDivElement>(null)
+  const [cvMenuTarget, setCvMenuTarget] = useState<{ top: number; left: number }>({
+    top: 8,
+    left: 8,
+  })
   const [cvMenuPos, setCvMenuPos] = useState<{ top: number; left: number }>({ top: 0, left: 0 })
   const [dark, setDark] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -744,22 +773,50 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const openCvMenu = (e: React.MouseEvent, id: string): void => {
     e.stopPropagation()
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    setCvMenuPos({
+    const target = {
       top: rect.bottom + 4,
       left: Math.min(rect.right - 160, window.innerWidth - 170),
-    })
+    }
+    setCvMenuTarget(target)
+    setCvMenuPos(target)
     setCvMenuOpen((cv) => (cv === id ? null : id))
   }
 
   const openCvMenuOnContext = (e: React.MouseEvent, id: string): void => {
     e.stopPropagation()
     e.preventDefault()
-    setCvMenuPos({
+    const target = {
       top: e.clientY + 4,
       left: Math.min(e.clientX + 4, window.innerWidth - 170),
-    })
+    }
+    setCvMenuTarget(target)
+    setCvMenuPos(target)
     setCvMenuOpen(id)
   }
+
+  const repositionCvMenu = useCallback((): void => {
+    const menu = cvMenuRef.current
+    if (!menu || !cvMenuOpen) return
+    const { width, height } = menu.getBoundingClientRect()
+    const next = clampCvMenuPosition(
+      cvMenuTarget,
+      { width, height },
+      {
+        width: window.innerWidth,
+        height: window.innerHeight,
+      }
+    )
+    setCvMenuPos((current) =>
+      current.top === next.top && current.left === next.left ? current : next
+    )
+  }, [cvMenuOpen, cvMenuTarget])
+
+  useLayoutEffect(() => {
+    if (!cvMenuOpen) return
+    repositionCvMenu()
+    window.addEventListener('resize', repositionCvMenu)
+    return () => window.removeEventListener('resize', repositionCvMenu)
+  }, [cvMenuOpen, repositionCvMenu])
 
   const onInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
     setInputValue(e.target.value)
@@ -2418,8 +2475,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           const conv = conversations.find((c) => c.id === cvMenuOpen)
           const apiConv = apiConversations.find((c) => c.id === cvMenuOpen)
           if (!conv) return null
-          return (
+          const menu = (
             <div
+              ref={cvMenuRef}
               className="ch-cvmenu open"
               onClick={(e) => e.stopPropagation()}
               style={{ position: 'fixed', zIndex: 300, top: cvMenuPos.top, left: cvMenuPos.left }}
@@ -2473,6 +2531,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               </div>
             </div>
           )
+          return typeof document === 'undefined' ? null : createPortal(menu, document.body)
         })()}
     </div>
   )
