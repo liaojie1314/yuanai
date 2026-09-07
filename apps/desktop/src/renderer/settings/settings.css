@@ -386,8 +386,12 @@ textarea:focus-visible {
   gap: 10px;
   margin-top: 14px;
   padding: 12px;
-  border: 1px solid var(--settings-border, #e5e7eb);
+  border: 1px solid var(--desktop-settings-border);
   border-radius: 8px;
+}
+
+[data-theme='dark'] .settings-update-panel {
+  background: #1e293b;
 }
 
 .settings-update-panel__status {

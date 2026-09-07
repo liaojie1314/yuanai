@@ -125,6 +125,20 @@ describe('ExecutionNodeSection', () => {
     expect(screen.getByRole('button', { name: '移除本机节点' })).toBeInTheDocument()
   })
 
+  it('在应用内确认移除节点，不调用浏览器原生弹窗', async () => {
+    getStatus.mockResolvedValue(onlineStatus)
+    removeNode.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<ExecutionNodeSection />)
+
+    await user.click(await screen.findByRole('button', { name: '移除本机节点' }))
+    expect(screen.getByRole('alertdialog', { name: '移除本机节点' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '确认操作' }))
+
+    await waitFor(() => expect(removeNode).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('alertdialog', { name: '移除本机节点' })).not.toBeInTheDocument()
+  })
+
   it('待确认任务展示参数并支持允许与拒绝', async () => {
     getStatus.mockResolvedValue({
       ...onlineStatus,

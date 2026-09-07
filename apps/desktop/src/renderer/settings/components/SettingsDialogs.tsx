@@ -19,6 +19,8 @@ export type SettingsDialogMode =
   | 'unlink-github'
   | 'unlink-google'
 
+type DialogMode = SettingsDialogMode | 'remove-execution-node'
+
 /** 设置确认对话框属性。 */
 export interface SettingsDialogsProps {
   /** 当前打开的对话框。 */
@@ -45,21 +47,24 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
 
-function isDestructive(dialog: SettingsDialogMode): boolean {
+function isDestructive(dialog: DialogMode): boolean {
   return (
-    dialog === 'clear-conversations' || dialog === 'delete-account' || dialog.startsWith('unlink')
+    dialog === 'clear-conversations' ||
+    dialog === 'delete-account' ||
+    dialog === 'remove-execution-node' ||
+    dialog.startsWith('unlink')
   )
 }
 
 /** 在关闭后将焦点返回到触发控件的通用对话框外壳。 */
-function DialogFrame({
+export function DialogFrame({
   children,
   dialog,
   onClose,
   title,
 }: {
   children: ReactNode
-  dialog: SettingsDialogMode
+  dialog: DialogMode
   onClose(): void
   title: string
 }): ReactElement {

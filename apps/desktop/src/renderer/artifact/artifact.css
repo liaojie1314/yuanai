@@ -144,6 +144,7 @@ body {
   scrollbar-width: thin;
   background: #f1f5f9;
   cursor: zoom-in;
+  touch-action: none;
 }
 
 .artifact__image-viewport--pannable {
@@ -592,6 +593,10 @@ body {
 }
 
 :root[data-theme='dark'] .artifact__content--file {
+  background: #0f172a;
+}
+
+:root[data-theme='dark'] .artifact__image-viewport {
   background: #0f172a;
 }
 

@@ -133,6 +133,10 @@ export function App(): ReactElement {
         setImageZoom(1)
         imagePanRef.current = null
         setIsImagePanning(false)
+        if (imageViewportRef.current) {
+          imageViewportRef.current.scrollLeft = 0
+          imageViewportRef.current.scrollTop = 0
+        }
         setVideoDuration(0)
         setVideoCurrentTime(0)
         setIsVideoPlaying(false)
@@ -205,6 +209,7 @@ export function App(): ReactElement {
     const canPan =
       viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight
     if (!canPan) return
+    event.preventDefault()
     const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
     const startX = Number.isFinite(event.clientX) ? event.clientX : 0
     const startY = Number.isFinite(event.clientY) ? event.clientY : 0

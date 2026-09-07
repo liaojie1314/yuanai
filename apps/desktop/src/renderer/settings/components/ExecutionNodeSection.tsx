@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type FormEvent, type JSX } from 'reac
 import { useTranslation } from 'react-i18next'
 import { createResourceGrant, pairExecutionNode } from '@yuanai/core/api'
 import type { DesktopExecutionNodeStatus } from '../../../shared/ipc-contract'
+import { DialogFrame } from './SettingsDialogs'
 
 /** 执行节点向主进程声明并受后端策略约束的本地能力。 */
 const NODE_CAPABILITIES = [
@@ -41,6 +42,7 @@ export function ExecutionNodeSection(): JSX.Element {
   const [name, setName] = useState('')
   const [enabling, setEnabling] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false)
 
   useEffect(() => {
     const api = window.yuanai?.executionNode
@@ -110,6 +112,15 @@ export function ExecutionNodeSection(): JSX.Element {
     [status?.nodeId, t]
   )
 
+  const removeNode = async (): Promise<void> => {
+    try {
+      await window.yuanai.executionNode.removeNode()
+      setRemoveConfirmOpen(false)
+    } catch {
+      setActionError(t('desktop.security.actionFailed'))
+    }
+  }
+
   const configured = status !== null && status.state !== 'idle'
   const stateLabel = t(`desktop.executionNode.state.${status?.state ?? 'idle'}`)
 
@@ -145,11 +156,7 @@ export function ExecutionNodeSection(): JSX.Element {
               <button
                 type="button"
                 className="settings-button settings-button--secondary"
-                onClick={() => {
-                  if (window.confirm(t('desktop.executionNode.removeConfirm'))) {
-                    void window.yuanai.executionNode.removeNode()
-                  }
-                }}
+                onClick={() => setRemoveConfirmOpen(true)}
               >
                 {t('desktop.executionNode.remove')}
               </button>
@@ -280,6 +287,31 @@ export function ExecutionNodeSection(): JSX.Element {
           </div>
         </form>
       )}
+      {removeConfirmOpen ? (
+        <DialogFrame
+          dialog="remove-execution-node"
+          onClose={() => setRemoveConfirmOpen(false)}
+          title={t('desktop.executionNode.remove')}
+        >
+          <p>{t('desktop.executionNode.removeConfirm')}</p>
+          <div className="settings-dialog__actions">
+            <button
+              type="button"
+              className="settings-button settings-button--secondary"
+              onClick={() => setRemoveConfirmOpen(false)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              className="settings-button settings-button--danger"
+              onClick={() => void removeNode()}
+            >
+              {t('desktop.security.confirmAction')}
+            </button>
+          </div>
+        </DialogFrame>
+      ) : null}
       {actionError ? (
         <p className="settings-alert" role="alert">
           {actionError}
