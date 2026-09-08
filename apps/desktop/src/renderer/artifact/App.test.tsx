@@ -12,16 +12,6 @@ const artifact = vi.hoisted(() => ({
   unsubscribe: vi.fn(),
 }))
 
-/** JSDOM 未实现 PointerEvent，显式补齐平移测试所需的坐标和指针 ID。 */
-function createPointerEvent(
-  type: 'pointerdown' | 'pointermove' | 'pointerup',
-  { clientX, clientY, pointerId }: { clientX: number; clientY: number; pointerId: number }
-): MouseEvent {
-  const event = new MouseEvent(type, { bubbles: true, clientX, clientY })
-  Object.defineProperty(event, 'pointerId', { value: pointerId })
-  return event
-}
-
 beforeEach(() => {
   Object.defineProperty(window, 'yuanai', {
     configurable: true,
@@ -236,18 +226,9 @@ describe('Artifact window', () => {
 
     fireEvent.load(image)
     fireEvent.wheel(viewport, { deltaY: -120 })
-    fireEvent(
-      viewport,
-      createPointerEvent('pointerdown', { clientX: 300, clientY: 220, pointerId: 1 })
-    )
-    fireEvent(
-      viewport,
-      createPointerEvent('pointermove', { clientX: 240, clientY: 170, pointerId: 1 })
-    )
-    fireEvent(
-      viewport,
-      createPointerEvent('pointerup', { clientX: 240, clientY: 170, pointerId: 1 })
-    )
+    fireEvent.mouseDown(viewport, { clientX: 300, clientY: 220 })
+    fireEvent.mouseMove(window, { clientX: 240, clientY: 170 })
+    fireEvent.mouseUp(window)
 
     expect(viewport.scrollLeft).toBe(380)
     expect(viewport.scrollTop).toBe(290)

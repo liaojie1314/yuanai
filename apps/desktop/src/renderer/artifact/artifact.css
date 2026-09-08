@@ -192,6 +192,7 @@ body {
   height: auto;
   flex: 0 0 auto;
   user-select: none;
+  -webkit-user-drag: none;
 }
 
 .artifact__video-shell {

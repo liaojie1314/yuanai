@@ -17,9 +17,9 @@ import {
   useRef,
   useState,
   type ReactElement,
-  type PointerEvent as ReactPointerEvent,
   type ChangeEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type SyntheticEvent,
   type WheelEvent,
 } from 'react'
@@ -42,7 +42,7 @@ import './artifact.css'
 
 const CONSOLE_MAX_ENTRIES = 200
 const IMAGE_ZOOM_MIN = 0.1
-const IMAGE_ZOOM_MAX = 4
+const IMAGE_ZOOM_MAX = 16
 const IMAGE_ZOOM_STEP = 1.12
 type ConsoleLevel = 'log' | 'info' | 'warn' | 'error'
 
@@ -57,7 +57,6 @@ interface ImageDimensions {
 }
 
 interface ImagePanState {
-  pointerId: number
   startX: number
   startY: number
   scrollLeft: number
@@ -198,54 +197,60 @@ export function App(): ReactElement {
     setImageZoom(fitImageToViewport(naturalWidth, naturalHeight))
   }
 
+  useEffect(() => {
+    const viewport = imageViewportRef.current
+    if (!viewport || !imageDimensions) return
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, (viewport.scrollWidth - viewport.clientWidth) / 2)
+      viewport.scrollTop = Math.max(0, (viewport.scrollHeight - viewport.clientHeight) / 2)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [imageDimensions, imageZoom])
+
+  useEffect(() => {
+    const handleWindowMouseMove = (event: MouseEvent): void => {
+      const pan = imagePanRef.current
+      const viewport = imageViewportRef.current
+      if (!pan || !viewport) return
+      event.preventDefault()
+      viewport.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX)
+      viewport.scrollTop = pan.scrollTop - (event.clientY - pan.startY)
+    }
+    const finishWindowPan = (): void => {
+      if (!imagePanRef.current) return
+      imagePanRef.current = null
+      setIsImagePanning(false)
+    }
+    window.addEventListener('mousemove', handleWindowMouseMove)
+    window.addEventListener('mouseup', finishWindowPan)
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove)
+      window.removeEventListener('mouseup', finishWindowPan)
+    }
+  }, [])
+
   function handleImageWheel(event: WheelEvent<HTMLDivElement>): void {
     event.preventDefault()
     const factor = event.deltaY < 0 ? IMAGE_ZOOM_STEP : 1 / IMAGE_ZOOM_STEP
     setImageZoom((current) => clampImageZoom(current * factor))
   }
 
-  function handleImagePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+  function handleImageMouseDown(event: ReactMouseEvent<HTMLDivElement>): void {
     const viewport = event.currentTarget
     const canPan =
-      viewport.scrollWidth > viewport.clientWidth || viewport.scrollHeight > viewport.clientHeight
+      imageDimensions !== null &&
+      imageZoom > fitImageToViewport(imageDimensions.width, imageDimensions.height)
     if (!canPan) return
     event.preventDefault()
-    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
     const startX = Number.isFinite(event.clientX) ? event.clientX : 0
     const startY = Number.isFinite(event.clientY) ? event.clientY : 0
     imagePanRef.current = {
-      pointerId,
       startX,
       startY,
       scrollLeft: Number.isFinite(viewport.scrollLeft) ? viewport.scrollLeft : 0,
       scrollTop: Number.isFinite(viewport.scrollTop) ? viewport.scrollTop : 0,
     }
-    if (typeof viewport.setPointerCapture === 'function') {
-      viewport.setPointerCapture(pointerId)
-    }
     setIsImagePanning(true)
-  }
-
-  function handleImagePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
-    const pan = imagePanRef.current
-    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
-    const currentX = Number.isFinite(event.clientX) ? event.clientX : 0
-    const currentY = Number.isFinite(event.clientY) ? event.clientY : 0
-    if (pan === null || pan.pointerId !== pointerId) return
-    event.preventDefault()
-    event.currentTarget.scrollLeft = pan.scrollLeft - (currentX - pan.startX)
-    event.currentTarget.scrollTop = pan.scrollTop - (currentY - pan.startY)
-  }
-
-  function finishImagePan(event: ReactPointerEvent<HTMLDivElement>): void {
-    const pan = imagePanRef.current
-    const pointerId = Number.isFinite(event.pointerId) ? event.pointerId : 0
-    if (pan === null || pan.pointerId !== pointerId) return
-    imagePanRef.current = null
-    if (typeof event.currentTarget.releasePointerCapture === 'function') {
-      event.currentTarget.releasePointerCapture(pointerId)
-    }
-    setIsImagePanning(false)
   }
 
   function toggleVideoPlayback(): void {
@@ -421,10 +426,7 @@ export function App(): ReactElement {
                 imagePannable ? 'artifact__image-viewport--pannable' : ''
               }${isImagePanning ? 'artifact__image-viewport--panning' : ''}`}
               onWheel={handleImageWheel}
-              onPointerCancel={finishImagePan}
-              onPointerDown={handleImagePointerDown}
-              onPointerMove={handleImagePointerMove}
-              onPointerUp={finishImagePan}
+              onMouseDown={handleImageMouseDown}
               onDragStart={(event) => event.preventDefault()}
             >
               <div className="artifact__image-canvas">
