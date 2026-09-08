@@ -99,8 +99,19 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_get(key: str) -> str | None:
         return store.get(key)
 
-    async def fake_delete(key: str) -> int:
-        return store.pop(key, None) and 1 or 0  # type: ignore[return-value]
+    async def fake_delete(*keys: str) -> int:
+        deleted = 0
+        for key in keys:
+            if key in store:
+                del store[key]
+                deleted += 1
+        return deleted
+
+    async def fake_scan_iter(match: str) -> AsyncGenerator[str, None]:
+        prefix = match.removesuffix("*")
+        for key in list(store):
+            if key.startswith(prefix):
+                yield key
 
     async def fake_incr(key: str) -> int:
         next_value = counters.get(key, 0) + 1
@@ -115,6 +126,7 @@ def mock_redis(monkeypatch: pytest.MonkeyPatch) -> None:
     mock.setex.side_effect = fake_setex
     mock.get.side_effect = fake_get
     mock.delete.side_effect = fake_delete
+    mock.scan_iter = fake_scan_iter
     mock.incr.side_effect = fake_incr
     mock.expire.side_effect = fake_expire
 

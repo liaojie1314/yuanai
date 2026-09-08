@@ -2,8 +2,9 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { JSX } from 'react'
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 import {
+  apiClient,
   setOnAuthFailure,
   setOnTokenRefreshed,
   setRefreshTokenGetter,
@@ -47,12 +48,8 @@ export default function QueryProvider({
   readonly children: React.ReactNode
 }): JSX.Element {
   const qc = getQueryClient()
-  const registered = useRef(false)
 
   useEffect(() => {
-    if (registered.current) return
-    registered.current = true
-
     setTokenGetter(() => useAuthStore.getState().accessToken)
     setRefreshTokenGetter(() => useAuthStore.getState().refreshToken)
     setOnTokenRefreshed((accessToken) => useAuthStore.getState().setAccessToken(accessToken))
@@ -68,6 +65,18 @@ export default function QueryProvider({
         window.location.href = '/login'
       }
     })
+
+    const refreshOnResume = (): void => {
+      if (document.visibilityState !== 'visible' || !useAuthStore.getState().refreshToken) return
+      void apiClient.get('/auth/me').catch(() => undefined)
+    }
+
+    window.addEventListener('focus', refreshOnResume)
+    document.addEventListener('visibilitychange', refreshOnResume)
+    return () => {
+      window.removeEventListener('focus', refreshOnResume)
+      document.removeEventListener('visibilitychange', refreshOnResume)
+    }
   }, [])
 
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>

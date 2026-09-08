@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
+  apiClient: { get: vi.fn<() => Promise<unknown>>().mockResolvedValue(undefined) },
   setOnAuthFailure: vi.fn(),
   setOnTokenRefreshed: vi.fn(),
   setRefreshTokenGetter: vi.fn(),
@@ -49,9 +50,11 @@ describe('configureDesktopAuthClient', () => {
     expect(refreshTokenGetter?.()).toBe('updated-refresh-token')
 
     tokenRefreshed?.('refreshed-access-token')
+    window.dispatchEvent(new Event('focus'))
     authFailure?.()
 
     expect(auth.setAccessToken).toHaveBeenCalledWith('refreshed-access-token')
+    expect(api.apiClient.get).toHaveBeenCalledWith('/auth/me')
     expect(auth.clearAuth).toHaveBeenCalledOnce()
   })
 })

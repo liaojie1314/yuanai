@@ -74,7 +74,13 @@ async def refresh_token(token: str) -> str:
         raise ValueError("Invalid token type")
 
     user_id = payload["sub"]
-    stored = await redis_client.get(f"refresh:{user_id}")
+    session_id = payload.get("jti")
+    key = (
+        _refresh_session_key(str(user_id), session_id)
+        if isinstance(session_id, str)
+        else _legacy_refresh_key(str(user_id))
+    )
+    stored = await redis_client.get(key)
     if stored != token:
         raise ValueError("Refresh token revoked")
 
@@ -82,8 +88,8 @@ async def refresh_token(token: str) -> str:
 
 
 async def logout(user_id: uuid.UUID) -> None:
-    """撤销 refresh token，使当前设备会话失效。"""
-    await redis_client.delete(f"refresh:{user_id!s}")
+    """撤销该用户在所有设备上的 refresh token。"""
+    await _revoke_refresh_sessions(user_id)
 
 
 async def get_stats(user_id: uuid.UUID, db: AsyncSession) -> UserStatsResponse:
@@ -151,7 +157,7 @@ async def _revoke_sessions_after_password_change(user: User, db: AsyncSession) -
     await db.commit()
 
     # access token 由 password_changed_at 拒绝，refresh token 则立即从 Redis 移除。
-    await redis_client.delete(f"refresh:{user.id}")
+    await _revoke_refresh_sessions(user.id)
 
 
 async def delete_account(user: User, db: AsyncSession) -> None:
@@ -161,12 +167,15 @@ async def delete_account(user: User, db: AsyncSession) -> None:
 
 
 async def build_auth_response(user: User) -> AuthResponse:
-    """构建 AuthResponse 并将 refresh token 存入 Redis。"""
+    """构建 AuthResponse 并将当前登录会话的 refresh token 存入 Redis。"""
     access_token = create_access_token(str(user.id))
     token = create_refresh_token(str(user.id))
+    session_id = decode_token(token).get("jti")
+    if not isinstance(session_id, str):
+        raise RuntimeError("Refresh token missing session id")
 
     await redis_client.setex(
-        f"refresh:{user.id}",
+        _refresh_session_key(str(user.id), session_id),
         settings.refresh_token_expire_days * 86400,
         token,
     )
@@ -176,3 +185,17 @@ async def build_auth_response(user: User) -> AuthResponse:
         refresh_token=token,
         user=UserResponse.model_validate(user),
     )
+
+
+def _refresh_session_key(user_id: str, session_id: str) -> str:
+    return f"refresh:{user_id}:{session_id}"
+
+
+async def _revoke_refresh_sessions(user_id: uuid.UUID) -> None:
+    keys = [_legacy_refresh_key(str(user_id))]
+    keys.extend([key async for key in redis_client.scan_iter(match=f"refresh:{user_id}:*")])
+    await redis_client.delete(*keys)
+
+
+def _legacy_refresh_key(user_id: str) -> str:
+    return f"refresh:{user_id}"

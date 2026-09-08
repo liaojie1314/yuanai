@@ -1,10 +1,13 @@
 import {
+  apiClient,
   setOnAuthFailure,
   setOnTokenRefreshed,
   setRefreshTokenGetter,
   setTokenGetter,
 } from '@yuanai/core/api'
 import { useAuthStore } from '@yuanai/core/stores'
+
+let focusListenerRegistered = false
 
 /**
  * 将桌面端加密会话状态连接到共享 API 客户端。
@@ -17,6 +20,14 @@ export function configureDesktopAuthClient(): void {
   setRefreshTokenGetter(() => useAuthStore.getState().refreshToken)
   setOnTokenRefreshed((accessToken) => useAuthStore.getState().setAccessToken(accessToken))
   setOnAuthFailure(() => useAuthStore.getState().clearAuth())
+
+  if (!focusListenerRegistered) {
+    focusListenerRegistered = true
+    window.addEventListener('focus', () => {
+      if (!useAuthStore.getState().refreshToken) return
+      void apiClient.get('/auth/me').catch(() => undefined)
+    })
+  }
 }
 
 /** 重新读取主进程已加密保存的认证状态，以同步其他登录窗口的结果。 */

@@ -313,6 +313,33 @@ class TestLogin:
         assert "refresh_token" in data
         assert data["user"]["email"] == test_user.email
 
+    async def test_multiple_logins_keep_each_refresh_token_valid(
+        self, client: AsyncClient, test_user: User
+    ) -> None:
+        first_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "Test1234!"},
+        )
+        second_login = await client.post(
+            "/api/v1/auth/login",
+            json={"email": test_user.email, "password": "Test1234!"},
+        )
+        assert first_login.status_code == 200
+        assert second_login.status_code == 200
+
+        first_refresh_token = first_login.json()["refresh_token"]
+        second_refresh_token = second_login.json()["refresh_token"]
+        assert first_refresh_token != second_refresh_token
+
+        first_refresh = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": first_refresh_token}
+        )
+        second_refresh = await client.post(
+            "/api/v1/auth/refresh", json={"refresh_token": second_refresh_token}
+        )
+        assert first_refresh.status_code == 200
+        assert second_refresh.status_code == 200
+
     async def test_login_wrong_password(self, client: AsyncClient, test_user: User) -> None:
         response = await client.post(
             "/api/v1/auth/login",
