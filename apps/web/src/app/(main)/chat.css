@@ -2071,10 +2071,6 @@
   min-height: 100%;
   place-items: center;
 }
-.ch-ap-lightbox-canvas.is-resized {
-  width: max-content;
-  height: max-content;
-}
 .ch-ap-lightbox-image {
   display: block;
   width: auto;

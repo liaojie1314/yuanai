@@ -182,6 +182,10 @@ describe('ArtifactPanel', () => {
     fireEvent.wheel(viewport, { deltaY: -100 })
     expect(image).toHaveStyle({ width: '500px' })
     expect(image.style.height).toBe('')
+    expect(viewport.querySelector('.ch-ap-lightbox-canvas')).toHaveStyle({
+      width: 'max(100%, 500px)',
+      height: 'max(100%, 375px)',
+    })
     fireEvent(
       viewport,
       createPointerEvent('pointerdown', { clientX: 300, clientY: 200, pointerId: 1 })

@@ -84,6 +84,9 @@ interface LightboxPanState {
   scrollTop: number
 }
 
+const LIGHTBOX_MIN_ZOOM = 0.25
+const LIGHTBOX_MAX_ZOOM = 16
+
 /** 管理放大图片的真实尺寸和指针平移，避免仅缩放视觉层而无法滚动查看细节。 */
 function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, zoomScale: number) {
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -101,13 +104,23 @@ function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, 
     }
   }, [sourceUrl, zoomed])
 
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || !baseSize) return
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollLeft = Math.max(0, (viewport.scrollWidth - viewport.clientWidth) / 2)
+      viewport.scrollTop = Math.max(0, (viewport.scrollHeight - viewport.clientHeight) / 2)
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [baseSize, zoomScale])
+
   const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>): void => {
     const image = event.currentTarget
     const { naturalHeight, naturalWidth } = image
     if (naturalWidth <= 0 || naturalHeight <= 0) return
     const viewport = viewportRef.current
-    const availableWidth = Math.max(1, viewport?.clientWidth ?? naturalWidth)
-    const availableHeight = Math.max(1, viewport?.clientHeight ?? naturalHeight)
+    const availableWidth = viewport?.clientWidth || naturalWidth
+    const availableHeight = viewport?.clientHeight || naturalHeight
     const fitScale = Math.min(1, availableWidth / naturalWidth, availableHeight / naturalHeight)
     setBaseSize({ width: naturalWidth * fitScale, height: naturalHeight * fitScale })
   }
@@ -153,6 +166,12 @@ function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, 
   }
 
   const imageStyle = baseSize ? { width: `${Math.round(baseSize.width * zoomScale)}px` } : undefined
+  const canvasStyle = baseSize
+    ? {
+        width: `max(100%, ${Math.round(baseSize.width * zoomScale)}px)`,
+        height: `max(100%, ${Math.round(baseSize.height * zoomScale)}px)`,
+      }
+    : undefined
 
   return {
     viewportRef,
@@ -161,9 +180,9 @@ function useLightboxImageCanvas(sourceUrl: string | undefined, zoomed: boolean, 
     handlePointerMove,
     finishPan,
     imageStyle,
+    canvasStyle,
     isPannable: zoomScale > 1 && baseSize !== null,
     isPanning,
-    isResized: baseSize !== null,
   }
 }
 
@@ -245,7 +264,10 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
 
   const changeZoom = (delta: number): void => {
     setZoomScale((current) =>
-      Math.min(4, Math.max(0.25, Math.round((current + delta) * 100) / 100))
+      Math.min(
+        LIGHTBOX_MAX_ZOOM,
+        Math.max(LIGHTBOX_MIN_ZOOM, Math.round((current + delta) * 100) / 100)
+      )
     )
   }
 
@@ -285,7 +307,7 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
                 type="button"
                 className="ch-ap-lightbox-tool"
                 onClick={() => changeZoom(-0.25)}
-                disabled={zoomScale <= 0.25}
+                disabled={zoomScale <= LIGHTBOX_MIN_ZOOM}
                 aria-label="缩小图片"
                 title="缩小图片"
               >
@@ -296,7 +318,7 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
                 type="button"
                 className="ch-ap-lightbox-tool"
                 onClick={() => changeZoom(0.25)}
-                disabled={zoomScale >= 4}
+                disabled={zoomScale >= LIGHTBOX_MAX_ZOOM}
                 aria-label="放大图片"
                 title="放大图片"
               >
@@ -335,7 +357,7 @@ function FileArtifactPreview({ payload }: { payload: FileArtifactPayload }): JSX
               onPointerMove={imageCanvas.handlePointerMove}
               onPointerUp={imageCanvas.finishPan}
             >
-              <div className={`ch-ap-lightbox-canvas${imageCanvas.isResized ? 'is-resized' : ''}`}>
+              <div className="ch-ap-lightbox-canvas" style={imageCanvas.canvasStyle}>
                 <img
                   className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
                   src={data.url}
@@ -508,7 +530,10 @@ function MediaArtifactPreview({
 
   const changeZoom = (delta: number): void => {
     setZoomScale((current) =>
-      Math.min(4, Math.max(0.25, Math.round((current + delta) * 100) / 100))
+      Math.min(
+        LIGHTBOX_MAX_ZOOM,
+        Math.max(LIGHTBOX_MIN_ZOOM, Math.round((current + delta) * 100) / 100)
+      )
     )
   }
 
@@ -552,7 +577,7 @@ function MediaArtifactPreview({
                 type="button"
                 className="ch-ap-lightbox-tool"
                 onClick={() => changeZoom(-0.25)}
-                disabled={zoomScale <= 0.25}
+                disabled={zoomScale <= LIGHTBOX_MIN_ZOOM}
                 aria-label="缩小图片"
                 title="缩小图片"
               >
@@ -563,7 +588,7 @@ function MediaArtifactPreview({
                 type="button"
                 className="ch-ap-lightbox-tool"
                 onClick={() => changeZoom(0.25)}
-                disabled={zoomScale >= 4}
+                disabled={zoomScale >= LIGHTBOX_MAX_ZOOM}
                 aria-label="放大图片"
                 title="放大图片"
               >
@@ -594,7 +619,7 @@ function MediaArtifactPreview({
               onPointerMove={imageCanvas.handlePointerMove}
               onPointerUp={imageCanvas.finishPan}
             >
-              <div className={`ch-ap-lightbox-canvas${imageCanvas.isResized ? 'is-resized' : ''}`}>
+              <div className="ch-ap-lightbox-canvas" style={imageCanvas.canvasStyle}>
                 <img
                   className={`ch-ap-lightbox-image${zoomScale > 1 ? 'is-zoomed' : ''}`}
                   src={payload.url}
