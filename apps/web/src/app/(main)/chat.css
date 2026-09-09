@@ -167,6 +167,12 @@
 .ch-app.sb-col .ch-sb-convs {
   padding: 4px 8px;
 }
+.ch-app.sb-col .ch-sb-empty {
+  padding: 24px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .ch-app.sb-col .ch-conv-group {
   margin-bottom: 2px;
 }
