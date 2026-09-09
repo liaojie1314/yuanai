@@ -536,5 +536,30 @@
       "expiresAt": "Expires",
       "decided": "Decided"
     }
+  },
+  "memories": {
+    "title": "Memory Center",
+    "subtitle": "Review, confirm, and manage what your assistant remembers",
+    "createPlaceholder": "Enter something to remember",
+    "create": "Add memory",
+    "empty": "No memories yet",
+    "loading": "Loading memories…",
+    "status": "Status",
+    "type": "Type",
+    "source": "Source",
+    "candidate": "Needs review",
+    "active": "Active",
+    "rejected": "Rejected",
+    "superseded": "Superseded",
+    "expired": "Expired",
+    "profile": "Profile",
+    "preference": "Preference",
+    "semantic": "Fact",
+    "episodic": "Episode",
+    "confirm": "Remember",
+    "reject": "Reject",
+    "delete": "Delete",
+    "confirmDelete": "Delete this memory?",
+    "actionFailed": "Action failed. Please try again."
   }
 }

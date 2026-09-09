@@ -536,5 +536,30 @@
       "expiresAt": "过期时间",
       "decided": "已处理"
     }
+  },
+  "memories": {
+    "title": "记忆中心",
+    "subtitle": "查看、确认和管理助理记住的内容",
+    "createPlaceholder": "输入要记住的内容",
+    "create": "添加记忆",
+    "empty": "还没有记忆",
+    "loading": "正在加载记忆…",
+    "status": "状态",
+    "type": "类型",
+    "source": "来源",
+    "candidate": "待确认",
+    "active": "已启用",
+    "rejected": "已拒绝",
+    "superseded": "已替代",
+    "expired": "已过期",
+    "profile": "个人资料",
+    "preference": "偏好",
+    "semantic": "事实",
+    "episodic": "事件",
+    "confirm": "确认记住",
+    "reject": "拒绝",
+    "delete": "删除",
+    "confirmDelete": "确定删除这条记忆？",
+    "actionFailed": "操作失败，请重试"
   }
 }

@@ -1,0 +1,113 @@
+.memory-shell {
+  min-height: 100vh;
+  padding: 38px clamp(18px, 5vw, 72px) 64px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.memory-header,
+.memory-create,
+.memory-list,
+.memory-filters {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.memory-header {
+  margin-bottom: 24px;
+}
+.memory-header h1 {
+  margin: 4px 0 6px;
+  font-size: 26px;
+}
+.memory-header p,
+.memory-muted,
+.memory-card small {
+  color: var(--fg2);
+}
+.memory-eyebrow {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.memory-create {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.memory-create input {
+  min-height: 40px;
+  flex: 1;
+  padding: 0 12px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+}
+.memory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.memory-filters button,
+.memory-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--brand-b);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.memory-filters button.is-active {
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+.memory-btn--primary {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-fg, #fff);
+  font-weight: 600;
+}
+.memory-btn--danger {
+  color: var(--danger, #dc2626);
+}
+.memory-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 0;
+  padding: 0;
+  list-style: none;
+}
+.memory-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.memory-card p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.memory-card-head,
+.memory-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.memory-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand-b);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+}
