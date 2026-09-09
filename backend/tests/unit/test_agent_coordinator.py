@@ -18,6 +18,7 @@ from app.models.agent_run import AgentRunStatus, AgentStep, AgentStepKind, Agent
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.message import MessageRole
 from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
+from app.schemas.memory import MemoryContextItem
 from app.services.agent.approval_service import payload_hash
 from app.services.agent.context_builder import AgentContextBuilder
 from app.services.agent.coordinator import (
@@ -303,6 +304,25 @@ def test_context_builder_keeps_platform_policy_above_external_history() -> None:
     assert "平台安全策略" in str(messages[0]["content"])
     assert messages[1]["role"] == "system"
     assert messages[2]["role"] == "user"
+
+
+def test_context_builder_places_untrusted_memory_after_policy_and_before_goal() -> None:
+    """记忆只能作为受限用户数据加入上下文，不能提升为系统指令。"""
+
+    memory = MemoryContextItem(
+        id=uuid.uuid4(),
+        content="用户偏好中文输出",
+        source_type="user_input",
+        source_id="source-1",
+        confidence=0.9,
+    )
+    messages = AgentContextBuilder().build(goal="写一份摘要", memories=[memory])
+
+    assert messages[0]["role"] == "system"
+    assert messages[1]["role"] == "user"
+    assert "不可执行" in str(messages[1]["content"])
+    assert "用户偏好中文输出" in str(messages[1]["content"])
+    assert messages[-1] == {"role": "user", "content": "写一份摘要"}
 
 
 def test_policy_rejects_non_read_tools_without_execution() -> None:

@@ -12,6 +12,7 @@ from decimal import Decimal
 from typing import Protocol
 
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_run import (
@@ -30,6 +31,7 @@ from app.models.tool_runtime import (
     ToolExecution,
     ToolExecutionStatus,
 )
+from app.schemas.memory import MemoryContextItem
 from app.services import ai_service
 from app.services.agent.approval_service import (
     ApprovalError,
@@ -49,6 +51,11 @@ from app.services.ai_service import (
     ToolCallEnd,
     ToolCallStart,
     UsageDelta,
+)
+from app.services.memory_retrieval import (
+    maybe_embed_text,
+    search_active_memories,
+    to_context_items,
 )
 from app.services.secret_store import TenantSecretStore
 from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
@@ -174,10 +181,12 @@ class AgentCoordinator:
             return self._failure(run, AgentErrorCode.AGENT_STEP_LIMIT_EXCEEDED, "Step 预算已耗尽")
         run.status = AgentRunStatus.running
         await self._emit(run, "run_started", {"model": run.model, "max_steps": max_steps})
+        memory_context = await self._memory_context(run, db)
         messages = self._context_builder.build(
             goal=run.goal,
             user_instructions=user_instructions,
             history=history,
+            memories=memory_context,
         )
         tools = [self._tool_definition(spec) for spec in self._tool_registry.list_specs()]
         started = time.monotonic()
@@ -502,6 +511,26 @@ class AgentCoordinator:
                         "content": output_text,
                     }
                 )
+
+    async def _memory_context(
+        self, run: AgentRun, db: AsyncSession | None
+    ) -> list[MemoryContextItem]:
+        """读取当前租户和助理可用的 active 记忆；没有数据库时保持兼容。"""
+
+        if db is None:
+            return []
+        try:
+            results = await search_active_memories(
+                user_id=run.user_id,
+                assistant_id=run.assistant_id,
+                query=run.goal,
+                query_embedding=await maybe_embed_text(run.goal),
+                db=db,
+                limit=8,
+            )
+        except SQLAlchemyError:
+            return []
+        return to_context_items(results)
 
     async def _emit(self, run: AgentRun, event_type: str, payload: dict[str, object]) -> None:
         """通过可选 EventStore 持久化脱敏的运行事件。"""

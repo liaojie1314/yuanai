@@ -13,6 +13,14 @@ from app.models.conversation import Conversation
 from app.models.expo_push_token import ExpoPushToken
 from app.models.file import File, MessageFile
 from app.models.media_generation_task import MediaGenerationTask
+from app.models.memory import (
+    Memory,
+    MemoryRelation,
+    MemorySensitivity,
+    MemoryStatus,
+    MemoryStorageLocation,
+    MemoryType,
+)
 from app.models.message import Message
 from app.models.push_subscription import PushSubscription
 from app.models.qr_login import QRLoginChallenge, QRLoginEvent
@@ -43,6 +51,12 @@ __all__ = [
     "File",
     "MessageFile",
     "MediaGenerationTask",
+    "Memory",
+    "MemoryRelation",
+    "MemoryType",
+    "MemorySensitivity",
+    "MemoryStorageLocation",
+    "MemoryStatus",
     "ConversationShare",
     "FileUploadSession",
     "PushSubscription",

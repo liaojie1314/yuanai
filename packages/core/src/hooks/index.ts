@@ -71,3 +71,10 @@ export {
   useToolConnections,
   useToolExecutions,
 } from './useToolQueries'
+export {
+  useCreateMemory,
+  useDeleteMemory,
+  useMemories,
+  useSearchMemories,
+  useUpdateMemory,
+} from './useMemories'

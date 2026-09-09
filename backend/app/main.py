@@ -13,6 +13,7 @@ from app.api.v1 import (
     auth,
     chat,
     media,
+    memories,
     models,
     notifications,
     qr_login,
@@ -95,6 +96,7 @@ app.include_router(voice.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
 app.include_router(admin_agent.router, prefix="/api/v1")
 app.include_router(tools.router, prefix="/api/v1")
+app.include_router(memories.router, prefix="/api/v1")
 
 
 @app.get("/health")

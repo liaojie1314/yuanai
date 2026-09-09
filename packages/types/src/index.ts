@@ -871,3 +871,87 @@ export interface McpServer {
   createdAt: string
   updatedAt: string
 }
+
+/** 记忆的生命周期状态。 */
+export type MemoryStatus = 'candidate' | 'active' | 'rejected' | 'superseded' | 'expired'
+
+/** 记忆的敏感级别。 */
+export type MemorySensitivity = 'public' | 'personal' | 'sensitive' | 'restricted'
+
+/** 记忆的类型。 */
+export type MemoryType = 'profile' | 'preference' | 'semantic' | 'episodic'
+
+/** 记忆候选的创建参数。 */
+export interface MemoryCreateCandidate {
+  content: string
+  memoryType: MemoryType
+  assistantId: string
+  sensitivity?: MemorySensitivity
+  workspaceId?: string | null
+  sourceType?: string
+  sourceId?: string | null
+  sourceExcerpt?: string | null
+  confidence?: number
+  storageLocation?: 'cloud' | 'local_node'
+  structuredData?: Record<string, unknown> | null
+  validUntil?: string | null
+}
+
+/** 记忆资源及其来源和生命周期信息。 */
+export interface Memory {
+  id: string
+  userId: string
+  assistantId: string
+  workspaceId: string | null
+  memoryType: MemoryType
+  content: string
+  structuredData: Record<string, unknown> | null
+  sourceType: string
+  sourceId: string | null
+  sourceExcerpt: string | null
+  confidence: number
+  sensitivity: MemorySensitivity
+  storageLocation: 'cloud' | 'local_node'
+  status: MemoryStatus
+  validFrom: string | null
+  validUntil: string | null
+  lastUsedAt: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** 更新记忆内容或生命周期状态的参数。 */
+export interface MemoryUpdate {
+  content?: string
+  structuredData?: Record<string, unknown> | null
+  confidence?: number
+  sensitivity?: MemorySensitivity
+  status?: MemoryStatus
+  validFrom?: string | null
+  validUntil?: string | null
+}
+
+/** 记忆检索结果，保留排序分数和来源信息。 */
+export interface MemorySearchResult {
+  id: string
+  assistantId: string
+  workspaceId: string | null
+  memoryType: MemoryType
+  content: string
+  sourceType: string
+  sourceId: string | null
+  sourceExcerpt: string | null
+  confidence: number
+  sensitivity: MemorySensitivity
+  status: MemoryStatus
+  score: number
+}
+
+/** 注入 Agent 上下文的记忆条目。 */
+export interface MemoryContextItem {
+  memoryId: string
+  content: string
+  sourceType: string
+  sourceId: string | null
+  score: number
+}
