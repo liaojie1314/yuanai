@@ -25,6 +25,13 @@ from app.models.message import Message
 from app.models.push_subscription import PushSubscription
 from app.models.qr_login import QRLoginChallenge, QRLoginEvent
 from app.models.share import ConversationShare
+from app.models.skill import (
+    Skill,
+    SkillInstallation,
+    SkillInstallationScope,
+    SkillVersion,
+    SkillVersionStatus,
+)
 from app.models.tool_runtime import (
     Artifact,
     ArtifactKind,
@@ -57,6 +64,11 @@ __all__ = [
     "MemorySensitivity",
     "MemoryStorageLocation",
     "MemoryStatus",
+    "Skill",
+    "SkillVersion",
+    "SkillVersionStatus",
+    "SkillInstallation",
+    "SkillInstallationScope",
     "ConversationShare",
     "FileUploadSession",
     "PushSubscription",

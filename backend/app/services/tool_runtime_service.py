@@ -1343,7 +1343,7 @@ class ToolRuntimeService:
             run_id=run_id,
             step_id=step_id,
             tool_name=tool_name,
-            tool_version="1.0.0",
+            tool_version=spec.version,
             execution_location=execution_location,
             risk_level=spec.risk_level.value,
             side_effect=spec.side_effect.value,

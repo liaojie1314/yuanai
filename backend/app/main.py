@@ -18,6 +18,7 @@ from app.api.v1 import (
     notifications,
     qr_login,
     share,
+    skills,
     tools,
     voice,
 )
@@ -97,6 +98,7 @@ app.include_router(agent.router, prefix="/api/v1")
 app.include_router(admin_agent.router, prefix="/api/v1")
 app.include_router(tools.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
+app.include_router(skills.router, prefix="/api/v1")
 
 
 @app.get("/health")

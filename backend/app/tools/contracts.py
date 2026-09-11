@@ -108,6 +108,7 @@ class ToolSpec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     name: str = Field(min_length=1, max_length=100, pattern=r"^[a-z][a-z0-9_.-]{0,99}$")
+    version: str = Field(default="1.0.0", pattern=r"^\d+\.\d+\.\d+$")
     description: str = Field(min_length=1, max_length=500)
     input_schema: dict[str, object]
     output_schema: dict[str, object] | None = None
