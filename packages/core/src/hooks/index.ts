@@ -78,3 +78,12 @@ export {
   useSearchMemories,
   useUpdateMemory,
 } from './useMemories'
+export {
+  useActivateSkillVersion,
+  useCreateSkill,
+  useCreateSkillVersion,
+  useRollbackSkillVersion,
+  useSkills,
+  useUpdateSkillInstallation,
+  useValidateSkillVersion,
+} from './useSkills'

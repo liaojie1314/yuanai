@@ -955,3 +955,72 @@ export interface MemoryContextItem {
   sourceId: string | null
   score: number
 }
+
+/** Skill 版本从草稿到活动的生命周期状态。 */
+export type SkillVersionStatus =
+  'draft' | 'validating' | 'validated' | 'active' | 'rejected' | 'deprecated'
+
+/** Skill 只能声明且收紧现有工具的风险上限。 */
+export type SkillRiskCeiling =
+  | 'read'
+  | 'local_write'
+  | 'reversible_write'
+  | 'external_side_effect'
+  | 'destructive'
+  | 'financial'
+  | 'privileged'
+
+/** 已安装 Skill 的用户可见范围。 */
+export type SkillInstallationScope = 'global' | 'assistant'
+
+/** 不可变 Skill 版本的 manifest、指令和验证记录。 */
+export interface SkillVersion {
+  id: string
+  skillId: string
+  version: string
+  manifestText: string
+  skillMd: string
+  contentHash: string
+  requiredTools: string[]
+  riskCeiling: SkillRiskCeiling
+  status: SkillVersionStatus
+  validationResult: Record<string, unknown> | null
+  validationErrors: string[]
+  createdAt: string
+  validatedAt: string | null
+}
+
+/** 用户为活动 Skill 选择的安装范围。 */
+export interface SkillInstallation {
+  id: string
+  skillId: string
+  scope: SkillInstallationScope
+  assistantId: string | null
+  createdAt: string
+}
+
+/** 一个稳定 Skill 身份及其可审计版本列表。 */
+export interface Skill {
+  id: string
+  userId: string
+  slug: string
+  name: string
+  description: string
+  currentVersionId: string | null
+  versions: SkillVersion[]
+  installations: SkillInstallation[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** 创建 Skill 首个草稿版本所需的声明内容。 */
+export interface SkillDraft {
+  manifest: string
+  skillMd: string
+}
+
+/** 更新 Skill 安装范围所需的输入。 */
+export interface SkillInstallationUpdate {
+  scope: SkillInstallationScope
+  assistantId?: string
+}
