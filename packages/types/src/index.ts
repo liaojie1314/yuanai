@@ -1026,3 +1026,4 @@ export interface SkillInstallationUpdate {
 }
 
 export * from './knowledge'
+export * from './automation'

@@ -29,6 +29,7 @@
     "setup:search": "node scripts/ensure-searxng-secret.mjs",
     "agent:worker": "uv --directory backend run python -m app.workers.agent_worker",
     "agent:recovery-worker": "uv --directory backend run python -m app.workers.recovery_worker",
+    "automation:scheduler": "uv --directory backend run python -m app.workers.automation_scheduler",
     "preview:desktop": "pnpm --filter @yuanai/desktop preview",
     "setup": "node scripts/setup.mjs",
     "build": "turbo run build",

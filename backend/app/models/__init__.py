@@ -9,6 +9,14 @@ from app.models.agent_run import (
 )
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.assistant import Assistant, AssistantAutonomyLevel
+from app.models.automation import (
+    Automation,
+    AutomationRun,
+    AutomationRunStatus,
+    AutomationStatus,
+    AutomationTrigger,
+    AutomationTriggerType,
+)
 from app.models.conversation import Conversation
 from app.models.expo_push_token import ExpoPushToken
 from app.models.file import File, MessageFile
@@ -93,6 +101,12 @@ __all__ = [
     "QRLoginEvent",
     "Assistant",
     "AssistantAutonomyLevel",
+    "Automation",
+    "AutomationStatus",
+    "AutomationTrigger",
+    "AutomationTriggerType",
+    "AutomationRun",
+    "AutomationRunStatus",
     "AgentRun",
     "AgentRunStatus",
     "RunStatus",

@@ -95,3 +95,11 @@ export {
   useKnowledgeSearch,
   usePublishKnowledgeDocument,
 } from './useKnowledge'
+export {
+  useAutomationStatus,
+  useAutomations,
+  useCreateAutomation,
+  useDeleteAutomation,
+  useRunAutomationNow,
+  useUpdateAutomation,
+} from './useAutomations'
