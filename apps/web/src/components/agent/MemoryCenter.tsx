@@ -46,7 +46,7 @@ export default function MemoryCenter(): JSX.Element {
     <main className="memory-shell">
       <header className="memory-header">
         <div>
-          <span className="memory-eyebrow">Agent</span>
+          <span className="memory-eyebrow">{t('agent')}</span>
           <h1>{t('title')}</h1>
           <p>{t('subtitle')}</p>
         </div>
