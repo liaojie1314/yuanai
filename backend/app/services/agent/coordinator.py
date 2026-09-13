@@ -31,6 +31,7 @@ from app.models.tool_runtime import (
     ToolExecution,
     ToolExecutionStatus,
 )
+from app.schemas.knowledge import KnowledgeCitation
 from app.schemas.memory import MemoryContextItem
 from app.services import ai_service
 from app.services.agent.approval_service import (
@@ -52,6 +53,7 @@ from app.services.ai_service import (
     ToolCallStart,
     UsageDelta,
 )
+from app.services.knowledge_service import search_accessible_knowledge
 from app.services.memory_retrieval import (
     maybe_embed_text,
     search_active_memories,
@@ -182,11 +184,24 @@ class AgentCoordinator:
         run.status = AgentRunStatus.running
         await self._emit(run, "run_started", {"model": run.model, "max_steps": max_steps})
         memory_context = await self._memory_context(run, db)
+        knowledge_context = await self._knowledge_context(run, db)
+        if knowledge_context:
+            await self._emit(
+                run,
+                "knowledge_context_loaded",
+                {
+                    "citations": [
+                        f"kb:{citation.document_id}:{citation.chunk_index}"
+                        for citation in knowledge_context
+                    ]
+                },
+            )
         messages = self._context_builder.build(
             goal=run.goal,
             user_instructions=user_instructions,
             history=history,
             memories=memory_context,
+            knowledge=knowledge_context,
         )
         tools = [self._tool_definition(spec) for spec in self._tool_registry.list_specs()]
         started = time.monotonic()
@@ -531,6 +546,23 @@ class AgentCoordinator:
         except SQLAlchemyError:
             return []
         return to_context_items(results)
+
+    async def _knowledge_context(
+        self, run: AgentRun, db: AsyncSession | None
+    ) -> list[KnowledgeCitation]:
+        """读取当前用户可访问的已发布资料，不可用时保持 Agent Run 可执行。"""
+
+        if db is None:
+            return []
+        try:
+            return await search_accessible_knowledge(
+                user_id=run.user_id,
+                query=run.goal,
+                db=db,
+                limit=6,
+            )
+        except SQLAlchemyError:
+            return []
 
     async def _emit(self, run: AgentRun, event_type: str, payload: dict[str, object]) -> None:
         """通过可选 EventStore 持久化脱敏的运行事件。"""

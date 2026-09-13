@@ -1024,3 +1024,5 @@ export interface SkillInstallationUpdate {
   scope: SkillInstallationScope
   assistantId?: string
 }
+
+export * from './knowledge'

@@ -12,6 +12,7 @@ from app.api.v1 import (
     agent,
     auth,
     chat,
+    knowledge,
     media,
     memories,
     models,
@@ -99,6 +100,7 @@ app.include_router(admin_agent.router, prefix="/api/v1")
 app.include_router(tools.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
+app.include_router(knowledge.router, prefix="/api/v1")
 
 
 @app.get("/health")

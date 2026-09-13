@@ -87,3 +87,11 @@ export {
   useUpdateSkillInstallation,
   useValidateSkillVersion,
 } from './useSkills'
+export {
+  useCreateKnowledgeBase,
+  useCreateKnowledgeTextSource,
+  useKnowledgeBases,
+  useKnowledgeSources,
+  useKnowledgeSearch,
+  usePublishKnowledgeDocument,
+} from './useKnowledge'
