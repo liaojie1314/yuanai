@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import select
 
 from app.models.assistant import Assistant
-from app.models.memory import Memory
+from app.models.memory import Memory, MemoryRelation
 from app.models.user import User
 
 
@@ -73,9 +73,19 @@ async def test_memory_lifecycle_is_authenticated_and_tenant_scoped(
     assert forbidden.status_code == 200
     assert forbidden.json() == []
 
+    relation = MemoryRelation(
+        memory_id=uuid.UUID(memory_id),
+        subject="旅行",
+        predicate="优先方式",
+        object_value="高铁",
+    )
+    db.add(relation)
+    await db.commit()
+
     deleted = await client.delete(f"/api/v1/memories/{memory_id}", headers=auth_headers)
     assert deleted.status_code == 204
     assert await db.scalar(select(Memory).where(Memory.id == memory_id)) is None
+    assert await db.scalar(select(MemoryRelation).where(MemoryRelation.id == relation.id)) is None
 
 
 @pytest.mark.asyncio
