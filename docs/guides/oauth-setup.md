@@ -1,6 +1,6 @@
 # 三方登录（OAuth）配置指南
 
-> 位置：`docs-internal/oauth-setup.md`（不受 `docs/` 只读约束）。本文档只面向开发者，请勿把 Client Secret 提交到代码库。
+> 本文档只面向开发者，**请勿把 Client Secret 提交到代码库**。
 
 当前落地：**GitHub** + **Google**（均无商务审核、可免费本地测试；Google 用测试模式免审核）。
 计划中：微信开放平台（需企业主体认证，二期落地）。

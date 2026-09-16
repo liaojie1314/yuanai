@@ -13,16 +13,19 @@
 ```
 1. 读 CLAUDE.md（导航索引、开发铁律）
 2. 读 AGENTS.md（本文件，操作规范）
-3. 用 codebase-memory-mcp 加载知识图谱（见下节）
-4. 确认当前任务所属 Phase，读对应 Phase 文档
-5. 读 docs/dev-standards.md + docs/testing-standards.md
-6. 读取 `.codex/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
+3. 读 docs/master-plan.md（交付状态单一真源：做到哪了、还差什么）
+4. 用 codebase-memory-mcp 加载知识图谱（见下节）
+5. 确认当前任务所属 Phase，读对应 Phase 文档
+6. 读 docs/dev-standards.md + docs/testing-standards.md
+7. 读取 `.codex/runtime-toolchain.md`（本地文件存在时）；上下文压缩或恢复后，
    必须重新执行本清单再继续运行命令、测试、Git hook 或提交
-7. 遇到非项目代码问题时，立即记录到 `.codex/environment-issues.md`，再继续排查或
+8. 遇到非项目代码问题时，立即记录到 `.codex/environment-issues.md`，再继续排查或
    执行后续操作
 ```
 
-**不得跳过步骤 1-3，不得以"已知项目"为由省略。**
+**不得跳过步骤 1-4，不得以"已知项目"为由省略。**
+全部项目文档统一在 `docs/` 下，入口是 [docs/README.md](docs/README.md)；
+不存在 `docs-internal/` 等平行文档目录。
 `.codex/runtime-toolchain.md` 是不提交的本地运行时记录，专门保存 Node.js/pnpm
 版本冲突的根因和固定执行方式；它不能替代项目中的 `.nvmrc`、`.node-version`、`engines`
 和 CI 版本声明。

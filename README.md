@@ -159,7 +159,7 @@ docker compose up -d searxng
 2. 把 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`、`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 写入 `backend/.env`
 3. `cd backend && uv run alembic upgrade head`
 
-完整步骤见 [OAuth 配置指南](docs-internal/oauth-setup.md)。微信规划中；Apple 因 $99/年会员费不列入路线。
+完整步骤见 [OAuth 配置指南](docs/guides/oauth-setup.md)。微信规划中；Apple 因 $99/年会员费不列入路线。
 
 ## 常用命令
 
@@ -184,6 +184,8 @@ docker compose up -d searxng
 
 | 文档                                                                      | 说明                                     |
 | ------------------------------------------------------------------------- | ---------------------------------------- |
+| [**文档索引**](docs/README.md)                                            | **文档总入口**，全部文档从这里找         |
+| [**交付状态总表**](docs/master-plan.md)                                   | **单一真源**：做到哪了、还差什么         |
 | [开发运行指南](docs/dev-guide.md)                                         | Mock / 全栈模式详细启动步骤              |
 | [AI 大模型接入指南](docs/ai-providers.md)                                 | API Key 配置与新增模型                   |
 | [媒体生成与音乐配置](docs/media-generation.md)                            | 图片、视频、音乐任务与本机 MusicGen 配置 |
@@ -221,21 +223,12 @@ yuanai/
 
 ## Agent 阶段边界
 
-- 截至 2026-09-07，Phase 5 Agent Runtime 的代码合同、自动化测试和恢复故障注入演练已通过本地门禁；
-  Worker 强制退出恢复、五分钟真实断线 SSE 重连重放、审批恢复/取消/幂等/租户隔离与 Chat 回归均已在
-  本地真实栈完成；生产部署环境验收仍开放，不能仅凭测试入口或构建结果放行。
-- Phase 6 六个 Wave 已有不同程度的实现和测试：隔离 stdio Worker、受控 Browser Worker、Desktop
-  执行节点和 Web 工具控制中心均已进入代码/测试证据阶段。已通过 YuanAI 认证 API 连接真实公共
-  Streamable HTTP MCP，完成工具发现、显式启用、审批和文档只读调用；这不是 Web 控制中心 UI 验收。
-  Desktop 重连/重放、故障注入与文件授权已有真实 E2E 与演练证据（最新 `3 passed (3.0m)`，含强制重启
-  任务重投与系统选择器文件授权→真实读取→未授权拒绝；执行节点重连风暴与结果级 spool 重放演练通过；
-  搜索→提取→分析→报告四步链经真实 provider 跑通并产出 Artifact）。系统性 Browser Worker 安全验收、
-  Prompt injection 等系统性安全测试与生产部署环境验收仍阻塞。全量 Web E2E 66/66（Chromium +
-  Mobile Safari）使用受控路由 mock，只是自动化回归证据。Phase 5/6 收尾已合入 `dev`，远程 CI
-  三项 job 全部通过；合并与 CI 问题记录见[排障记录](docs/troubleshooting.md)。当前执行节点边界
-  见[执行节点验收记录](apps/desktop/tests/e2e/execution-node-acceptance.md)。
-- Phase 7 尚未开始；可新开会话的前置条件仍未满足，必须先完成 Phase 5/6 的真实运行与安全验收。
-- 音乐生成是独立媒体能力，不计入 Phase 6 的 Wave 或进入 Phase 7 的许可证。
+**阶段状态与验收边界的唯一真源是[交付状态总表](docs/master-plan.md)**，这里不再重复维护。
 
-详见 [Phase 5](docs/phases/phase-5-agent-runtime.md)、[Phase 6](docs/phases/phase-6-tools-execution.md)
-和 [Phase 7](docs/phases/phase-7-memory-skills-automation.md)。
+截至 2026-09-16：Phase 4 桌面端、Phase 5 Agent 运行时、Phase 6 工具与执行已合入 `dev`，
+远程 CI 全绿；Phase 7 记忆 / 知识库 / Skills / 自动化的代码与自动化测试已落地；
+Phase 8-12 仅有阶段文档。各阶段仍未关闭的验收项（安装包签名、生产部署验收、系统性安全测试、
+Browser Worker 安全灰度）见交付状态总表。
+
+已有的自动化与真实运行证据**不构成生产部署放行**；全量 Web E2E 使用受控路由 mock，
+只能证明 UI 回归。音乐生成是独立媒体能力，不计入 Phase 6 的 Wave。

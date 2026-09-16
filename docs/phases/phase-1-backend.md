@@ -627,7 +627,7 @@ def _build_auth_response(user: User) -> AuthResponse:
 
 state 一次性消费 + `_verify_state` 立即 `DELETE` Redis key，防止重放。
 
-配置见 `docs-internal/oauth-setup.md`。
+配置见 `docs/guides/oauth-setup.md`。
 
 ---
 
@@ -748,7 +748,7 @@ async def get_me(current_user: CurrentUser) -> UserResponse:
 
 # ── 三方登录：GitHub OAuth ──────────────────────────────────
 # 完整流程见 backend/app/services/oauth_service.py 与
-# docs-internal/oauth-setup.md
+# docs/guides/oauth-setup.md
 @router.get("/github")
 async def github_authorize() -> RedirectResponse:
     """302 到 GitHub 授权页；state 写 Redis 供 callback 校验。"""
