@@ -48,13 +48,15 @@
 | 后端测试 | 集成 `test_memories`、`test_knowledge_bases`、`test_skills_api`、`test_automations`；单元 `test_memory_service`、`test_skill_validation`、`test_automation_service` |
 | Web 测试 | `components/__tests__/{KnowledgeCenter,SkillCenter,AutomationCenter}.test.tsx`                                                                                      |
 
-> ⚠️ 上述为**代码存在性核对**，本次会话未复跑测试套件。真实栈端到端验收状态见 §4。
+> 2026-09-16 实测（本地 PostgreSQL）：后端单元测试 **261 passed**，
+> Phase 7 集成测试（memories / knowledge_bases / skills_api / automations）**11 passed**。
+> 真实栈端到端验收状态见 §4。
 
 ### Phase 7 未关闭项
 
 | 状态 | 条目                                                                      |
 | ---- | ------------------------------------------------------------------------- |
-| 🟡   | 本次未复跑后端 pytest / Web vitest，交付前需跑一遍确认全绿                |
+| 🟡   | Web vitest 与 E2E 本次未复跑（后端 pytest 已复跑通过，见上）              |
 | 🟡   | 记忆检索评测（Phase 7 文档 §11.2）未见评测集与指标产出                    |
 | 🟡   | Mobile / Desktop 侧的记忆、知识库、Skills、自动化控制界面未实现（仅 Web） |
 | ⬜   | **专属助手人格（Persona）** —— 本次新增范围，见 §5                        |
@@ -127,10 +129,11 @@
 
 ## 6. 长期技术债
 
-| 状态 | 条目                                                                            |
-| ---- | ------------------------------------------------------------------------------- |
-| 🟡   | `RUNNING.md`（17K）与 `docs/dev-guide.md`、`README.md` 启动说明存在重叠，待收敛 |
-| 🟡   | `AGENTS.md`（26K）与 `CLAUDE.md`、`docs/dev-standards.md` 规范内容重叠          |
-| 🟡   | 无 i18n 门禁：UI 文案硬编码中文，多语言未规划                                   |
-| 🟡   | 无覆盖率门禁（CI 只跑 lint/typecheck/test，不校验覆盖率阈值）                   |
-| ⚪   | Mobile / Desktop 未接 Phase 7 控制界面（见 §2）                                 |
+| 状态 | 条目                                                                                                                                                 |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 🟡   | `RUNNING.md`（17K）与 `docs/dev-guide.md`、`README.md` 启动说明存在重叠，待收敛                                                                      |
+| 🟡   | `AGENTS.md`（26K）与 `CLAUDE.md`、`docs/dev-standards.md` 规范内容重叠                                                                               |
+| 🟡   | i18n 基础设施已就位（`next-intl` + zh-CN/en，17 个文件用 `useTranslations`），但**无门禁**：无 ESLint 规则、无 check-i18n 脚本、无 CI 步骤，仅靠自觉 |
+| 🟡   | 无覆盖率门禁（CI 只跑 lint/typecheck/test，不校验覆盖率阈值）                                                                                        |
+| 🟡   | Husky `pre-push` 只跑 `typecheck` + `test:unit`；lint、format:check、后端 Ruff/mypy/pytest **无本地门禁**，只能靠 CI 兜底                            |
+| ⚪   | Mobile / Desktop 未接 Phase 7 控制界面（见 §2）                                                                                                      |

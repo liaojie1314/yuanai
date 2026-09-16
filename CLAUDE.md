@@ -145,7 +145,9 @@ Phase 8-12 仅有阶段文档，尚未开工。
 - 本机环境问题（PATH、依赖缺失、临时服务不可用）记 `.codex/environment-issues.md`，**不写进 `docs/`**
 - **测试通过是进入下一功能的唯一许可证**：写完功能必须先跑测试，全部通过才能继续
 - **后端接口必须通过集成测试才能进行前后端联调**
-- 提交前必须通过 `pnpm lint && pnpm typecheck && pnpm test:unit`（Husky pre-push 自动强制）
+- 提交前必须通过 `pnpm lint && pnpm typecheck && pnpm test:unit`。
+  注意 Husky `pre-push` **只强制 `typecheck` + `test:unit`**，`lint`、`format:check`
+  与后端 Ruff/mypy/pytest 没有本地门禁，必须自己跑，否则只能等 CI 报红
 - Commit message 必须符合 Conventional Commits 格式（commitlint 强制校验）
 - API 接口新增/变更必须同步更新 `packages/types` 中的类型定义
 - 禁止在 `packages/` 中引入任何平台专用 API（`react-native`, `electron`, `next/navigation` 等）
