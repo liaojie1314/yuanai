@@ -7,7 +7,7 @@
 - [x] Verified branch/worktree baseline: `dev`, clean, `HEAD == origin/dev == 0f2cc3cd5150d8fd720d7bde570bc981876d9a92`.
 - [x] Verified pinned runtime with the recorded PATH: Node `22.21.1`, pnpm `10.22.0`; `pnpm check:runtime` passed.
 - [x] Verified remote CI run `34746024786`: `dev`, matching SHA, completed successfully.
-- [x] Loaded codebase-memory architecture/search/trace. The project index is `home-liaojie1314-code-project-yuanai-codex`; ADR retrieval returns `no_adr` because no ADR is stored.
+- [x] Loaded codebase-memory architecture/search/trace. The project index is `<project-key>`; ADR retrieval returns `no_adr` because no ADR is stored.
 - [x] Re-ran the four Phase 7 entry-license integration areas serially: `11 passed` across memory deletion, knowledge ACL, Skill rollback, and automation idempotency.
 - [ ] Confirm Phase 8 decisions before business-code edits:
   - `phase_8_entry`: recommend `gate-open` based on the four Phase 7 license tests and green remote CI; historical Phase 6 open-security/deployment notes remain evidence boundaries, not silently waived.

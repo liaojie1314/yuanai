@@ -47,20 +47,24 @@ codebase-memory-mcp cli list_projects '{}'
 
 # 2. 加载架构决策记录（每次会话最先做）
 codebase-memory-mcp cli manage_adr \
-  '{"project": "home-liaojie1314-code-project-yuanai", "mode": "retrieve"}'
+  '{"project": "<project-key>", "mode": "retrieve"}'
 
 # 3. 查找函数/类/组件
 codebase-memory-mcp cli search_graph \
-  '{"project": "home-liaojie1314-code-project-yuanai", "name_pattern": ".*ChatInterface.*"}'
+  '{"project": "<project-key>", "name_pattern": ".*ChatInterface.*"}'
 
 # 4. 追踪调用链
 codebase-memory-mcp cli trace_path \
-  '{"project": "home-liaojie1314-code-project-yuanai", "function_name": "stream_chat_endpoint", "direction": "both", "depth": 3}'
+  '{"project": "<project-key>", "function_name": "stream_chat_endpoint", "direction": "both", "depth": 3}'
 
 # 5. 检测 git diff 影响范围
 codebase-memory-mcp cli detect_changes \
-  '{"project": "home-liaojie1314-code-project-yuanai"}'
+  '{"project": "<project-key>"}'
 ```
+
+`<project-key>` 与 `<repo-root>` 是占位符，按本机实际值替换：**索引键由 checkout 绝对路径派生**
+（形如 `home-<user>-code-project-yuanai`），所以换机器或改目录名后会变，**不要写死**，
+每次会话先用上面第 1 步的 `list_projects` 取当前键。查询报 `project not found` 基本都是这个原因。
 
 ### 决策矩阵
 
@@ -80,7 +84,7 @@ codebase-memory-mcp cli detect_changes \
 
 ```bash
 codebase-memory-mcp cli index_repository \
-  '{"repo_path": "/home/liaojie1314/code/project/yuanai"}'
+  '{"repo_path": "<repo-root>"}'
 ```
 
 ---

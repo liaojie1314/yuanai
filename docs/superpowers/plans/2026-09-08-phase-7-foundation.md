@@ -110,7 +110,7 @@ Expected: Only the ignored local progress file and explicitly authorized plan fi
 
 - [ ] **Step 1: Trace the existing context path before naming interfaces**
 
-Run: `codebase-memory-mcp cli search_graph '{"project":"home-liaojie1314-code-project-yuanai-codex","name_pattern":".*(AgentContextBuilder|AgentCoordinator|AgentRun).*"}'`
+Run: `codebase-memory-mcp cli search_graph '{"project":"<project-key>","name_pattern":".*(AgentContextBuilder|AgentCoordinator|AgentRun).*"}'`
 
 Expected: The execution plan names the actual context builder, worker, coordinator, and API call sites it modifies.
 
@@ -143,7 +143,7 @@ The execution plan must end with one local commit for the Memory backend/context
 
 - [ ] **Step 1: Trace every existing tool execution and approval entry point**
 
-Run: `codebase-memory-mcp cli search_graph '{"project":"home-liaojie1314-code-project-yuanai-codex","name_pattern":".*(ToolRegistry|ToolSpec|Approval|PolicyEngine).*"}'`
+Run: `codebase-memory-mcp cli search_graph '{"project":"<project-key>","name_pattern":".*(ToolRegistry|ToolSpec|Approval|PolicyEngine).*"}'`
 
 Expected: The execution plan reuses existing trust boundaries and does not create a second tool executor.
 
@@ -177,7 +177,7 @@ The execution plan must end with one local commit for the Skills domain/validati
 
 - [ ] **Step 1: Trace standard Run creation and terminal-state handling**
 
-Run: `codebase-memory-mcp cli search_graph '{"project":"home-liaojie1314-code-project-yuanai-codex","name_pattern":".*(AgentRun|AgentQueue|ApprovalRequest|Notification).*"}'`
+Run: `codebase-memory-mcp cli search_graph '{"project":"<project-key>","name_pattern":".*(AgentRun|AgentQueue|ApprovalRequest|Notification).*"}'`
 
 Expected: The execution plan maps each automation trigger to an existing Run lifecycle rather than a custom task state machine.
 

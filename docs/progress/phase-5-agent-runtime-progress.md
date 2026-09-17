@@ -2,7 +2,7 @@
 
 ## Coordination Checkpoint (2026-09-02, verification continuation)
 
-- Current authoritative checkout is `/home/liaojie1314/code/project/yuanai-codex` on
+- Current authoritative checkout is `<repo-root>` on
   `feature/tools-execution`; the Phase 5 implementation history is preserved here for
   cross-session tracking. No merge or push has happened.
 - Root runtime, TypeScript, frontend unit/integration, backend unit/integration, Ruff

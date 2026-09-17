@@ -180,8 +180,8 @@ git commit -m "chore(config): pin infrastructure image versions"
 Add the exact new runtime and test versions below so their package.json specifiers and lockfile entries agree without resolution drift. Existing Desktop dependencies remain governed by the frozen workspace lockfile.
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop add --save-exact @tanstack/react-query@5.101.2 react-router-dom@7.0.2 react-i18next@15.7.4 i18next@24.2.3 eventsource-parser@3.0.6 lucide-react@0.460.0 react-markdown@10.1.0 react-syntax-highlighter@16.1.1 react-virtuoso@4.18.10 remark-gfm@4.0.1 remark-math@6.0.0 remark-gemoji@8.0.0 rehype-katex@7.0.1 katex@0.17.0 zod@4.4.3 @uiw/react-codemirror@4.25.11 @codemirror/lang-css@6.3.1 @codemirror/lang-html@6.4.11 @codemirror/lang-javascript@6.2.5 @codemirror/lang-json@6.0.2 @codemirror/lang-markdown@6.5.0
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop add --save-dev --save-exact vitest@2.1.9 @vitest/coverage-v8@2.1.9 @testing-library/react@16.3.2 @testing-library/user-event@14.6.1 @testing-library/jest-dom@6.9.1 jsdom@25.0.1 msw@2.15.0 @playwright/test@1.61.1 @axe-core/playwright@4.10.2 @types/node@22.20.1 @types/react-syntax-highlighter@15.5.13
+pnpm --filter @yuanai/desktop add --save-exact @tanstack/react-query@5.101.2 react-router-dom@7.0.2 react-i18next@15.7.4 i18next@24.2.3 eventsource-parser@3.0.6 lucide-react@0.460.0 react-markdown@10.1.0 react-syntax-highlighter@16.1.1 react-virtuoso@4.18.10 remark-gfm@4.0.1 remark-math@6.0.0 remark-gemoji@8.0.0 rehype-katex@7.0.1 katex@0.17.0 zod@4.4.3 @uiw/react-codemirror@4.25.11 @codemirror/lang-css@6.3.1 @codemirror/lang-html@6.4.11 @codemirror/lang-javascript@6.2.5 @codemirror/lang-json@6.0.2 @codemirror/lang-markdown@6.5.0
+pnpm --filter @yuanai/desktop add --save-dev --save-exact vitest@2.1.9 @vitest/coverage-v8@2.1.9 @testing-library/react@16.3.2 @testing-library/user-event@14.6.1 @testing-library/jest-dom@6.9.1 jsdom@25.0.1 msw@2.15.0 @playwright/test@1.61.1 @axe-core/playwright@4.10.2 @types/node@22.20.1 @types/react-syntax-highlighter@15.5.13
 ```
 
 - [ ] **Step 2: Write the renderer entry test**
@@ -202,7 +202,7 @@ describe('RENDERER_ENTRIES', () => {
 - [ ] **Step 3: Run the test and observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/shared/window-entry.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/shared/window-entry.test.ts
 ```
 
 Expected: FAIL because `window-entry.ts` is absent.
@@ -244,16 +244,16 @@ Vitest uses `jsdom`, `tests/setup.ts`, aliases `@shared` and `@renderer`, and th
 - [ ] **Step 5: Run GREEN and quality scripts**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 ```
 
 Expected: all exit 0, six renderer HTML files are emitted, and no placeholder test output remains. Then start through the script:
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop dev
+pnpm --filter @yuanai/desktop dev
 ```
 
 Expected: the Main skeleton window renders nonblank; close it after saving a temporary screenshot and checking the terminal for renderer/main/preload errors.
@@ -307,7 +307,7 @@ Add a `useStream` test that calls `setApiBaseUrl` after importing the hook and a
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/core test:unit -- src/api/__tests__/client.test.ts src/hooks/__tests__/useStream.test.tsx
+pnpm --filter @yuanai/core test:unit -- src/api/__tests__/client.test.ts src/hooks/__tests__/useStream.test.tsx
 ```
 
 Expected: FAIL because getter/setter exports do not exist.
@@ -346,10 +346,10 @@ export function setApiBaseUrl(value: string): void {
 - [ ] **Step 4: Run Core and Web regression scripts**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/core test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/core typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/web test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/web build
+pnpm --filter @yuanai/core test:unit
+pnpm --filter @yuanai/core typecheck
+pnpm --filter @yuanai/web test:unit
+pnpm --filter @yuanai/web build
 ```
 
 Expected: all exit 0; Web keeps its environment-derived URL.
@@ -429,7 +429,7 @@ Runtime-config tests assert main reads `YUANAI_API_URL`, `YUANAI_WEB_URL` and op
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/storage/auth-storage.test.ts src/main/storage/prefs-storage.test.ts src/preload/index.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/storage/auth-storage.test.ts src/main/storage/prefs-storage.test.ts src/preload/index.test.ts
 ```
 
 Expected: FAIL because storage, contract and bridge modules are absent.
@@ -487,9 +487,9 @@ Use `contextBridge.exposeInMainWorld('yuanai', api)`. Each listener wraps the ev
 - [ ] **Step 6: Run GREEN and quality scripts**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 ```
 
 Expected: all exit 0; test assertions confirm plaintext token bytes never reach disk writes.
@@ -574,7 +574,7 @@ Theme-service tests assert `get()` returns the resolved `light | dark` value, `s
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/security/security.test.ts src/main/windows/manager.test.ts src/main/lifecycle.test.ts src/main/protocol/parser.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/security/security.test.ts src/main/windows/manager.test.ts src/main/lifecycle.test.ts src/main/protocol/parser.test.ts
 ```
 
 Expected: FAIL because the modules do not exist.
@@ -607,10 +607,10 @@ Acquire the single-instance lock before `app.whenReady()`. Register protocol han
 - [ ] **Step 5: Run GREEN, build and sandbox scan**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 cd backend && PYTHONPATH="" uv run pytest tests/test_cors.py -q
 rg -n 'sandbox:\s*false|nodeIntegration:\s*true|contextIsolation:\s*false' apps/desktop/src apps/desktop/out
 ```
@@ -670,7 +670,7 @@ Dialog tests assert cancel returns `{ canceled: true }`, save data is capped at 
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/ipc/window.test.ts src/main/ipc/dialog.test.ts src/main/ipc/shell.test.ts src/main/ipc/screen.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/ipc/window.test.ts src/main/ipc/dialog.test.ts src/main/ipc/shell.test.ts src/main/ipc/screen.test.ts
 ```
 
 Expected: FAIL because the handlers are absent.
@@ -695,9 +695,9 @@ The renderer may convert the chosen PNG data URL into a `File`; no arbitrary `fi
 - [ ] **Step 4: Run GREEN and quality scripts**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 ```
 
 Expected: all exit 0.
@@ -747,7 +747,7 @@ Also assert closeToTray=false closes normally, Windows/Linux click focuses main,
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/tray/index.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/tray/index.test.ts
 ```
 
 Expected: FAIL because TrayService is absent.
@@ -759,10 +759,10 @@ Menu items are exactly `打开主界面`, `设置...`, separator, `退出元AI`.
 - [ ] **Step 4: Verify, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop dev
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop dev
 git add apps/desktop/src/main/tray apps/desktop/src/main/lifecycle.ts apps/desktop/src/main/windows/manager.ts
 git commit -m "feat(desktop): add system tray behavior"
 ```
@@ -805,7 +805,7 @@ Test Windows/Linux File/Edit/View/Window/Help groups, macOS app menu, standard u
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/menu/index.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/menu/index.test.ts
 ```
 
 Expected: FAIL because menu builders are absent.
@@ -815,9 +815,9 @@ Expected: FAIL because menu builders are absent.
 Menu callbacks call typed services only; no renderer-supplied URL or command reaches Electron. Run:
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 git add apps/desktop/src/main/menu apps/desktop/src/main/lifecycle.ts
 git commit -m "feat(desktop): add native application menus"
 ```
@@ -860,7 +860,7 @@ Also test invalid/empty accelerators, successful replacement unregisters old aft
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/shortcuts/global.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/shortcuts/global.test.ts
 ```
 
 Expected: FAIL because ShortcutService is absent.
@@ -870,9 +870,9 @@ Expected: FAIL because ShortcutService is absent.
 Default accelerator is `CommandOrControl+Alt+Y`. Preference update returns the actual status; on conflict the persisted value remains the old binding. Run:
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 git add apps/desktop/src/main/shortcuts apps/desktop/src/main/ipc/prefs.ts apps/desktop/src/main/lifecycle.ts apps/desktop/src/shared/ipc-contract.ts
 git commit -m "feat(desktop): add configurable global shortcut"
 ```
@@ -919,7 +919,7 @@ Test disable removes only `yuanai.desktop`, Linux Exec quoting, corrupt/foreign 
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/system/auto-launch.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/main/system/auto-launch.test.ts
 ```
 
 Expected: FAIL because auto-launch service is absent.
@@ -927,9 +927,9 @@ Expected: FAIL because auto-launch service is absent.
 - [ ] **Step 3: Implement, verify, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 git add apps/desktop/src/main/system apps/desktop/src/main/ipc/system.ts apps/desktop/src/main/ipc/index.ts apps/desktop/src/shared/ipc-contract.ts apps/desktop/src/preload/index.ts
 git commit -m "feat(desktop): add cross-platform auto launch"
 ```
@@ -999,8 +999,8 @@ Theme tests cover auto/light/dark, initial system theme from `window.yuanai.them
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/shared/bootstrap.test.ts src/renderer/shared/ThemeProvider.test.tsx src/renderer/shared/I18nProvider.test.tsx
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- renderer-entrypoints.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/shared/bootstrap.test.ts src/renderer/shared/ThemeProvider.test.tsx src/renderer/shared/I18nProvider.test.tsx
+pnpm --filter @yuanai/desktop test:integration -- renderer-entrypoints.test.ts
 ```
 
 Expected: FAIL because the shared providers and race-free bootstrap are absent from the Task 2 entry skeletons.
@@ -1030,11 +1030,11 @@ CSS uses `minmax(0, 1fr)`, `overflow-wrap: anywhere`, fixed token font sizes and
 - [ ] **Step 5: Run GREEN, build and entry scan**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 ```
 
 Expected: all exit 0; `apps/desktop/out/renderer` contains `main`, `login`, `settings`, `about`, `artifact`, `oauth` HTML entries.
@@ -1100,8 +1100,8 @@ Login tests also cover an unchecked “记住我” submitting `remember: false`
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/login
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- auth-flow.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/login
+pnpm --filter @yuanai/desktop test:integration -- auth-flow.test.tsx
 ```
 
 Expected: FAIL because auth pages do not exist.
@@ -1113,11 +1113,11 @@ Every input has label, autocomplete and `aria-describedby`; invalid fields set `
 - [ ] **Step 4: Run GREEN, regression and build**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 ```
 
 Expected: all exit 0.
@@ -1214,7 +1214,7 @@ OAuth state is JSON `{target, code_challenge}` with a 300-second TTL and is cons
 cd backend && PYTHONPATH="" uv run pytest tests/integration/test_oauth.py tests/integration/test_oauth_google.py -q
 cd backend && PYTHONPATH="" uv run ruff check app tests
 cd backend && PYTHONPATH="" uv run mypy app
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/types typecheck
+pnpm --filter @yuanai/types typecheck
 ```
 
 Expected: all exit 0; Web and Mobile OAuth cases remain green.
@@ -1283,7 +1283,7 @@ Test initial argv, second-instance and open-url paths; duplicate callbacks; call
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/oauth src/main/protocol/parser.test.ts src/renderer/login/OAuthFlow.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/main/oauth src/main/protocol/parser.test.ts src/renderer/login/OAuthFlow.test.tsx
 ```
 
 Expected: FAIL because PKCE session and OAuth IPC are absent.
@@ -1297,10 +1297,10 @@ Renderer adds the two accessible GitHub/Google controls only in this task. It re
 - [ ] **Step 4: Run GREEN and regression scripts**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 rg -n 'access_token|refresh_token|code_verifier' apps/desktop/src/main/protocol apps/desktop/src/main/lifecycle.ts
 ```
 
@@ -1368,8 +1368,8 @@ Sidebar tests cover cursor list loading, today/yesterday/week/pinned grouping, s
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/ChatWorkspace.test.tsx src/renderer/main/components/Sidebar.test.tsx src/renderer/main/components/Composer.test.tsx
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- chat-flow.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/ChatWorkspace.test.tsx src/renderer/main/components/Sidebar.test.tsx src/renderer/main/components/Composer.test.tsx
+pnpm --filter @yuanai/desktop test:integration -- chat-flow.test.tsx
 ```
 
 Expected: FAIL because workspace components are absent.
@@ -1385,11 +1385,11 @@ Main layout tracks are `sidebar minmax(0, 1fr) optional-artifact`; sidebar is 26
 - [ ] **Step 5: Run GREEN and regressions**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 ```
 
 Expected: all exit 0.
@@ -1454,7 +1454,7 @@ Tests cover lazy syntax language loading, GFM tables, KaTeX, emoji, external-lin
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/components
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/components
 ```
 
 Expected: FAIL because rich message modules are absent.
@@ -1466,11 +1466,11 @@ React Markdown enables `remark-gfm`, `remark-math`, `remark-gemoji`, `rehype-kat
 - [ ] **Step 4: Run GREEN, Web parity regression, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/web test:unit
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/web test:unit
 git add apps/desktop/src/renderer/main
 git commit -m "feat(desktop): add rich messages and sharing"
 ```
@@ -1523,8 +1523,8 @@ Test object URL cleanup, duplicate/oversize/type rejection, upload progress, ret
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/hooks/useAttachments.test.ts src/renderer/main/components/AttachmentTray.test.tsx src/renderer/main/components/CameraModal.test.tsx src/renderer/main/components/ScreenSourceDialog.test.tsx
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- file-chat-flow.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/hooks/useAttachments.test.ts src/renderer/main/components/AttachmentTray.test.tsx src/renderer/main/components/CameraModal.test.tsx src/renderer/main/components/ScreenSourceDialog.test.tsx
+pnpm --filter @yuanai/desktop test:integration -- file-chat-flow.test.tsx
 ```
 
 Expected: FAIL because attachment workflow is absent.
@@ -1536,10 +1536,10 @@ The hidden multiple file input invokes the OS picker and supplies browser `File`
 - [ ] **Step 4: Verify absence of deferred speech scope, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 rg -n 'transcribe|MediaRecorder|getUserMedia\(\{\s*audio' apps/desktop/src backend/app
 ```
 
@@ -1595,7 +1595,7 @@ Test source editing, copy, view/run switch, JSON tree, CSV table, console captur
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/components/ArtifactPanel.test.tsx src/renderer/artifact/ArtifactView.test.tsx src/renderer/shared/artifact-message.test.ts
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/main/components/ArtifactPanel.test.tsx src/renderer/artifact/ArtifactView.test.tsx src/renderer/shared/artifact-message.test.ts
 ```
 
 Expected: FAIL because Artifact Desktop components are absent.
@@ -1607,10 +1607,10 @@ Artifact payload accepts only known language/mode strings, a UUID/window nonce a
 - [ ] **Step 4: Run GREEN, build, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 git add apps/desktop/src/renderer/main apps/desktop/src/renderer/artifact apps/desktop/src/renderer/shared/artifact-message.ts apps/desktop/src/shared/guards.ts apps/desktop/src/main/windows/manager.ts
 git commit -m "feat(desktop): add detached artifact previews"
 ```
@@ -1682,8 +1682,8 @@ Tests cover avatar/profile/bio/stats; email/password; GitHub/Google unlink; clea
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/renderer/settings src/renderer/about
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- settings-flow.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/renderer/settings src/renderer/about
+pnpm --filter @yuanai/desktop test:integration -- settings-flow.test.tsx
 ```
 
 Expected: FAIL because settings and about implementations are absent.
@@ -1697,12 +1697,12 @@ About reads version from system IPC and opens only fixed HTTPS URLs through shel
 - [ ] **Step 4: Run GREEN, regression, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/web test:unit
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/web test:unit
 git add apps/desktop/src/renderer/settings apps/desktop/src/renderer/about apps/desktop/src/renderer/shared/locales
 git commit -m "feat(desktop): implement settings and about windows"
 ```
@@ -1781,7 +1781,7 @@ Redis channel is derived only from authenticated `user_id`. Event JSON is valida
 cd backend && PYTHONPATH="" uv run pytest tests/unit/test_event_service.py tests/integration/test_notifications.py tests/integration/test_chat.py -q
 cd backend && PYTHONPATH="" uv run ruff check app tests
 cd backend && PYTHONPATH="" uv run mypy app
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/types typecheck
+pnpm --filter @yuanai/types typecheck
 ```
 
 Expected: all exit 0.
@@ -1845,8 +1845,8 @@ Test only `ai_reply_completed` is accepted; malformed/oversize events ignored; d
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/notifications src/renderer/shared/reconnecting-events.test.ts src/renderer/main/hooks/useDesktopEvents.test.tsx
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration -- native-notifications.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/main/notifications src/renderer/shared/reconnecting-events.test.ts src/renderer/main/hooks/useDesktopEvents.test.tsx
+pnpm --filter @yuanai/desktop test:integration -- native-notifications.test.tsx
 ```
 
 Expected: FAIL because notification services are absent.
@@ -1858,10 +1858,10 @@ Renderer parses SSE with `eventsource-parser`, validates payloads and sends a sa
 - [ ] **Step 4: Verify no Web Push integration, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
 rg -n 'serviceWorker|PushManager|pushManager|Notification\.requestPermission' apps/desktop/src
 ```
 
@@ -1916,7 +1916,7 @@ Test stable/beta mapping, automatic-check preference, check available/none/error
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- src/main/updater/service.test.ts src/renderer/settings/components/DesktopSection.test.tsx
+pnpm --filter @yuanai/desktop test:unit -- src/main/updater/service.test.ts src/renderer/settings/components/DesktopSection.test.tsx
 ```
 
 Expected: FAIL because updater state machine is absent.
@@ -1928,10 +1928,10 @@ Expected: FAIL because updater state machine is absent.
 - [ ] **Step 4: Run GREEN, build, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
 git add apps/desktop/src/main/updater apps/desktop/src/main/ipc/updater.ts apps/desktop/src/main/ipc/index.ts apps/desktop/src/main/lifecycle.ts apps/desktop/src/shared/ipc-contract.ts apps/desktop/src/preload/index.ts apps/desktop/src/renderer/settings/components/DesktopSection.tsx
 git commit -m "feat(desktop): add controlled automatic updates"
 ```
@@ -1964,7 +1964,7 @@ git commit -m "feat(desktop): add controlled automatic updates"
 - [ ] **Step 1: Install exact generators and write failing deterministic tests**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop add --save-dev --save-exact sharp@0.34.5 png2icons@2.0.1
+pnpm --filter @yuanai/desktop add --save-dev --save-exact sharp@0.34.5 png2icons@2.0.1
 ```
 
 ```javascript
@@ -1980,7 +1980,7 @@ Add assertions for PNG dimensions, ICO header `00 00 01 00`, ICNS header `icns`,
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- scripts/generate-assets.test.mjs
+pnpm --filter @yuanai/desktop test:unit -- scripts/generate-assets.test.mjs
 ```
 
 Expected: FAIL because generator is absent.
@@ -2001,9 +2001,9 @@ Add scripts:
 - [ ] **Step 4: Generate through scripts, verify, commit and continue**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop assets:generate
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop assets:check
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop assets:generate
+pnpm --filter @yuanai/desktop assets:check
+pnpm --filter @yuanai/desktop test:unit
 git add apps/desktop/package.json apps/desktop/scripts apps/desktop/resources pnpm-lock.yaml
 git commit -m "chore(desktop): generate deterministic app resources"
 ```
@@ -2042,7 +2042,7 @@ Test `asar: true`, maps excluded, exact GitHub publisher `liaojie1314/yuanai`, `
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit -- scripts/builder-config.test.mjs
+pnpm --filter @yuanai/desktop test:unit -- scripts/builder-config.test.mjs
 ```
 
 Expected: FAIL because builder config and verifier are absent.
@@ -2056,9 +2056,9 @@ Add `verify:package: "node scripts/verify-package.mjs"`; retain all packaging co
 - [ ] **Step 4: Build and inspect the current-platform unpacked package**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build:unpack
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop verify:package
+pnpm --filter @yuanai/desktop test:unit
+pnpm --filter @yuanai/desktop build:unpack
+pnpm --filter @yuanai/desktop verify:package
 ```
 
 Expected: all exit 0; unpacked Linux app contains required runtime files and no source maps.
@@ -2121,7 +2121,7 @@ Playwright `webServer.command` calls `pnpm run e2e:api`; tests never launch a se
 - [ ] **Step 3: Run packaged E2E and inspect screenshots**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:e2e
+pnpm --filter @yuanai/desktop test:e2e
 ```
 
 Expected: all journeys pass on Ubuntu; screenshots are nonblank, in bounds and free of incoherent overlap.
@@ -2167,7 +2167,7 @@ Test Node 22, pnpm 10.22.0, frozen lockfile, unit/typecheck/lint/assets/package 
 - [ ] **Step 2: Observe RED**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm run test:desktop-ci
+pnpm run test:desktop-ci
 ```
 
 Expected: FAIL because workflow/checker are absent.
@@ -2187,15 +2187,15 @@ Root script is:
 - [ ] **Step 4: Run final static and current-platform verification**
 
 ```bash
-/home/liaojie1314/.local/share/pnpm/pnpm run test:desktop-ci
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/core test:unit
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop assets:check
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop test:integration
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop typecheck
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop lint
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop build
-/home/liaojie1314/.local/share/pnpm/pnpm --filter @yuanai/desktop verify:package
+pnpm run test:desktop-ci
+pnpm --filter @yuanai/core test:unit
+pnpm --filter @yuanai/desktop assets:check
+pnpm --filter @yuanai/desktop test
+pnpm --filter @yuanai/desktop test:integration
+pnpm --filter @yuanai/desktop typecheck
+pnpm --filter @yuanai/desktop lint
+pnpm --filter @yuanai/desktop build
+pnpm --filter @yuanai/desktop verify:package
 ```
 
 Expected: all exit 0 on Ubuntu. Remote Windows/macOS jobs are not run because this branch is not pushed; their final native UX acceptance remains explicit.
