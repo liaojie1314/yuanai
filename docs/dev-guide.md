@@ -185,10 +185,9 @@ pnpm --filter @yuanai/desktop test:integration
 pnpm --filter @yuanai/desktop test:e2e
 ```
 
-截至 2026-09-05，当前分支的真实 Linux 运行记录为 `1 passed (29s)`，覆盖配对、WSS challenge、
-本地审批、签名回调、ACK、取消确认和节点撤销。该单个 E2E 仍不覆盖断线重连/重放；该项不能仅凭
-Desktop 单元/集成测试记录为真实验收。后端不可达、safeStorage 不可用或测试被 skip 时均不是通过。
-重启后必须先验证可用的 X11 会话；本次使用 `DISPLAY=:1`，而不是历史 `:0`。完整边界见
+该 E2E 必须在可用的图形会话下运行，且后端可达。后端不可达、safeStorage 不可用或测试被 skip
+时**均不算通过**，也不能仅凭 Desktop 单元/集成测试记录为真实验收。最新的运行结果见
+[交付状态总表](master-plan.md)，完整边界见
 [执行节点验收记录](../apps/desktop/tests/e2e/execution-node-acceptance.md)。
 
 Browser Worker 的浏览器二进制必须来自已有系统安装或显式 `executablePath`，优先使用
@@ -340,14 +339,17 @@ echo "NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1" > apps/web/.env.local
 ```bash
 # 后端：单元 + 集成测试（需 docker compose up -d）
 cd backend
-PYTHONPATH="" uv run pytest tests/ -v -p no:launch_testing
+uv run pytest tests/ -v
 
 # 后端：lint + type check
-PYTHONPATH="" uv run ruff check app/ tests/
-PYTHONPATH="" uv run mypy app/ --ignore-missing-imports
+uv run ruff check app/ tests/
+uv run mypy app/ --ignore-missing-imports
 
 # 前端：单元测试
 pnpm test:unit
+
+# 前端：覆盖率阈值（防退化棘轮，阈值取当前实测值）
+pnpm test:coverage
 
 # 全部测试（从根目录）
 pnpm test

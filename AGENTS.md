@@ -219,25 +219,27 @@ yuanai/
 
 不要假设 hook 会替你兜底：
 
-| 时机         | 实际执行                                   | **没有**执行                                   |
-| ------------ | ------------------------------------------ | ---------------------------------------------- |
-| `git commit` | lint-staged（eslint --fix + prettier）     | tsc、任何测试                                  |
-| `git push`   | `pnpm typecheck` + `pnpm test:unit`        | lint、format:check、后端 Ruff/mypy/pytest、E2E |
-| CI           | Frontend quality / Web E2E smoke / Backend | —                                              |
+| 时机         | 实际执行                                                                                           | **没有**执行              |
+| ------------ | -------------------------------------------------------------------------------------------------- | ------------------------- |
+| `git commit` | lint-staged（eslint --fix + prettier）                                                             | tsc、任何测试             |
+| `git push`   | `typecheck` + `lint` + `format:check` + `test:unit`；检测到后端工具链时另跑 Ruff / mypy / 后端单测 | 覆盖率、后端集成测试、E2E |
+| CI           | Frontend quality（含覆盖率阈值）/ Web E2E smoke / Backend                                          | —                         |
 
-`pnpm test:unit` **只跑前端**（turbo → vitest）。后端必须单独跑：
-
-```bash
-cd backend && PYTHONPATH="" uv run pytest tests/unit -q      # 需 PYTHONPATH="" 屏蔽 ROS2 污染
-cd backend && PYTHONPATH="" uv run pytest tests/integration -q  # 需 docker compose up -d postgres
-```
-
-E2E 在本机需先 `npx playwright install chromium webkit`，且**必须清空 `ALL_PROXY`**
-（socks 协议会让 Playwright 直接报 `Protocol "socks:" not supported`）：
+`pnpm test:unit` **只跑前端**（turbo → vitest）。后端单独跑：
 
 ```bash
-ALL_PROXY= all_proxy= pnpm --filter @yuanai/web test:e2e
+cd backend && uv run pytest tests/unit -q
+cd backend && uv run pytest tests/integration -q  # 需先 docker compose up -d postgres
 ```
+
+E2E 需先安装浏览器 `npx playwright install chromium webkit`：
+
+```bash
+pnpm --filter @yuanai/web test:e2e
+```
+
+覆盖率阈值是**防退化棘轮**（取当前实测值，不是目标值），跑 `pnpm test:coverage` 校验；
+改动让覆盖率下降就会红，补测试后请同步上调对应 `vitest.config.ts` 的阈值。
 
 ---
 

@@ -47,6 +47,11 @@ jobs:
         run: pnpm typecheck
       - name: Unit tests
         run: pnpm test:unit
+      # 覆盖率阈值是「防退化棘轮」，取值见各包 vitest.config.ts
+      - name: Coverage thresholds
+        run: pnpm test:coverage
+      - name: Script tests
+        run: pnpm test:scripts
 
   web-e2e:
     name: Web E2E smoke

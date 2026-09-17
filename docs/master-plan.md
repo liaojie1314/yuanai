@@ -130,11 +130,15 @@
 
 ## 6. 长期技术债
 
-| 状态 | 条目                                                                                                                                                                          |
-| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ✅   | ~~`RUNNING.md` 与 `dev-guide.md`/`README.md` 重叠~~ 2026-09-17 收敛：`RUNNING.md` 630 行→索引存根，环境变量与移动端启动并入 `dev-guide.md`（顺带修正端口 5432→5433 的失同步） |
-| ✅   | ~~`AGENTS.md` 与 `dev-standards.md` 规范重叠~~ 2026-09-17 收敛：630→417 行，五/六/七/八/九/十三 六节改为指针；顺带修正「Husky 在 commit 跑单测、push 跑集成测试」的错误描述   |
-| 🟡   | i18n 基础设施已就位（`next-intl` + zh-CN/en，17 个文件用 `useTranslations`），但**无门禁**：无 ESLint 规则、无 check-i18n 脚本、无 CI 步骤，仅靠自觉                          |
-| 🟡   | 无覆盖率门禁（CI 只跑 lint/typecheck/test，不校验覆盖率阈值）                                                                                                                 |
-| 🟡   | Husky `pre-push` 只跑 `typecheck` + `test:unit`；lint、format:check、后端 Ruff/mypy/pytest **无本地门禁**，只能靠 CI 兜底                                                     |
-| ⚪   | Mobile / Desktop 未接 Phase 7 控制界面（见 §2）                                                                                                                               |
+| 状态 | 条目                                                                                                                                                                                                                                                                 |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅   | ~~`RUNNING.md` 与 `dev-guide.md`/`README.md` 重叠~~ 2026-09-17 收敛：`RUNNING.md` 630 行→索引存根，环境变量与移动端启动并入 `dev-guide.md`（顺带修正端口 5432→5433 的失同步）                                                                                        |
+| ✅   | ~~`AGENTS.md` 与 `dev-standards.md` 规范重叠~~ 2026-09-17 收敛：630→417 行，五/六/七/八/九/十三 六节改为指针；顺带修正「Husky 在 commit 跑单测、push 跑集成测试」的错误描述                                                                                          |
+| ✅   | ~~i18n 语言包无一致性门禁~~ 2026-09-17 补齐：Web/Desktop 共用的 `zh-CN.json` / `en.json` 由 `apps/web/src/i18n/__tests__/locale-parity.test.ts` 守键集一致与空值；Mobile 的 `enUS: MobileMessages = DeepStringify<typeof zhCN>` 本就由 TS 保证。随 `test:unit` 进 CI |
+| ✅   | ~~无覆盖率门禁~~ 2026-09-17 补齐：CI 新增 `pnpm test:coverage` 与 `pnpm test:scripts`；web/desktop/core 的阈值改为**取当前实测值的防退化棘轮**（web 44/50/70/44、desktop 81/64/75/81、core 42/68/75/42），原先 70-80 的阈值从未被执行过，属纸面数字                  |
+| ✅   | ~~Husky `pre-push` 只跑 `typecheck` + `test:unit`~~ 2026-09-17 补齐：扩为 `typecheck` → `lint` → `format:check` → `test:unit` → 后端 Ruff/mypy/单测（检测到 `uv` 与 `backend/.venv` 才跑，否则跳过并提示）。后端集成测试仍留给 CI（需 docker compose）               |
+| 🟡   | **硬编码文案仍无检测**：上一条只保证两份语言包结构一致，不阻止组件里直接写中文。实测 `apps/web/src` 有 61 个文件、458 行含中文字面量，加 `no-literal-string` 类规则等于一次 i18n 迁移工程，未在本次范围内                                                            |
+| 🟡   | `packages/ui` 无任何单元测试（0 测试文件），覆盖率恒为 0%，已移除其纸面阈值；补测试时需同时加回                                                                                                                                                                      |
+| 🟡   | 覆盖率棘轮阈值远低于目标（web/core 行覆盖仅 4x%），只防退化不代表覆盖充分                                                                                                                                                                                            |
+| 🟡   | `apps/mobile` 未纳入覆盖率门禁：其 vitest 按设计只跑平台无关的纯 TS 模块，RN 组件需 Detox/RTL-native 另行覆盖，百分比不可比                                                                                                                                          |
+| ⚪   | Mobile / Desktop 未接 Phase 7 控制界面（见 §2）                                                                                                                                                                                                                      |

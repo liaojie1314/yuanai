@@ -1,15 +1,37 @@
 #!/bin/sh
+# 本地 push 门禁：尽早失败，避免把红的提交推上去再等 CI 报红。
+# 后端集成测试需要 docker compose 起 PostgreSQL，不放进这里，由 CI 执行。
 
-echo "⏳ Running type check..."
 if command -v corepack >/dev/null 2>&1; then
   run_pnpm() { corepack pnpm "$@"; }
 else
   run_pnpm() { pnpm "$@"; }
 fi
 
-run_pnpm typecheck || { echo "❌ Type check failed. Push aborted."; exit 1; }
+fail() {
+  echo "❌ $1 失败，已中止 push。"
+  exit 1
+}
 
-echo "⏳ Running unit tests..."
-run_pnpm test:unit || { echo "❌ Unit tests failed. Push aborted."; exit 1; }
+echo "⏳ [1/5] 类型检查..."
+run_pnpm typecheck || fail "typecheck"
 
-echo "✅ All checks passed. Pushing..."
+echo "⏳ [2/5] Lint..."
+run_pnpm lint || fail "lint"
+
+echo "⏳ [3/5] 格式检查..."
+run_pnpm format:check || fail "format:check"
+
+echo "⏳ [4/5] 前端单元测试..."
+run_pnpm test:unit || fail "test:unit"
+
+echo "⏳ [5/5] 后端 Ruff / mypy / 单元测试..."
+if command -v uv >/dev/null 2>&1 && [ -d backend/.venv ]; then
+  (cd backend && uv run ruff check .) || fail "backend ruff"
+  (cd backend && uv run mypy app/) || fail "backend mypy"
+  (cd backend && uv run pytest tests/unit -x -q) || fail "backend pytest"
+else
+  echo "⚠️  未检测到 uv 或 backend/.venv，跳过后端检查（CI 仍会执行）。"
+fi
+
+echo "✅ 全部通过，开始 push。"

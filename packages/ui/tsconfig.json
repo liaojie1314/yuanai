@@ -6,5 +6,5 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx"
   },
-  "include": ["src", "tests"]
+  "include": ["src", "tests", "vitest.config.ts"]
 }
