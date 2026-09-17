@@ -99,7 +99,7 @@ pnpm package:desktop
 ```
 
 详细的环境变量、测试和平台打包命令见 [桌面端说明](apps/desktop/README.md) 与
-[运行指南](RUNNING.md#启动桌面端electron)。发版、签名和 GitHub Actions 说明见
+[开发运行指南](docs/dev-guide.md#启动桌面端)。发版、签名和 GitHub Actions 说明见
 [发版与 CI/CD](docs/release.md)。Android release 在本机运行 `pnpm package:mobile:android`
 构建后，通过 `pnpm release:upload:android -- v<version>` 上传到 GitHub Release，不走 EAS
 云端构建。
@@ -199,7 +199,7 @@ docker compose up -d searxng
 | [桌面端说明](apps/desktop/README.md)                                      | Electron 启动、测试与打包                |
 | [发版与 CI/CD](docs/release.md)                                           | release-it、Secrets 与 Actions           |
 | [跨端排障记录](docs/troubleshooting.md)                                   | 已解决问题和真机调试方法                 |
-| [RUNNING.md](RUNNING.md)                                                  | 完整的从零部署参考手册                   |
+| [部署指南](docs/deployment.md)                                            | 服务器选型、配置推荐、域名与 HTTPS       |
 
 ## 目录结构
 

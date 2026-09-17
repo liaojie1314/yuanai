@@ -186,311 +186,94 @@ yuanai/
 
 ## 五、TypeScript 编码规范
 
-### 强制规则（ESLint error 级）
+**完整规范见 [docs/dev-standards.md 一、TypeScript 规范](docs/dev-standards.md)**（强制规则、
+命名约定、import 顺序、ESLint 配置），此处不重复维护。
 
-| 规则                   | 要求                                      |
-| ---------------------- | ----------------------------------------- |
-| 禁止 `any`             | 用 `unknown` + 类型守卫替代               |
-| 类型导入               | 必须用 `import type`，不得混入普通 import |
-| 未使用变量             | error；前缀 `_` 的变量除外                |
-| `no-floating-promises` | 所有 Promise 必须 await 或显式处理        |
-| `require-await`        | async 函数内必须有 await 表达式           |
+只强调三条最容易违反的：
 
-### 命名约定
-
-| 类型           | 风格                          |
-| -------------- | ----------------------------- |
-| 变量、函数     | camelCase                     |
-| React 组件     | PascalCase                    |
-| 类型、接口     | PascalCase                    |
-| 常量（模块级） | UPPER_SNAKE_CASE              |
-| 组件文件       | PascalCase + `.tsx`           |
-| 工具/Hook 文件 | kebab-case（`use-stream.ts`） |
-| 测试文件       | 同源文件名 + `.test.ts(x)`    |
-
-### import 顺序（ESLint 强制）
-
-```typescript
-// 1. Node 内置
-import { readFile } from 'fs/promises'
-// 2. 外部依赖
-import { useState } from 'react'
-// 3. 内部包
-import type { Message } from '@yuanai/types'
-import { useAuthStore } from '@yuanai/core/stores'
-// 4. App 内部绝对路径
-import { ChatInput } from '@/components/ChatInput'
-// 5. 相对路径
-import { formatDate } from './utils'
-import type { Props } from './types'
-```
-
-### JSDoc 注释规范（用户明确要求）
-
-所有导出的函数、Hook、接口/类型、React 组件必须添加中文 JSDoc：
-
-```typescript
-/**
- * 发送流式聊天消息，解析 SSE 事件并回调
- * @param params 发送参数，包含 conversationId、model、content
- * @param params.onStart 收到 message_start 事件时回调，携带消息 ID
- * @param params.onToken 每个 content_delta token 回调
- * @returns 流式完成的 Promise
- */
-export async function sendMessage(params: SendMessageParams): Promise<void> { ... }
-```
-
-例外：re-export index 文件、单行 wrapper、测试文件内部逻辑不需要注释。
+- **禁止 `any`**，用 `unknown` + 类型守卫替代；`object` 同样禁止
+- 类型导入必须 `import type`，不得混入普通 import
+- 所有 Promise 必须 `await` 或显式处理（`no-floating-promises`）
 
 ---
 
 ## 六、Python（后端）编码规范
 
-### 强制规则
+**完整规范见 [docs/dev-standards.md 四、Python（后端）规范](docs/dev-standards.md)**
+（Ruff + mypy 工具链、命名约定、强制规则），此处不重复维护。
 
-- 所有公共函数/方法必须有完整类型注解（mypy strict 强制）
-- 禁止裸 `except:` 或 `except Exception:`，必须捕获具体异常类型
-- 所有数据库操作必须 async（`async with session:` + `await session.execute(...)`）
-- 路由层禁止写业务逻辑，仅允许：解析参数 → 调 service → 返回响应
-- Pydantic Schema 命名：`CreateXxxRequest` / `XxxResponse`（PascalCase + 后缀）
-
-### 错误处理模式
-
-```python
-# ✅ 正确
-async def create_conversation(req: CreateConversationRequest, db: DB) -> ConversationResponse:
-    try:
-        return await conversation_service.create(req, db)
-    except ConversationLimitError as e:
-        raise HTTPException(
-            status_code=429,
-            detail={"code": "CONVERSATION_LIMIT_EXCEEDED", "message": str(e)}
-        ) from e
-
-# ❌ 禁止
-try:
-    result = await something()
-except:          # 裸 except 被 Ruff 拒绝
-    pass
-```
+只强调：全部公共函数需类型注解与中文 docstring；Pydantic v2 校验入参；
+禁止在 API 层直接写 SQL，一律经 service 层。
 
 ---
 
 ## 七、测试规范（测试通过是进入下一功能的唯一许可证）
 
-### 分层要求
+**完整规范与用例见 [docs/testing-standards.md](docs/testing-standards.md)**，此处只记门禁真相。
 
-| 层次     | 工具                           | 运行时机                 | 覆盖率要求           |
-| -------- | ------------------------------ | ------------------------ | -------------------- |
-| 单元测试 | Vitest（前端）/ pytest（后端） | 每次 commit 前（Husky）  | utils 90%，hooks 80% |
-| 集成测试 | Vitest + MSW / pytest + httpx  | push 前（pre-push hook） | 关键流程必须有       |
-| E2E 测试 | Playwright                     | CI PR to main/dev 时     | 核心用户旅程 5-10 个 |
+### 实际的门禁覆盖（重要）
 
-### 运行命令
+不要假设 hook 会替你兜底：
+
+| 时机         | 实际执行                                   | **没有**执行                                   |
+| ------------ | ------------------------------------------ | ---------------------------------------------- |
+| `git commit` | lint-staged（eslint --fix + prettier）     | tsc、任何测试                                  |
+| `git push`   | `pnpm typecheck` + `pnpm test:unit`        | lint、format:check、后端 Ruff/mypy/pytest、E2E |
+| CI           | Frontend quality / Web E2E smoke / Backend | —                                              |
+
+`pnpm test:unit` **只跑前端**（turbo → vitest）。后端必须单独跑：
 
 ```bash
-# 前端单元测试
-pnpm test:unit
-
-# 前端集成测试
-pnpm test:integration
-
-# 后端单元测试
-cd backend && uv run pytest tests/unit -x -q
-
-# 后端集成测试
-cd backend && uv run pytest tests/integration -x -q
-
-# E2E 测试（需先启动 dev server）
-pnpm test:e2e
-
-# 覆盖率报告
-pnpm test:coverage
-cd backend && uv run pytest --cov=app --cov-fail-under=70
+cd backend && PYTHONPATH="" uv run pytest tests/unit -q      # 需 PYTHONPATH="" 屏蔽 ROS2 污染
+cd backend && PYTHONPATH="" uv run pytest tests/integration -q  # 需 docker compose up -d postgres
 ```
 
-### 测试开发流程（不得跳过）
+E2E 在本机需先 `npx playwright install chromium webkit`，且**必须清空 `ALL_PROXY`**
+（socks 协议会让 Playwright 直接报 `Protocol "socks:" not supported`）：
 
+```bash
+ALL_PROXY= all_proxy= pnpm --filter @yuanai/web test:e2e
 ```
-写功能代码
-    ↓
-运行相关测试
-    ↓
-全部通过？ → YES → 提交，进入下一功能
-           → NO  → 修复代码，重新测试
-    ↓
-关键流程完成后，编写集成测试
-    ↓
-集成测试通过？ → YES → 可以联调或合并
-              → NO  → 后端接口不可联调，先修复
-```
-
-### 必须有集成测试才能进入下一模块的场景
-
-**前端：**
-
-- 登录成功/失败流程
-- 注册表单完整校验
-- 新建会话 → 发送消息 → 显示流式回复
-- 会话列表加载 + 切换会话
-
-**后端：**
-
-- 注册 → 登录 → 刷新 token → 登出 完整认证流
-- 创建会话 → 发送消息 → 获取历史消息
-- SSE 流式接口返回正确事件序列
-- 权限隔离：用户 A 不能访问用户 B 的会话
-
-### 后端测试 conftest 核心 Fixtures
-
-```python
-# 每个测试函数使用独立事务，测试后自动回滚（数据隔离）
-db: AsyncSession        # 独立事务 Session
-client: AsyncClient     # 注入测试 DB 的 httpx client
-test_user: User         # 已持久化的测试用户（email: test@example.com）
-auth_headers: dict      # {"Authorization": "Bearer <valid_token>"}
-```
-
-### 前端 Mock 数据
-
-MSW handler 位于 `apps/web/src/mocks/handlers.ts`（开发）和 `tests/mocks/handlers.ts`（测试）。  
-固定测试凭据：email `test@example.com` / password `Test1234!`。
 
 ---
 
 ## 八、Git 工作流
 
-### 分支命名
+**完整规范见 [docs/dev-standards.md 五、Git 工作流](docs/dev-standards.md) 与
+[六、提交规范](docs/dev-standards.md)**，此处只记铁律。
 
-| 类型     | 格式                  | 示例                        |
-| -------- | --------------------- | --------------------------- |
-| 新功能   | `feature/<简短描述>`  | `feature/streaming-chat`    |
-| Bug 修复 | `fix/<简短描述>`      | `fix/token-refresh-race`    |
-| 测试补充 | `test/<简短描述>`     | `test/chat-api-integration` |
-| 文档     | `docs/<简短描述>`     | `docs/api-design-update`    |
-| 重构     | `refactor/<简短描述>` | `refactor/ai-service-layer` |
-| 工程配置 | `chore/<简短描述>`    | `chore/upgrade-expo-sdk`    |
-
-**禁止直接 push 到 `main` 或 `dev` 分支。所有功能分支使用 `feature/<简短描述>`。**
-
-### Commit 格式（Conventional Commits，commitlint 强制）
-
-```
-<type>(<scope>): <subject>
-
-[可选 body，72 字符换行]
-```
-
-**type**: `feat` | `fix` | `refactor` | `test` | `style` | `chore` | `docs` | `perf` | `ci` | `revert`
-
-**scope**: `web` | `mobile` | `desktop` | `backend` | `ui` | `core` | `types` | `e2e` | `config`
-
-```bash
-# ✅ 合法示例
-feat(backend): add SSE streaming endpoint for chat
-fix(core,web): 接入 refresh token 续期 + 记住我持久化 7 天
-perf(web): 代码高亮改为按需异步加载语言包
-test(backend): add integration tests for auth register endpoint
-
-# ❌ 非法（commitlint 会拒绝）
-修改了登录页                    # 无 type
-feat: 修改了登录页。             # 加句号
-Feature: add login page        # type 首字母大写
-feat(web): Add login page      # subject 首字母大写
-feat(unknown-scope): xxx       # 非法 scope
-```
-
-### Commit 拆分原则（用户明确要求）
-
-当一次会话积累了多个关注点的改动（功能 A + 功能 B + bug fix），必须拆分为多个逻辑 commit，最后一次 push：
-
-- 按**逻辑关注点**分组，不按文件分组（一个文件的改动可跨多个 commit）
-- `pnpm-lock.yaml` 等生成文件整体放入触发它的那次 commit
-- 中间 commit 只需通过 pre-commit hook（lint-staged），全量 typecheck + test 在 push 前统一跑
-- **禁止 `--no-verify`** 跳过 hook（紧急情况须在 PR 说明原因）
-
-### Husky Git Hooks
-
-| Hook         | 触发时机    | 执行内容                                                  |
-| ------------ | ----------- | --------------------------------------------------------- |
-| `pre-commit` | 每次 commit | lint-staged（仅处理暂存文件，ESLint + Prettier + Ruff）   |
-| `commit-msg` | 每次 commit | commitlint（校验 Conventional Commits 格式）              |
-| `pre-push`   | 每次 push   | `pnpm typecheck` + `pnpm test:unit` + `pytest tests/unit` |
+- **主干是 `master`**，`dev` 为集成分支；改动走 `feature/*`、`fix/*` 分支，
+  禁止直接在 `dev` / `master` 上开发
+- `feature` → `dev` 用 `--no-ff`，**禁止 squash**（会压掉过程 commit）
+- **push、合并 `dev`、合并 `master`、打 tag、触发发版：每次都必须当次征得用户同意**，
+  禁止延续历史授权
+- Commit message：Conventional Commits，**scope 只能取** `web` / `mobile` / `desktop` /
+  `backend` / `ui` / `core` / `types` / `e2e` / `config`（脚本与工具类改动用 `config`）；
+  禁止版本号前缀，禁止 `Co-Authored-By` trailer
+- 禁止 `--no-verify`
 
 ---
 
 ## 九、开发环境命令速查
 
-### 前端
+**启动、构建、清理一律走 `package.json` scripts**，不要手敲底层 CLI
+（scripts 背后有端口清理、mock 开关、环境变量注入与运行时预检）。
+
+完整命令见 [docs/dev-guide.md](docs/dev-guide.md) 与 [README.md 常用命令](README.md#常用命令)。
+高频项：
 
 ```bash
-# 安装依赖
-pnpm install
-
-# 启动开发（Mock 模式，无需后端）
-pnpm dev
-
-# 类型检查
-pnpm typecheck
-
-# Lint
-pnpm lint
-pnpm lint:fix
-
-# 格式化
-pnpm format
-
-# 单元测试
-pnpm test:unit
-
-# 完整测试（含集成）
-pnpm test
+pnpm dev:mock          # 仅前端，无需后端
+pnpm dev:real          # 全栈（Docker + 迁移 + 后端 + Web）
+pnpm dev:desktop       # Electron
+pnpm dev:mobile        # Expo
+pnpm clean             # 清理构建产物与工具缓存
+pnpm clean:deep        # 额外清理 node_modules / .venv / Expo prebuild
+pnpm typecheck && pnpm lint && pnpm test:unit
 ```
 
-### 后端
-
-```bash
-cd backend
-
-# 安装依赖（使用 uv）
-uv sync
-
-# 复制环境变量
-cp .env.example .env
-
-# 启动服务器（需要 PostgreSQL + Redis 运行）
-uv run uvicorn app.main:app --reload
-
-# 运行 lint
-uv run ruff check . && uv run ruff format --check .
-
-# 运行类型检查
-uv run mypy app/
-
-# 运行所有测试
-uv run pytest -v
-
-# 仅单元测试
-uv run pytest tests/unit -x -q
-
-# 仅集成测试
-uv run pytest tests/integration -x -q
-
-# 覆盖率
-uv run pytest --cov=app --cov-report=html
-```
-
-### 跨平台脚本（Node.js .mjs）
-
-项目所有共享自动化脚本使用 Node.js `.mjs`，不使用 bash（兼容 Windows）：
-
-```bash
-# 一键启动开发环境（含 DB + 后端 + 前端）
-node scripts/dev.mjs
-
-# 初始化环境（安装依赖、建库、运行迁移）
-node scripts/setup.mjs
-```
+例外：后端的 `cd backend && uv run pytest|ruff|mypy|alembic` 是既定用法，不算绕过 scripts。
+若某场景没有对应 script，**先加 script 再用**，并同步 [docs/dev-guide.md](docs/dev-guide.md)。
 
 ---
 
@@ -601,18 +384,12 @@ data: [DONE]
 
 ---
 
-## 十三、当前阶段状态（截至 2026-08-13）
+## 十三、当前阶段状态
 
-| Phase      | 状态      | 说明                                                |
-| ---------- | --------- | --------------------------------------------------- |
-| 0 — 脚手架 | ✅ 完成   | Monorepo 初始化，Turborepo + pnpm                   |
-| 1 — 后端   | ✅ 完成   | FastAPI 骨架，Auth + Chat + SSE 接口已实现          |
-| 2 — Web 端 | ✅ 完成   | Next.js UI 完整（Mock 模式），已推送 `origin/dev`   |
-| 3 — 移动端 | ✅ 已实现 | Expo React Native；发布验收按 Phase 3 文档执行      |
-| 4 — 桌面端 | ✅ 已实现 | Electron 多窗口客户端已合入 `dev`；发布验收尚未完成 |
+**交付状态的唯一真源是 [docs/master-plan.md](docs/master-plan.md)**，本文件不再维护阶段状态表
+（此前这里的表格长期停留在 2026-08-13，把 Phase 4 写成前沿，而 Phase 5/6/7 其实都已落地）。
 
-**下一优先级：** 桌面端 Windows/macOS/Linux 安装包、签名和自动更新发布验收；
-后续产品能力按 Phase 5 及之后文档推进。
+开工前先读 master-plan 确认「做到哪了、还差什么」。
 
 ---
 

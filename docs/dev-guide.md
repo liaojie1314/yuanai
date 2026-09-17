@@ -72,6 +72,47 @@ pnpm dev:mock
   30 秒，任务默认只读已缓存模型并有界超时，安装、GPU/CPU 配置、ACE-Step 启动和远程实验
   方案见 [媒体生成与音乐配置](media-generation.md)
 
+### 环境变量
+
+```bash
+cd backend
+cp .env.example .env
+```
+
+`backend/.env` 的关键项（Docker 默认值可直接使用，**生产环境必须改掉 JWT 密钥与所有默认凭据**）：
+
+```env
+# 数据库（注意宿主机端口是 5433，不是 5432）
+DATABASE_URL=postgresql+asyncpg://yuanai:password@localhost:5433/yuanai
+REDIS_URL=redis://localhost:6379/0
+
+# JWT（本地开发可保持默认，生产环境必须修改）
+JWT_SECRET_KEY=change-me-in-production
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=15
+REFRESH_TOKEN_EXPIRE_DAYS=30
+
+# AI 供应商 API Key（至少填一个）→ 详见 ai-providers.md
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+DEEPSEEK_API_KEY=sk-...
+AGNES_API_KEY=sk-...
+
+# 联网搜索（默认 auto 优先使用本地 SearXNG）
+SEARCH_PROVIDER=auto # auto | searxng | brave | tavily | disabled
+BRAVE_SEARCH_API_KEY=
+TAVILY_API_KEY=
+
+# MinIO / S3（Docker 默认值可直接使用）
+S3_ENDPOINT_URL=http://localhost:9000
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET_NAME=yuanai-files
+S3_PUBLIC_URL=http://localhost:9000/yuanai-files
+```
+
+前端各 app 的 env 见下方[切换模式](#切换模式)；存储配置见[文件上传与对象存储](#文件上传与对象存储)。
+
 ### 启动步骤
 
 ```bash
@@ -85,6 +126,29 @@ pnpm dev:real
 `ACE_STEP_DIR=/absolute/path/to/ACE-Step-1.5 pnpm dev:ace-step`。低显存 GPU 无法完成 ACE-Step
 推理时，不要反复重试同一任务；改用[媒体生成与音乐配置](media-generation.md#设备与低显存配置)
 中的 CPU-only 启动命令。
+
+### 启动移动端
+
+保持基础设施与后端运行，另开终端：
+
+```bash
+pnpm dev:mobile          # 启动 Expo Dev Server（显示 QR 码）
+pnpm dev:mobile:mock     # 不需要后端的 mock 模式
+```
+
+进入 `apps/mobile` 后可选择运行目标：
+
+| 命令           | 目标                   |
+| -------------- | ---------------------- |
+| `pnpm android` | Android 模拟器 / 真机  |
+| `pnpm ios`     | iOS 模拟器（仅 macOS） |
+| `pnpm web`     | 浏览器中运行           |
+
+**真机运行（Expo Go）**：手机安装 [Expo Go](https://expo.dev/go)，运行 `pnpm dev:mobile`
+后用 Expo Go 扫描终端 QR 码。真机连接后端需把 `apps/mobile/.env.local` 的 API 地址改成
+本机局域网 IP（`hostname -I` 查看），`localhost` 在真机上指向手机自己。
+
+排障见[移动端排障](guides/mobile-troubleshooting.md)。
 
 ### 启动桌面端
 
