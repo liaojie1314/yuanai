@@ -13,6 +13,7 @@ import type {
 import { DesktopJobsExecutor } from './jobs'
 import type { ExecutionNodeGrantStore, ExecutionNodeGrantKind } from './grants'
 import type { ExecutionNodeIdentityStore } from './identity-store'
+import type { LocalMemoryStore } from './memory-store'
 
 /** 允许节点声明的固定能力白名单。 */
 export const EXECUTION_NODE_CAPABILITIES = [
@@ -20,7 +21,16 @@ export const EXECUTION_NODE_CAPABILITIES = [
   'read_granted_file',
   'list_granted_directory',
   'write_workspace_file',
+  'memory.search',
+  'memory.write',
+  'memory.delete',
 ] as const
+
+/**
+ * 只读作业由节点自动接受：检索是用户当次提问的必经步骤，逐次弹窗没有安全收益。
+ * 写入与删除刻意不在集合内，仍必须由用户点确认。
+ */
+const AUTO_ACCEPT_TOOLS: ReadonlySet<string> = new Set(['memory.search'])
 
 /** 原生文件/目录选择器的最小能力。 */
 export interface ExecutionNodeFileDialog {
@@ -45,6 +55,8 @@ export interface ExecutionNodeServiceOptions {
   identityStore: ExecutionNodeIdentityStore
   /** 资源授权表。 */
   grants: ExecutionNodeGrantStore
+  /** 本地加密记忆存储。 */
+  memoryStore: LocalMemoryStore
   /** 已校验的运行时配置。 */
   runtimeConfig: { apiBaseUrl: string }
   /** Electron app 能力。 */
@@ -77,6 +89,7 @@ export type ExecutionNodeJobDecision = 'accept' | 'reject'
 export class ExecutionNodeService {
   private readonly identityStore: ExecutionNodeIdentityStore
   private readonly grants: ExecutionNodeGrantStore
+  private readonly memoryStore: LocalMemoryStore
   private readonly app: ExecutionNodeServiceApp
   private readonly appVersion: string
   private readonly dialog: ExecutionNodeFileDialog
@@ -88,6 +101,7 @@ export class ExecutionNodeService {
   public constructor(options: ExecutionNodeServiceOptions) {
     this.identityStore = options.identityStore
     this.grants = options.grants
+    this.memoryStore = options.memoryStore
     this.app = options.app
     this.appVersion = options.appVersion
     this.dialog = options.dialog
@@ -97,6 +111,7 @@ export class ExecutionNodeService {
       new DesktopJobsExecutor({
         grants: options.grants,
         shell: options.shell,
+        memoryStore: options.memoryStore,
         app: options.app,
       })
     this.client = new ExecutionNodeClient({
@@ -110,6 +125,11 @@ export class ExecutionNodeService {
           toolName: job.toolName,
           arguments: job.arguments,
           expiresAt: job.expiresAt,
+        }
+        if (AUTO_ACCEPT_TOOLS.has(job.toolName)) {
+          // acceptJob 会同步触发 onJobStarted，由它把 pendingJob 迁到 currentJob 并广播。
+          this.client.acceptJob(job.executionId)
+          return
         }
         this.broadcast()
       },
@@ -135,11 +155,12 @@ export class ExecutionNodeService {
   }
 
   /**
-   * 应用启动时调用：恢复授权表并在已有身份时自动重连。
+   * 应用启动时调用：恢复授权表与本地记忆，并在已有身份时自动重连。
    * 启动过程不因节点错误中断。
    */
   public async start(): Promise<void> {
     await this.grants.hydrate()
+    await this.memoryStore.hydrate()
     const identity = this.identityStore.getCached() ?? (await this.identityStore.load())
     if (!identity) return
     try {
@@ -192,7 +213,7 @@ export class ExecutionNodeService {
   }
 
   /**
-   * 注销节点：断开连接并清除身份、令牌、离线暂存与全部本地授权。
+   * 注销节点：断开连接并清除身份、令牌、离线暂存、全部本地授权与本地记忆。
    */
   public async removeNode(): Promise<void> {
     this.client.disconnect()
@@ -200,6 +221,8 @@ export class ExecutionNodeService {
     this.currentJob = null
     await this.identityStore.clear()
     await this.grants.clear()
+    // 本地记忆是用户私密正文，节点注销后不能继续留在磁盘上。
+    await this.memoryStore.clear()
     this.broadcast()
   }
 

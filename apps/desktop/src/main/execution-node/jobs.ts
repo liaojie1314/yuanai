@@ -3,6 +3,8 @@ import { dirname, join, resolve, sep } from 'node:path'
 
 import { canonicalJsonByteLength } from './protocol'
 import type { ExecutionNodeGrantStore } from './grants'
+import { MAX_LOCAL_MEMORY_CONTENT_CHARS } from './memory-store'
+import type { LocalMemoryStore } from './memory-store'
 
 /** 单个工具结果的最大规范化字节数，必须低于服务端 65536 上限。 */
 export const MAX_JOB_RESULT_BYTES = 60_000
@@ -12,6 +14,12 @@ export const MAX_READ_BYTES = 24_576
 export const MAX_DIRECTORY_ENTRIES = 200
 /** 写入工作区文件的内容最大字符数，与后端 input_schema 一致。 */
 export const MAX_WORKSPACE_CONTENT_CHARS = 65_536
+/** 本地记忆检索一次最多返回的条数。 */
+export const MAX_MEMORY_SEARCH_LIMIT = 50
+/** 本地记忆检索的缺省返回条数。 */
+const DEFAULT_MEMORY_SEARCH_LIMIT = 8
+/** 记忆 ID 与记忆类型参数的字符上限。 */
+const MAX_MEMORY_IDENTIFIER_CHARS = 200
 
 /** 与后端 desktop.py 一致的受限相对路径白名单；\x00 用于显式拒绝 NUL 字节。 */
 const SAFE_RELATIVE_PATH_PATTERN =
@@ -44,6 +52,8 @@ export interface DesktopJobsExecutorOptions {
   grants: Pick<ExecutionNodeGrantStore, 'resolvePath'>
   /** 系统默认浏览器调用能力。 */
   shell: { openExternal(url: string): Promise<void> }
+  /** 本地加密记忆存储，承接 memory.* 三类作业。 */
+  memoryStore: Pick<LocalMemoryStore, 'search' | 'put' | 'remove'>
   /** Agent 工作区根目录；缺省为 userData/agent-workspace。 */
   workspaceRoot?: string
   /** Electron app 依赖，仅用于推导缺省工作区根目录。 */
@@ -296,6 +306,68 @@ async function runWriteWorkspaceFile(
   return { relative_path: relativePath, size_bytes: payload.byteLength }
 }
 
+/** memory.* 三类作业所依赖的本地记忆存储能力。 */
+type MemoryStoreLike = Pick<LocalMemoryStore, 'search' | 'put' | 'remove'>
+
+async function runMemorySearch(
+  input: ExecuteJobInput,
+  memoryStore: MemoryStoreLike
+): Promise<Record<string, unknown>> {
+  const query = readStringArgument(input.arguments, 'query', 500)
+  const limit = readOptionalInteger(
+    input.arguments,
+    'limit',
+    1,
+    MAX_MEMORY_SEARCH_LIMIT,
+    DEFAULT_MEMORY_SEARCH_LIMIT
+  )
+  assertNotAborted(input.signal)
+  input.onProgress(50)
+  // 节点没有向量臂，分数只能由名次导出；云端按名次与元数据再做融合排序。
+  const memories = memoryStore.search(query, limit).map((record, index) => ({
+    id: record.id,
+    content: record.content,
+    score: 1 / (index + 1),
+  }))
+  assertNotAborted(input.signal)
+  input.onProgress(100)
+  return { memories }
+}
+
+async function runMemoryWrite(
+  input: ExecuteJobInput,
+  memoryStore: MemoryStoreLike
+): Promise<Record<string, unknown>> {
+  const memoryId = readStringArgument(input.arguments, 'memoryId', MAX_MEMORY_IDENTIFIER_CHARS)
+  const content = readStringArgument(input.arguments, 'content', MAX_LOCAL_MEMORY_CONTENT_CHARS)
+  const memoryType = readStringArgument(input.arguments, 'memoryType', MAX_MEMORY_IDENTIFIER_CHARS)
+  assertNotAborted(input.signal)
+  input.onProgress(50)
+  await memoryStore.put({
+    id: memoryId,
+    content,
+    memoryType,
+    updatedAt: new Date().toISOString(),
+  })
+  assertNotAborted(input.signal)
+  input.onProgress(100)
+  return { stored: true }
+}
+
+async function runMemoryDelete(
+  input: ExecuteJobInput,
+  memoryStore: MemoryStoreLike
+): Promise<Record<string, unknown>> {
+  const memoryId = readStringArgument(input.arguments, 'memoryId', MAX_MEMORY_IDENTIFIER_CHARS)
+  assertNotAborted(input.signal)
+  input.onProgress(50)
+  // 删除是幂等的：本地本来就没有该记忆时同样算成功，否则云端永远删不掉这条元数据。
+  await memoryStore.remove(memoryId)
+  assertNotAborted(input.signal)
+  input.onProgress(100)
+  return { deleted: true }
+}
+
 /**
  * 校验任务结果的规范化字节数不超过发送上限。
  * @param result 待检查的结构化结果
@@ -307,15 +379,17 @@ export function assertResultSize(result: Record<string, unknown>): void {
   }
 }
 
-/** 受控本地任务执行器；只认识四个 desktop 内置工具。 */
+/** 受控本地任务执行器；只认识 desktop 内置工具白名单。 */
 export class DesktopJobsExecutor {
   private readonly grants: Pick<ExecutionNodeGrantStore, 'resolvePath'>
   private readonly shell: { openExternal(url: string): Promise<void> }
+  private readonly memoryStore: MemoryStoreLike
   private readonly workspaceRoot: string
 
   public constructor(options: DesktopJobsExecutorOptions) {
     this.grants = options.grants
     this.shell = options.shell
+    this.memoryStore = options.memoryStore
     this.workspaceRoot =
       options.workspaceRoot ??
       (options.app ? join(options.app.getPath('userData'), 'agent-workspace') : '')
@@ -342,6 +416,15 @@ export class DesktopJobsExecutor {
         break
       case 'write_workspace_file':
         result = await runWriteWorkspaceFile(input, this.resolveWorkspaceRoot(input))
+        break
+      case 'memory.search':
+        result = await runMemorySearch(input, this.memoryStore)
+        break
+      case 'memory.write':
+        result = await runMemoryWrite(input, this.memoryStore)
+        break
+      case 'memory.delete':
+        result = await runMemoryDelete(input, this.memoryStore)
         break
       default:
         throw new ToolExecutionFailure('TOOL_NOT_SUPPORTED', `节点不支持工具 ${input.toolName}`)
