@@ -206,3 +206,56 @@ Registered in `docs/master-plan.md` §0 as part of this batch:
   a non-deterministic node.
 - `execution_node_min_protocol_version` exists in config and is referenced nowhere; the
   effective rule is exact-version equality.
+
+## 9. Bundled Work: Agnes Model Catalog
+
+Requested mid-design and delivered on this branch as its own commit, because it edits
+`ai_service.py` and would conflict with a parallel branch. It shares no other file with the
+memory work.
+
+Three models join the catalog. Source: `https://www.agnes-ai.com/en/docs/`, base URL
+`https://apihub.agnes-ai.com/v1` for all three.
+
+### 9.1 `agnes-3.0-flash` (text)
+
+OpenAI-compatible chat completions, so it needs only a `PROVIDER_CONFIG` entry and an
+`AVAILABLE_MODELS` entry — the generic chat path already covers it. 512K context, 65,536 max
+output, text and image-URL input, tool calling, thinking mode.
+
+It becomes the **default model**: `get_available_models()` marks the first surviving catalog
+entry as default, so the entry goes at the head of `AVAILABLE_MODELS`. This changes behaviour
+for every existing session that never pinned a model explicitly.
+
+`_chat_extra_body` already sends `chat_template_kwargs.enable_thinking` for the `agnes`
+provider. Whether 3.0 accepts the same toggle is unverified from the documentation and must be
+confirmed against the live API before the thinking switch is claimed to work.
+
+### 9.2 `agnes-image-2.5-flash` (image)
+
+`generate_agnes_image()` hardcodes the 2.1 model ID in both the config lookup and the request
+body. It gains a model parameter; callers pass the selected model. The request shape is
+unchanged — resolution tier (`1K`/`2K`/`3K`/`4K`) plus `ratio`, `response_format: url`.
+
+### 9.3 `agnes-video-2.5-flash` (video)
+
+The largest of the three: the request schema differs from the V2.0 path already implemented.
+
+| Aspect    | `agnes-video-v2.0` (current)                  | `agnes-video-2.5-flash` (new)                      |
+| --------- | --------------------------------------------- | -------------------------------------------------- |
+| Sizing    | `width`, `height`, `num_frames`, `frame_rate` | `seconds`, `size`, `aspect_ratio`                  |
+| Mode      | Implied by image count                        | Explicit `mode`: `text` / `keyframe` / `reference` |
+| Retrieval | `GET /agnesapi?video_id=`                     | Same plus a required `model_name=`                 |
+
+Flash-specific validation, rejected before task creation so nothing is queued or billed:
+`size` must be exactly `"720P"`, at most 5 reference images, at most 3 reference audios, and
+reference video input is unsupported. These are enforced backend-side as well, so an invalid
+request never reaches the provider.
+
+The V2.0 path stays intact; the two schemas live side by side rather than one being contorted
+into the other.
+
+### 9.4 Testing
+
+Catalog entries are covered by existing `get_available_models` tests extended for the new IDs
+and the default-model change. The video request builder and its four validation rules get unit
+tests. No integration test calls the live provider.
