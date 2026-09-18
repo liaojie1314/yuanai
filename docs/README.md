@@ -46,8 +46,11 @@
 | [Phase 8](phases/phase-8-governance-admin-observability.md) | 治理、控制中心、运营后台、可观测性 |
 | [Phase 9](phases/phase-9-life-work-connectors.md)           | 生活/学习/工作空间与连接器         |
 | [Phase 10](phases/phase-10-autonomy-delegation-evals.md)    | 自主性、委派与评测                 |
-| [Phase 11](phases/phase-11-personal-digital-twin.md)        | 个人数字孪生与助手形象             |
+| [Phase 11](phases/phase-11-personal-digital-twin.md)        | 数字孪生、助手形象与实时语音       |
 | [Phase 12](phases/phase-12-open-ecosystem.md)               | 开放生态与跨渠道机器人             |
+| [Phase 13](phases/phase-13-realtime-video.md)               | 视频通话、视觉理解与屏幕共享       |
+| [Phase 14](phases/phase-14-cli.md)                          | 终端 TUI 与本地执行节点            |
+| [Phase 15](phases/phase-15-miniprogram.md)                  | Taro 小程序端                      |
 
 ## 开发者专项指南
 

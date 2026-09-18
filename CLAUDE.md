@@ -33,8 +33,11 @@ yuanai 是一个多端 AI 聊天应用，功能对标 ChatGPT，支持 Android�
 | [Phase 8 — 治理与可观测](docs/phases/phase-8-governance-admin-observability.md) | 治理、运营后台、可观测性              |
 | [Phase 9 — 空间与连接器](docs/phases/phase-9-life-work-connectors.md)           | 生活/学习/工作空间与连接器            |
 | [Phase 10 — 自主与评测](docs/phases/phase-10-autonomy-delegation-evals.md)      | 自主性、委派与评测                    |
-| [Phase 11 — 数字孪生](docs/phases/phase-11-personal-digital-twin.md)            | 个人数字孪生与助手形象                |
+| [Phase 11 — 数字孪生](docs/phases/phase-11-personal-digital-twin.md)            | 数字孪生、助手形象与实时语音          |
 | [Phase 12 — 开放生态](docs/phases/phase-12-open-ecosystem.md)                   | 开放生态与跨渠道机器人                |
+| [Phase 13 — 实时视频](docs/phases/phase-13-realtime-video.md)                   | 视频通话、视觉理解与屏幕共享          |
+| [Phase 14 — 终端 TUI](docs/phases/phase-14-cli.md)                              | TUI 与本地执行节点                    |
+| [Phase 15 — 小程序端](docs/phases/phase-15-miniprogram.md)                      | Taro 小程序端                         |
 
 ## 技术栈
 
@@ -129,7 +132,7 @@ yuanai/
 截至 2026-09-16：Phase 0-3 已交付；Phase 4 桌面端、Phase 5 Agent 运行时、Phase 6 工具与执行
 均已合入 `dev` 且远程 CI 全绿，但各自仍有未关闭的验收项（安装包签名、生产部署验收、系统性安全
 测试、Browser Worker 安全灰度）；**Phase 7 记忆/知识库/Skills/自动化的代码与自动化测试已落地**；
-Phase 8-12 仅有阶段文档，尚未开工。
+Phase 8-15 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增）。
 
 以上均为本地真实运行时证据，**不构成生产部署放行**。
 
@@ -146,8 +149,9 @@ Phase 8-12 仅有阶段文档，尚未开工。
 - **测试通过是进入下一功能的唯一许可证**：写完功能必须先跑测试，全部通过才能继续
 - **后端接口必须通过集成测试才能进行前后端联调**
 - 提交前必须通过 `pnpm lint && pnpm typecheck && pnpm test:unit`。
-  注意 Husky `pre-push` **只强制 `typecheck` + `test:unit`**，`lint`、`format:check`
-  与后端 Ruff/mypy/pytest 没有本地门禁，必须自己跑，否则只能等 CI 报红
+  Husky `pre-push` 会强制 `typecheck` → `lint` → `format:check` → `test:unit`，
+  并在检测到 `uv` 与 `backend/.venv` 时追加后端 Ruff/mypy/单元测试；
+  后端集成测试与覆盖率仍只在 CI 执行
 - Commit message 必须符合 Conventional Commits 格式（commitlint 强制校验）
 - API 接口新增/变更必须同步更新 `packages/types` 中的类型定义
 - 禁止在 `packages/` 中引入任何平台专用 API（`react-native`, `electron`, `next/navigation` 等）
