@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    JSON,
     Computed,
     DateTime,
     Enum,
@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.models.memory import EMBEDDING_DIMENSIONS
 
 
 class KnowledgeBaseMemberRole(StrEnum):
@@ -157,7 +158,9 @@ class KnowledgeChunk(Base):
     section: Mapped[str | None] = mapped_column(String(500), nullable=True)
     char_start: Mapped[int] = mapped_column(Integer, nullable=False)
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSIONS), nullable=True
+    )
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
         Computed("to_tsvector('simple', content)", persisted=True),

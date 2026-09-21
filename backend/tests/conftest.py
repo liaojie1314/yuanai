@@ -58,6 +58,9 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     async def _create():
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
+            # 建表前必须装好 vector 扩展：embedding 列的类型依赖它，
+            # 而测试库走 create_all 而非 Alembic，拿不到迁移里的 CREATE EXTENSION。
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         await engine.dispose()

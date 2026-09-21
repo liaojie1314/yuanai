@@ -5,9 +5,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError
 
 from app.models.assistant import Assistant
 from app.models.memory import (
+    EMBEDDING_DIMENSIONS,
     Memory,
     MemoryRelation,
     MemorySensitivity,
@@ -18,6 +20,13 @@ from app.models.user import User
 from app.schemas.memory import MemoryCreateCandidate, MemoryUpdate
 from app.services.memory_retrieval import search_active_memories, to_context_items
 from app.services.memory_service import create_candidate, delete_memory, update_memory
+
+
+def _fake_embedding(*leading: float) -> list[float]:
+    """构造 pgvector 列要求的 1536 维向量，前几位可指定以便断言方向。"""
+
+    values = list(leading)
+    return values + [0.0] * (EMBEDDING_DIMENSIONS - len(values))
 
 
 async def _assistant(db, user_id: uuid.UUID) -> Assistant:
@@ -75,7 +84,7 @@ async def test_activation_generates_embedding_when_the_approved_provider_is_avai
 
     async def embed(content: str) -> list[float] | None:
         assert content == "旅行优先高铁"
-        return [0.1, 0.2]
+        return _fake_embedding(0.1, 0.2)
 
     monkeypatch.setattr("app.services.memory_service.maybe_embed_text", embed)
     updated = await update_memory(
@@ -85,7 +94,7 @@ async def test_activation_generates_embedding_when_the_approved_provider_is_avai
         db=db,
     )
 
-    assert updated.embedding == [0.1, 0.2]
+    assert list(updated.embedding) == _fake_embedding(0.1, 0.2)
 
 
 @pytest.mark.asyncio
@@ -101,7 +110,7 @@ async def test_semantic_retrieval_works_without_keyword_overlap(db, test_user: U
         source_type="user_input",
         status=MemoryStatus.active,
         sensitivity=MemorySensitivity.personal,
-        embedding=[1.0, 0.0],
+        embedding=_fake_embedding(1.0, 0.0),
     )
     db.add(memory)
     await db.flush()
@@ -110,7 +119,7 @@ async def test_semantic_retrieval_works_without_keyword_overlap(db, test_user: U
         user_id=test_user.id,
         assistant_id=assistant.id,
         query="怎么安排吃饭",
-        query_embedding=[1.0, 0.0],
+        query_embedding=_fake_embedding(1.0, 0.0),
         db=db,
     )
 
@@ -213,7 +222,7 @@ async def test_delete_removes_embedding_search_record_and_relations_in_one_trans
         source_type="user_input",
         status=MemoryStatus.active,
         sensitivity=MemorySensitivity.personal,
-        embedding=[0.1, 0.2],
+        embedding=_fake_embedding(0.1, 0.2),
     )
     db.add(memory)
     await db.flush()
@@ -227,3 +236,45 @@ async def test_delete_removes_embedding_search_record_and_relations_in_one_trans
 
     assert await db.scalar(select(Memory).where(Memory.id == memory.id)) is None
     assert await db.scalar(select(MemoryRelation).where(MemoryRelation.id == relation.id)) is None
+
+
+@pytest.mark.asyncio
+async def test_embedding_column_round_trips_as_a_pgvector_value(db, test_user: User) -> None:
+    """embedding 列迁移到 pgvector 后仍能原样写入和读回。"""
+
+    assistant = await _assistant(db, test_user.id)
+    memory = Memory(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        memory_type=MemoryType.preference,
+        content="向量列往返",
+        source_type="user_input",
+        embedding=_fake_embedding(0.5),
+    )
+    db.add(memory)
+    await db.flush()
+    memory_id = memory.id
+    db.expire(memory)
+    stored = await db.scalar(select(Memory).where(Memory.id == memory_id))
+    assert stored is not None
+    assert stored.embedding is not None
+    assert len(list(stored.embedding)) == 1536
+
+
+@pytest.mark.asyncio
+async def test_embedding_column_rejects_a_wrong_dimension(db, test_user: User) -> None:
+    """维度不符的向量必须被数据库拒绝，而不是悄悄存进去。"""
+
+    assistant = await _assistant(db, test_user.id)
+    db.add(
+        Memory(
+            user_id=test_user.id,
+            assistant_id=assistant.id,
+            memory_type=MemoryType.preference,
+            content="维度不符",
+            source_type="user_input",
+            embedding=[0.5] * 8,
+        )
+    )
+    with pytest.raises(DBAPIError):
+        await db.flush()

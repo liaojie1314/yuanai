@@ -6,11 +6,14 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, Computed, DateTime, Enum, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+EMBEDDING_DIMENSIONS = 1536
 
 
 class MemoryType(StrEnum):
@@ -92,7 +95,9 @@ class Memory(Base):
     )
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSIONS), nullable=True
+    )
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
         Computed("to_tsvector('simple', content)", persisted=True),
