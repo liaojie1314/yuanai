@@ -38,9 +38,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     ``AsyncHttpxClientWrapper.__del__`` 报错。
     """
     # ── startup ──────────────────────────────────────────────
+    from app.core.database import engine
     from app.services.media_generation_service import run_media_generation_worker
     from app.services.storage_service import storage
 
+    # 连接池里的 asyncpg 连接绑定在创建它的事件循环上。进程内重启 lifespan 时
+    # （测试里的多个 TestClient、热重载）池中可能残留属于已关闭循环的连接，
+    # 后台 worker 拿到就会报 "attached to a different loop"。启动时先清空。
+    await engine.dispose()
     if hasattr(storage, "ensure_bucket"):
         try:
             await storage.ensure_bucket()
@@ -58,6 +63,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     for client in _AI_CLIENTS.values():
         await client.close()
     _AI_CLIENTS.clear()
+    # 连接池里的 asyncpg 连接绑定在当前事件循环上。不释放就退出，下一个
+    # 事件循环（进程内重启、测试里的第二个 TestClient）会拿到属于旧循环的连接，
+    # 报 "attached to a different loop"。
+    await engine.dispose()
 
 
 app = FastAPI(
