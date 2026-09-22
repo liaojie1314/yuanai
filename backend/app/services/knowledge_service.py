@@ -24,7 +24,7 @@ from app.models.knowledge import (
     KnowledgeSource,
 )
 from app.schemas.knowledge import KnowledgeCitation, KnowledgeTextSourceCreate
-from app.services.memory_retrieval import maybe_embed_text
+from app.services.ai_service import maybe_embed_text
 
 MAX_CHUNK_CHARS = 1_000
 _TOKEN_PATTERN = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.assistant import Assistant
 from app.models.memory import Memory, MemoryRelation, MemorySensitivity, MemoryStatus
 from app.schemas.memory import MemoryCreateCandidate, MemoryUpdate
-from app.services.memory_retrieval import maybe_embed_text
+from app.services.ai_service import maybe_embed_text
 
 
 class MemoryNotFoundError(Exception):

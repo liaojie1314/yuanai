@@ -1390,3 +1390,22 @@ async def test_transcribe_audio_hides_provider_exception(
             await transcribe_audio(filename="voice.webm", content=b"audio", mime_type="audio/webm")
 
     assert "sensitive upstream failure" not in str(exc_info.value)
+
+
+async def test_embed_text_refuses_to_run_without_an_approved_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """没有 OpenAI 密钥时必须显式失败，不得降级到其他模型。"""
+    monkeypatch.setattr(ai_svc.settings, "openai_api_key", "  ")
+
+    with pytest.raises(ai_svc.EmbeddingUnavailableError):
+        await ai_svc.embed_text("记住我偏好中文")
+
+
+async def test_maybe_embed_text_returns_none_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """maybe_embed_text 在 provider 不可用时返回 None，让检索退化为关键词。"""
+    monkeypatch.setattr(ai_svc.settings, "openai_api_key", "")
+
+    assert await ai_svc.maybe_embed_text("记住我偏好中文") is None

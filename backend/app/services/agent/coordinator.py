@@ -52,10 +52,10 @@ from app.services.ai_service import (
     ToolCallEnd,
     ToolCallStart,
     UsageDelta,
+    maybe_embed_text,
 )
 from app.services.knowledge_service import search_accessible_knowledge
 from app.services.memory_retrieval import (
-    maybe_embed_text,
     search_active_memories,
     to_context_items,
 )

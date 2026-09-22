@@ -8,11 +8,9 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from openai import AsyncOpenAI, OpenAIError
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.memory import (
     Memory,
     MemorySensitivity,
@@ -21,36 +19,7 @@ from app.models.memory import (
 )
 from app.schemas.memory import MemoryContextItem, MemorySearchResult
 
-EMBEDDING_MODEL = "text-embedding-3-small"
 _TOKEN_PATTERN = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
-
-
-class EmbeddingUnavailableError(Exception):
-    """未配置或不可用的 embedding provider 不得降级到其他模型。"""
-
-
-async def embed_text(text: str) -> list[float]:
-    """调用已批准的 OpenAI embedding 模型；缺少密钥时显式失败。"""
-
-    if not settings.openai_api_key.strip():
-        raise EmbeddingUnavailableError("OPENAI_API_KEY 未配置")
-    try:
-        async with AsyncOpenAI(api_key=settings.openai_api_key) as client:
-            response = await client.embeddings.create(input=text, model=EMBEDDING_MODEL)
-    except OpenAIError as error:
-        raise EmbeddingUnavailableError("embedding provider 不可用") from error
-    if not response.data or not response.data[0].embedding:
-        raise EmbeddingUnavailableError("embedding provider 返回空向量")
-    return list(response.data[0].embedding)
-
-
-async def maybe_embed_text(text: str) -> list[float] | None:
-    """仅使用已批准的 provider 生成向量；不可用时保留关键词检索。"""
-
-    try:
-        return await embed_text(text)
-    except EmbeddingUnavailableError:
-        return None
 
 
 async def search_active_memories(

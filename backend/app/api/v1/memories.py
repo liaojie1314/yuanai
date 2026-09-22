@@ -14,7 +14,8 @@ from app.schemas.memory import (
     MemorySearchResult,
     MemoryUpdate,
 )
-from app.services.memory_retrieval import maybe_embed_text, search_active_memories
+from app.services.ai_service import maybe_embed_text
+from app.services.memory_retrieval import search_active_memories
 from app.services.memory_service import (
     MemoryNotFoundError,
     MemoryPolicyError,
