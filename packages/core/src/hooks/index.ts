@@ -74,6 +74,7 @@ export {
 export {
   useCreateMemory,
   useDeleteMemory,
+  useExportMemories,
   useMemories,
   useSearchMemories,
   useUpdateMemory,

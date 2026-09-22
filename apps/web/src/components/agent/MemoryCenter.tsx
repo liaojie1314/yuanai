@@ -24,6 +24,7 @@ export default function MemoryCenter(): JSX.Element {
   const assistants = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
   const assistant = assistants.data?.find((item) => item.isDefault) ?? assistants.data?.[0]
   const memories = useMemories(status)
+  const items = memories.data?.pages.flatMap((page) => page.items) ?? []
   const create = useCreateMemory()
   const update = useUpdateMemory()
   const remove = useDeleteMemory()
@@ -86,11 +87,11 @@ export default function MemoryCenter(): JSX.Element {
         ))}
       </nav>
       {memories.isLoading ? <p className="memory-muted">{t('loading')}</p> : null}
-      {!memories.isLoading && (memories.data?.length ?? 0) === 0 ? (
+      {!memories.isLoading && items.length === 0 ? (
         <p className="memory-muted">{t('empty')}</p>
       ) : null}
       <ul className="memory-list">
-        {(memories.data ?? []).map((memory) => (
+        {items.map((memory) => (
           <li className="memory-card" key={memory.id}>
             <div className="memory-card-head">
               <span className="memory-badge">{t(memory.status)}</span>

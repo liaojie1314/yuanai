@@ -540,6 +540,8 @@ export interface Assistant {
   defaultModel: string
   autonomyLevel: string
   isDefault: boolean
+  /** 该助理禁止写入与检索的记忆类型，`null` 表示未设置过任何限制。 */
+  disabledMemoryTypes: MemoryType[] | null
   createdAt: string
   updatedAt: string
 }
@@ -904,7 +906,8 @@ export interface Memory {
   assistantId: string
   workspaceId: string | null
   memoryType: MemoryType
-  content: string
+  /** 落在本地节点且节点当前不可达时为 `null`。 */
+  content: string | null
   structuredData: Record<string, unknown> | null
   sourceType: string
   sourceId: string | null
@@ -912,12 +915,27 @@ export interface Memory {
   confidence: number
   sensitivity: MemorySensitivity
   storageLocation: 'cloud' | 'local_node'
+  /** 记忆所在的执行节点，云端记忆为 `null`。 */
+  nodeId: string | null
   status: MemoryStatus
   validFrom: string | null
   validUntil: string | null
   lastUsedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** 记忆列表的一页，`nextCursor` 为 `null` 表示已是最后一页。 */
+export interface MemoryPage {
+  items: Memory[]
+  /** 后端生成的不透明游标，调用方只能原样回传。 */
+  nextCursor: string | null
+}
+
+/** 记忆导出快照。 */
+export interface MemoryExport {
+  exportedAt: string
+  items: Memory[]
 }
 
 /** 更新记忆内容或生命周期状态的参数。 */
@@ -945,6 +963,13 @@ export interface MemorySearchResult {
   sensitivity: MemorySensitivity
   status: MemoryStatus
   score: number
+}
+
+/** 记忆检索的整体结果，含本地节点是否不可达。 */
+export interface MemorySearchOutcome {
+  results: MemorySearchResult[]
+  /** 为 `true` 时本地节点记忆缺席，结果不完整而非本就为空。 */
+  localUnavailable: boolean
 }
 
 /** 注入 Agent 上下文的记忆条目。 */
