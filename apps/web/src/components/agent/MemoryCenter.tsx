@@ -12,6 +12,7 @@ import {
   useUpdateMemory,
 } from '@yuanai/core/hooks'
 import { useTranslations } from '@/i18n/client'
+import { downloadBlob } from '@/lib/fileDownload'
 import './memories.css'
 
 const STATUSES: readonly Memory['status'][] = [
@@ -26,13 +27,10 @@ const MEMORY_TYPES: readonly MemoryType[] = ['profile', 'preference', 'semantic'
 
 /** 把导出结果交给浏览器下载。 */
 function downloadExport(payload: MemoryExport): void {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = 'memories.json'
-  anchor.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    'memories.json'
+  )
 }
 
 /** 展示并管理当前用户的记忆及其生命周期。 */
@@ -118,6 +116,11 @@ export default function MemoryCenter(): JSX.Element {
           )
         })}
       </div>
+      {exportAll.isError || patchAssistant.isError ? (
+        <p className="memory-alert" role="alert">
+          {t('actionFailed')}
+        </p>
+      ) : null}
       <form className="memory-create" onSubmit={submit}>
         <input
           value={content}

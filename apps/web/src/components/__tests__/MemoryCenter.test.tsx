@@ -74,6 +74,15 @@ function pagedMemories(pages: Record<string, unknown>): ReturnType<typeof http.g
   })
 }
 
+/** 读出 Blob 文本，jsdom 的 Blob 没有实现 `text()`。 */
+function readBlob(blob: Blob): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.readAsText(blob)
+  })
+}
+
 function renderCenter(locale: 'zh-CN' | 'en' = 'zh-CN'): ReturnType<typeof render> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -170,18 +179,52 @@ describe('MemoryCenter', () => {
     await waitFor(() => expect(patched).toEqual({ disabledMemoryTypes: ['preference'] }))
   })
 
-  it('导出按钮触发导出请求', async () => {
+  it('导出按钮触发导出请求并把结果交给浏览器下载', async () => {
     const user = userEvent.setup()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click')
     let exported = false
+    const payload = { exportedAt: '2026-09-18T12:00:00Z', items: [firstMemory] }
     server.use(
       http.get(`${API_BASE_URL}/memories/export`, () => {
         exported = true
-        return HttpResponse.json({ exportedAt: '2026-09-18T12:00:00Z', items: [firstMemory] })
+        return HttpResponse.json(payload)
       })
     )
     renderCenter()
     await user.click(await screen.findByRole('button', { name: '导出记忆' }))
     await waitFor(() => expect(exported).toBe(true))
+
+    // 下载必须真的发生：由响应体建出对象 URL，并点击挂到文档上的锚点
+    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalledTimes(1))
+    const blob = vi.mocked(URL.createObjectURL).mock.calls[0]?.[0] as Blob
+    expect(JSON.parse(await readBlob(blob))).toEqual(payload)
+    expect(click).toHaveBeenCalledTimes(1)
+    const anchor = click.mock.contexts[0] as HTMLAnchorElement
+    expect(anchor.download).toBe('memories.json')
+    expect(anchor.href).toBe('blob:memories')
+  })
+
+  it('导出失败时显示失败提示而不是静默吞掉', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.get(`${API_BASE_URL}/memories/export`, () => new HttpResponse(null, { status: 500 }))
+    )
+    renderCenter()
+    await user.click(await screen.findByRole('button', { name: '导出记忆' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('操作失败，请重试')
+  })
+
+  it('记忆类型开关更新失败时显示失败提示', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.patch(
+        `${API_BASE_URL}/agent/assistants/assistant-1`,
+        () => new HttpResponse(null, { status: 500 })
+      )
+    )
+    renderCenter()
+    await user.click(await screen.findByRole('button', { name: /偏好/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('操作失败，请重试')
   })
 
   it('英文资源下关键控件文案来自 i18n 而非硬编码', async () => {

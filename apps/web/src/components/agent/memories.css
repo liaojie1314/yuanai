@@ -78,6 +78,15 @@
   background: var(--surface);
   color: var(--fg2);
 }
+.memory-alert {
+  max-width: 1180px;
+  margin: 0 auto 14px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--danger-b, rgba(239, 68, 68, 0.14));
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+}
 .memory-filters button,
 .memory-btn {
   min-height: 34px;
