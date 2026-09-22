@@ -10,6 +10,7 @@ from pydantic.alias_generators import to_camel
 from app.models.agent_run import AgentRunStatus, AgentStepKind, AgentStepStatus
 from app.models.approval import ApprovalRiskLevel, ApprovalStatus
 from app.models.assistant import AssistantAutonomyLevel
+from app.models.memory import MemoryType
 
 
 class AgentSchema(BaseModel):
@@ -42,6 +43,7 @@ class AssistantUpdateRequest(AgentSchema):
     default_model: str | None = Field(default=None, min_length=1, max_length=100)
     autonomy_level: AssistantAutonomyLevel | None = None
     is_default: bool | None = None
+    disabled_memory_types: list[MemoryType] | None = None
 
 
 class AssistantResponse(AgentSchema):
@@ -55,6 +57,7 @@ class AssistantResponse(AgentSchema):
     default_model: str
     autonomy_level: AssistantAutonomyLevel
     is_default: bool
+    disabled_memory_types: list[MemoryType] | None = None
     created_at: datetime
     updated_at: datetime
 

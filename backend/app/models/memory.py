@@ -72,7 +72,7 @@ class Memory(Base):
     memory_type: Mapped[MemoryType] = mapped_column(
         Enum(MemoryType, native_enum=False, length=16), nullable=False
     )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
     structured_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -88,6 +88,9 @@ class Memory(Base):
         nullable=False,
         default=MemoryStorageLocation.cloud,
     )
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_nodes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[MemoryStatus] = mapped_column(
         Enum(MemoryStatus, native_enum=False, length=16),
         nullable=False,
@@ -100,7 +103,7 @@ class Memory(Base):
     )
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
-        Computed("to_tsvector('simple', content)", persisted=True),
+        Computed("to_tsvector('simple', coalesce(content, ''))", persisted=True),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

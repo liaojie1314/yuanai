@@ -58,7 +58,7 @@ class MemoryResponse(MemorySchema):
     assistant_id: uuid.UUID
     workspace_id: uuid.UUID | None
     memory_type: MemoryType
-    content: str
+    content: str | None
     structured_data: dict[str, object] | None
     source_type: str
     source_id: str | None
@@ -66,6 +66,7 @@ class MemoryResponse(MemorySchema):
     confidence: float
     sensitivity: MemorySensitivity
     storage_location: MemoryStorageLocation
+    node_id: uuid.UUID | None
     status: MemoryStatus
     valid_from: datetime | None
     valid_until: datetime | None

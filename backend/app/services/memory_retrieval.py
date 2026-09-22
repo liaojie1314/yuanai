@@ -72,7 +72,7 @@ async def search_active_memories(
             assistant_id=memory.assistant_id,
             workspace_id=memory.workspace_id,
             memory_type=memory.memory_type,
-            content=memory.content,
+            content=memory.content or "",
             source_type=memory.source_type,
             source_id=memory.source_id,
             source_excerpt=memory.source_excerpt,
@@ -103,7 +103,7 @@ def to_context_items(results: Sequence[MemorySearchResult]) -> list[MemoryContex
 def _score(memory: Memory, terms: set[str], query_embedding: Sequence[float] | None) -> float:
     """合并关键词重叠和可用 embedding 的无状态分数。"""
 
-    content_terms = _terms(memory.content)
+    content_terms = _terms(memory.content or "")
     keyword_score = len(terms & content_terms) / max(len(terms), 1)
     vector_score = _cosine_similarity(query_embedding, memory.embedding)
     return (keyword_score + vector_score) / 2 if vector_score is not None else keyword_score

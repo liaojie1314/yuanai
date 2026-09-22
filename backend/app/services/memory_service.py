@@ -82,7 +82,9 @@ async def update_memory(
         memory.status is MemoryStatus.active and content_changed
     )
     if becomes_or_stays_active:
-        changes["embedding"] = await maybe_embed_text(changes.get("content", memory.content))
+        embed_source = changes.get("content", memory.content)
+        # 仅存元数据的 local_node 记忆没有云端正文，跳过向量化
+        changes["embedding"] = await maybe_embed_text(embed_source) if embed_source else None
     elif content_changed:
         changes["embedding"] = None
     for field, value in changes.items():
