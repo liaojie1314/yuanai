@@ -123,7 +123,7 @@ async def test_semantic_retrieval_works_without_keyword_overlap(db, test_user: U
         db=db,
     )
 
-    assert [result.id for result in results] == [memory.id]
+    assert [result.id for result in results.results] == [memory.id]
 
 
 @pytest.mark.asyncio
@@ -203,8 +203,8 @@ async def test_retrieval_filters_tenant_status_lifecycle_and_sensitivity_before_
         now=now,
     )
 
-    assert [item.content for item in results] == ["旅行优先高铁"]
-    assert to_context_items(results)[0].untrusted is True
+    assert [item.content for item in results.results] == ["旅行优先高铁"]
+    assert to_context_items(results.results)[0].untrusted is True
 
 
 @pytest.mark.asyncio

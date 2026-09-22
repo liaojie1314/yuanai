@@ -535,7 +535,7 @@ class AgentCoordinator:
         if db is None:
             return []
         try:
-            results = await search_active_memories(
+            outcome = await search_active_memories(
                 user_id=run.user_id,
                 assistant_id=run.assistant_id,
                 query=run.goal,
@@ -545,7 +545,7 @@ class AgentCoordinator:
             )
         except SQLAlchemyError:
             return []
-        return to_context_items(results)
+        return to_context_items(outcome.results)
 
     async def _knowledge_context(
         self, run: AgentRun, db: AsyncSession | None

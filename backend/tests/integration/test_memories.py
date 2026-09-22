@@ -63,7 +63,8 @@ async def test_memory_lifecycle_is_authenticated_and_tenant_scoped(
         params={"assistantId": str(assistant.id), "query": "高铁"},
     )
     assert search.status_code == 200
-    assert search.json()[0]["id"] == memory_id
+    assert search.json()["results"][0]["id"] == memory_id
+    assert search.json()["localUnavailable"] is False
 
     forbidden = await client.get(
         "/api/v1/memories/search",
@@ -71,7 +72,7 @@ async def test_memory_lifecycle_is_authenticated_and_tenant_scoped(
         params={"assistantId": str(uuid.uuid4()), "query": "高铁"},
     )
     assert forbidden.status_code == 200
-    assert forbidden.json() == []
+    assert forbidden.json()["results"] == []
 
     relation = MemoryRelation(
         memory_id=uuid.UUID(memory_id),

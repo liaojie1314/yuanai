@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import math
-import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import (
@@ -16,10 +14,79 @@ from app.models.memory import (
     MemorySensitivity,
     MemoryStatus,
     MemoryStorageLocation,
+    MemoryType,
 )
-from app.schemas.memory import MemoryContextItem, MemorySearchResult
+from app.schemas.memory import MemoryContextItem, MemorySearchOutcome, MemorySearchResult
 
-_TOKEN_PATTERN = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
+RRF_K = 60
+_RECALL_MULTIPLIER = 4
+_HALF_LIFE_DAYS = 90.0
+_TYPE_WEIGHTS: dict[MemoryType, float] = {
+    MemoryType.profile: 1.15,
+    MemoryType.preference: 1.10,
+    MemoryType.semantic: 1.0,
+    MemoryType.episodic: 0.9,
+}
+
+
+def _accessible_filters(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    workspace_id: uuid.UUID | None,
+    current_time: datetime,
+) -> list[ColumnElement[bool]]:
+    """构造租户、助理、生命周期与时效的 SQL 过滤条件。
+
+    权限过滤必须下推到 SQL：先跨租户召回再在应用层过滤是被明确禁止的。
+    """
+
+    filters: list[ColumnElement[bool]] = [
+        Memory.user_id == user_id,
+        Memory.assistant_id == assistant_id,
+        Memory.status == MemoryStatus.active,
+        Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
+        Memory.valid_from.is_(None) | (Memory.valid_from <= current_time),
+        Memory.valid_until.is_(None) | (Memory.valid_until > current_time),
+        Memory.storage_location == MemoryStorageLocation.cloud,
+    ]
+    if workspace_id is not None:
+        filters.append(or_(Memory.workspace_id == workspace_id, Memory.workspace_id.is_(None)))
+    else:
+        filters.append(Memory.workspace_id.is_(None))
+    return filters
+
+
+def fuse_rankings(*ranked_id_lists: Sequence[uuid.UUID], k: int = RRF_K) -> dict[uuid.UUID, float]:
+    """按 Reciprocal Rank Fusion 合并多路召回的排名。
+
+    RRF 只消费名次，因此关键词分数与向量距离这两种不可比的量纲永远不会混算。
+    """
+
+    fused: dict[uuid.UUID, float] = {}
+    for ranked in ranked_id_lists:
+        for rank, identifier in enumerate(ranked, start=1):
+            fused[identifier] = fused.get(identifier, 0.0) + 1.0 / (k + rank)
+    return fused
+
+
+def apply_rule_rerank(
+    scored: Sequence[tuple[float, Memory]], *, now: datetime
+) -> list[tuple[float, Memory]]:
+    """用置信度、新鲜度和记忆类型做确定性重排。
+
+    阶段文档禁止只按 embedding 距离排序；规则重排在不引入第二次模型调用的前提下满足该要求。
+    """
+
+    adjusted: list[tuple[float, Memory]] = []
+    for score, memory in scored:
+        reference = memory.last_used_at or memory.created_at
+        age_days = max((now - reference).total_seconds() / 86400.0, 0.0) if reference else 0.0
+        recency = 0.5 ** (age_days / _HALF_LIFE_DAYS)
+        confidence = 0.5 + 0.5 * max(0.0, min(1.0, memory.confidence))
+        weight = _TYPE_WEIGHTS.get(memory.memory_type, 1.0)
+        adjusted.append((score * confidence * weight * (0.6 + 0.4 * recency), memory))
+    return sorted(adjusted, key=lambda item: item[0], reverse=True)
 
 
 async def search_active_memories(
@@ -32,57 +99,83 @@ async def search_active_memories(
     query_embedding: Sequence[float] | None = None,
     limit: int = 8,
     now: datetime | None = None,
-) -> list[MemorySearchResult]:
-    """先过滤可访问 active 记忆，再融合关键词和向量分数。"""
+) -> MemorySearchOutcome:
+    """先过滤后召回，融合关键词与向量两路并重排，返回可进入上下文的记忆。"""
 
     if limit < 1:
-        return []
+        return MemorySearchOutcome(results=[], local_unavailable=False)
     current_time = now or datetime.now(UTC)
-    filters = [
-        Memory.user_id == user_id,
-        Memory.assistant_id == assistant_id,
-        Memory.status == MemoryStatus.active,
-        Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
-        (Memory.valid_from.is_(None) | (Memory.valid_from <= current_time)),
-        (Memory.valid_until.is_(None) | (Memory.valid_until > current_time)),
-        Memory.storage_location == MemoryStorageLocation.cloud,
-    ]
-    if workspace_id is not None:
-        filters.append(or_(Memory.workspace_id == workspace_id, Memory.workspace_id.is_(None)))
-    else:
-        filters.append(Memory.workspace_id.is_(None))
+    filters = _accessible_filters(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        workspace_id=workspace_id,
+        current_time=current_time,
+    )
+    recall = limit * _RECALL_MULTIPLIER
+
     fts_query = func.plainto_tsquery("simple", query)
-    fts_match = Memory.search_vector.op("@@")(fts_query)
-    candidate_query = select(Memory).where(*filters)
-    if query_embedding is None:
-        candidate_query = candidate_query.where(or_(fts_match, Memory.content.ilike(f"%{query}%")))
-    # ponytail: in-process JSON-vector ranking; migrate to pgvector ANN/RRF as corpus grows.
-    candidates = list((await db.scalars(candidate_query)).all())
-    terms = _terms(query)
-    scored = [(_score(memory, terms, query_embedding), memory) for memory in candidates]
-    ranked = sorted(
-        (item for item in scored if item[0] > 0), key=lambda item: item[0], reverse=True
+    # simple 配置不切分中文，整句只会得到一个词元；关键词臂必须补子串匹配，
+    # 否则「中文」这类查询永远命中不了「用户偏好中文输出」这类记忆。
+    # 子串匹配走不了 GIN 索引，规模上来后需改用中文分词配置（zhparser/pg_jieba）替换。
+    keyword_rows = await db.execute(
+        select(Memory.id)
+        .where(
+            *filters,
+            or_(Memory.search_vector.op("@@")(fts_query), Memory.content.ilike(f"%{query}%")),
+        )
+        .order_by(func.ts_rank(Memory.search_vector, fts_query).desc(), Memory.updated_at.desc())
+        .limit(recall)
+    )
+    keyword_ids = [row[0] for row in keyword_rows]
+
+    vector_ids: list[uuid.UUID] = []
+    if query_embedding is not None:
+        vector_rows = await db.execute(
+            select(Memory.id)
+            .where(*filters, Memory.embedding.is_not(None))
+            .order_by(Memory.embedding.cosine_distance(list(query_embedding)))
+            .limit(recall)
+        )
+        vector_ids = [row[0] for row in vector_rows]
+
+    fused = fuse_rankings(keyword_ids, vector_ids)
+    if not fused:
+        return MemorySearchOutcome(results=[], local_unavailable=False)
+    memories = {
+        memory.id: memory
+        for memory in (await db.scalars(select(Memory).where(Memory.id.in_(fused)))).all()
+    }
+    ranked = apply_rule_rerank(
+        [
+            (score, memories[identifier])
+            for identifier, score in fused.items()
+            if identifier in memories
+        ],
+        now=current_time,
     )[:limit]
     for _, memory in ranked:
         memory.last_used_at = current_time
     await db.flush()
-    return [
-        MemorySearchResult(
-            id=memory.id,
-            assistant_id=memory.assistant_id,
-            workspace_id=memory.workspace_id,
-            memory_type=memory.memory_type,
-            content=memory.content or "",
-            source_type=memory.source_type,
-            source_id=memory.source_id,
-            source_excerpt=memory.source_excerpt,
-            confidence=memory.confidence,
-            sensitivity=memory.sensitivity,
-            status=memory.status,
-            score=score,
-        )
-        for score, memory in ranked
-    ]
+    return MemorySearchOutcome(
+        results=[
+            MemorySearchResult(
+                id=memory.id,
+                assistant_id=memory.assistant_id,
+                workspace_id=memory.workspace_id,
+                memory_type=memory.memory_type,
+                content=memory.content or "",
+                source_type=memory.source_type,
+                source_id=memory.source_id,
+                source_excerpt=memory.source_excerpt,
+                confidence=memory.confidence,
+                sensitivity=memory.sensitivity,
+                status=memory.status,
+                score=score,
+            )
+            for score, memory in ranked
+        ],
+        local_unavailable=False,
+    )
 
 
 def to_context_items(results: Sequence[MemorySearchResult]) -> list[MemoryContextItem]:
@@ -98,31 +191,3 @@ def to_context_items(results: Sequence[MemorySearchResult]) -> list[MemoryContex
         )
         for result in results
     ]
-
-
-def _score(memory: Memory, terms: set[str], query_embedding: Sequence[float] | None) -> float:
-    """合并关键词重叠和可用 embedding 的无状态分数。"""
-
-    content_terms = _terms(memory.content or "")
-    keyword_score = len(terms & content_terms) / max(len(terms), 1)
-    vector_score = _cosine_similarity(query_embedding, memory.embedding)
-    return (keyword_score + vector_score) / 2 if vector_score is not None else keyword_score
-
-
-def _terms(value: str) -> set[str]:
-    """保留词语并拆分中文字符，避免无空格文本无法命中关键词。"""
-
-    words = set(_TOKEN_PATTERN.findall(value.lower()))
-    return words | {
-        character for word in words for character in word if "\u4e00" <= character <= "\u9fff"
-    }
-
-
-def _cosine_similarity(left: Sequence[float] | None, right: Sequence[float] | None) -> float | None:
-    """计算同维向量的余弦相似度，异常数据不参与语义排序。"""
-
-    if left is None or right is None or len(left) != len(right) or not left:
-        return None
-    numerator = sum(a * b for a, b in zip(left, right, strict=True))
-    denominator = math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right))
-    return numerator / denominator if denominator else None

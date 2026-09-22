@@ -11,7 +11,7 @@ from app.models.memory import Memory, MemoryStatus
 from app.schemas.memory import (
     MemoryCreateCandidate,
     MemoryResponse,
-    MemorySearchResult,
+    MemorySearchOutcome,
     MemoryUpdate,
 )
 from app.services.ai_service import maybe_embed_text
@@ -56,7 +56,7 @@ async def get_memories(
     return await list_memories(user_id=current_user.id, status=status, db=db)
 
 
-@router.get("/search", response_model=list[MemorySearchResult])
+@router.get("/search", response_model=MemorySearchOutcome)
 async def search_memories(
     current_user: CurrentUser,
     db: DB,
@@ -64,7 +64,7 @@ async def search_memories(
     query: str = Query(min_length=1, max_length=10_000),
     limit: int = Query(default=8, ge=1, le=20),
     workspace_id: uuid.UUID | None = Query(default=None, alias="workspaceId"),
-) -> list[MemorySearchResult]:
+) -> MemorySearchOutcome:
     """检索可安全进入当前助理上下文的 active 记忆。"""
 
     return await search_active_memories(

@@ -92,6 +92,13 @@ class MemorySearchResult(MemorySchema):
     score: float
 
 
+class MemorySearchOutcome(MemorySchema):
+    """检索结果及本地节点可用性，供上下文组装区分空结果与不可用。"""
+
+    results: list[MemorySearchResult]
+    local_unavailable: bool = False
+
+
 class MemoryContextItem(MemorySchema):
     """可注入 Agent 上下文的、不可信记忆表示。"""
 
