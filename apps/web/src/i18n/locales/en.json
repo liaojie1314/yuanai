@@ -561,7 +561,14 @@
     "reject": "Reject",
     "delete": "Delete",
     "confirmDelete": "Delete this memory?",
-    "actionFailed": "Action failed. Please try again."
+    "actionFailed": "Action failed. Please try again.",
+    "loadMore": "Load more",
+    "localUnavailable": "Some memories live on your local node; only their metadata is shown here.",
+    "export": "Export memories",
+    "exporting": "Exporting…",
+    "typeToggles": "Memory types",
+    "typeEnabled": "Recording",
+    "typeDisabled": "Off"
   },
   "skills": {
     "agent": "Agent",

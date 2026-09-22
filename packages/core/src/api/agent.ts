@@ -5,6 +5,7 @@ import type {
   AgentStep,
   ApprovalRequest,
   Assistant,
+  MemoryType,
 } from '@yuanai/types'
 
 import { getPlatformAdapter, type StreamHandle } from '../platform/index.js'
@@ -29,6 +30,8 @@ export interface AssistantInput {
   defaultModel: string
   autonomyLevel?: string
   isDefault?: boolean
+  /** 禁止写入与检索的记忆类型，`null` 表示清除限制。 */
+  disabledMemoryTypes?: MemoryType[] | null
 }
 
 /** Agent SSE 事件处理器。 */

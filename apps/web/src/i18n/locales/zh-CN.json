@@ -561,7 +561,14 @@
     "reject": "拒绝",
     "delete": "删除",
     "confirmDelete": "确定删除这条记忆？",
-    "actionFailed": "操作失败，请重试"
+    "actionFailed": "操作失败，请重试",
+    "loadMore": "加载更多",
+    "localUnavailable": "部分记忆存储在本机节点，此处只显示摘要信息，内容需在本机查看",
+    "export": "导出记忆",
+    "exporting": "正在导出…",
+    "typeToggles": "记忆类型开关",
+    "typeEnabled": "记录中",
+    "typeDisabled": "已关闭"
   },
   "skills": {
     "agent": "Agent",

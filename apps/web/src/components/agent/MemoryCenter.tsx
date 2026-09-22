@@ -1,10 +1,16 @@
 'use client'
 
 import { useState, type FormEvent, type JSX } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import type { Memory } from '@yuanai/types'
-import { listAssistants } from '@yuanai/core/api'
-import { useCreateMemory, useDeleteMemory, useMemories, useUpdateMemory } from '@yuanai/core/hooks'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { Memory, MemoryExport, MemoryType } from '@yuanai/types'
+import { listAssistants, updateAssistant } from '@yuanai/core/api'
+import {
+  useCreateMemory,
+  useDeleteMemory,
+  useExportMemories,
+  useMemories,
+  useUpdateMemory,
+} from '@yuanai/core/hooks'
 import { useTranslations } from '@/i18n/client'
 import './memories.css'
 
@@ -16,11 +22,25 @@ const STATUSES: readonly Memory['status'][] = [
   'expired',
 ]
 
+const MEMORY_TYPES: readonly MemoryType[] = ['profile', 'preference', 'semantic', 'episodic']
+
+/** 把导出结果交给浏览器下载。 */
+function downloadExport(payload: MemoryExport): void {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = 'memories.json'
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 /** 展示并管理当前用户的记忆及其生命周期。 */
 export default function MemoryCenter(): JSX.Element {
   const t = useTranslations('memories')
   const [status, setStatus] = useState<Memory['status'] | undefined>()
   const [content, setContent] = useState('')
+  const queryClient = useQueryClient()
   const assistants = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
   const assistant = assistants.data?.find((item) => item.isDefault) ?? assistants.data?.[0]
   const memories = useMemories(status)
@@ -28,6 +48,27 @@ export default function MemoryCenter(): JSX.Element {
   const create = useCreateMemory()
   const update = useUpdateMemory()
   const remove = useDeleteMemory()
+  const exportAll = useExportMemories()
+  const disabledTypes = assistant?.disabledMemoryTypes ?? []
+  // 云端对本机节点记忆只留元数据，content 为空说明正文要去本机看
+  const hasLocalOnly = items.some(
+    (memory) => memory.storageLocation === 'local_node' && memory.content === null
+  )
+
+  const patchAssistant = useMutation({
+    mutationFn: (disabledMemoryTypes: MemoryType[]) =>
+      updateAssistant(assistant?.id ?? '', { disabledMemoryTypes }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['assistants'] }),
+  })
+
+  const toggleType = (type: MemoryType): void => {
+    if (!assistant) return
+    patchAssistant.mutate(
+      disabledTypes.includes(type)
+        ? disabledTypes.filter((item) => item !== type)
+        : [...disabledTypes, type]
+    )
+  }
 
   const submit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault()
@@ -51,7 +92,32 @@ export default function MemoryCenter(): JSX.Element {
           <h1>{t('title')}</h1>
           <p>{t('subtitle')}</p>
         </div>
+        <button
+          className="memory-btn"
+          disabled={exportAll.isPending}
+          onClick={() => exportAll.mutate(undefined, { onSuccess: downloadExport })}
+          type="button"
+        >
+          {exportAll.isPending ? t('exporting') : t('export')}
+        </button>
       </header>
+      <div className="memory-types" role="group" aria-label={t('typeToggles')}>
+        {MEMORY_TYPES.map((type) => {
+          const off = disabledTypes.includes(type)
+          return (
+            <button
+              key={type}
+              aria-pressed={!off}
+              className={off ? 'memory-btn' : 'memory-btn is-active'}
+              disabled={!assistant || patchAssistant.isPending}
+              onClick={() => toggleType(type)}
+              type="button"
+            >
+              {t(type)} · {off ? t('typeDisabled') : t('typeEnabled')}
+            </button>
+          )
+        })}
+      </div>
       <form className="memory-create" onSubmit={submit}>
         <input
           value={content}
@@ -87,6 +153,11 @@ export default function MemoryCenter(): JSX.Element {
         ))}
       </nav>
       {memories.isLoading ? <p className="memory-muted">{t('loading')}</p> : null}
+      {hasLocalOnly ? (
+        <p className="memory-banner" role="status">
+          {t('localUnavailable')}
+        </p>
+      ) : null}
       {!memories.isLoading && items.length === 0 ? (
         <p className="memory-muted">{t('empty')}</p>
       ) : null}
@@ -133,6 +204,18 @@ export default function MemoryCenter(): JSX.Element {
           </li>
         ))}
       </ul>
+      {memories.hasNextPage ? (
+        <div className="memory-more">
+          <button
+            className="memory-btn"
+            disabled={memories.isFetchingNextPage}
+            onClick={() => void memories.fetchNextPage()}
+            type="button"
+          >
+            {t('loadMore')}
+          </button>
+        </div>
+      ) : null}
     </main>
   )
 }
