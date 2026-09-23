@@ -11,11 +11,28 @@ from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
+# 每个 pytest 进程用自己的库：xdist 下取 worker id，单进程下取 pid。
+# 共用一个库时 pytest_sessionstart 的建表会把并发进程的表删掉。
+# 基础 URL 从环境变量读取，便于 CI 或本机改端口/账号而不用改代码。
+_BASE_DATABASE_URL = make_url(
+    os.environ.get(
+        "TEST_DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
+    )
+)
+_WORKER_ID = os.environ.get("PYTEST_XDIST_WORKER") or f"pid{os.getpid()}"
+_TEST_DATABASE_NAME = f"{_BASE_DATABASE_URL.database}_{_WORKER_ID}"
+# 建库/删库不能在目标库自身的连接里做，统一走 postgres 维护库
+_ADMIN_DATABASE_URL = _BASE_DATABASE_URL.set(database="postgres").render_as_string(
+    hide_password=False
+)
+
+os.environ["DATABASE_URL"] = _BASE_DATABASE_URL.set(
+    database=_TEST_DATABASE_NAME
+).render_as_string(hide_password=False)
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 # 生产模式校验要求独立于 JWT 的节点参数加密密钥；测试给固定派生源即可
 os.environ["EXECUTION_NODE_ENCRYPTION_KEY"] = "test-execution-node-encryption-key"
@@ -37,7 +54,7 @@ from app.core.security import create_access_token, hash_password  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import User  # noqa: E402
 
-TEST_DATABASE_URL = "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
+TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
 # NullPool：不使用连接池，每次获取新连接，避免跨 event loop 共享连接
 test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
@@ -52,16 +69,40 @@ _TRUNCATE_SQL = text(
 )
 
 
-def pytest_sessionstart(session: pytest.Session) -> None:
-    """同步钩子：所有测试开始前创建数据库表（独立 asyncio.run，不影响测试 event loop）。"""
+def _is_xdist_controller(config: pytest.Config) -> bool:
+    """判断当前进程是否 xdist 主进程：主进程不跑测试，也就不需要数据库。"""
+    return getattr(config.option, "dist", "no") != "no" and not hasattr(config, "workerinput")
 
-    async def _create():
+
+async def _run_on_admin_db(*statements: str) -> None:
+    """在 postgres 维护库上以 AUTOCOMMIT 执行建库/删库语句。"""
+    engine = create_async_engine(
+        _ADMIN_DATABASE_URL, poolclass=NullPool, isolation_level="AUTOCOMMIT"
+    )
+    try:
+        async with engine.connect() as conn:
+            for statement in statements:
+                await conn.execute(text(statement))
+    finally:
+        await engine.dispose()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """同步钩子：建本进程专属数据库并建表（独立 asyncio.run，不影响测试 event loop）。"""
+    if _is_xdist_controller(session.config):
+        return
+
+    async def _create() -> None:
+        # 先 DROP：上一轮被 Ctrl-C 打断、或 pid 复用时会留下同名库
+        await _run_on_admin_db(
+            f'DROP DATABASE IF EXISTS "{_TEST_DATABASE_NAME}" WITH (FORCE)',
+            f'CREATE DATABASE "{_TEST_DATABASE_NAME}"',
+        )
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
             # 建表前必须装好 vector 扩展：embedding 列的类型依赖它，
             # 而测试库走 create_all 而非 Alembic，拿不到迁移里的 CREATE EXTENSION。
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         await engine.dispose()
 
@@ -69,15 +110,12 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    """同步钩子：所有测试结束后删除数据库表。"""
-
-    async def _drop():
-        engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-        await engine.dispose()
-
-    asyncio.run(_drop())
+    """同步钩子：所有测试结束后删掉本进程专属数据库。"""
+    if _is_xdist_controller(session.config):
+        return
+    # 测试中跑过的后台 worker 可能在连接池里留下绑在已关闭事件循环上的连接，
+    # 它们在服务端仍然存活，只有 FORCE 能把库删掉。
+    asyncio.run(_run_on_admin_db(f'DROP DATABASE IF EXISTS "{_TEST_DATABASE_NAME}" WITH (FORCE)'))
 
 
 @pytest.fixture(autouse=True)
