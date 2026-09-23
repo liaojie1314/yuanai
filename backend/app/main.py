@@ -39,6 +39,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """
     # ── startup ──────────────────────────────────────────────
     from app.core.database import engine
+    from app.services.ai_service import _AI_CLIENTS
     from app.services.media_generation_service import run_media_generation_worker
     from app.services.storage_service import storage
 
@@ -46,6 +47,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # （测试里的多个 TestClient、热重载）池中可能残留属于已关闭循环的连接，
     # 后台 worker 拿到就会报 "attached to a different loop"。启动时先清空。
     await engine.dispose()
+    # 同理，_AI_CLIENTS 里的 httpx client 持有绑定在创建循环上的 keep-alive socket。
+    # 这些 client 可能是在任何 lifespan 之外建的（例如直接用 ASGITransport 的测试），
+    # 本次 lifespan 并不拥有它们，关闭阶段 await close() 会报 "Event loop is closed"。
+    # 已关闭的循环上无法再关它的 socket，只能丢弃引用，交给 GC。
+    _AI_CLIENTS.clear()
     if hasattr(storage, "ensure_bucket"):
         try:
             await storage.ensure_bucket()
@@ -58,8 +64,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop_media_worker.set()
     await media_worker
     # ── shutdown ─────────────────────────────────────────────
-    from app.services.ai_service import _AI_CLIENTS
-
     for client in _AI_CLIENTS.values():
         await client.close()
     _AI_CLIENTS.clear()
