@@ -136,6 +136,9 @@ jobs:
       - name: Unit tests
         working-directory: backend
         run: uv run pytest tests/unit -x -q
-      - name: Integration tests
+      # 第二步跑「除单测外的全部」而不是只跑 tests/integration：
+      # tests/ 根下的 test_cors.py / test_health.py 曾因此从未被 CI 执行过。
+      # 用 --ignore 排除代替枚举目录，新增的测试文件不会再悄悄逃出门禁。
+      - name: Remaining tests
         working-directory: backend
-        run: uv run pytest tests/integration -x -q
+        run: uv run pytest -x -q --ignore=tests/unit
