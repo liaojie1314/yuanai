@@ -1313,6 +1313,117 @@ async def generate_conversation_title(question: str) -> str | None:
     return None
 
 
+MEMORY_EXTRACTION_MODEL = "agnes-2.5-flash"
+MEMORY_EXTRACTION_TIMEOUT_SECONDS = 20
+MEMORY_EXTRACTION_MAX_TOKENS = 1024
+MEMORY_EXTRACTION_PROMPT = (
+    "你是记忆抽取器。阅读用户与助理的一次任务记录，只提取值得长期记住的用户事实。"
+    '只输出 JSON，形如 {"memories": [...]}，每项包含 memoryType'
+    "（profile/preference/semantic/episodic 之一）、content（一句中文陈述）、"
+    "subject（该事实所描述的对象，用于冲突检测）、confidence（0 到 1）、"
+    "explicit（用户是否明确说过）、stable（是否长期稳定而非临时状态）。"
+    '没有值得记住的内容时输出 {"memories": []}。不要输出解释。'
+)
+MEMORY_EXTRACTION_TYPES = frozenset({"profile", "preference", "semantic", "episodic"})
+
+
+@dataclass(frozen=True)
+class ExtractedMemory:
+    """模型抽取出的单条候选记忆。"""
+
+    memory_type: str
+    content: str
+    subject: str
+    confidence: float
+    explicit: bool
+    stable: bool
+
+
+def _parse_extracted_memories(content: str) -> list[ExtractedMemory] | None:
+    """解析抽取模型的 JSON 输出，结构不符时整体作废。"""
+
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    items = payload.get("memories")
+    if not isinstance(items, list):
+        return None
+    parsed: list[ExtractedMemory] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("content")
+        memory_type = item.get("memoryType")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if memory_type not in MEMORY_EXTRACTION_TYPES:
+            continue
+        subject = item.get("subject")
+        confidence = item.get("confidence")
+        parsed.append(
+            ExtractedMemory(
+                memory_type=str(memory_type),
+                content=text.strip(),
+                subject=(
+                    subject.strip()
+                    if isinstance(subject, str) and subject.strip()
+                    else text.strip()
+                ),
+                confidence=(
+                    min(1.0, max(0.0, float(confidence)))
+                    if isinstance(confidence, int | float) and not isinstance(confidence, bool)
+                    else 0.0
+                ),
+                explicit=bool(item.get("explicit")),
+                stable=bool(item.get("stable")),
+            )
+        )
+    return parsed
+
+
+async def extract_memory_candidates(*, goal: str, transcript: str) -> list[ExtractedMemory] | None:
+    """从一次成功的 Run 中抽取候选记忆；不可用或输出异常时返回 ``None``。
+
+    返回 ``None`` 表示模型没能给出结果，空列表表示模型认为没有值得记住的内容。
+    调用方对两者都不写库，但日志需要区分。
+    """
+
+    if not settings.agnes_api_key or not goal.strip():
+        return None
+    config = PROVIDER_CONFIG[MEMORY_EXTRACTION_MODEL]
+    client = _get_client(config["provider"], config["base_url"])
+    messages = cast(
+        list[ChatCompletionMessageParam],
+        [
+            {"role": "system", "content": MEMORY_EXTRACTION_PROMPT},
+            {
+                "role": "user",
+                "content": f"任务目标：{goal.strip()}\n\n任务记录：\n{transcript.strip()}",
+            },
+        ],
+    )
+    try:
+        async with asyncio.timeout(MEMORY_EXTRACTION_TIMEOUT_SECONDS):
+            completion = await client.chat.completions.create(
+                model=MEMORY_EXTRACTION_MODEL,
+                messages=messages,
+                temperature=0,
+                max_tokens=MEMORY_EXTRACTION_MAX_TOKENS,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+    except (TimeoutError, OpenAIError, httpx.HTTPError, TypeError, ValueError):
+        return None
+    if not completion.choices:
+        return None
+    content = completion.choices[0].message.content
+    if not isinstance(content, str):
+        return None
+    return _parse_extracted_memories(content)
+
+
 EMBEDDING_MODEL = "text-embedding-3-small"
 
 

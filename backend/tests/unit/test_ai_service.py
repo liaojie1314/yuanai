@@ -72,6 +72,18 @@ def clear_ai_clients() -> AsyncGenerator[None, None]:
     ai_svc._AI_CLIENTS.clear()
 
 
+class _StubChatClient:
+    """返回固定 completion 内容的最小 chat 客户端替身。"""
+
+    def __init__(self, content: str) -> None:
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message, finish_reason="stop")
+        completion = SimpleNamespace(choices=[choice])
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=AsyncMock(return_value=completion))
+        )
+
+
 def _build_mock_client(
     tokens: list[str],
     thinking_tokens: list[str] | None = None,
@@ -1409,3 +1421,43 @@ async def test_maybe_embed_text_returns_none_instead_of_raising(
     monkeypatch.setattr(ai_svc.settings, "openai_api_key", "")
 
     assert await ai_svc.maybe_embed_text("记住我偏好中文") is None
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_returns_none_without_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未配置 Agnes 密钥时不得抛出，抽取只是静默跳过。"""
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "")
+    assert await ai_svc.extract_memory_candidates(goal="订机票", transcript="") is None
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_parses_the_model_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型返回的 JSON 被解析成结构化候选，未知字段按默认值兜底。"""
+
+    payload = (
+        '{"memories": [{"memoryType": "preference", "content": "偏好靠窗座位", '
+        '"subject": "座位偏好", "confidence": 0.8, "explicit": true, "stable": true}]}'
+    )
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(ai_svc, "_get_client", lambda *_: _StubChatClient(payload))
+    candidates = await ai_svc.extract_memory_candidates(goal="订机票", transcript="我要靠窗")
+    assert candidates is not None
+    assert candidates[0].content == "偏好靠窗座位"
+    assert candidates[0].memory_type == "preference"
+    assert candidates[0].explicit is True
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_returns_none_on_malformed_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型返回非 JSON 时视为不可用，绝不写入半成品候选。"""
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(ai_svc, "_get_client", lambda *_: _StubChatClient("not json at all"))
+    assert await ai_svc.extract_memory_candidates(goal="订机票", transcript="我要靠窗") is None
