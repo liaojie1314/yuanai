@@ -12,7 +12,6 @@
 """
 
 import asyncio
-import os
 import uuid
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
@@ -21,13 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import httpx
 import pytest
 
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
-)
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
-
-import app.services.ai_service as ai_svc  # noqa: E402
-from app.services.ai_service import (  # noqa: E402
+import app.services.ai_service as ai_svc
+from app.services.ai_service import (
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
     AgnesImageResult,
@@ -57,7 +51,7 @@ from app.services.ai_service import (  # noqa: E402
     stream_chat,
     transcribe_audio,
 )
-from app.services.tools.search import SearchSource  # noqa: E402
+from app.services.tools.search import SearchSource
 
 # ---------------------------------------------------------------------------
 # Fixtures
