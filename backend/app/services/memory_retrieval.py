@@ -76,6 +76,7 @@ def apply_rule_rerank(
     """用置信度、新鲜度和记忆类型做确定性重排。
 
     阶段文档禁止只按 embedding 距离排序；规则重排在不引入第二次模型调用的前提下满足该要求。
+    分数并列很常见（候选记忆的 confidence 默认 0.0），因此以 id 兜底，保证顺序可复现。
     """
 
     adjusted: list[tuple[float, Memory]] = []
@@ -86,7 +87,7 @@ def apply_rule_rerank(
         confidence = 0.5 + 0.5 * max(0.0, min(1.0, memory.confidence))
         weight = _TYPE_WEIGHTS.get(memory.memory_type, 1.0)
         adjusted.append((score * confidence * weight * (0.6 + 0.4 * recency), memory))
-    return sorted(adjusted, key=lambda item: item[0], reverse=True)
+    return sorted(adjusted, key=lambda item: (-item[0], item[1].id))
 
 
 async def search_active_memories(
@@ -100,7 +101,10 @@ async def search_active_memories(
     limit: int = 8,
     now: datetime | None = None,
 ) -> MemorySearchOutcome:
-    """先过滤后召回，融合关键词与向量两路并重排，返回可进入上下文的记忆。"""
+    """先过滤后召回，融合关键词与向量两路并重排，返回可进入上下文的记忆。
+
+    查询为空白时关键词臂整个跳过：空白子串会匹配全部记忆，那不是检索而是全表扫描。
+    """
 
     if limit < 1:
         return MemorySearchOutcome(results=[], local_unavailable=False)
@@ -113,20 +117,33 @@ async def search_active_memories(
     )
     recall = limit * _RECALL_MULTIPLIER
 
-    fts_query = func.plainto_tsquery("simple", query)
-    # simple 配置不切分中文，整句只会得到一个词元；关键词臂必须补子串匹配，
-    # 否则「中文」这类查询永远命中不了「用户偏好中文输出」这类记忆。
-    # 子串匹配走不了 GIN 索引，规模上来后需改用中文分词配置（zhparser/pg_jieba）替换。
-    keyword_rows = await db.execute(
-        select(Memory.id)
-        .where(
-            *filters,
-            or_(Memory.search_vector.op("@@")(fts_query), Memory.content.ilike(f"%{query}%")),
+    keyword_ids: list[uuid.UUID] = []
+    normalized = query.strip()
+    if normalized:
+        fts_query = func.plainto_tsquery("simple", normalized)
+        # LIKE 通配符必须转义：查询 "%" 原样拼进 pattern 会命中全部记忆，
+        # 并把这些记忆的 last_used_at 全部刷新，等于一次查询污染整个租户的新鲜度。
+        escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # ponytail: simple 配置不切分中文，整句只会得到一个词元；关键词臂必须补子串匹配，
+        # 否则「中文」这类查询永远命中不了「用户偏好中文输出」这类记忆。
+        # 子串匹配走不了 GIN 索引，规模上来后需改用中文分词配置（zhparser/pg_jieba）替换。
+        keyword_rows = await db.execute(
+            select(Memory.id)
+            .where(
+                *filters,
+                or_(
+                    Memory.search_vector.op("@@")(fts_query),
+                    Memory.content.ilike(f"%{escaped}%", escape="\\"),
+                ),
+            )
+            .order_by(
+                func.ts_rank(Memory.search_vector, fts_query).desc(),
+                Memory.updated_at.desc(),
+                Memory.id,
+            )
+            .limit(recall)
         )
-        .order_by(func.ts_rank(Memory.search_vector, fts_query).desc(), Memory.updated_at.desc())
-        .limit(recall)
-    )
-    keyword_ids = [row[0] for row in keyword_rows]
+        keyword_ids = [row[0] for row in keyword_rows]
 
     vector_ids: list[uuid.UUID] = []
     if query_embedding is not None:
@@ -143,7 +160,7 @@ async def search_active_memories(
         return MemorySearchOutcome(results=[], local_unavailable=False)
     memories = {
         memory.id: memory
-        for memory in (await db.scalars(select(Memory).where(Memory.id.in_(fused)))).all()
+        for memory in (await db.scalars(select(Memory).where(Memory.id.in_(list(fused))))).all()
     }
     ranked = apply_rule_rerank(
         [

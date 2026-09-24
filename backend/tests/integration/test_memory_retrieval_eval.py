@@ -101,10 +101,14 @@ async def test_retrieval_meets_the_recall_and_ranking_floors(
 async def test_distractors_never_outrank_the_annotated_answers(
     db: AsyncSession, test_user: User
 ) -> None:
-    """规则重排必须把低置信度的同话题干扰项压到标准答案之后。"""
+    """规则重排必须把低置信度的同话题干扰项压到标准答案之后。
+
+    只断言结果按置信度递减是同义反复：语料里只有 0.98 与 0.10 两档，
+    而重排公式本身就含置信度因子，返回五条毫不相关的记忆也能通过。
+    这里改为直接检查名次：命中的标准答案必须整体排在非答案之前。
+    """
 
     assistant, id_to_key = await _seed_corpus(db, test_user)
-    by_key = {entry.key: entry for entry in EVAL_MEMORIES}
     for query in EVAL_QUERIES:
         outcome = await search_active_memories(
             user_id=test_user.id,
@@ -114,17 +118,50 @@ async def test_distractors_never_outrank_the_annotated_answers(
             limit=5,
         )
         ranked = [id_to_key[result.id] for result in outcome.results]
-        confidences = [by_key[key].confidence for key in ranked]
-        assert confidences == sorted(confidences, reverse=True), query.text
+        hits = [index for index, key in enumerate(ranked) if key in query.relevant_ids]
+        misses = [index for index, key in enumerate(ranked) if key not in query.relevant_ids]
+        if not hits or not misses:
+            continue
+        assert max(hits) < min(misses), f"{query.text}: {ranked}"
 
 
 @pytest.mark.asyncio
 async def test_every_result_carries_a_resolvable_source(db: AsyncSession, test_user: User) -> None:
     """引用准确率必须是 1.0：结果必须能回到原文位置。"""
 
-    assistant, _ = await _seed_corpus(db, test_user)
+    assistant, id_to_key = await _seed_corpus(db, test_user)
     outcome = await search_active_memories(
         user_id=test_user.id, assistant_id=assistant.id, query="评审会议", db=db, limit=5
     )
     assert outcome.results
     assert citation_accuracy(outcome.results) == CITATION_FLOOR
+    # 非空还不够：来源 id 必须真的解析回它自己那条语料，否则指标只是在校验字段有没有填
+    for result in outcome.results:
+        assert result.source_id == f"run-{id_to_key[result.id]}"
+
+
+@pytest.mark.asyncio
+async def test_citation_accuracy_drops_when_a_memory_has_no_source(
+    db: AsyncSession, test_user: User
+) -> None:
+    """闸门必须有失败的可能：source_id 在写入契约里是可选的，缺来源就该把指标拉下来。"""
+
+    assistant, _ = await _seed_corpus(db, test_user)
+    db.add(
+        Memory(
+            user_id=test_user.id,
+            assistant_id=assistant.id,
+            memory_type=MemoryType.episodic,
+            content="评审会议的结论没有留下来源",
+            source_type="run",
+            source_id=None,
+            confidence=1.0,
+            status=MemoryStatus.active,
+        )
+    )
+    await db.flush()
+    outcome = await search_active_memories(
+        user_id=test_user.id, assistant_id=assistant.id, query="评审会议", db=db, limit=5
+    )
+    assert any(result.source_id is None for result in outcome.results)
+    assert citation_accuracy(outcome.results) < CITATION_FLOOR
