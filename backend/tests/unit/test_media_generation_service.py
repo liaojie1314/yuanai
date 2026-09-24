@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -641,3 +642,27 @@ async def test_video_flash_worker_fails_the_task_on_local_validation(
     failed = await _load_task(db, task.id)
     assert failed.status is MediaGenerationStatus.failed
     assert failed.error_code == "MEDIA_TASK_INVALID"
+
+
+async def test_media_worker_survives_a_failing_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+    """认领失败不得终结 worker，否则 lifespan 的 await media_worker 会重新抛出异常。"""
+    stop_event = asyncio.Event()
+    claims = 0
+
+    async def failing_claim() -> uuid.UUID | None:
+        nonlocal claims
+        claims += 1
+        if claims == 1:
+            raise OSError("claim failed")
+        stop_event.set()
+        return None
+
+    monkeypatch.setattr(media_service, "_claim_next_task", failing_claim)
+    monkeypatch.setattr(
+        media_service, "_claim_next_missing_video_poster", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(media_service.settings, "media_worker_poll_interval_seconds", 0.01)
+
+    await asyncio.wait_for(media_service.run_media_generation_worker(stop_event), timeout=5)
+
+    assert claims == 2

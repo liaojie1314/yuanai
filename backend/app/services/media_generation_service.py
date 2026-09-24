@@ -1037,15 +1037,20 @@ async def run_media_generation_worker(stop_event: asyncio.Event) -> None:
     """循环认领并处理 durable 媒体任务，支持进程重启后的图片有限恢复。"""
     skipped_poster_backfills: set[uuid.UUID] = set()
     while not stop_event.is_set():
-        task_id = await _claim_next_task()
-        if task_id is not None:
-            await _process_claimed_task(task_id)
-            continue
-        poster_task_id = await _claim_next_missing_video_poster(skipped_poster_backfills)
-        if poster_task_id is not None:
-            if not await _backfill_video_poster(poster_task_id):
-                skipped_poster_backfills.add(poster_task_id)
-            continue
+        try:
+            task_id = await _claim_next_task()
+            if task_id is not None:
+                await _process_claimed_task(task_id)
+                continue
+            poster_task_id = await _claim_next_missing_video_poster(skipped_poster_backfills)
+            if poster_task_id is not None:
+                if not await _backfill_video_poster(poster_task_id):
+                    skipped_poster_backfills.add(poster_task_id)
+                continue
+        except Exception:
+            # 单轮失败（例如数据库瞬断）不能终结 worker：task 一旦异常退出，
+            # lifespan 关闭时的 ``await media_worker`` 会重新抛出它，整个关闭流程随之失败。
+            logger.exception("媒体任务 worker 本轮失败，退避后重试")
         try:
             await asyncio.wait_for(
                 stop_event.wait(), timeout=settings.media_worker_poll_interval_seconds
