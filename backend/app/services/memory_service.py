@@ -9,9 +9,16 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assistant import Assistant
-from app.models.memory import Memory, MemoryRelation, MemorySensitivity, MemoryStatus
+from app.models.memory import (
+    Memory,
+    MemoryRelation,
+    MemorySensitivity,
+    MemoryStatus,
+    MemoryStorageLocation,
+)
 from app.schemas.memory import MemoryCreateCandidate, MemoryUpdate
 from app.services.ai_service import maybe_embed_text
+from app.services.memory_node import drop_local_memory, push_local_memory
 
 
 class MemoryNotFoundError(Exception):
@@ -35,12 +42,15 @@ async def create_candidate(
     if request.valid_until is not None and request.valid_from is not None:
         if request.valid_until <= request.valid_from:
             raise MemoryPolicyError("有效期结束时间必须晚于开始时间")
+    is_local = request.storage_location is MemoryStorageLocation.local_node
     memory = Memory(
+        # 本地记忆要先把正文推给节点，推送时就得有稳定 id，因此不依赖列默认值
+        id=uuid.uuid4(),
         user_id=user_id,
         assistant_id=request.assistant_id,
         workspace_id=request.workspace_id,
         memory_type=request.memory_type,
-        content=request.content,
+        content=None if is_local else request.content,
         structured_data=request.structured_data,
         source_type=request.source_type,
         source_id=request.source_id,
@@ -52,6 +62,9 @@ async def create_candidate(
         valid_until=request.valid_until,
         status=MemoryStatus.candidate,
     )
+    if is_local:
+        # 先推节点再落库：推送失败就不该留下一条没有正文的孤儿元数据行。
+        await push_local_memory(memory=memory, content=request.content, db=db)
     db.add(memory)
     await db.flush()
     return memory
@@ -78,6 +91,12 @@ async def update_memory(
     if valid_from is not None and valid_until is not None and valid_until <= valid_from:
         raise MemoryPolicyError("有效期结束时间必须晚于开始时间")
     content_changed = "content" in changes
+    if content_changed and memory.storage_location is MemoryStorageLocation.local_node:
+        # 本地记忆的新正文只写节点；云端行恒为 NULL，推送失败则整次更新作废。
+        new_content = changes["content"]
+        if new_content is not None:
+            await push_local_memory(memory=memory, content=str(new_content), db=db)
+        changes["content"] = None
     becomes_or_stays_active = requested_status is MemoryStatus.active or (
         memory.status is MemoryStatus.active and content_changed
     )
@@ -108,6 +127,9 @@ async def delete_memory(*, memory_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSe
     """在当前事务中删除内容、embedding、搜索记录和派生关系。"""
 
     memory = await _owned_memory(memory_id=memory_id, user_id=user_id, db=db)
+    if memory.storage_location is MemoryStorageLocation.local_node:
+        # 先让节点删掉正文：节点拒绝时整次删除失败，好过把正文永久遗留在用户磁盘上。
+        await drop_local_memory(memory=memory, db=db)
     await db.execute(delete(MemoryRelation).where(MemoryRelation.memory_id == memory.id))
     await db.delete(memory)
     await db.flush()

@@ -15,6 +15,7 @@ from app.schemas.memory import (
     MemoryUpdate,
 )
 from app.services.ai_service import maybe_embed_text
+from app.services.memory_node import LocalMemoryUnavailableError
 from app.services.memory_retrieval import search_active_memories
 from app.services.memory_service import (
     MemoryNotFoundError,
@@ -40,6 +41,8 @@ async def create_memory(
         raise HTTPException(status_code=404, detail="ASSISTANT_NOT_FOUND") from error
     except MemoryPolicyError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except LocalMemoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
     await db.commit()
     await db.refresh(memory)
     return memory
@@ -95,6 +98,8 @@ async def patch_memory(
         raise HTTPException(status_code=404, detail="MEMORY_NOT_FOUND") from error
     except MemoryPolicyError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except LocalMemoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
     await db.commit()
     await db.refresh(memory)
     return memory
@@ -108,5 +113,7 @@ async def remove_memory(memory_id: uuid.UUID, current_user: CurrentUser, db: DB)
         await delete_memory(memory_id=memory_id, user_id=current_user.id, db=db)
     except MemoryNotFoundError as error:
         raise HTTPException(status_code=404, detail="MEMORY_NOT_FOUND") from error
+    except LocalMemoryUnavailableError as error:
+        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
     await db.commit()
     return Response(status_code=204)

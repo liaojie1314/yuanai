@@ -34,6 +34,7 @@ _TYPE_WEIGHTS: dict[MemoryType, float] = {
     MemoryType.episodic: 0.9,
 }
 
+
 # 关键词臂依赖 pg_trgm 的 word_similarity 排序。迁移会装这个扩展，
 # 但用 Base.metadata.create_all 建库的路径（测试库）拿不到迁移，
 # 所以把扩展挂到建表事件上，两条路径都能用到。
@@ -47,16 +48,18 @@ def _ensure_trgm_extension(target: Table, connection: Connection, **kw: object) 
 event.listen(Memory.__table__, "before_create", _ensure_trgm_extension)
 
 
-def _accessible_filters(
+def accessible_filters(
     *,
     user_id: uuid.UUID,
     assistant_id: uuid.UUID,
     workspace_id: uuid.UUID | None,
     current_time: datetime,
+    storage_location: MemoryStorageLocation = MemoryStorageLocation.cloud,
 ) -> list[ColumnElement[bool]]:
     """构造租户、助理、生命周期与时效的 SQL 过滤条件。
 
     权限过滤必须下推到 SQL：先跨租户召回再在应用层过滤是被明确禁止的。
+    ``storage_location`` 决定这组条件针对云端正文还是只存节点的记忆元数据。
     """
 
     filters: list[ColumnElement[bool]] = [
@@ -66,7 +69,7 @@ def _accessible_filters(
         Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
         Memory.valid_from.is_(None) | (Memory.valid_from <= current_time),
         Memory.valid_until.is_(None) | (Memory.valid_until > current_time),
-        Memory.storage_location == MemoryStorageLocation.cloud,
+        Memory.storage_location == storage_location,
     ]
     if workspace_id is not None:
         filters.append(or_(Memory.workspace_id == workspace_id, Memory.workspace_id.is_(None)))
@@ -119,15 +122,102 @@ async def search_active_memories(
     limit: int = 8,
     now: datetime | None = None,
 ) -> MemorySearchOutcome:
-    """先过滤后召回，融合关键词与向量两路并重排，返回可进入上下文的记忆。
+    """合并云端混合检索与桌面节点上的本地记忆，返回可进入上下文的记忆。
 
-    查询为空白时关键词臂整个跳过：空白子串会匹配全部记忆，那不是检索而是全表扫描。
+    只有当该助理下确实存在 local_node 记忆时才会访问节点：没有本地记忆的用户
+    不该为一次云端检索付出节点往返的代价。
     """
 
     if limit < 1:
         return MemorySearchOutcome(results=[], local_unavailable=False)
     current_time = now or datetime.now(UTC)
-    filters = _accessible_filters(
+    cloud_results = await _cloud_results(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=query,
+        db=db,
+        workspace_id=workspace_id,
+        query_embedding=query_embedding,
+        limit=limit,
+        current_time=current_time,
+    )
+    local_results, local_unavailable = await _local_results(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=query,
+        db=db,
+        workspace_id=workspace_id,
+        limit=limit,
+        current_time=current_time,
+    )
+    if not local_results:
+        return MemorySearchOutcome(results=cloud_results, local_unavailable=local_unavailable)
+    # ponytail: 两路分数量纲不同（云端是 RRF 重排分，节点是它自己的相关度），
+    # 直接同表排序只是可用的近似；要真正融合需要把节点也纳入 RRF 的名次口径。
+    merged = sorted(cloud_results + local_results, key=lambda result: (-result.score, result.id))
+    return MemorySearchOutcome(results=merged[:limit], local_unavailable=local_unavailable)
+
+
+async def _local_results(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    query: str,
+    db: AsyncSession,
+    workspace_id: uuid.UUID | None,
+    limit: int,
+    current_time: datetime,
+) -> tuple[list[MemorySearchResult], bool]:
+    """有本地记忆时才向节点发起检索，否则跳过并报告「可用」。"""
+
+    normalized = query.strip()
+    if not normalized:
+        return [], False
+    has_local = await db.scalar(
+        select(Memory.id)
+        .where(
+            *accessible_filters(
+                user_id=user_id,
+                assistant_id=assistant_id,
+                workspace_id=workspace_id,
+                current_time=current_time,
+                storage_location=MemoryStorageLocation.local_node,
+            )
+        )
+        .limit(1)
+    )
+    if has_local is None:
+        return [], False
+    # 延迟导入：memory_node 需要本模块的 accessible_filters，模块级互相导入会成环。
+    from app.services.memory_node import search_local_memories
+
+    return await search_local_memories(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=normalized,
+        limit=limit,
+        db=db,
+        workspace_id=workspace_id,
+    )
+
+
+async def _cloud_results(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    query: str,
+    db: AsyncSession,
+    workspace_id: uuid.UUID | None,
+    query_embedding: Sequence[float] | None,
+    limit: int,
+    current_time: datetime,
+) -> list[MemorySearchResult]:
+    """先过滤后召回，融合关键词与向量两路并重排，返回云端正文的检索结果。
+
+    查询为空白时关键词臂整个跳过：空白子串会匹配全部记忆，那不是检索而是全表扫描。
+    """
+
+    filters = accessible_filters(
         user_id=user_id,
         assistant_id=assistant_id,
         workspace_id=workspace_id,
@@ -176,7 +266,7 @@ async def search_active_memories(
 
     fused = fuse_rankings(keyword_ids, vector_ids)
     if not fused:
-        return MemorySearchOutcome(results=[], local_unavailable=False)
+        return []
     memories = {
         memory.id: memory
         for memory in (await db.scalars(select(Memory).where(Memory.id.in_(list(fused))))).all()
@@ -192,26 +282,23 @@ async def search_active_memories(
     for _, memory in ranked:
         memory.last_used_at = current_time
     await db.flush()
-    return MemorySearchOutcome(
-        results=[
-            MemorySearchResult(
-                id=memory.id,
-                assistant_id=memory.assistant_id,
-                workspace_id=memory.workspace_id,
-                memory_type=memory.memory_type,
-                content=memory.content or "",
-                source_type=memory.source_type,
-                source_id=memory.source_id,
-                source_excerpt=memory.source_excerpt,
-                confidence=memory.confidence,
-                sensitivity=memory.sensitivity,
-                status=memory.status,
-                score=score,
-            )
-            for score, memory in ranked
-        ],
-        local_unavailable=False,
-    )
+    return [
+        MemorySearchResult(
+            id=memory.id,
+            assistant_id=memory.assistant_id,
+            workspace_id=memory.workspace_id,
+            memory_type=memory.memory_type,
+            content=memory.content or "",
+            source_type=memory.source_type,
+            source_id=memory.source_id,
+            source_excerpt=memory.source_excerpt,
+            confidence=memory.confidence,
+            sensitivity=memory.sensitivity,
+            status=memory.status,
+            score=score,
+        )
+        for score, memory in ranked
+    ]
 
 
 def to_context_items(results: Sequence[MemorySearchResult]) -> list[MemoryContextItem]:
