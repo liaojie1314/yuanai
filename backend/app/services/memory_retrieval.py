@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, Connection, Table, event, func, or_, select, text
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import (
@@ -33,19 +33,6 @@ _TYPE_WEIGHTS: dict[MemoryType, float] = {
     MemoryType.semantic: 1.0,
     MemoryType.episodic: 0.9,
 }
-
-
-# 关键词臂依赖 pg_trgm 的 word_similarity 排序。迁移会装这个扩展，
-# 但用 Base.metadata.create_all 建库的路径（测试库）拿不到迁移，
-# 所以把扩展挂到建表事件上，两条路径都能用到。
-def _ensure_trgm_extension(target: Table, connection: Connection, **kw: object) -> None:
-    """建 memories 表之前确保 pg_trgm 已安装。"""
-
-    if connection.dialect.name == "postgresql":
-        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
-
-
-event.listen(Memory.__table__, "before_create", _ensure_trgm_extension)
 
 
 def accessible_filters(
