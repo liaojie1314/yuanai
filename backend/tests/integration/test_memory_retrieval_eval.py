@@ -22,8 +22,12 @@ from tests.support.memory_eval_corpus import (
 
 # 测量基准：CI 不注入任何 provider key，maybe_embed_text 恒返回 None，向量臂全程关闭。
 # 因此本文件一律不传 query_embedding，结果与本机是否配置了 key 无关，只测关键词单路。
-# 下列三个下限取自该模式下的首次实测（recall@5 0.80 / MRR 0.80 / 引用准确率 1.00）并向下取整。
-# 它们是棘轮：向量臂接入后只能上调，下调必须在 docs/master-plan.md 记录原因。
+# 下列三个下限是在 pg_trgm 相关度排序与 RRF_K 重新配平之后重测的：连续三次均为
+# recall@5 0.800000 / MRR 0.800000 / 引用准确率 1.00，取实测值向下取整。
+# 0.80 是本语料在关键词单路下的天花板：20 条查询里有 4 条与标准答案没有任何字面重合
+# （靠语义关联），关键词臂必然召回为空；其余 16 条全部首位命中，16/20 = 0.80。
+# 它们是棘轮：向量臂接入 CI 或语料补充字面查询后只能上调，
+# 下调必须在 docs/master-plan.md 记录原因。
 RECALL_AT_5_FLOOR = 0.80
 MRR_FLOOR = 0.80
 CITATION_FLOOR = 1.0
@@ -93,8 +97,11 @@ async def test_retrieval_meets_the_recall_and_ranking_floors(
         ranked = [id_to_key[result.id] for result in outcome.results]
         recalls.append(recall_at_k(ranked, query.relevant_ids, k=5))
         rankings.append([key in query.relevant_ids for key in ranked])
-    assert sum(recalls) / len(recalls) >= RECALL_AT_5_FLOOR
-    assert mean_reciprocal_rank(rankings) >= MRR_FLOOR
+    average_recall = sum(recalls) / len(recalls)
+    mrr = mean_reciprocal_rank(rankings)
+    # 失败时直接给出实测值，省去重跑一遍才知道掉到了多少
+    assert average_recall >= RECALL_AT_5_FLOOR, f"recall@5={average_recall:.6f}"
+    assert mrr >= MRR_FLOOR, f"MRR={mrr:.6f}"
 
 
 @pytest.mark.asyncio

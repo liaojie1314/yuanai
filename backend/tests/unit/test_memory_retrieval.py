@@ -15,6 +15,8 @@ from app.models.memory import (
 )
 from app.models.user import User
 from app.services.memory_retrieval import (
+    _RECALL_MULTIPLIER,
+    _TYPE_WEIGHTS,
     RRF_K,
     apply_rule_rerank,
     fuse_rankings,
@@ -60,6 +62,20 @@ def test_fuse_rankings_ignores_an_empty_arm() -> None:
     first, second = uuid.uuid4(), uuid.uuid4()
     fused = fuse_rankings([first, second], [])
     assert fused[first] > fused[second]
+
+
+def test_rank_spread_stays_comparable_to_the_rule_spread() -> None:
+    """名次跨度必须与规则乘子跨度同量级，否则混合排序会塌成单因子排序。
+
+    k 取得太大时召回名次的全部跨度还不到规则乘子跨度的零头，名次就成了噪声；
+    取得太小则确定性规则再也翻不动任何名次。两者比值守在 0.5~2 之间。
+    """
+
+    window = 5 * _RECALL_MULTIPLIER
+    rank_spread = (RRF_K + window) / (RRF_K + 1)
+    # 规则乘子 = confidence(0.5~1.0) × type 权重 × recency(0.6~1.0)
+    rule_spread = max(_TYPE_WEIGHTS.values()) / (0.5 * min(_TYPE_WEIGHTS.values()) * 0.6)
+    assert 0.5 <= rank_spread / rule_spread <= 2.0, f"{rank_spread=} {rule_spread=}"
 
 
 def test_rule_rerank_prefers_confident_and_recently_used_memories() -> None:

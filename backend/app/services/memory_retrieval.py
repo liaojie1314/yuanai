@@ -18,7 +18,13 @@ from app.models.memory import (
 )
 from app.schemas.memory import MemoryContextItem, MemorySearchOutcome, MemorySearchResult
 
-RRF_K = 60
+# RRF 的 k 决定名次的影响力。召回窗口只有 limit*_RECALL_MULTIPLIER（20~32）条，
+# k=60 时首名与末名只差 80/61≈1.31 倍，相邻名次只差 1.6%，
+# 而下面规则重排的乘子跨度是 1.15/0.27≈4.26 倍 —— 名次会被规则整个淹没，
+# 最终序等于 confidence×type_weight，召回名次沦为噪声。
+# k=5 把名次跨度抬到 25/6≈4.17 倍，与规则乘子同量级：
+# 规则仍能把垫底召回抬过榜首（0.040×1.15 > 0.1667×0.27），但翻不了十几个名次。
+RRF_K = 5
 _RECALL_MULTIPLIER = 4
 _HALF_LIFE_DAYS = 90.0
 _TYPE_WEIGHTS: dict[MemoryType, float] = {
