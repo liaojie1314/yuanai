@@ -379,9 +379,11 @@ def test_public_catalog_only_offers_current_models(monkeypatch: pytest.MonkeyPat
     models = get_available_models()
 
     assert [model["id"] for model in models] == [
+        "agnes-3.0-flash",
         "deepseek-v4-flash",
         "deepseek-v4-pro",
         "agnes-2.5-flash",
+        "agnes-image-2.5-flash",
         "agnes-image-2.1-flash",
         "agnes-video-v2.0",
     ]
@@ -398,6 +400,66 @@ def test_agnes_models_are_registered_without_embedded_credentials() -> None:
     assert PROVIDER_CONFIG["agnes-2.5-flash"]["base_url"] == "https://apihub.agnes-ai.com/v1"
     assert any(m["id"] == "agnes-image-2.1-flash" for m in AVAILABLE_MODELS)
     assert any(m["id"] == "agnes-video-v2.0" for m in AVAILABLE_MODELS)
+
+
+def test_agnes_3_flash_is_the_default_when_its_key_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """配置 Agnes 密钥后，默认模型是 agnes-3.0-flash。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    models = ai_svc.get_available_models()
+    assert models[0]["id"] == "agnes-3.0-flash"
+    assert models[0]["is_default"] is True
+
+
+def test_agnes_3_flash_declares_vision_and_its_real_context_window() -> None:
+    """目录里的能力声明必须与供应商文档一致：512K 上下文、支持图片输入。"""
+
+    entry = next(item for item in ai_svc.AVAILABLE_MODELS if item["id"] == "agnes-3.0-flash")
+    assert entry["supports_vision"] is True
+    assert entry["context_length"] == 512_000
+
+
+def test_only_one_model_is_marked_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """列表中有且只有一个默认模型。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    defaults = [item for item in ai_svc.get_available_models() if item["is_default"]]
+    assert len(defaults) == 1
+
+
+async def test_generate_agnes_image_uses_the_requested_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """图片生成必须把选中的模型传给供应商，而不是永远用 2.1。"""
+
+    captured: dict[str, object] = {}
+
+    async def _generate(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return SimpleNamespace(data=[SimpleNamespace(url="https://example.invalid/a.png")])
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(
+        ai_svc,
+        "_get_client",
+        lambda *_: SimpleNamespace(images=SimpleNamespace(generate=_generate)),
+    )
+    await ai_svc.generate_agnes_image(
+        "一只猫", size="2K", ratio="16:9", model="agnes-image-2.5-flash"
+    )
+    assert captured["model"] == "agnes-image-2.5-flash"
+
+
+def test_memory_extraction_stays_pinned_to_agnes_2_5_flash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """记忆抽取显式选模型，不跟随目录默认值变化。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    assert ai_svc.MEMORY_EXTRACTION_MODEL == "agnes-2.5-flash"
+    assert ai_svc.get_available_models()[0]["id"] != ai_svc.MEMORY_EXTRACTION_MODEL
 
 
 async def test_generate_conversation_title_retries_agnes_after_reasoning_budget_exhaustion(
@@ -1246,8 +1308,10 @@ async def test_stream_chat_deepseek_extra_body_disable_thinking() -> None:
     assert call_kwargs["extra_body"]["thinking"]["type"] == "disabled"
 
 
+@pytest.mark.parametrize("model", ["agnes-2.5-flash", "agnes-3.0-flash"])
 @pytest.mark.parametrize("enable_thinking", [True, False])
 async def test_stream_chat_agnes_passes_documented_thinking_toggle(
+    model: str,
     enable_thinking: bool,
 ) -> None:
     """Agnes OpenAI 兼容接口必须接收 chat_template_kwargs 开关。"""
@@ -1255,7 +1319,7 @@ async def test_stream_chat_agnes_passes_documented_thinking_toggle(
 
     with patch("app.services.ai_service._get_client", return_value=mock_client):
         async for _ in stream_chat(
-            "agnes-2.5-flash", [{"role": "user", "content": "hi"}], enable_thinking=enable_thinking
+            model, [{"role": "user", "content": "hi"}], enable_thinking=enable_thinking
         ):
             pass
 

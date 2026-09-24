@@ -151,10 +151,20 @@ PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     },
     "deepseek-v4-flash": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
     "deepseek-v4-pro": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
+    "agnes-3.0-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "chat",
+    },
     "agnes-2.5-flash": {
         "provider": "agnes",
         "base_url": "https://apihub.agnes-ai.com/v1",
         "kind": "chat",
+    },
+    "agnes-image-2.5-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "image",
     },
     "agnes-image-2.1-flash": {
         "provider": "agnes",
@@ -462,6 +472,16 @@ def _parse_text_tool_calls(content: str) -> list[_PendingToolCall]:
 
 AVAILABLE_MODELS = [
     {
+        "id": "agnes-3.0-flash",
+        "name": "Agnes 3.0 Flash",
+        "provider": "agnes",
+        "description": "512K 上下文，支持推理、工具调用与图像理解",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 512_000,
+        "is_default": True,
+    },
+    {
         "id": "deepseek-v4-flash",
         "name": "DeepSeek V4 Flash-0731",
         "provider": "deepseek",
@@ -474,7 +494,7 @@ AVAILABLE_MODELS = [
             "input_uncached_cny_per_million": 1.0,
             "output_cny_per_million": 2.0,
         },
-        "is_default": True,
+        "is_default": False,
     },
     {
         "id": "deepseek-v4-pro",
@@ -500,6 +520,17 @@ AVAILABLE_MODELS = [
         "supports_files": True,
         "context_length": 128000,
         "is_default": False,
+    },
+    {
+        "id": "agnes-image-2.5-flash",
+        "name": "Agnes Image 2.5 Flash",
+        "provider": "agnes",
+        "description": "文本生成图片与图片编辑",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "image_generation",
     },
     {
         "id": "agnes-image-2.1-flash",
@@ -648,14 +679,19 @@ def _normalize_agnes_video_status(value: str | None) -> str:
 
 
 async def generate_agnes_image(
-    prompt: str, *, size: str, ratio: str, image_urls: tuple[str, ...] = ()
+    prompt: str,
+    *,
+    size: str,
+    ratio: str,
+    image_urls: tuple[str, ...] = (),
+    model: str = "agnes-image-2.1-flash",
 ) -> AgnesImageResult:
-    """调用 Agnes Image 2.1 Flash，返回仅供后端持久化的临时输出 URL。
+    """调用指定的 Agnes 图片模型，返回仅供后端持久化的临时输出 URL。
 
     图片不会将该 URL 返回给客户端；调用方必须下载、校验并写入 YuanAI 对象存储。
     """
     _require_agnes_key()
-    config = PROVIDER_CONFIG["agnes-image-2.1-flash"]
+    config = PROVIDER_CONFIG[model]
     client = _get_client(config["provider"], config["base_url"])
     try:
         async with asyncio.timeout(settings.media_image_timeout_seconds):
@@ -663,7 +699,7 @@ async def generate_agnes_image(
             if image_urls:
                 image_body["image"] = list(image_urls)
             response = await client.images.generate(
-                model="agnes-image-2.1-flash",
+                model=model,
                 prompt=prompt,
                 size=size,
                 # Agnes requires ratio at the top level and its response/image extensions

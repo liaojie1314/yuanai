@@ -75,11 +75,8 @@ async def test_image_worker_persists_output_and_notifies(
     """图片任务成功时必须持久化结果、完成卡片并发送一次通知。"""
     task = await _create_task(db, test_user)
     monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
-    monkeypatch.setattr(
-        media_service,
-        "generate_agnes_image",
-        AsyncMock(return_value=AgnesImageResult(url="https://provider.example/result.png")),
-    )
+    generate = AsyncMock(return_value=AgnesImageResult(url="https://provider.example/result.png"))
+    monkeypatch.setattr(media_service, "generate_agnes_image", generate)
 
     async def persist_output(task_row: MediaGenerationTask, _url: str) -> None:
         task_row.result_s3_key = f"generated/{task_row.user_id}/{task_row.id}.png"
@@ -99,6 +96,9 @@ async def test_image_worker_persists_output_and_notifies(
     assert completed.result_s3_key == f"generated/{task.user_id}/{task.id}.png"
     assert await _message_content(db, completed) == "图片生成完成"
     notify.assert_awaited_once()
+    # 发给供应商的模型必须与任务持久化的模型一致，否则任务卡会撒谎
+    assert generate.await_args is not None
+    assert generate.await_args.kwargs["model"] == completed.model
 
 
 async def test_music_worker_persists_mp3_output_and_notifies(

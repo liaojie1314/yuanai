@@ -816,6 +816,7 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                     size=_option_string(task, "size"),
                     ratio=_option_string(task, "ratio"),
                     image_urls=image_urls,
+                    model=task.model,
                 )
                 await _persist_provider_output(task, result.url)
                 await _complete_task(db, task)
