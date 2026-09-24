@@ -40,6 +40,7 @@ async def test_memory_lifecycle_is_authenticated_and_tenant_scoped(
             "memoryType": "preference",
             "content": "旅行优先高铁",
             "sourceType": "user_input",
+            "sourceId": "msg-1",
         },
     )
     assert response.status_code == 201

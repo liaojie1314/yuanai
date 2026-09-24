@@ -73,3 +73,24 @@ async def test_assistant_can_disable_a_memory_type(db, test_user: User) -> None:
     stored = await db.scalar(select(Assistant).where(Assistant.id == assistant_id))
     assert stored is not None
     assert stored.disabled_memory_types == ["episodic"]
+
+
+@pytest.mark.asyncio
+async def test_create_candidate_rejects_a_memory_without_a_source(db, test_user: User) -> None:
+    """来源 id 缺失的候选不得落库：没有来源的记忆永远引用不回原文。"""
+
+    from app.schemas.memory import MemoryCreateCandidate
+    from app.services.memory_service import MemoryPolicyError, create_candidate
+
+    assistant = await _assistant(db, test_user.id)
+    for source_id in (None, "   "):
+        request = MemoryCreateCandidate(
+            assistant_id=assistant.id,
+            memory_type=MemoryType.preference,
+            content="记忆内容A",
+            source_type="user_input",
+            source_id=source_id,
+        )
+        with pytest.raises(MemoryPolicyError):
+            await create_candidate(user_id=test_user.id, request=request, db=db)
+    assert (await db.scalars(select(Memory).where(Memory.user_id == test_user.id))).all() == []

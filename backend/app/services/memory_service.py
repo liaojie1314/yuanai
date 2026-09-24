@@ -42,6 +42,10 @@ async def create_candidate(
     if request.valid_until is not None and request.valid_from is not None:
         if request.valid_until <= request.valid_from:
             raise MemoryPolicyError("有效期结束时间必须晚于开始时间")
+    # 来源 id 在 schema 里是可选的（抽取流水线先产候选、后补来源），但落库是最后一道关：
+    # 没有来源的记忆无法被引用回原文，只会把检索侧的引用准确率拖下来。
+    if not (request.source_id or "").strip():
+        raise MemoryPolicyError("记忆必须带上可回溯的来源 id")
     is_local = request.storage_location is MemoryStorageLocation.local_node
     memory = Memory(
         # 本地记忆要先把正文推给节点，推送时就得有稳定 id，因此不依赖列默认值
