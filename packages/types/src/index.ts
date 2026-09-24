@@ -218,6 +218,10 @@ export interface MediaGenerationOptions {
   lyrics?: string
 }
 
+/** 可由媒体任务 API 显式选择的图片或视频生成模型。 */
+export type MediaGenerationModel =
+  'agnes-image-2.5-flash' | 'agnes-image-2.1-flash' | 'agnes-video-2.5-flash' | 'agnes-video-v2.0'
+
 /** 创建媒体任务所需的跨端输入，不包含任何 provider URL 或本地路径。 */
 export interface CreateMediaGenerationTaskInput {
   conversationId: string
@@ -226,6 +230,8 @@ export interface CreateMediaGenerationTaskInput {
   options?: MediaGenerationOptions
   /** 仅接受当前用户已经上传的图片文件 ID。 */
   sourceFileIds?: string[]
+  /** 省略时由后端为该任务类型选择默认模型；音乐任务不接受显式模型。 */
+  model?: MediaGenerationModel
 }
 
 /** 后端持久化并关联到 assistant 消息卡的媒体生成任务。 */
@@ -236,8 +242,7 @@ export interface MediaGenerationTask {
   /** 发起此任务的用户消息；旧任务迁移失败时可为空。 */
   sourceMessageId: string | null
   type: MediaGenerationType
-  model:
-    'agnes-image-2.1-flash' | 'agnes-video-v2.0' | 'musicgen-small-local' | 'ace-step-v15-local'
+  model: MediaGenerationModel | 'musicgen-small-local' | 'ace-step-v15-local'
   prompt: string
   options: MediaGenerationOptions
   /** 仅用于恢复任务的引用标识，不包含对象存储路径。 */

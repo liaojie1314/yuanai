@@ -227,6 +227,60 @@ class TestMediaGenerationTasks:
         assert response.status_code == 422
         assert response.json()["detail"]["code"] == "MEDIA_TASK_INVALID"
 
+    async def test_media_task_honours_requested_model_and_rejects_wrong_kind(
+        self, client: AsyncClient, auth_headers: dict[str, str]
+    ) -> None:
+        """调用方可显式选择同类媒体模型，跨类或未注册模型必须被拒绝。"""
+        conversation_id = await _create_conversation(client, auth_headers)
+
+        for media_type, model in (
+            ("image", "agnes-image-2.5-flash"),
+            ("video", "agnes-video-2.5-flash"),
+        ):
+            selected = await client.post(
+                "/api/v1/media/tasks",
+                headers=auth_headers,
+                json={
+                    "conversationId": conversation_id,
+                    "type": media_type,
+                    "prompt": "测试提示词",
+                    "model": model,
+                },
+            )
+            assert selected.status_code == 201, selected.text
+            assert selected.json()["model"] == model
+
+        default_task = await client.post(
+            "/api/v1/media/tasks",
+            headers=auth_headers,
+            json={"conversationId": conversation_id, "type": "image", "prompt": "测试提示词"},
+        )
+        assert default_task.status_code == 201, default_task.text
+        assert default_task.json()["model"] == "agnes-image-2.1-flash"
+
+        for media_type, model in (
+            # 视频模型不能用于图片任务，反之亦然
+            ("image", "agnes-video-2.5-flash"),
+            ("video", "agnes-image-2.5-flash"),
+            # 聊天模型与未注册模型都不是媒体模型
+            ("image", "agnes-3.0-flash"),
+            ("video", "not-a-model"),
+            # 音乐模型由是否填写歌词决定，不接受显式指定
+            ("music", "musicgen-small-local"),
+        ):
+            rejected = await client.post(
+                "/api/v1/media/tasks",
+                headers=auth_headers,
+                json={
+                    "conversationId": conversation_id,
+                    "type": media_type,
+                    "prompt": "测试提示词",
+                    "model": model,
+                },
+            )
+            assert rejected.status_code == 422, rejected.text
+            assert rejected.json()["detail"]["code"] == "MEDIA_TASK_INVALID"
+
     async def test_list_and_cancel_owned_queued_task(
         self, client: AsyncClient, auth_headers: dict[str, str]
     ) -> None:

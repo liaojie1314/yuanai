@@ -26,6 +26,8 @@ class CreateMediaGenerationRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4_000)
     options: dict[str, str | int] = Field(default_factory=dict)
     source_file_ids: list[uuid.UUID] = Field(default_factory=list, max_length=4)
+    # 省略时沿用服务端为该任务类型选定的默认模型，音乐任务不接受显式模型。
+    model: str | None = Field(default=None, max_length=128)
 
     @field_validator("prompt")
     @classmethod

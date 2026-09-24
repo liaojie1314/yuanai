@@ -31,6 +31,7 @@ from app.models.message import Message, MessageRole
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
     AGNES_VIDEO_FLASH_MODEL,
+    PROVIDER_CONFIG,
     AgnesVideoValidationError,
     MediaLyricsGenerationError,
     MediaLyricsProviderUnavailableError,
@@ -86,6 +87,11 @@ _MEDIA_EXTENSIONS = {
     "audio/mpeg": "mp3",
 }
 _VIDEO_POSTER_MIME_TYPE = "image/jpeg"
+# 只有这两类任务允许调用方显式指定模型，音乐模型由是否填写歌词决定。
+_SELECTABLE_MODEL_KINDS: dict[MediaGenerationType, str] = {
+    MediaGenerationType.image: "image",
+    MediaGenerationType.video: "video",
+}
 
 
 class MediaGenerationConversationNotFoundError(LookupError):
@@ -108,8 +114,20 @@ class MediaGenerationOutputError(RuntimeError):
     """provider 返回的结果无法安全复制到 YuanAI 对象存储。"""
 
 
-def _task_model(kind: MediaGenerationType, options: Mapping[str, object] | None = None) -> str:
-    """返回只允许由专用任务 API 调用的媒体模型 ID。"""
+def _task_model(
+    kind: MediaGenerationType,
+    options: Mapping[str, object] | None = None,
+    requested_model: str | None = None,
+) -> str:
+    """返回媒体任务使用的模型 ID，调用方可显式指定同类的已注册媒体模型。"""
+    if requested_model is not None:
+        expected_kind = _SELECTABLE_MODEL_KINDS.get(kind)
+        if (
+            expected_kind is None
+            or PROVIDER_CONFIG.get(requested_model, {}).get("kind") != expected_kind
+        ):
+            raise MediaGenerationValidationError("生成模型不受支持")
+        return requested_model
     if kind is MediaGenerationType.image:
         return "agnes-image-2.1-flash"
     if kind is MediaGenerationType.music:
@@ -297,6 +315,7 @@ async def create_media_task(
     """为用户拥有的会话原子创建 assistant 消息和排队媒体任务。"""
     conversation = await _owned_conversation(db, user_id, conversation_id)
     options = _normalized_options(request)
+    model = _task_model(request.type, options, request.model)
     source_file_ids = await _validate_source_files(db, user_id, request.source_file_ids)
     now = datetime.now(UTC)
     user_message = Message(
@@ -320,7 +339,7 @@ async def create_media_task(
         conv_id=conversation.id,
         role=MessageRole.assistant,
         content=_placeholder_content(request.type),
-        model=_task_model(request.type, options),
+        model=model,
         # 与用户提问明确错开，保证所有客户端都把任务卡渲染为该轮回复。
         created_at=now + timedelta(microseconds=1),
     )
@@ -333,7 +352,7 @@ async def create_media_task(
         message_id=assistant_message.id,
         source_message_id=user_message.id,
         kind=request.type,
-        model=_task_model(request.type, options),
+        model=model,
         prompt=request.prompt,
         request_options=cast(dict[str, object], options),
         source_file_ids=source_file_ids,
