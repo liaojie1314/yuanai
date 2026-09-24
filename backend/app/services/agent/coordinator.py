@@ -25,12 +25,7 @@ from app.models.agent_run import (
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
-from app.models.tool_runtime import (
-    ExecutionNode,
-    ExecutionNodeStatus,
-    ToolExecution,
-    ToolExecutionStatus,
-)
+from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
 from app.schemas.knowledge import KnowledgeCitation
 from app.schemas.memory import MemoryContextItem
 from app.services import ai_service
@@ -60,7 +55,11 @@ from app.services.memory_retrieval import (
     to_context_items,
 )
 from app.services.secret_store import TenantSecretStore
-from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
+from app.services.tool_runtime_service import (
+    ToolRuntimeError,
+    ToolRuntimeService,
+    select_fresh_node,
+)
 from app.tools.contracts import (
     ToolContext,
     ToolError,
@@ -362,8 +361,8 @@ class AgentCoordinator:
                         if execution is None:
                             desktop_node_id: uuid.UUID | None = None
                             if execution_location == "desktop":
-                                desktop_node = await self._select_desktop_node(
-                                    run.user_id, call.name, db
+                                desktop_node = await select_fresh_node(
+                                    user_id=run.user_id, tool_name=call.name, db=db
                                 )
                                 if desktop_node is None:
                                     return self._failure(
@@ -723,25 +722,6 @@ class AgentCoordinator:
         if isinstance(cancellation, asyncio.Event):
             return cancellation.is_set()
         return await cancellation()
-
-    @staticmethod
-    async def _select_desktop_node(
-        user_id: uuid.UUID, tool_name: str, db: AsyncSession
-    ) -> ExecutionNode | None:
-        """选择允许该工具的在线桌面节点；无匹配节点时返回 None。"""
-
-        nodes = await db.scalars(
-            select(ExecutionNode).where(
-                ExecutionNode.user_id == user_id,
-                ExecutionNode.status == ExecutionNodeStatus.online,
-            )
-        )
-        for node in nodes:
-            policy = node.policy if isinstance(node.policy, dict) else {}
-            allowed_tools = policy.get("allowed_tools")
-            if isinstance(allowed_tools, list) and tool_name in allowed_tools:
-                return node
-        return None
 
     async def _await_desktop_execution(
         self, execution: ToolExecution, *, timeout_seconds: float, db: AsyncSession

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
@@ -9,18 +10,20 @@ import hmac
 import json
 import re
 import secrets
+import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import cast
+from typing import Literal, cast
 
 import httpx
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import JWTError, jwt
-from sqlalchemy import or_, select, update
+from sqlalchemy import ColumnElement, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -2156,3 +2159,121 @@ async def set_node_online(node: ExecutionNode, db: AsyncSession) -> None:
     node.status = ExecutionNodeStatus.online
     node.last_seen_at = datetime.now(UTC)
     await db.flush()
+
+
+def node_is_fresh(now: datetime) -> ColumnElement[bool]:
+    """构造「心跳未过期」的 SQL 条件。
+
+    ``ExecutionNode.status`` 只会被写成 online，没有任何代码让它回落，
+    因此单看 status 会把已关闭的桌面端当成在线节点。
+    """
+
+    threshold = now - timedelta(seconds=settings.execution_node_heartbeat_stale_seconds)
+    return and_(
+        ExecutionNode.status == ExecutionNodeStatus.online,
+        ExecutionNode.last_seen_at.is_not(None),
+        ExecutionNode.last_seen_at >= threshold,
+    )
+
+
+async def select_fresh_node(
+    *,
+    user_id: uuid.UUID,
+    tool_name: str,
+    db: AsyncSession,
+    now: datetime | None = None,
+) -> ExecutionNode | None:
+    """选出当前用户下心跳新鲜、且策略允许该工具的节点。
+
+    多节点时取心跳最新的一个，避免原先「数据库返回顺序」带来的不确定选择。
+    """
+
+    current_time = now or datetime.now(UTC)
+    nodes = await db.scalars(
+        select(ExecutionNode)
+        .where(ExecutionNode.user_id == user_id, node_is_fresh(current_time))
+        .order_by(ExecutionNode.last_seen_at.desc())
+    )
+    for node in nodes:
+        allowed = _string_list(node.policy.get("allowed_tools")) if node.policy else []
+        if tool_name in allowed and tool_name in (node.capabilities or []):
+            return node
+    return None
+
+
+@dataclass(frozen=True)
+class NodeJobOutcome:
+    """一次节点作业的归一化结果。"""
+
+    status: Literal["succeeded", "unavailable", "timeout", "failed"]
+    data: dict[str, object] | None = None
+    error_code: str | None = None
+
+
+NODE_JOB_POLL_INTERVAL_SECONDS = 0.5
+
+
+async def run_node_job(
+    *,
+    user_id: uuid.UUID,
+    tool_name: str,
+    arguments: dict[str, object],
+    db: AsyncSession,
+    timeout_seconds: float,
+    now: datetime | None = None,
+) -> NodeJobOutcome:
+    """向用户的在线节点派发一个作业并等待终态。
+
+    没有新鲜节点时立刻返回 ``unavailable``，不排队也不空等，
+    这样调用方可以直接给出「本地功能暂不可用」而不是让用户等满超时。
+    """
+
+    node = await select_fresh_node(user_id=user_id, tool_name=tool_name, db=db, now=now)
+    if node is None:
+        return NodeJobOutcome(status="unavailable")
+    service = ToolRuntimeService()
+    try:
+        execution = await service.create_execution(
+            user_id=user_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            execution_location="desktop",
+            db=db,
+            node_id=node.id,
+        )
+    except ToolRuntimeError as error:
+        # 登记失败（工具未注册、参数不合法、节点刚被撤销）与节点执行失败对调用方等价。
+        return NodeJobOutcome(status="failed", error_code=str(error))
+    # 执行记录由本会话写入，必须先提交，节点网关扫描才能看见并投递。
+    await db.commit()
+    deadline = time.monotonic() + max(1.0, timeout_seconds)
+    while time.monotonic() < deadline:
+        await db.refresh(execution)
+        if execution.status is ToolExecutionStatus.succeeded:
+            payload = execution.result_json or {}
+            data = payload.get("data") if isinstance(payload, dict) else None
+            return NodeJobOutcome(status="succeeded", data=data if isinstance(data, dict) else None)
+        if execution.status in {ToolExecutionStatus.failed, ToolExecutionStatus.cancelled}:
+            return NodeJobOutcome(status="failed", error_code=execution.error_code)
+        await asyncio.sleep(NODE_JOB_POLL_INTERVAL_SECONDS)
+    await service.fail_execution(execution, code="TOOL_TIMEOUT", message="执行节点作业超时", db=db)
+    await db.commit()
+    return NodeJobOutcome(status="timeout", error_code="TOOL_TIMEOUT")
+
+
+async def sweep_stale_nodes(*, now: datetime, db: AsyncSession) -> int:
+    """把心跳过期的 online 节点置为 offline，返回本轮变更条数。"""
+
+    threshold = now - timedelta(seconds=settings.execution_node_heartbeat_stale_seconds)
+    result = await db.execute(
+        update(ExecutionNode)
+        .where(
+            ExecutionNode.status == ExecutionNodeStatus.online,
+            or_(
+                ExecutionNode.last_seen_at.is_(None),
+                ExecutionNode.last_seen_at < threshold,
+            ),
+        )
+        .values(status=ExecutionNodeStatus.offline)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)

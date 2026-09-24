@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     execution_node_protocol_version: str = "1"
     execution_node_min_protocol_version: str = "1"
     execution_node_encryption_key: str = ""
+    # 节点只会被写成 online，从不自动回落；心跳超过该阈值即视为离线。
+    # WebSocket 循环每 5 秒心跳一次，60 秒容得下十余次丢包才判定节点消失。
+    execution_node_heartbeat_stale_seconds: int = 60
 
     # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
     search_provider: SearchProviderName = "auto"
