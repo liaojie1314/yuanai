@@ -385,6 +385,7 @@ def test_public_catalog_only_offers_current_models(monkeypatch: pytest.MonkeyPat
         "agnes-2.5-flash",
         "agnes-image-2.5-flash",
         "agnes-image-2.1-flash",
+        "agnes-video-2.5-flash",
         "agnes-video-v2.0",
     ]
     assert all(model["id"] not in {"gpt-4o", "claude-3-5-sonnet-20241022"} for model in models)

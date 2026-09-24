@@ -30,11 +30,14 @@ from app.models.media_generation_task import (
 from app.models.message import Message, MessageRole
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
+    AGNES_VIDEO_FLASH_MODEL,
+    AgnesVideoValidationError,
     MediaLyricsGenerationError,
     MediaLyricsProviderUnavailableError,
     MediaProviderError,
     MediaProviderUnavailableError,
     create_agnes_video,
+    create_agnes_video_flash,
     generate_ace_step_music,
     generate_agnes_image,
     generate_elevenlabs_music,
@@ -205,6 +208,15 @@ def _video_provider_options(task: MediaGenerationTask) -> tuple[int, int, int, i
     except KeyError as error:
         raise MediaGenerationValidationError("任务参数无效") from error
     return width, height, num_frames, 24
+
+
+def _video_flash_provider_options(task: MediaGenerationTask) -> tuple[str, str, str]:
+    """将受限的显示规格转换为 Agnes Video 2.5 Flash 的时长、尺寸与画面比例。"""
+    return (
+        str(_option_int(task, "durationSeconds")),
+        _option_string(task, "resolution").upper(),
+        _option_string(task, "aspectRatio"),
+    )
 
 
 async def _owned_conversation(
@@ -888,17 +900,34 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                 return
 
             if task.provider_video_id is None:
-                width, height, num_frames, frame_rate = _video_provider_options(task)
-                snapshot = await create_agnes_video(
-                    task.prompt,
-                    width=width,
-                    height=height,
-                    num_frames=num_frames,
-                    frame_rate=frame_rate,
-                    image_urls=await _source_image_urls(task, db),
-                )
+                image_urls = await _source_image_urls(task, db)
+                if task.model == AGNES_VIDEO_FLASH_MODEL:
+                    seconds, size, aspect_ratio = _video_flash_provider_options(task)
+                    snapshot = await create_agnes_video_flash(
+                        task.prompt,
+                        seconds=seconds,
+                        mode="keyframe" if image_urls else "text",
+                        size=size,
+                        aspect_ratio=aspect_ratio,
+                        image_urls=image_urls,
+                    )
+                else:
+                    width, height, num_frames, frame_rate = _video_provider_options(task)
+                    snapshot = await create_agnes_video(
+                        task.prompt,
+                        width=width,
+                        height=height,
+                        num_frames=num_frames,
+                        frame_rate=frame_rate,
+                        image_urls=image_urls,
+                    )
             else:
-                snapshot = await get_agnes_video(task.provider_video_id)
+                snapshot = await get_agnes_video(
+                    task.provider_video_id,
+                    model_name=(
+                        AGNES_VIDEO_FLASH_MODEL if task.model == AGNES_VIDEO_FLASH_MODEL else None
+                    ),
+                )
 
             if snapshot.provider_task_id is not None:
                 task.provider_task_id = snapshot.provider_task_id
@@ -944,7 +973,8 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                 await _fail_task(db, task, "MEDIA_PROVIDER_CREATE_FAILED")
         except MediaGenerationOutputError:
             await _fail_task(db, task, "MEDIA_OUTPUT_INVALID")
-        except MediaGenerationValidationError:
+        except (MediaGenerationValidationError, AgnesVideoValidationError):
+            # Flash 的本地校验在任何计费动作之前拦下，与参数非法同样处理
             await _fail_task(db, task, "MEDIA_TASK_INVALID")
 
 

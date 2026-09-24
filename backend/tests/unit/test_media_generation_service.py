@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.services.ai_service as ai_service
 import app.services.media_generation_service as media_service
 from app.models.conversation import Conversation
 from app.models.media_generation_task import (
@@ -23,6 +24,7 @@ from app.models.user import User
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
     AgnesImageResult,
+    AgnesVideoSnapshot,
     MediaLyricsGenerationError,
     MediaProviderError,
     MediaProviderUnavailableError,
@@ -491,3 +493,151 @@ async def test_expired_interrupted_image_fails_after_recovery_limit(
     assert failed.status is MediaGenerationStatus.failed
     assert failed.error_code == "MEDIA_WORKER_RECOVERY_EXHAUSTED"
     assert await _message_content(db, failed) == "图片生成失败"
+
+
+def test_video_flash_rejects_a_size_other_than_720p() -> None:
+    """Flash 只支持 720P，非法尺寸必须在本地拦下，不发请求也不计费。"""
+
+    with pytest.raises(ai_service.AgnesVideoValidationError, match="720P"):
+        ai_service.build_video_flash_body(
+            prompt="一只猫", seconds="5", mode="text", size="1080P", aspect_ratio="16:9"
+        )
+
+
+def test_video_flash_rejects_more_than_five_reference_images() -> None:
+    """参考图上限 5 张。"""
+
+    with pytest.raises(ai_service.AgnesVideoValidationError):
+        ai_service.build_video_flash_body(
+            prompt="一只猫",
+            seconds="5",
+            mode="reference",
+            size="720P",
+            aspect_ratio="16:9",
+            image_urls=tuple(f"https://example.invalid/{i}.png" for i in range(6)),
+        )
+
+
+def test_video_flash_rejects_more_than_three_reference_audios() -> None:
+    """参考音频上限 3 条。"""
+
+    with pytest.raises(ai_service.AgnesVideoValidationError):
+        ai_service.build_video_flash_body(
+            prompt="一只猫",
+            seconds="5",
+            mode="reference",
+            size="720P",
+            aspect_ratio="16:9",
+            audio_urls=("a", "b", "c", "d"),
+        )
+
+
+def test_video_flash_body_carries_the_flash_schema() -> None:
+    """请求体使用 seconds/mode/size/aspect_ratio，而不是 V2.0 的宽高帧率。"""
+
+    body = ai_service.build_video_flash_body(
+        prompt="一只猫", seconds="5", mode="text", size="720P", aspect_ratio="16:9"
+    )
+    assert body["model"] == "agnes-video-2.5-flash"
+    assert body["seconds"] == "5"
+    assert "width" not in body and "num_frames" not in body
+
+
+async def test_get_agnes_video_sends_model_name_for_flash_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """非 text 模式的 Flash 任务必须带 model_name 才能查到结果。"""
+
+    captured: dict[str, object] = {}
+
+    async def _request(method: str, path: str, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"video_id": "v1", "status": "completed"}
+
+    monkeypatch.setattr(ai_service, "_agnes_video_request", _request)
+    await ai_service.get_agnes_video("v1", model_name="agnes-video-2.5-flash")
+    assert captured["params"] == {"video_id": "v1", "model_name": "agnes-video-2.5-flash"}
+
+
+async def test_get_agnes_video_omits_model_name_for_v2_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """V2.0 的查询参数必须保持原样，不能被 Flash 的新参数污染。"""
+
+    captured: dict[str, object] = {}
+
+    async def _request(method: str, path: str, **kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        return {"video_id": "v1", "status": "processing"}
+
+    monkeypatch.setattr(ai_service, "_agnes_video_request", _request)
+    await ai_service.get_agnes_video("v1")
+    assert captured["params"] == {"video_id": "v1"}
+
+
+async def test_video_flash_worker_uses_the_flash_request_and_model_name(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """任务选中 Flash 模型时，worker 必须走 Flash 建任务与带 model_name 的查询。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.video)
+    task.model = media_service.AGNES_VIDEO_FLASH_MODEL
+    await db.commit()
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+    create_flash = AsyncMock(
+        return_value=AgnesVideoSnapshot(
+            provider_task_id=None,
+            video_id="flash-1",
+            status="running",
+            progress=10,
+            result_url=None,
+            width=None,
+            height=None,
+            duration_seconds=None,
+        )
+    )
+    create_v2 = AsyncMock()
+    get_video = AsyncMock(
+        return_value=AgnesVideoSnapshot(
+            provider_task_id=None,
+            video_id="flash-1",
+            status="running",
+            progress=40,
+            result_url=None,
+            width=None,
+            height=None,
+            duration_seconds=None,
+        )
+    )
+    monkeypatch.setattr(media_service, "create_agnes_video_flash", create_flash)
+    monkeypatch.setattr(media_service, "create_agnes_video", create_v2)
+    monkeypatch.setattr(media_service, "get_agnes_video", get_video)
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+    await media_service._process_claimed_task(task.id)
+
+    create_v2.assert_not_awaited()
+    assert create_flash.await_args is not None
+    assert create_flash.await_args.kwargs["seconds"] == "5"
+    assert create_flash.await_args.kwargs["size"] == "720P"
+    assert create_flash.await_args.kwargs["mode"] == "text"
+    assert get_video.await_args is not None
+    assert get_video.await_args.kwargs["model_name"] == media_service.AGNES_VIDEO_FLASH_MODEL
+
+
+async def test_video_flash_worker_fails_the_task_on_local_validation(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flash 的本地校验失败必须落为参数非法，而不是逃出 worker。"""
+    task = await _create_task(db, test_user, kind=MediaGenerationType.video)
+    task.model = media_service.AGNES_VIDEO_FLASH_MODEL
+    task.request_options = {**task.request_options, "resolution": "1080p"}
+    await db.commit()
+    monkeypatch.setattr(media_service, "AsyncSessionLocal", TestSessionLocal)
+
+    assert await media_service._claim_next_task() == task.id
+    await media_service._process_claimed_task(task.id)
+
+    failed = await _load_task(db, task.id)
+    assert failed.status is MediaGenerationStatus.failed
+    assert failed.error_code == "MEDIA_TASK_INVALID"

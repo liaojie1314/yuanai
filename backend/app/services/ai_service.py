@@ -45,6 +45,11 @@ _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
 ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
 AGNES_VIDEO_API_BASE_URL = "https://apihub.agnes-ai.com/v1"
+AGNES_VIDEO_FLASH_MODEL = "agnes-video-2.5-flash"
+AGNES_VIDEO_FLASH_SIZE = "720P"
+AGNES_VIDEO_FLASH_MODES = frozenset({"text", "keyframe", "reference"})
+AGNES_VIDEO_FLASH_MAX_IMAGES = 5
+AGNES_VIDEO_FLASH_MAX_AUDIOS = 3
 ELEVENLABS_MUSIC_API_BASE_URL = "https://api.elevenlabs.io"
 _LOCAL_MUSIC_MODEL_LOCK = asyncio.Lock()
 _LOCAL_MUSIC_PROCESSOR: object | None = None
@@ -171,6 +176,11 @@ PROVIDER_CONFIG: dict[str, dict[str, str]] = {
         "base_url": "https://apihub.agnes-ai.com/v1",
         "kind": "image",
     },
+    "agnes-video-2.5-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "video",
+    },
     "agnes-video-v2.0": {
         "provider": "agnes",
         "base_url": "https://apihub.agnes-ai.com/v1",
@@ -245,6 +255,10 @@ class MediaLyricsGenerationError(MediaProviderError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class AgnesVideoValidationError(ValueError):
+    """Flash 视频请求在本地即判定非法，不得发往供应商触发排队与计费。"""
 
 
 @dataclass(frozen=True)
@@ -542,6 +556,17 @@ AVAILABLE_MODELS = [
         "context_length": 0,
         "is_default": False,
         "capability": "image_generation",
+    },
+    {
+        "id": "agnes-video-2.5-flash",
+        "name": "Agnes Video 2.5 Flash",
+        "provider": "agnes",
+        "description": "异步文本生成视频，支持关键帧与参考素材",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "video_generation",
     },
     {
         "id": "agnes-video-v2.0",
@@ -1210,6 +1235,83 @@ def _video_snapshot(payload: object, fallback_video_id: str | None = None) -> Ag
     )
 
 
+def build_video_flash_body(
+    *,
+    prompt: str,
+    seconds: str,
+    mode: str,
+    size: str,
+    aspect_ratio: str,
+    image_urls: tuple[str, ...] = (),
+    audio_urls: tuple[str, ...] = (),
+) -> dict[str, object]:
+    """构造 Agnes Video 2.5 Flash 请求体，并在发出请求前校验全部约束。
+
+    供应商承诺「校验先于建任务、排队、计费与推理」，因此非法组合必须在本地拒绝，
+    不能靠上游报错，否则用户会为一次注定失败的请求付费。
+
+    Args:
+        prompt: 生成提示词。
+        seconds: Flash 使用字符串时长，而非 V2.0 的帧数。
+        mode: ``text`` / ``keyframe`` / ``reference`` 三种显式模式之一。
+        size: 目前仅支持 ``720P``。
+        aspect_ratio: 画面比例。
+        image_urls: 参考图或关键帧，最多 5 张。
+        audio_urls: 参考音频，最多 3 条。
+
+    Raises:
+        AgnesVideoValidationError: 任一约束不满足。
+    """
+    if size != AGNES_VIDEO_FLASH_SIZE:
+        raise AgnesVideoValidationError(f"Agnes Video 2.5 Flash 仅支持 {AGNES_VIDEO_FLASH_SIZE}")
+    if mode not in AGNES_VIDEO_FLASH_MODES:
+        raise AgnesVideoValidationError("不支持的 Flash 生成模式")
+    if len(image_urls) > AGNES_VIDEO_FLASH_MAX_IMAGES:
+        raise AgnesVideoValidationError(f"参考图片最多 {AGNES_VIDEO_FLASH_MAX_IMAGES} 张")
+    if len(audio_urls) > AGNES_VIDEO_FLASH_MAX_AUDIOS:
+        raise AgnesVideoValidationError(f"参考音频最多 {AGNES_VIDEO_FLASH_MAX_AUDIOS} 条")
+    body: dict[str, object] = {
+        "model": AGNES_VIDEO_FLASH_MODEL,
+        "prompt": prompt,
+        "seconds": seconds,
+        "mode": mode,
+        "size": size,
+        "aspect_ratio": aspect_ratio,
+    }
+    if image_urls:
+        body["image"] = list(image_urls)
+    if audio_urls:
+        body["audio"] = list(audio_urls)
+    return body
+
+
+async def create_agnes_video_flash(
+    prompt: str,
+    *,
+    seconds: str,
+    mode: str,
+    size: str,
+    aspect_ratio: str,
+    image_urls: tuple[str, ...] = (),
+    audio_urls: tuple[str, ...] = (),
+) -> AgnesVideoSnapshot:
+    """创建 Agnes Video 2.5 Flash 异步任务并返回初始标准化快照。"""
+    body = build_video_flash_body(
+        prompt=prompt,
+        seconds=seconds,
+        mode=mode,
+        size=size,
+        aspect_ratio=aspect_ratio,
+        image_urls=image_urls,
+        audio_urls=audio_urls,
+    )
+    payload = await _agnes_video_request("POST", "/videos", json_body=body)
+    snapshot = _video_snapshot(payload)
+    if snapshot.video_id is None:
+        raise MediaProviderError()
+    return snapshot
+
+
 async def create_agnes_video(
     prompt: str,
     *,
@@ -1243,9 +1345,18 @@ async def create_agnes_video(
     return snapshot
 
 
-async def get_agnes_video(video_id: str) -> AgnesVideoSnapshot:
-    """查询一个 Agnes 视频任务并将结果归一化。"""
-    payload = await _agnes_video_request("GET", "/agnesapi", params={"video_id": video_id})
+async def get_agnes_video(video_id: str, *, model_name: str | None = None) -> AgnesVideoSnapshot:
+    """查询一个 Agnes 视频任务并将结果归一化。
+
+    Args:
+        video_id: 创建任务时供应商返回的视频 ID。
+        model_name: Agnes Video 2.5 Flash 查询结果时必须回传的模型名；
+            V2.0 任务不带该参数。
+    """
+    params = {"video_id": video_id}
+    if model_name is not None:
+        params["model_name"] = model_name
+    payload = await _agnes_video_request("GET", "/agnesapi", params=params)
     return _video_snapshot(payload, fallback_video_id=video_id)
 
 
