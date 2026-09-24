@@ -592,7 +592,6 @@ export interface AgentStep {
   kind: string
   status: string
   inputJson: Record<string, unknown> | null
-  outputJson: Record<string, unknown> | null
   errorCode: string | null
   errorMessage: string | null
   startedAt: string | null

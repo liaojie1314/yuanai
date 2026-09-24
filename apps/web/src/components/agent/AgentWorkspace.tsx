@@ -133,7 +133,7 @@ function Timeline({ steps, events }: { steps: AgentStep[]; events: AgentEvent[] 
           key: step.id,
           title: `步骤 ${step.sequence}: ${step.kind}`,
           status: step.status,
-          detail: step.outputJson ?? step.inputJson ?? step.errorMessage,
+          detail: step.inputJson ?? step.errorMessage,
           time: step.finishedAt ?? step.startedAt,
         }))
       : events.map((event) => ({

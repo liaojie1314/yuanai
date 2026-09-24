@@ -109,7 +109,6 @@ class AgentStepResponse(AgentSchema):
     kind: AgentStepKind
     status: AgentStepStatus
     input_json: dict[str, object] | None
-    output_json: dict[str, object] | None
     error_code: str | None
     error_message: str | None
     started_at: datetime | None
