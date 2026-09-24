@@ -6,7 +6,7 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, Connection, Table, event, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.memory import (
@@ -27,6 +27,18 @@ _TYPE_WEIGHTS: dict[MemoryType, float] = {
     MemoryType.semantic: 1.0,
     MemoryType.episodic: 0.9,
 }
+
+# 关键词臂依赖 pg_trgm 的 word_similarity 排序。迁移会装这个扩展，
+# 但用 Base.metadata.create_all 建库的路径（测试库）拿不到迁移，
+# 所以把扩展挂到建表事件上，两条路径都能用到。
+def _ensure_trgm_extension(target: Table, connection: Connection, **kw: object) -> None:
+    """建 memories 表之前确保 pg_trgm 已安装。"""
+
+    if connection.dialect.name == "postgresql":
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+
+
+event.listen(Memory.__table__, "before_create", _ensure_trgm_extension)
 
 
 def _accessible_filters(
@@ -124,9 +136,14 @@ async def search_active_memories(
         # LIKE 通配符必须转义：查询 "%" 原样拼进 pattern 会命中全部记忆，
         # 并把这些记忆的 last_used_at 全部刷新，等于一次查询污染整个租户的新鲜度。
         escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        # ponytail: simple 配置不切分中文，整句只会得到一个词元；关键词臂必须补子串匹配，
-        # 否则「中文」这类查询永远命中不了「用户偏好中文输出」这类记忆。
-        # 子串匹配走不了 GIN 索引，规模上来后需改用中文分词配置（zhparser/pg_jieba）替换。
+        # simple 配置不切分中文，整句只得到一个词元，中文查询实际全靠 ILIKE 子串匹配，
+        # 而 ts_rank 对中文恒为 0，排序会塌成 updated_at：召回预过滤等于「只留最近更新的，
+        # 其余静默丢弃」。改用 pg_trgm 的 word_similarity 给出真实相关度，
+        # 同一个三元组 GIN 索引也让子串匹配从顺序扫描变成索引扫描。
+        # ponytail: 三元组是字符三连而不是词，两字中文查询（如「中文」）只能靠补白三元组匹配，
+        # 既吃不到索引、相关度也恒为 0，召回仍弱于真正的分词；
+        # 升级路径是换成带中文分词的文本检索配置（zhparser / pg_jieba）。
+        relevance = func.word_similarity(normalized, func.coalesce(Memory.content, ""))
         keyword_rows = await db.execute(
             select(Memory.id)
             .where(
@@ -136,11 +153,7 @@ async def search_active_memories(
                     Memory.content.ilike(f"%{escaped}%", escape="\\"),
                 ),
             )
-            .order_by(
-                func.ts_rank(Memory.search_vector, fts_query).desc(),
-                Memory.updated_at.desc(),
-                Memory.id,
-            )
+            .order_by(relevance.desc(), Memory.updated_at.desc(), Memory.id)
             .limit(recall)
         )
         keyword_ids = [row[0] for row in keyword_rows]
