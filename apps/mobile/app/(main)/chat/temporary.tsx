@@ -76,7 +76,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   const activeModelId = useMemo(() => {
     if (pickedModelId && models.some((m) => m.id === pickedModelId)) return pickedModelId
     const def = models.find((m) => m.isDefault)
-    return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
+    return def?.id ?? models[0]?.id ?? 'agnes-3.0-flash'
   }, [pickedModelId, models])
   const activeModel = useMemo(
     () => models.find((m) => m.id === activeModelId),

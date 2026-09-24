@@ -516,12 +516,11 @@ describe('desktop chat', () => {
     chat.models = []
     render(<App />)
 
-    expect(
-      screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '选择模型：Agnes 3.0 Flash' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' }))
+    await user.click(screen.getByRole('button', { name: '选择模型：Agnes 3.0 Flash' }))
 
+    expect(screen.getByRole('option', { name: '选择 Agnes 3.0 Flash' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Flash-0731' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Pro-0813' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: '选择 Agnes 2.5 Flash' })).toBeInTheDocument()

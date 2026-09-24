@@ -124,7 +124,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
     // 优先复用会话已有 model；其次取标为 isDefault 的模型；再退化到列表首个
     if (conv?.model) return conv.model
     const def = models.find((m) => m.isDefault)
-    return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
+    return def?.id ?? models[0]?.id ?? 'agnes-3.0-flash'
   }, [conv, models])
   const currentModelInfo = useMemo(
     () => models.find((m) => m.id === currentModel),

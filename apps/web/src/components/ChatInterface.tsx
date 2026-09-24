@@ -202,6 +202,18 @@ function OptionGroup<T extends string | number>({
 // ── Static constants ─────────────────────────────────
 const MODELS: Model[] = [
   {
+    id: 'agnes-3.0-flash',
+    name: 'Agnes 3.0 Flash',
+    desc: '512K 上下文，支持推理、工具调用与图像理解',
+    provider: 'Agnes AI',
+    ctx: '512K',
+    color: '#E04F16',
+    letter: 'A',
+    supportsFiles: true,
+    supportsVision: true,
+    gradient: 'linear-gradient(135deg,#C43F0B,#F27328)',
+  },
+  {
     id: 'deepseek-v4-flash',
     name: 'DeepSeek V4 Flash-0731',
     desc: '纯文本聊天，快速响应，高性价比',
