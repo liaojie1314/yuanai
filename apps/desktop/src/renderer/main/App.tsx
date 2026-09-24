@@ -64,7 +64,7 @@ import {
   useLogout,
   useMessages,
   useMediaTasks,
-  useModels,
+  useChatModels,
   useCreateShareLink,
   useRevokeShareLink,
   useShareLink,
@@ -80,7 +80,7 @@ import {
   useChatStore,
   usePrefsStore,
 } from '@yuanai/core/stores'
-import { buildMessagePairs, filterChatModels } from '@yuanai/core/utils'
+import { FALLBACK_CHAT_MODEL, FALLBACK_CHAT_MODEL_ID, buildMessagePairs } from '@yuanai/core/utils'
 import { MediaMusicDurationSeconds, Role } from '@yuanai/types'
 import type { AIModel, Conversation, Message } from '@yuanai/types'
 
@@ -96,50 +96,6 @@ import { MessageList } from './MessageList'
 import { useVoiceInput } from './useVoiceInput'
 import '../shared/i18n'
 
-const FALLBACK_MODEL: AIModel = {
-  id: 'agnes-3.0-flash',
-  name: 'Agnes 3.0 Flash',
-  provider: 'agnes',
-  description: '512K 上下文，支持推理、工具调用与图像理解',
-  supportsVision: true,
-  supportsFiles: true,
-  contextLength: 512_000,
-  isDefault: true,
-}
-
-const DEFAULT_MODELS: AIModel[] = [
-  FALLBACK_MODEL,
-  {
-    id: 'deepseek-v4-flash',
-    name: 'DeepSeek V4 Flash-0731',
-    provider: 'deepseek',
-    description: '纯文本聊天，快速响应，高性价比',
-    supportsVision: false,
-    supportsFiles: false,
-    contextLength: 1_000_000,
-    isDefault: false,
-  },
-  {
-    id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro-0813',
-    provider: 'deepseek',
-    description: '纯文本聊天，中文理解强，旗舰推理',
-    supportsVision: false,
-    supportsFiles: false,
-    contextLength: 1_000_000,
-    isDefault: false,
-  },
-  {
-    id: 'agnes-2.5-flash',
-    name: 'Agnes 2.5 Flash',
-    provider: 'agnes',
-    description: '支持推理、工具调用、多轮对话和图像理解',
-    supportsVision: true,
-    supportsFiles: true,
-    contextLength: 128000,
-    isDefault: false,
-  },
-]
 const IMAGE_SIZES = ['1K', '2K', '3K', '4K'] as const
 const IMAGE_RATIOS = ['1:1', '3:4', '4:3', '16:9', '9:16', '2:3', '3:2', '21:9'] as const
 const VIDEO_RATIOS = ['3:2', '16:9', '9:16', '1:1', '4:3', '3:4'] as const
@@ -1203,7 +1159,11 @@ export function App(): ReactElement {
   const deleteConversation = useDeleteConversation()
   const deleteConversations = useDeleteConversations()
   const updateConversation = useUpdateConversation()
-  const modelsQuery = useModels()
+  const {
+    models: availableModels,
+    isLoading: isModelsLoading,
+    isFallback: isModelsFallback,
+  } = useChatModels()
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
   const webSearchAvailable = webSearchCapability?.enabled === true
@@ -1232,7 +1192,7 @@ export function App(): ReactElement {
   const [videoDuration, setVideoDuration] = useState<(typeof VIDEO_DURATIONS)[number]>(5)
   const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
   const [musicLyrics, setMusicLyrics] = useState('')
-  const [selectedModelId, setSelectedModelId] = useState(FALLBACK_MODEL.id)
+  const [selectedModelId, setSelectedModelId] = useState(FALLBACK_CHAT_MODEL_ID)
   const [draft, setDraft] = useState('')
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([])
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false)
@@ -1310,15 +1270,13 @@ export function App(): ReactElement {
   const conversations = isLoggedIn
     ? (conversationsQuery.data ?? EMPTY_CONVERSATIONS)
     : EMPTY_CONVERSATIONS
-  const availableModels = useMemo(() => {
-    const chatModels = filterChatModels(modelsQuery.data ?? [])
-    return chatModels.length > 0 ? chatModels : DEFAULT_MODELS
-  }, [modelsQuery.data])
   const modelGroups = useMemo(() => groupModelsByProvider(availableModels), [availableModels])
   const selectedModel =
     availableModels.find((model) => model.id === selectedModelId) ??
     availableModels.find((model) => model.isDefault) ??
-    FALLBACK_MODEL
+    FALLBACK_CHAT_MODEL
+  // 目录还在路上时先报加载中，拿不到目录才显示兜底模型的原始 ID
+  const modelTriggerLabel = isModelsLoading ? t('chat.modelsLoading') : selectedModel.name
   const messagesQuery = useMessages(
     isLoggedIn && !isTemporaryConversation ? (activeConversationId ?? '') : ''
   )
@@ -1454,7 +1412,7 @@ export function App(): ReactElement {
 
   useEffect(() => {
     if (availableModels.some((model) => model.id === selectedModelId)) return
-    setSelectedModelId(availableModels[0]?.id ?? FALLBACK_MODEL.id)
+    setSelectedModelId(availableModels[0]?.id ?? FALLBACK_CHAT_MODEL_ID)
   }, [availableModels, selectedModelId])
 
   useEffect(() => {
@@ -2515,7 +2473,7 @@ export function App(): ReactElement {
           <button
             className="desktop-chat__model-trigger"
             type="button"
-            aria-label={t('desktop.chat.selectModel', { name: selectedModel.name })}
+            aria-label={t('desktop.chat.selectModel', { name: modelTriggerLabel })}
             aria-expanded={isModelMenuOpen}
             aria-haspopup="listbox"
             onClick={() => setIsModelMenuOpen((value) => !value)}
@@ -2523,7 +2481,7 @@ export function App(): ReactElement {
             <span className="desktop-chat__model-mark" aria-hidden="true">
               {getModelInitial(selectedModel)}
             </span>
-            <span className="desktop-chat__model-trigger-label">{selectedModel.name}</span>
+            <span className="desktop-chat__model-trigger-label">{modelTriggerLabel}</span>
             <ChevronDown size={15} aria-hidden="true" />
           </button>
           <div className="desktop-chat__header-side desktop-chat__header-side--end">
@@ -2553,6 +2511,9 @@ export function App(): ReactElement {
               role="listbox"
               aria-label={t('desktop.chat.modelSelect')}
             >
+              {isModelsLoading ? (
+                <p className="desktop-chat__model-menu-hint">{t('chat.modelsLoading')}</p>
+              ) : null}
               {modelGroups.map(({ provider, models }) => (
                 <section key={provider} className="desktop-chat__model-menu-group">
                   <h2>{provider}</h2>
@@ -2573,10 +2534,15 @@ export function App(): ReactElement {
                         </span>
                         <span className="desktop-chat__model-menu-copy">
                           <strong>{model.name}</strong>
-                          <small>{model.description || model.provider}</small>
+                          <small>
+                            {model.description ||
+                              (isModelsFallback ? t('chat.modelsFallback') : model.provider)}
+                          </small>
                         </span>
                         <span className="desktop-chat__model-menu-context">
-                          {formatContextLength(model.contextLength)}
+                          {model.contextLength > 0
+                            ? formatContextLength(model.contextLength)
+                            : null}
                         </span>
                         {selected ? <Check size={16} aria-hidden="true" /> : null}
                       </button>
@@ -3138,13 +3104,13 @@ export function App(): ReactElement {
                   <button
                     className="desktop-chat__composer-model"
                     type="button"
-                    aria-label={`切换输入模型：${selectedModel.name}`}
+                    aria-label={`切换输入模型：${modelTriggerLabel}`}
                     aria-expanded={isModelMenuOpen}
                     aria-haspopup="listbox"
                     onClick={() => setIsModelMenuOpen((value) => !value)}
                   >
                     <span aria-hidden="true">{getModelInitial(selectedModel)}</span>
-                    {selectedModel.name}
+                    {modelTriggerLabel}
                     <ChevronDown size={13} aria-hidden="true" />
                   </button>
                 ) : (

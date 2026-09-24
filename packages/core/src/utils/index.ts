@@ -7,7 +7,13 @@ export {
 } from './conversations.js'
 export { buildMessagePairs, clampVersionIdx, type MessagePair } from './messagePairs.js'
 export { stripMarkdown } from './markdown.js'
-export { filterChatModels } from './models.js'
+export {
+  FALLBACK_CHAT_MODEL,
+  FALLBACK_CHAT_MODEL_ID,
+  filterChatModels,
+  resolveChatModels,
+  type ChatModelsState,
+} from './models.js'
 export { formatMsgTime, type FormatMsgTimeOptions } from './time.js'
 export {
   ARTIFACT_MSG_SOURCE,

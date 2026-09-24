@@ -268,6 +268,8 @@
     "toolWaiting": "正在执行工具，请稍候…",
     "toolDuration": "{seconds} 秒",
     "disclaimer": "元AI 可能犯错，请核实重要信息",
+    "modelsLoading": "模型加载中…",
+    "modelsFallback": "暂时取不到模型列表，先用这个默认模型",
     "welcome": {
       "title": "你好，我是元AI",
       "subtitle": "集成多款顶尖 AI 模型，帮你完成任何任务"

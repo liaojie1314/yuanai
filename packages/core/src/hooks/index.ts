@@ -38,6 +38,7 @@ export {
   type CreateMediaTaskInput,
 } from './useMediaGeneration'
 export { useModels } from './useModelsQuery'
+export { useChatModels } from './useChatModels'
 export {
   useShareLink,
   useCreateShareLink,
