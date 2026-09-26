@@ -4,7 +4,9 @@
  * 覆盖：登录 → 设置页启用执行节点（自配对 + Ed25519 登记 + WSS challenge）→
  * 通过 API 下发 browser_open_url 任务 → 本地审批允许 → 节点执行并签名回传 →
  * 服务端持久化为 succeeded 且节点 ACK；以及审批待决时强制杀死进程后，
- * 依赖服务端投递过期重投与节点身份持久化在重启后恢复同一任务且恰好完成一次。
+ * 依赖服务端投递过期重投与节点身份持久化在重启后恢复同一任务且恰好完成一次；
+ * 还覆盖只存节点的本地记忆：节点拒绝写入时云端不留孤儿元数据，节点在线时检索取回
+ * 只存在于本机的正文，节点不告而别后检索明确报告本地不可用而不是空等满作业超时。
  * 运行前提：真实后端运行在 YUANAI_API_URL（默认 http://localhost:8000/api/v1），
  * 且后端允许创建测试账号。
  */
@@ -17,6 +19,14 @@ import { _electron } from '@playwright/test'
 const API_BASE_URL = process.env['YUANAI_API_URL'] ?? 'http://localhost:8000/api/v1'
 const E2E_EMAIL = process.env['YUANAI_E2E_EMAIL']
 const E2E_PASSWORD = process.env['YUANAI_E2E_PASSWORD']
+/**
+ * 节点不可用时检索必须立刻返回的耗时上限。
+ * 后端 memory_node.MEMORY_NODE_TIMEOUT_SECONDS 为 15 秒：节点已关闭却仍被当作在线时，
+ * 每次检索都要空等满这个超时，所以预算取它的三分之一即可把两种行为区分开。
+ */
+const LOCAL_UNAVAILABLE_BUDGET_MS = 5_000
+/** 心跳过期阈值默认 60 秒，心跳间隔 25 秒；留足两者之和再加一次轮询的余量。 */
+const NODE_STALE_TIMEOUT_MS = 150_000
 
 interface TestUser {
   email: string
@@ -136,6 +146,46 @@ async function ensureLogin(app: ElectronApplication, user: TestUser): Promise<vo
   if (!needsLogin) return
   await login(app, user)
   await firstWindow.close()
+}
+
+/** 记忆检索接口返回中本用例断言到的字段。 */
+interface MemorySearchOutcome {
+  results: Array<{ id: string; content: string }>
+  localUnavailable: boolean
+}
+
+async function searchMemories(
+  token: string,
+  assistantId: string,
+  query: string
+): Promise<MemorySearchOutcome> {
+  const payload = await api(
+    token,
+    'GET',
+    `/memories/search?assistantId=${assistantId}&query=${encodeURIComponent(query)}&limit=8`
+  )
+  return payload as unknown as MemorySearchOutcome
+}
+
+/** 发起一次只存节点的记忆创建；失败状态由调用方断言，故不走会抛错的 api()。 */
+function postLocalMemory(
+  token: string,
+  assistantId: string,
+  content: string,
+  sourceId: string
+): Promise<Response> {
+  return fetch(`${API_BASE_URL}/memories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
+      assistantId,
+      memoryType: 'semantic',
+      content,
+      sourceType: 'desktop-e2e',
+      sourceId,
+      storageLocation: 'local_node',
+    }),
+  })
 }
 
 async function executionSnapshot(
@@ -506,6 +556,120 @@ test.describe('desktop execution node', () => {
       await expect(settings.getByText('还没有授权本机资源')).toHaveCount(0)
     } finally {
       await app.close()
+      await api(user.token, 'DELETE', '/auth/me')
+      rmSync(userDataDir, { recursive: true, force: true })
+    }
+  })
+
+  test('serves local memories from the node and reports them unavailable once it vanishes', async () => {
+    test.setTimeout(420_000)
+    const user = await createTestUser()
+    const { app, userDataDir } = await launchApp()
+    try {
+      await app.firstWindow()
+      const storageState = await app.evaluate(({ safeStorage }) => ({
+        available: safeStorage.isEncryptionAvailable(),
+        backend: safeStorage.getSelectedStorageBackend(),
+      }))
+      test.skip(
+        !storageState.available ||
+          (process.platform === 'linux' && storageState.backend === 'basic_text'),
+        '需要可用且已解锁的桌面钥匙串（safeStorage）才能运行'
+      )
+      const loginWindow = await login(app, user)
+      await loginWindow.close()
+      const settings = await openSettings(app)
+      await settings.getByRole('tab', { name: '桌面设置' }).click()
+      // 能力集是登记那一刻写死的，配对必须在本用例内新做一次，旧节点不会声明 memory.*。
+      const nodeName = `E2E 记忆节点 ${Date.now()}`
+      await settings.getByLabel('节点名称').fill(nodeName)
+      await settings.getByRole('button', { name: '启用执行节点' }).click()
+      await expect(settings.getByRole('heading', { name: '执行节点' })).toBeVisible()
+      await expect(settings.getByText('在线')).toBeVisible({ timeout: 30_000 })
+
+      const nodes = (await api(user.token, 'GET', '/execution-nodes')) as unknown as Array<{
+        id: string
+        name: string
+        capabilities: string[]
+      }>
+      const node = nodes.find((candidate) => candidate.name === nodeName)
+      if (!node) throw new Error('paired node not registered on the backend')
+      expect(node.capabilities).toEqual(
+        expect.arrayContaining(['memory.search', 'memory.write', 'memory.delete'])
+      )
+      const assistant = (await api(user.token, 'POST', '/agent/assistants', {
+        name: 'E2E 记忆助理',
+        defaultModel: 'agnes-3.0-flash',
+      })) as { id: string }
+      const marker = `localmemory${Date.now().toString(36)}`
+      const localContent = `本地专属记忆正文 ${marker}`
+
+      // 一、节点拒绝写入：云端必须整次失败，不能留下一条没有正文的孤儿元数据行。
+      const refused = postLocalMemory(user.token, assistant.id, localContent, `${marker}-refused`)
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await settings.getByRole('button', { name: '拒绝', exact: true }).click()
+      const refusedResponse = await refused
+      expect(refusedResponse.status).toBe(503)
+      expect(await refusedResponse.json()).toEqual({ detail: 'LOCAL_MEMORY_NODE_UNAVAILABLE' })
+      const listed = (await api(user.token, 'GET', '/memories')) as unknown as {
+        items: unknown[]
+      }
+      expect(listed.items).toEqual([])
+      await expect(settings.getByText('待确认任务')).toHaveCount(0, { timeout: 30_000 })
+
+      // 二、节点接受写入：正文只落在本机，云端行的 content 必须为空。
+      const accepted = postLocalMemory(user.token, assistant.id, localContent, `${marker}-stored`)
+      await expect(settings.getByText('待确认任务')).toBeVisible({ timeout: 30_000 })
+      await settings.getByRole('button', { name: '允许本次执行' }).click()
+      const acceptedResponse = await accepted
+      expect(acceptedResponse.status).toBe(201)
+      const memory = (await acceptedResponse.json()) as {
+        id: string
+        content: string | null
+        nodeId: string
+        storageLocation: string
+      }
+      expect(memory).toEqual(
+        expect.objectContaining({
+          content: null,
+          nodeId: node.id,
+          storageLocation: 'local_node',
+        })
+      )
+      await api(user.token, 'PATCH', `/memories/${memory.id}`, { status: 'active' })
+
+      // 三、节点在线：检索经由节点取回只存在于本机的正文。
+      const online = await searchMemories(user.token, assistant.id, marker)
+      expect(online.localUnavailable).toBe(false)
+      expect(online.results).toEqual([
+        expect.objectContaining({ id: memory.id, content: localContent }),
+      ])
+
+      // 四、节点不告而别：SIGKILL 不会给服务端任何下线通知，只能靠心跳过期识别。
+      app.process().kill('SIGKILL')
+      await expect
+        .poll(() => app.process().killed || app.process().exitCode !== null, { timeout: 15_000 })
+        .toBe(true)
+      let elapsedMs = Number.POSITIVE_INFINITY
+      let outcome: MemorySearchOutcome | undefined
+      // 心跳过期前节点仍被判为新鲜，检索会空等满作业超时；过期后必须立刻报不可用。
+      // 因此这里同时轮询「报了不可用」与「返回得足够快」，只满足前者不算修好。
+      await expect
+        .poll(
+          async () => {
+            const startedAt = Date.now()
+            outcome = await searchMemories(user.token, assistant.id, marker)
+            elapsedMs = Date.now() - startedAt
+            return outcome.localUnavailable && elapsedMs < LOCAL_UNAVAILABLE_BUDGET_MS
+          },
+          { timeout: NODE_STALE_TIMEOUT_MS, intervals: [5_000] }
+        )
+        .toBe(true)
+      expect(elapsedMs).toBeLessThan(LOCAL_UNAVAILABLE_BUDGET_MS)
+      // 本地记忆此刻读不到，但必须是「暂不可用」而不是被当作不存在。
+      expect(outcome?.results).toEqual([])
+    } finally {
+      await app.close().catch(() => {})
       await api(user.token, 'DELETE', '/auth/me')
       rmSync(userDataDir, { recursive: true, force: true })
     }
