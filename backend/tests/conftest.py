@@ -30,9 +30,9 @@ _ADMIN_DATABASE_URL = _BASE_DATABASE_URL.set(database="postgres").render_as_stri
     hide_password=False
 )
 
-os.environ["DATABASE_URL"] = _BASE_DATABASE_URL.set(
-    database=_TEST_DATABASE_NAME
-).render_as_string(hide_password=False)
+os.environ["DATABASE_URL"] = _BASE_DATABASE_URL.set(database=_TEST_DATABASE_NAME).render_as_string(
+    hide_password=False
+)
 os.environ["JWT_SECRET_KEY"] = "test-secret-key-for-unit-tests"
 # 生产模式校验要求独立于 JWT 的节点参数加密密钥；测试给固定派生源即可
 os.environ["EXECUTION_NODE_ENCRYPTION_KEY"] = "test-execution-node-encryption-key"
