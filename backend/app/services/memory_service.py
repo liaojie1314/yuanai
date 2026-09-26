@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, and_, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assistant import Assistant
@@ -16,9 +17,18 @@ from app.models.memory import (
     MemoryStatus,
     MemoryStorageLocation,
 )
-from app.schemas.memory import MemoryCreateCandidate, MemoryUpdate
+from app.schemas.memory import (
+    MemoryCreateCandidate,
+    MemoryPage,
+    MemoryResponse,
+    MemoryUpdate,
+)
 from app.services.ai_service import maybe_embed_text
 from app.services.memory_node import drop_local_memory, push_local_memory
+from app.services.tool_runtime_service import select_fresh_node
+
+# 游标只在服务端构造，编码是为了让调用方无法拼一个"下一页"出来，不是为了保密
+_CURSOR_SEPARATOR = "|"
 
 
 class MemoryNotFoundError(Exception):
@@ -121,10 +131,90 @@ async def list_memories(
 ) -> list[Memory]:
     """按生命周期筛选当前用户的记忆，不暴露其他租户的记录。"""
 
-    query = select(Memory).where(Memory.user_id == user_id).order_by(Memory.updated_at.desc())
+    return list((await db.scalars(_list_query(user_id=user_id, status=status))).all())
+
+
+async def list_memory_page(
+    *,
+    user_id: uuid.UUID,
+    db: AsyncSession,
+    status: MemoryStatus | None = None,
+    cursor: str | None = None,
+    limit: int = 50,
+) -> MemoryPage:
+    """返回一页记忆，并说明这一页的本地正文此刻能否读到。
+
+    多取一行判断是否还有下一页，避免为了翻页额外做一次 COUNT。
+    """
+
+    query = _list_query(user_id=user_id, status=status)
+    if cursor is not None:
+        moment, identifier = _decode_cursor(cursor)
+        # 与 (updated_at DESC, id DESC) 的排序对齐；写成 OR 而不是行值比较，
+        # 是因为行值比较的绑定参数在 asyncpg 下需要显式类型标注。
+        query = query.where(
+            or_(
+                Memory.updated_at < moment,
+                and_(Memory.updated_at == moment, Memory.id < identifier),
+            )
+        )
+    rows = list((await db.scalars(query.limit(limit + 1))).all())
+    has_more = len(rows) > limit
+    page = rows[:limit]
+    return MemoryPage(
+        items=[MemoryResponse.model_validate(memory) for memory in page],
+        next_cursor=_encode_cursor(page[-1]) if has_more and page else None,
+        local_unavailable=await _local_content_unreachable(user_id=user_id, page=page, db=db),
+    )
+
+
+async def _local_content_unreachable(
+    *, user_id: uuid.UUID, page: list[Memory], db: AsyncSession
+) -> bool:
+    """判断这一页里是否有正文读不到的本地记忆。
+
+    只有本页确实含 local_node 记忆时才查节点：云端记忆的正文一直都在，
+    节点离线与否与它们无关，不该让整页都挂上"本地不可用"。
+    """
+
+    if not any(memory.storage_location is MemoryStorageLocation.local_node for memory in page):
+        return False
+    return (await select_fresh_node(user_id=user_id, tool_name="memory.search", db=db)) is None
+
+
+def _list_query(*, user_id: uuid.UUID, status: MemoryStatus | None) -> Select[tuple[Memory]]:
+    """构造按更新时间倒序、以 id 兜底的记忆列表查询。
+
+    id 兜底不只是为了稳定展示顺序：同一毫秒写入的多条记忆若顺序不定，游标分页会漏行或重复。
+    """
+
+    query = (
+        select(Memory)
+        .where(Memory.user_id == user_id)
+        .order_by(Memory.updated_at.desc(), Memory.id.desc())
+    )
     if status is not None:
         query = query.where(Memory.status == status)
-    return list((await db.scalars(query)).all())
+    return query
+
+
+def _encode_cursor(memory: Memory) -> str:
+    """把一行的排序键编码成不透明游标。"""
+
+    raw = f"{memory.updated_at.isoformat()}{_CURSOR_SEPARATOR}{memory.id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """解析客户端回传的游标；任何畸形输入都按策略错误拒绝。"""
+
+    try:
+        moment, _, identifier = (
+            base64.urlsafe_b64decode(cursor.encode()).decode().partition(_CURSOR_SEPARATOR)
+        )
+        return datetime.fromisoformat(moment), uuid.UUID(identifier)
+    except ValueError as error:  # binascii.Error 与 UnicodeDecodeError 都是它的子类
+        raise MemoryPolicyError("分页游标无效") from error
 
 
 async def delete_memory(*, memory_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession) -> None:

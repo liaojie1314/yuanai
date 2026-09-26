@@ -75,6 +75,21 @@ class MemoryResponse(MemorySchema):
     updated_at: datetime
 
 
+class MemoryPage(MemorySchema):
+    """记忆列表的一页，附带本地正文此刻是否可读。"""
+
+    items: list[MemoryResponse]
+    next_cursor: str | None = None
+    local_unavailable: bool = False
+
+
+class MemoryExport(MemorySchema):
+    """一次性导出的记忆快照。"""
+
+    exported_at: datetime
+    items: list[MemoryResponse]
+
+
 class MemorySearchResult(MemorySchema):
     """用于管理界面或上下文组装的检索结果。"""
 

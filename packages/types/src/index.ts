@@ -934,6 +934,8 @@ export interface MemoryPage {
   items: Memory[]
   /** 后端生成的不透明游标，调用方只能原样回传。 */
   nextCursor: string | null
+  /** 为 `true` 时本页含本机节点记忆、且节点此刻不可达，正文读不到。 */
+  localUnavailable: boolean
 }
 
 /** 记忆导出快照。 */
