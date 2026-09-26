@@ -16,15 +16,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.memory import Memory, MemoryStorageLocation
 from app.schemas.memory import MemorySearchResult
 from app.services.memory_retrieval import accessible_filters
-from app.services.tool_runtime_service import run_node_job, select_fresh_node
+from app.services.tool_runtime_service import NodeJobOutcome, run_node_job, select_fresh_node
 
 MEMORY_NODE_TIMEOUT_SECONDS = 15
+# 写入与删除要本机用户逐次点「允许本次执行」，等人做决定必须独立计时：
+# 和上面 15 秒共用一个预算时，作业投递先吃掉一部分，用户再慢几秒，
+# 一台完全健康的节点就会被判成不可用。
+# 取 90 秒是为了留在 execution_node_job_offer_ttl_seconds（120 秒）以内 ——
+# 用户最后点下的那份 offer 必须仍然有效，也不能撞上服务端重新投递同一作业。
+MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS = 90
 # 节点回传的正文是不可信输入，按与 MemoryCreateCandidate.content 相同的上限截断
 _MAX_NODE_CONTENT_CHARS = 10_000
 
 
 class LocalMemoryUnavailableError(Exception):
     """桌面节点不在线时写入或删除本地记忆的稳定错误。"""
+
+
+class LocalMemoryApprovalTimeoutError(LocalMemoryUnavailableError):
+    """用户未在期限内批准节点作业。
+
+    节点本身是好的，调用方必须如实说「审批超时」；报成节点不可用会让用户
+    去排查一台正常工作的机器。
+    """
 
 
 async def search_local_memories(
@@ -92,7 +106,7 @@ async def search_local_memories(
 
 
 async def push_local_memory(*, memory: Memory, content: str, db: AsyncSession) -> None:
-    """把正文推送到节点并记录承载它的节点 id；节点不可用时抛错。"""
+    """把正文推送到节点并记录承载它的节点 id；节点不可用或用户未批准时抛错。"""
 
     node = await select_fresh_node(user_id=memory.user_id, tool_name="memory.write", db=db)
     if node is None:
@@ -107,14 +121,14 @@ async def push_local_memory(*, memory: Memory, content: str, db: AsyncSession) -
         },
         db=db,
         timeout_seconds=MEMORY_NODE_TIMEOUT_SECONDS,
+        approval_timeout_seconds=MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS,
     )
-    if outcome.status != "succeeded":
-        raise LocalMemoryUnavailableError(outcome.error_code or outcome.status)
+    _raise_for_outcome(outcome)
     memory.node_id = node.id
 
 
 async def drop_local_memory(*, memory: Memory, db: AsyncSession) -> None:
-    """删除节点上的正文；节点拒绝或不可用时抛错，阻止云端先删掉元数据。"""
+    """删除节点上的正文；节点拒绝、不可用或用户未批准时抛错，阻止云端先删掉元数据。"""
 
     outcome = await run_node_job(
         user_id=memory.user_id,
@@ -122,7 +136,16 @@ async def drop_local_memory(*, memory: Memory, db: AsyncSession) -> None:
         arguments={"memoryId": str(memory.id)},
         db=db,
         timeout_seconds=MEMORY_NODE_TIMEOUT_SECONDS,
+        approval_timeout_seconds=MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS,
     )
+    _raise_for_outcome(outcome)
+
+
+def _raise_for_outcome(outcome: NodeJobOutcome) -> None:
+    """把非成功的作业结果翻译成对用户诚实的异常。"""
+
+    if outcome.status == "approval_timeout":
+        raise LocalMemoryApprovalTimeoutError("LOCAL_MEMORY_APPROVAL_TIMEOUT")
     if outcome.status != "succeeded":
         raise LocalMemoryUnavailableError(outcome.error_code or outcome.status)
 

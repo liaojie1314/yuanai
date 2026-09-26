@@ -18,7 +18,7 @@ from app.schemas.memory import (
     MemoryUpdate,
 )
 from app.services.ai_service import maybe_embed_text
-from app.services.memory_node import LocalMemoryUnavailableError
+from app.services.memory_node import LocalMemoryApprovalTimeoutError, LocalMemoryUnavailableError
 from app.services.memory_retrieval import search_active_memories
 from app.services.memory_service import (
     MemoryNotFoundError,
@@ -31,6 +31,18 @@ from app.services.memory_service import (
 )
 
 router = APIRouter(prefix="/memories", tags=["memories"])
+
+
+def _local_memory_failure(error: LocalMemoryUnavailableError) -> HTTPException:
+    """把本地记忆失败映射成诚实的响应。
+
+    审批超时与节点不可用是两回事：说成后者会让用户去排查一台正常工作的机器，
+    所以映射只在这一处做，新增调用点无法漏掉这层区分。
+    """
+
+    if isinstance(error, LocalMemoryApprovalTimeoutError):
+        return HTTPException(status_code=504, detail="LOCAL_MEMORY_APPROVAL_TIMEOUT")
+    return HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE")
 
 
 @router.post("", response_model=MemoryResponse, status_code=201)
@@ -46,7 +58,7 @@ async def create_memory(
     except MemoryPolicyError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except LocalMemoryUnavailableError as error:
-        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
+        raise _local_memory_failure(error) from error
     await db.commit()
     await db.refresh(memory)
     return memory
@@ -122,7 +134,7 @@ async def patch_memory(
     except MemoryPolicyError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except LocalMemoryUnavailableError as error:
-        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
+        raise _local_memory_failure(error) from error
     await db.commit()
     await db.refresh(memory)
     return memory
@@ -137,6 +149,6 @@ async def remove_memory(memory_id: uuid.UUID, current_user: CurrentUser, db: DB)
     except MemoryNotFoundError as error:
         raise HTTPException(status_code=404, detail="MEMORY_NOT_FOUND") from error
     except LocalMemoryUnavailableError as error:
-        raise HTTPException(status_code=503, detail="LOCAL_MEMORY_NODE_UNAVAILABLE") from error
+        raise _local_memory_failure(error) from error
     await db.commit()
     return Response(status_code=204)

@@ -18,6 +18,9 @@ from app.models.tool_runtime import ExecutionNode, ExecutionNodeStatus
 from app.models.user import User
 from app.schemas.memory import MemoryCreateCandidate, MemoryUpdate
 from app.services.memory_node import (
+    MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS,
+    MEMORY_NODE_TIMEOUT_SECONDS,
+    LocalMemoryApprovalTimeoutError,
     LocalMemoryUnavailableError,
     drop_local_memory,
     push_local_memory,
@@ -205,6 +208,52 @@ async def test_delete_fails_when_the_node_rejects_it(
     memory = _local_memory(user_id=test_user.id, assistant_id=uuid.uuid4())
     with pytest.raises(LocalMemoryUnavailableError, match="TOOL_EXECUTION_FAILED"):
         await drop_local_memory(memory=memory, db=db)
+
+
+@pytest.mark.asyncio
+async def test_approval_timeout_is_not_reported_as_an_unavailable_node(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """用户没按时批准时必须报审批超时，节点是好的，不能说成节点不可用。"""
+
+    monkeypatch.setattr(
+        "app.services.memory_node.run_node_job",
+        _stub_outcome(
+            NodeJobOutcome(status="approval_timeout", error_code="TOOL_APPROVAL_TIMEOUT")
+        ),
+    )
+    memory = _local_memory(user_id=test_user.id, assistant_id=uuid.uuid4())
+    with pytest.raises(LocalMemoryApprovalTimeoutError):
+        await drop_local_memory(memory=memory, db=db)
+
+
+@pytest.mark.asyncio
+async def test_approval_wait_does_not_share_the_transport_budget(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """需要人点确认的两个作业必须各自带上独立的审批预算。
+
+    两个预算一旦合成一个，用户手慢就会从健康节点收到「节点不可用」；
+    这条用例在它们被重新合并时立刻失败。
+    """
+
+    assistant, _node = await _fixture(db, test_user)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "app.services.memory_node.run_node_job",
+        _stub_outcome(NodeJobOutcome(status="succeeded", data={"stored": True}), calls),
+    )
+    memory = _local_memory(user_id=test_user.id, assistant_id=assistant.id)
+
+    await push_local_memory(memory=memory, content="本地正文A", db=db)
+    await drop_local_memory(memory=memory, db=db)
+
+    assert len(calls) == 2
+    for call in calls:
+        assert call["timeout_seconds"] == MEMORY_NODE_TIMEOUT_SECONDS
+        assert call["approval_timeout_seconds"] == MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS
+    # 人做决定的尺度必须显著大于投递与执行的尺度，否则这个字段等于没拆
+    assert MEMORY_NODE_APPROVAL_TIMEOUT_SECONDS > MEMORY_NODE_TIMEOUT_SECONDS * 2
 
 
 @pytest.mark.asyncio

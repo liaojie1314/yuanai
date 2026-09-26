@@ -2203,9 +2203,13 @@ async def select_fresh_node(
 
 @dataclass(frozen=True)
 class NodeJobOutcome:
-    """一次节点作业的归一化结果。"""
+    """一次节点作业的归一化结果。
 
-    status: Literal["succeeded", "unavailable", "timeout", "failed"]
+    ``approval_timeout`` 与 ``timeout`` 必须分开：前者是人没来得及点确认，
+    节点本身是好的；把它归到「节点不可用」会让用户去排查一台正常工作的机器。
+    """
+
+    status: Literal["succeeded", "unavailable", "timeout", "approval_timeout", "failed"]
     data: dict[str, object] | None = None
     error_code: str | None = None
 
@@ -2220,12 +2224,18 @@ async def run_node_job(
     arguments: dict[str, object],
     db: AsyncSession,
     timeout_seconds: float,
+    approval_timeout_seconds: float | None = None,
     now: datetime | None = None,
 ) -> NodeJobOutcome:
     """向用户的在线节点派发一个作业并等待终态。
 
     没有新鲜节点时立刻返回 ``unavailable``，不排队也不空等，
     这样调用方可以直接给出「本地功能暂不可用」而不是让用户等满超时。
+
+    ``timeout_seconds`` 只覆盖投递与执行，从节点回传 accepted（即用户已批准）那一刻起算；
+    需要本机用户逐次确认的作业另传 ``approval_timeout_seconds``，
+    人做决定的时间由它单独计时。两者混成一个预算时，用户手慢几秒就会让一台
+    完全健康的节点被判成超时，而投递本身已经吃掉了其中一部分。
     """
 
     node = await select_fresh_node(user_id=user_id, tool_name=tool_name, db=db, now=now)
@@ -2246,8 +2256,11 @@ async def run_node_job(
         return NodeJobOutcome(status="failed", error_code=str(error))
     # 执行记录由本会话写入，必须先提交，节点网关扫描才能看见并投递。
     await db.commit()
-    deadline = time.monotonic() + max(1.0, timeout_seconds)
-    while time.monotonic() < deadline:
+    accept_deadline = time.monotonic() + max(
+        1.0, timeout_seconds if approval_timeout_seconds is None else approval_timeout_seconds
+    )
+    run_deadline: float | None = None
+    while True:
         await db.refresh(execution)
         if execution.status is ToolExecutionStatus.succeeded:
             payload = execution.result_json or {}
@@ -2255,7 +2268,18 @@ async def run_node_job(
             return NodeJobOutcome(status="succeeded", data=data if isinstance(data, dict) else None)
         if execution.status in {ToolExecutionStatus.failed, ToolExecutionStatus.cancelled}:
             return NodeJobOutcome(status="failed", error_code=execution.error_code)
+        if run_deadline is None and execution.status is ToolExecutionStatus.running:
+            # 节点回了 accepted：该批准的人已经批准，投递与执行预算从此刻才开始走。
+            run_deadline = time.monotonic() + max(1.0, timeout_seconds)
+        if time.monotonic() >= (accept_deadline if run_deadline is None else run_deadline):
+            break
         await asyncio.sleep(NODE_JOB_POLL_INTERVAL_SECONDS)
+    if run_deadline is None and approval_timeout_seconds is not None:
+        await service.fail_execution(
+            execution, code="TOOL_APPROVAL_TIMEOUT", message="用户未在期限内批准节点作业", db=db
+        )
+        await db.commit()
+        return NodeJobOutcome(status="approval_timeout", error_code="TOOL_APPROVAL_TIMEOUT")
     await service.fail_execution(execution, code="TOOL_TIMEOUT", message="执行节点作业超时", db=db)
     await db.commit()
     return NodeJobOutcome(status="timeout", error_code="TOOL_TIMEOUT")
