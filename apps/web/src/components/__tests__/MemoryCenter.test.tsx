@@ -67,10 +67,13 @@ const memoriesCss = readFileSync(
 )
 
 /** 按请求游标返回预置的分页结果，无游标时返回 `first` 页。 */
-function pagedMemories(pages: Record<string, unknown>): ReturnType<typeof http.get> {
+function pagedMemories(
+  pages: Record<string, { items: unknown[]; nextCursor: string | null; localUnavailable?: boolean }>
+): ReturnType<typeof http.get> {
   return http.get(`${API_BASE_URL}/memories`, ({ request }) => {
     const cursor = new URL(request.url).searchParams.get('cursor') ?? 'first'
-    return HttpResponse.json(pages[cursor] ?? { items: [], nextCursor: null })
+    const page = pages[cursor] ?? { items: [], nextCursor: null }
+    return HttpResponse.json({ localUnavailable: false, ...page })
   })
 }
 
@@ -144,10 +147,21 @@ describe('MemoryCenter', () => {
   })
 
   it('本地记忆不可用时显示提示而不是静默少几条', async () => {
-    server.use(pagedMemories({ first: { items: [firstMemory, localMemory], nextCursor: null } }))
+    server.use(
+      pagedMemories({
+        first: { items: [firstMemory, localMemory], nextCursor: null, localUnavailable: true },
+      })
+    )
     renderCenter()
     expect(await screen.findByText(/本机节点/)).toBeInTheDocument()
     expect(screen.getByText('记忆内容A')).toBeInTheDocument()
+  })
+
+  it('本机节点在线时不显示提示，哪怕本地记忆在云端没有正文', async () => {
+    server.use(pagedMemories({ first: { items: [firstMemory, localMemory], nextCursor: null } }))
+    renderCenter()
+    expect(await screen.findByText('记忆内容A')).toBeInTheDocument()
+    expect(screen.queryByText(/本机节点/)).not.toBeInTheDocument()
   })
 
   it('确认候选记忆会发出 active 状态更新', async () => {
@@ -230,7 +244,11 @@ describe('MemoryCenter', () => {
   it('英文资源下关键控件文案来自 i18n 而非硬编码', async () => {
     server.use(
       pagedMemories({
-        first: { items: [firstMemory, localMemory], nextCursor: 'cursor-2' },
+        first: {
+          items: [firstMemory, localMemory],
+          nextCursor: 'cursor-2',
+          localUnavailable: true,
+        },
         'cursor-2': { items: [secondMemory], nextCursor: null },
       })
     )

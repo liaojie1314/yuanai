@@ -48,10 +48,8 @@ export default function MemoryCenter(): JSX.Element {
   const remove = useDeleteMemory()
   const exportAll = useExportMemories()
   const disabledTypes = assistant?.disabledMemoryTypes ?? []
-  // 云端对本机节点记忆只留元数据，content 为空说明正文要去本机看
-  const hasLocalOnly = items.some(
-    (memory) => memory.storageLocation === 'local_node' && memory.content === null
-  )
+  // 本机节点记忆在云端只有元数据，光看 content 为空区分不出节点是离线还是正常——由后端判定
+  const localUnavailable = memories.data?.pages.some((page) => page.localUnavailable) ?? false
 
   const patchAssistant = useMutation({
     mutationFn: (disabledMemoryTypes: MemoryType[]) =>
@@ -156,7 +154,7 @@ export default function MemoryCenter(): JSX.Element {
         ))}
       </nav>
       {memories.isLoading ? <p className="memory-muted">{t('loading')}</p> : null}
-      {hasLocalOnly ? (
+      {localUnavailable ? (
         <p className="memory-banner" role="status">
           {t('localUnavailable')}
         </p>
