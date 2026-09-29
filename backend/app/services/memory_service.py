@@ -171,20 +171,23 @@ async def list_memory_page(
     return MemoryPage(
         items=[MemoryResponse.model_validate(memory) for memory in page],
         next_cursor=_encode_cursor(page[-1]) if has_more and page else None,
-        local_unavailable=await _local_content_unreachable(user_id=user_id, page=page, db=db),
+        local_unavailable=await local_bodies_unreachable(user_id=user_id, memories=page, db=db),
     )
 
 
-async def _local_content_unreachable(
-    *, user_id: uuid.UUID, page: list[Memory], db: AsyncSession
+async def local_bodies_unreachable(
+    *, user_id: uuid.UUID, memories: list[Memory], db: AsyncSession
 ) -> bool:
-    """判断这一页里是否有正文读不到的本地记忆。
+    """判断这批记忆里是否有正文读不到的本机记忆。
 
-    只有本页确实含 local_node 记忆时才查节点：云端记忆的正文一直都在，
-    节点离线与否与它们无关，不该让整页都挂上"本地不可用"。
+    分页与导出共用这一个口径，避免两处各写一份而悄悄漂移。
+    只有确实含 local_node 记忆时才查节点：云端记忆的正文一直都在，
+    节点离线与否与它们无关，不该让整批都挂上「本地不可用」。
+    只看已加载的行加一次纯 SQL 判断，不向节点发 RPC —— 一次可用性说明
+    不值得等一轮节点往返。
     """
 
-    if not any(memory.storage_location is MemoryStorageLocation.local_node for memory in page):
+    if not any(memory.storage_location is MemoryStorageLocation.local_node for memory in memories):
         return False
     return (await select_fresh_node(user_id=user_id, tool_name="memory.search", db=db)) is None
 

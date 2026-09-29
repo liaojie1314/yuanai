@@ -6,10 +6,9 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DB, CurrentUser
-from app.models.memory import Memory, MemoryStatus, MemoryStorageLocation
+from app.models.memory import Memory, MemoryStatus
 from app.schemas.memory import (
     MEMORY_SEARCH_MAX_QUERY_CHARS,
     MemoryCreateCandidate,
@@ -29,9 +28,9 @@ from app.services.memory_service import (
     delete_memory,
     list_memories,
     list_memory_page,
+    local_bodies_unreachable,
     update_memory,
 )
-from app.services.tool_runtime_service import select_fresh_node
 
 router = APIRouter(prefix="/memories", tags=["memories"])
 
@@ -94,25 +93,10 @@ async def export_all_memories(current_user: CurrentUser, db: DB) -> MemoryExport
     return MemoryExport(
         exported_at=datetime.now(UTC),
         items=[MemoryResponse.model_validate(memory) for memory in memories],
-        local_unavailable=await _local_bodies_unreachable(
+        local_unavailable=await local_bodies_unreachable(
             user_id=current_user.id, memories=memories, db=db
         ),
     )
-
-
-async def _local_bodies_unreachable(
-    *, user_id: uuid.UUID, memories: list[Memory], db: AsyncSession
-) -> bool:
-    """判断这批记忆里是否有正文读不到的本机记忆。
-
-    与分页用的谓词同一套口径：结果里确实含 local_node 记忆，且该用户此刻没有新鲜节点。
-    只看已加载的行加一次纯 SQL 判断，不向节点发 RPC —— 导出不该为一次可用性说明
-    去等一轮节点往返。全是云端记忆时直接短路，云端正文一直都在。
-    """
-
-    if not any(memory.storage_location is MemoryStorageLocation.local_node for memory in memories):
-        return False
-    return (await select_fresh_node(user_id=user_id, tool_name="memory.search", db=db)) is None
 
 
 @router.get("/search", response_model=MemorySearchOutcome)
