@@ -129,14 +129,17 @@ pnpm dev:real
 
 ### 常驻 worker（`pnpm dev:real` 不会启动）
 
-后端有四个独立的常驻进程，`pnpm dev:real` **一个都不启动**，各自另开终端：
+后端有五个独立的常驻进程，`pnpm dev:real` **一个都不启动**，各自另开终端：
 
 ```bash
 pnpm agent:worker           # 执行 Agent Run；同时把完成的 Run 投进记忆抽取队列
 pnpm agent:recovery-worker  # 回收中断的 Run
+pnpm automation:scheduler   # 到点触发自动化
 pnpm memory:worker          # 消费 Redis 队列 memory:extract，从 Run 抽取记忆
 pnpm node:sweeper           # 把心跳过期的执行节点置为 offline
 ```
+
+（`app/workers/mcp_stdio_worker.py` 不在此列：它由 MCP 子系统按需拉起，无需手工启动。）
 
 不启动会**静默缺功能而不是报错**，容易被误判成 bug：
 
@@ -146,6 +149,7 @@ pnpm node:sweeper           # 把心跳过期的执行节点置为 offline
 | `memory:worker`         | Run 正常结束但从不产生任何记忆，记忆中心永远是空的             |
 | `node:sweeper`          | 桌面执行节点掉线后仍显示在线，本地记忆检索要等任务超时才失败   |
 | `agent:recovery-worker` | 进程重启前中断的 Run 永久停在运行中                            |
+| `automation:scheduler`  | 自动化到点不触发                                               |
 
 调记忆相关功能时，`agent:worker` 与 `memory:worker` 必须同时在跑，缺一个链路就断。
 
