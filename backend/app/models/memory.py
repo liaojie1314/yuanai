@@ -7,7 +7,18 @@ from datetime import datetime
 from enum import StrEnum
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import JSON, Computed, DateTime, Enum, ForeignKey, Index, String, Text, func
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Computed,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -62,6 +73,19 @@ class Memory(Base):
         # btree 可反向扫描，因此升序索引即可，无需再建一份降序的。
         Index("ix_memories_user_created_id", "user_id", "created_at", "id"),
         Index("ix_memories_search_vector", "search_vector", postgresql_using="gin"),
+        # 本地记忆的隐私不变量。此前只靠每个写入点各自记得判断，漏一处就是静默泄漏，
+        # 而 structured_data 没有大小上限，整条正文都能塞进去。在这里作结构性保证。
+        # 注意不能写 `structured_data IS NULL`：SQLAlchemy 的 JSON 类型把 Python None
+        # 存成 JSON 字面量 null 而非 SQL NULL，那样写会把正常的本地记忆一并拒掉。
+        # 判空口径与应用层的真值判断保持一致，否则应用放行的会在库里炸成 500。
+        CheckConstraint(
+            "storage_location <> 'local_node' OR ("
+            " coalesce(content, '') = ''"
+            " AND coalesce(source_excerpt, '') = ''"
+            " AND coalesce(structured_data::jsonb, 'null'::jsonb)"
+            " IN ('null'::jsonb, '{}'::jsonb))",
+            name="ck_memories_local_node_keeps_no_cloud_text",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
