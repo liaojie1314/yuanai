@@ -61,6 +61,11 @@ async def create_candidate(
     if not (request.source_id or "").strip():
         raise MemoryPolicyError("记忆必须带上可回溯的来源 id")
     is_local = request.storage_location is MemoryStorageLocation.local_node
+    if is_local and (request.source_excerpt or request.structured_data):
+        # 推给节点的只有 content，source_excerpt 与 structured_data 会原样落进云端库。
+        # 本地记忆带上它们就绕开了「正文不出本机」的承诺，而 structured_data 没有大小上限，
+        # 整条正文都能塞进去。明确拒绝，好过静默上云或静默丢弃。
+        raise MemoryPolicyError("本地记忆不能携带来源摘录或结构化数据，这两项会留在云端")
     memory = Memory(
         # 本地记忆要先把正文推给节点，推送时就得有稳定 id，因此不依赖列默认值
         id=uuid.uuid4(),
@@ -95,6 +100,12 @@ async def update_memory(
 
     memory = await _owned_memory(memory_id=memory_id, user_id=user_id, db=db)
     changes = request.model_dump(exclude_unset=True)
+    if (
+        memory.storage_location is MemoryStorageLocation.local_node
+        and changes.get("structured_data") is not None
+    ):
+        # 与创建路径同一条理由：structured_data 落在云端库里，本地记忆不该有它。
+        raise MemoryPolicyError("本地记忆不能携带结构化数据，它会留在云端")
     requested_status = changes.get("status")
     if requested_status is not None and not _is_allowed_transition(memory.status, requested_status):
         raise MemoryPolicyError("不允许的记忆生命周期变更")

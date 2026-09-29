@@ -371,3 +371,36 @@ async def test_cloud_only_export_never_claims_local_trouble(client, db, test_use
     exported = await client.get("/api/v1/memories/export", headers=auth_headers)
     assert exported.status_code == 200
     assert exported.json()["localUnavailable"] is False
+
+
+@pytest.mark.asyncio
+async def test_local_memory_may_not_carry_cloud_visible_text(client, db, test_user, auth_headers):
+    """本地记忆不得携带只会落在云端的自由文本字段。
+
+    推给节点的只有 content；source_excerpt 与 structured_data 存在云端库里。
+    若放任它们随本地记忆一起提交，调用方把整条正文塞进无大小上限的
+    structured_data 即可完全绕开「正文不出本机」的承诺。
+    """
+
+    assistant = await _assistant(db, test_user.id)
+    await db.commit()
+    base = {
+        "assistantId": str(assistant.id),
+        "memoryType": "preference",
+        "content": "本地正文",
+        "sourceType": "user_input",
+        "sourceId": "msg-local",
+        "storageLocation": "local_node",
+    }
+
+    excerpt = await client.post(
+        "/api/v1/memories", headers=auth_headers, json={**base, "sourceExcerpt": "源文摘录"}
+    )
+    assert excerpt.status_code == 422, excerpt.text
+
+    structured = await client.post(
+        "/api/v1/memories",
+        headers=auth_headers,
+        json={**base, "structuredData": {"subject": "整条正文也能塞进这里"}},
+    )
+    assert structured.status_code == 422, structured.text
