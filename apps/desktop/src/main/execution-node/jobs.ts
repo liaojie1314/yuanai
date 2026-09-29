@@ -16,6 +16,12 @@ export const MAX_DIRECTORY_ENTRIES = 200
 export const MAX_WORKSPACE_CONTENT_CHARS = 65_536
 /** 本地记忆检索一次最多返回的条数。 */
 export const MAX_MEMORY_SEARCH_LIMIT = 50
+/**
+ * 记忆检索查询的字符上限，必须与后端 MEMORY_SEARCH_MAX_QUERY_CHARS 相同。
+ * 节点声明得比云端严时，超限查询会走到这里才失败，对用户显示成「本地记忆不可用」，
+ * 把参数错误伪装成节点故障；改动这个数字必须同时改后端那一个常量。
+ */
+export const MAX_MEMORY_SEARCH_QUERY_CHARS = 500
 /** 本地记忆检索的缺省返回条数。 */
 const DEFAULT_MEMORY_SEARCH_LIMIT = 8
 /** 记忆 ID 与记忆类型参数的字符上限。 */
@@ -313,7 +319,7 @@ async function runMemorySearch(
   input: ExecuteJobInput,
   memoryStore: MemoryStoreLike
 ): Promise<Record<string, unknown>> {
-  const query = readStringArgument(input.arguments, 'query', 500)
+  const query = readStringArgument(input.arguments, 'query', MAX_MEMORY_SEARCH_QUERY_CHARS)
   const limit = readOptionalInteger(
     input.arguments,
     'limit',

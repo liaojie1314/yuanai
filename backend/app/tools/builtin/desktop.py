@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.schemas.memory import MEMORY_SEARCH_MAX_QUERY_CHARS
 from app.tools.contracts import (
     SideEffect,
     ToolContext,
@@ -24,7 +25,10 @@ _MAX_WORKSPACE_CONTENT_BYTES = 65_536
 
 # 记忆作业的边界与 MemoryCreateCandidate / memories 检索接口保持一致
 _MAX_MEMORY_CONTENT_CHARS = 10_000
-_MAX_MEMORY_QUERY_CHARS = 10_000
+# 查询上限必须与节点的 runMemorySearch 相同：声明得比节点宽，
+# 超限查询就会被云端放行、在节点上报 TOOL_INVALID_INPUT，
+# 最终对用户显示成「本地记忆不可用」，把参数错误伪装成节点故障。
+_MAX_MEMORY_QUERY_CHARS = MEMORY_SEARCH_MAX_QUERY_CHARS
 _MAX_MEMORY_RESULTS = 50
 _UUID_PATTERN = r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
 

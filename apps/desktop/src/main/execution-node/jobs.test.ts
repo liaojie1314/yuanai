@@ -13,6 +13,7 @@ vi.mock('node:fs/promises', () => ({ ...mockFs, default: mockFs }))
 import {
   DesktopJobsExecutor,
   JobCancelledError,
+  MAX_MEMORY_SEARCH_QUERY_CHARS,
   ToolExecutionFailure,
   assertResultSize,
   assertSafeHttpsUrl,
@@ -428,6 +429,32 @@ describe('DesktopJobsExecutor.executeJob', () => {
       expect(outcome.result['memories']).toEqual([
         expect.objectContaining({ id: 'm1', content: '杭州' }),
       ])
+    })
+
+    it('memory.search 的查询长度边界与后端契约一致', async () => {
+      // 这个数字同时写在后端 MEMORY_SEARCH_MAX_QUERY_CHARS；改一边不改另一边，
+      // 超限查询就会被云端放行、在这里失败，对用户显示成「本地记忆不可用」。
+      expect(MAX_MEMORY_SEARCH_QUERY_CHARS).toBe(500)
+      const executor = createExecutor({ memoryStore: createStubMemoryStore([]) })
+
+      const atLimit = await executor.executeJob(
+        createInput(
+          { query: '\u67e5'.repeat(MAX_MEMORY_SEARCH_QUERY_CHARS), limit: 8 },
+          { toolName: 'memory.search' }
+        )
+      )
+      expect(atLimit.result['memories']).toEqual([])
+
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput(
+              { query: '\u67e5'.repeat(MAX_MEMORY_SEARCH_QUERY_CHARS + 1), limit: 8 },
+              { toolName: 'memory.search' }
+            )
+          ),
+        'TOOL_INVALID_INPUT'
+      )
     })
 
     it('memory.search 没有命中时返回空列表而不是失败', async () => {

@@ -1,7 +1,9 @@
 """记忆管理 API 的认证、租户隔离和生命周期集成测试。"""
 
+import re
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -11,6 +13,8 @@ from app.models.assistant import Assistant
 from app.models.memory import Memory, MemoryRelation, MemoryStorageLocation, MemoryType
 from app.models.tool_runtime import ExecutionNode, ExecutionNodeStatus
 from app.models.user import User
+from app.schemas.memory import MEMORY_SEARCH_MAX_QUERY_CHARS
+from app.tools.builtin.desktop import MEMORY_SEARCH_SPEC
 
 
 async def _assistant(db, user_id: uuid.UUID) -> Assistant:
@@ -260,3 +264,49 @@ async def test_memory_page_stays_available_while_the_node_is_fresh(
     page = (await client.get("/api/v1/memories", headers=auth_headers)).json()
     assert page["items"][0]["content"] is None
     assert page["localUnavailable"] is False
+
+
+@pytest.mark.asyncio
+async def test_over_long_search_query_is_rejected_as_invalid_input(
+    client, db, test_user, auth_headers
+):
+    """超长查询必须当场判为非法入参并说出真实上限。
+
+    放行后它会在节点侧失败，对用户显示成「本地记忆不可用」——
+    把参数问题伪装成节点故障，让人去排查一台好机器。
+    """
+
+    assistant = await _assistant(db, test_user.id)
+    at_limit = "查" * MEMORY_SEARCH_MAX_QUERY_CHARS
+    accepted = await client.get(
+        "/api/v1/memories/search",
+        headers=auth_headers,
+        params={"assistantId": str(assistant.id), "query": at_limit},
+    )
+    assert accepted.status_code == 200
+
+    rejected = await client.get(
+        "/api/v1/memories/search",
+        headers=auth_headers,
+        params={"assistantId": str(assistant.id), "query": at_limit + "查"},
+    )
+    assert rejected.status_code == 422
+    # 报错必须点出真实上限，否则用户只知道"不行"而不知道多少才行
+    assert str(MEMORY_SEARCH_MAX_QUERY_CHARS) in rejected.text
+
+
+def test_cloud_declares_the_same_query_ceiling_as_the_node() -> None:
+    """云端工具契约声明的查询上限必须与节点的 runMemorySearch 一致。
+
+    节点是唯一真正拦住过长查询的地方；云端声明得更宽，超限查询就会被放行到节点上
+    才失败。这条用例在两个数字再次分叉时失败。
+    """
+
+    query_schema = MEMORY_SEARCH_SPEC.input_schema["properties"]["query"]
+    assert query_schema["maxLength"] == MEMORY_SEARCH_MAX_QUERY_CHARS
+    node_jobs = Path(__file__).resolve().parents[3] / "apps/desktop/src/main/execution-node/jobs.ts"
+    assert node_jobs.is_file(), "节点任务执行器路径变了，这条跨端约束必须跟着改而不是静默跳过"
+    node_source = node_jobs.read_text(encoding="utf-8")
+    declared = re.search(r"MAX_MEMORY_SEARCH_QUERY_CHARS = (\d+)", node_source)
+    assert declared is not None
+    assert int(declared.group(1)) == MEMORY_SEARCH_MAX_QUERY_CHARS

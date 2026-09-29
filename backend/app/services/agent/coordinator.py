@@ -27,7 +27,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
 from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
 from app.schemas.knowledge import KnowledgeCitation
-from app.schemas.memory import MemoryContextItem
+from app.schemas.memory import MEMORY_SEARCH_MAX_QUERY_CHARS, MemoryContextItem
 from app.services import ai_service
 from app.services.agent.approval_service import (
     ApprovalError,
@@ -533,12 +533,16 @@ class AgentCoordinator:
 
         if db is None:
             return []
+        # goal 是任务描述（上限 20000 字）而不是检索式，必须按检索查询的上限裁剪后再用：
+        # 整段下发会被工具契约判为非法参数，最终对用户显示成「本地记忆不可用」。
+        # 裁剪几乎不损失召回 —— 云端 FTS 在 2046 字节处就已经退化成空查询。
+        query = run.goal[:MEMORY_SEARCH_MAX_QUERY_CHARS]
         try:
             outcome = await search_active_memories(
                 user_id=run.user_id,
                 assistant_id=run.assistant_id,
-                query=run.goal,
-                query_embedding=await maybe_embed_text(run.goal),
+                query=query,
+                query_embedding=await maybe_embed_text(query),
                 db=db,
                 limit=8,
             )

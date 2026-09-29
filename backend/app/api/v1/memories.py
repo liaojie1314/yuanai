@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from app.api.deps import DB, CurrentUser
 from app.models.memory import Memory, MemoryStatus
 from app.schemas.memory import (
+    MEMORY_SEARCH_MAX_QUERY_CHARS,
     MemoryCreateCandidate,
     MemoryExport,
     MemoryPage,
@@ -99,7 +100,7 @@ async def search_memories(
     current_user: CurrentUser,
     db: DB,
     assistant_id: uuid.UUID = Query(alias="assistantId"),
-    query: str = Query(min_length=1, max_length=10_000),
+    query: str = Query(min_length=1, max_length=MEMORY_SEARCH_MAX_QUERY_CHARS),
     limit: int = Query(default=8, ge=1, le=20),
     workspace_id: uuid.UUID | None = Query(default=None, alias="workspaceId"),
 ) -> MemorySearchOutcome:

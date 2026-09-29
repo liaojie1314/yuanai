@@ -20,6 +20,15 @@ class MemorySchema(BaseModel):
     model_config = ConfigDict(from_attributes=True, alias_generator=to_camel, populate_by_name=True)
 
 
+# 记忆检索查询的字符上限，云端与桌面节点共用这一个数字。
+# 500 取自节点 jobs.ts 的 runMemorySearch —— 它是全链路唯一真正拦住过长查询的地方，
+# 而云端此前声明的 10000 只是摆设：simple 配置下整句中文只得到一个词元，
+# 超过 2046 字节（约 682 个汉字）时 plainto_tsquery 会静默退化成空查询，
+# 向量臂也会在 embedding 模型的 token 上限处静默关闭，子串匹配更不可能命中比正文还长的查询。
+# 记忆检索是搜索框而不是文档入口，500 字对一次查询足够宽裕。
+MEMORY_SEARCH_MAX_QUERY_CHARS = 500
+
+
 class MemoryCreateCandidate(MemorySchema):
     """创建待确认记忆的可信边界输入。"""
 
