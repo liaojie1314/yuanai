@@ -58,6 +58,9 @@ class Memory(Base):
     __table_args__ = (
         Index("ix_memories_user_assistant_status", "user_id", "assistant_id", "status"),
         Index("ix_memories_user_workspace_status", "user_id", "workspace_id", "status"),
+        # 游标分页的支撑索引，列序必须与 (user_id 等值, created_at DESC, id DESC) 一致：
+        # btree 可反向扫描，因此升序索引即可，无需再建一份降序的。
+        Index("ix_memories_user_created_id", "user_id", "created_at", "id"),
         Index("ix_memories_search_vector", "search_vector", postgresql_using="gin"),
     )
 

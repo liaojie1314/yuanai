@@ -29,6 +29,10 @@ from app.services.tool_runtime_service import select_fresh_node
 
 # 游标只在服务端构造，编码是为了让调用方无法拼一个"下一页"出来，不是为了保密
 _CURSOR_SEPARATOR = "|"
+# 游标里带上排序键的版本号：排序键从 updated_at 换成 created_at 之后，
+# 旧游标里的时间戳含义已经不同，拿去当 created_at 用会静默返回错误的一页，
+# 因此必须能认出旧游标并按无效输入拒绝。
+_CURSOR_SCHEME = "c1"
 
 
 class MemoryNotFoundError(Exception):
@@ -150,12 +154,15 @@ async def list_memory_page(
     query = _list_query(user_id=user_id, status=status)
     if cursor is not None:
         moment, identifier = _decode_cursor(cursor)
-        # 与 (updated_at DESC, id DESC) 的排序对齐；写成 OR 而不是行值比较，
+        # 与 (created_at DESC, id DESC) 的排序对齐；写成 OR 而不是行值比较，
         # 是因为行值比较的绑定参数在 asyncpg 下需要显式类型标注。
+        # ponytail: OR 形式只能当 Filter，进不了 Index Cond —— 3 万行实测里从第 5000 行
+        # 起翻页要先扫掉 5001 行索引项；换成 (created_at, id) < (m, i) 可直接定位，
+        # 实测 0 行被过滤。深翻页真成瓶颈时再换，代价是补两个显式类型的绑定参数。
         query = query.where(
             or_(
-                Memory.updated_at < moment,
-                and_(Memory.updated_at == moment, Memory.id < identifier),
+                Memory.created_at < moment,
+                and_(Memory.created_at == moment, Memory.id < identifier),
             )
         )
     rows = list((await db.scalars(query.limit(limit + 1))).all())
@@ -183,15 +190,19 @@ async def _local_content_unreachable(
 
 
 def _list_query(*, user_id: uuid.UUID, status: MemoryStatus | None) -> Select[tuple[Memory]]:
-    """构造按更新时间倒序、以 id 兜底的记忆列表查询。
+    """构造按创建时间倒序、以 id 兜底的记忆列表查询。
 
-    id 兜底不只是为了稳定展示顺序：同一毫秒写入的多条记忆若顺序不定，游标分页会漏行或重复。
+    排序键必须不可变：`updated_at` 带 `onupdate`，一次检索刷新 `last_used_at`、
+    或用户翻页途中编辑一条记忆，都会把行顶到游标之前，已越过的行则被挤到游标之后，
+    于是整页记忆静默消失。`created_at` 只在插入时写一次，没有任何普通操作会改写它。
+    id 兜底不只是为了稳定展示顺序：同一事务写入的多条记忆 `created_at` 完全相同，
+    顺序若不定，游标分页同样会漏行或重复。
     """
 
     query = (
         select(Memory)
         .where(Memory.user_id == user_id)
-        .order_by(Memory.updated_at.desc(), Memory.id.desc())
+        .order_by(Memory.created_at.desc(), Memory.id.desc())
     )
     if status is not None:
         query = query.where(Memory.status == status)
@@ -201,17 +212,19 @@ def _list_query(*, user_id: uuid.UUID, status: MemoryStatus | None) -> Select[tu
 def _encode_cursor(memory: Memory) -> str:
     """把一行的排序键编码成不透明游标。"""
 
-    raw = f"{memory.updated_at.isoformat()}{_CURSOR_SEPARATOR}{memory.id}"
+    raw = _CURSOR_SEPARATOR.join((_CURSOR_SCHEME, memory.created_at.isoformat(), str(memory.id)))
     return base64.urlsafe_b64encode(raw.encode()).decode()
 
 
 def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
-    """解析客户端回传的游标；任何畸形输入都按策略错误拒绝。"""
+    """解析客户端回传的游标；畸形输入和旧版排序键的游标都按策略错误拒绝。"""
 
     try:
-        moment, _, identifier = (
-            base64.urlsafe_b64decode(cursor.encode()).decode().partition(_CURSOR_SEPARATOR)
+        scheme, moment, identifier = (
+            base64.urlsafe_b64decode(cursor.encode()).decode().split(_CURSOR_SEPARATOR)
         )
+        if scheme != _CURSOR_SCHEME:
+            raise ValueError("游标排序键版本不匹配")
         return datetime.fromisoformat(moment), uuid.UUID(identifier)
     except ValueError as error:  # binascii.Error 与 UnicodeDecodeError 都是它的子类
         raise MemoryPolicyError("分页游标无效") from error
