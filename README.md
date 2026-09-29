@@ -231,6 +231,12 @@ yuanai/
 移动端原生 Google 登录未实现等）。Phase 8-15 仅有阶段文档（Phase 13 实时视频、
 Phase 14 终端 TUI、Phase 15 小程序端为 2026-09-17 新增）。
 
+2026-09-29 更新：上述 Phase 7 缺口中，**记忆抽取流水线与 pgvector 混合检索已实现**
+（端到端闭环，逐条证据见[交付状态总表 §2.1](docs/master-plan.md)）；
+**知识入库流水线与 Webhook 触发仍未实现**。记忆能力依赖 `memory:worker`、`node:sweeper`
+等常驻 worker，`pnpm dev:real` 不会启动它们，不启动则静默缺功能而不报错，
+启动方式见[开发运行指南](docs/dev-guide.md)。
+
 **逐条缺口见[交付状态总表 §3.1](docs/master-plan.md)**；「已合入 dev / CI 全绿」不等于功能完整。
 
 已有的自动化与真实运行证据**不构成生产部署放行**；全量 Web E2E 使用受控路由 mock，

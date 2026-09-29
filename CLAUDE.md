@@ -135,6 +135,11 @@ yuanai/
 Phase 7 只落地了控制面而记忆抽取/pgvector/知识入库流水线/Webhook 触发等核心机制未实现）；
 Phase 8-15 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增）。
 
+2026-09-29 更新：Phase 7 缺口中**记忆抽取流水线与 pgvector 混合检索已实现**且端到端闭环
+（逐条证据见 [交付状态总表 §2.1](docs/master-plan.md)），**知识入库流水线与 Webhook 触发仍未实现**。
+记忆能力依赖 `memory:worker` 与 `node:sweeper` 等常驻 worker，`pnpm dev:real` 不启动它们，
+未启动时**静默缺功能而不报错**（见 [开发运行指南](docs/dev-guide.md)）。
+
 **逐条缺口见 [交付状态总表 §3.1](docs/master-plan.md)**，不要以「已合入 dev」推断功能完整。
 
 以上均为本地真实运行时证据，**不构成生产部署放行**。

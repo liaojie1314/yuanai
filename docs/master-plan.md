@@ -23,8 +23,8 @@
 
 | ID  | 阶段 | 条目                                                                                  | 状态 | 详情  |
 | --- | ---- | ------------------------------------------------------------------------------------- | ---- | ----- |
-| M1  | 7    | 记忆写入流水线 MemoryExtractor：从 Run 抽取 → 敏感度分级 → 去重 → 冲突检测 → 自动激活 | ⬜   | §3.1  |
-| M2  | 7    | 混合检索：pgvector 迁移（`embedding` 现为 JSON 列）+ FTS + RRF + rerank               | ⬜   | §3.1  |
+| M1  | 7    | 记忆写入流水线 MemoryExtractor：从 Run 抽取 → 敏感度分级 → 去重 → 冲突检测 → 自动激活 | ✅   | §2.1  |
+| M2  | 7    | 混合检索：pgvector 迁移（`embedding` 现为 JSON 列）+ FTS + RRF + rerank               | ✅   | §2.1  |
 | M3  | 7    | 知识入库流水线：多格式解析、OCR、结构感知分块、`ingestion_jobs`、质量检查             | ⬜   | §3.1  |
 | M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §3.1  |
 | M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §3.1  |
@@ -40,17 +40,17 @@
 | ID  | 阶段 | 条目                                                           | 状态 | 详情 |
 | --- | ---- | -------------------------------------------------------------- | ---- | ---- |
 | S1  | 5    | `agent_worker` 构造 Coordinator 时传 `budget=`，并加 config 键 | 🟡   | §3.1 |
-| S2  | 7    | `local_node` 记忆不再静默过滤：路由到在线节点或明确提示不可用  | ⬜   | §3.1 |
+| S2  | 7    | `local_node` 记忆不再静默过滤：路由到在线节点或明确提示不可用  | ✅   | §2.1 |
 | S3  | 7    | MemoryCenter 三层测试（组件 / hook / api）                     | ⬜   | §2   |
-| S4  | 7    | Phase 7 列表接口游标分页                                       | ⬜   | §3.1 |
-| S5  | 7    | 记忆导出 API                                                   | ⬜   | §3.1 |
+| S4  | 7    | Phase 7 列表接口游标分页                                       | 🟡   | §2.1 |
+| S5  | 7    | 记忆导出 API                                                   | ✅   | §2.1 |
 | S6  | 6    | `GET /tool-executions/{id}`；`/mcp-servers` 测试 / 启停 / 删除 | ⬜   | §3.1 |
 | S7  | 6    | `update_required` 节点状态接线 + 测试（当前是死枚举）          | ⬜   | §3.1 |
 | S8  | 3    | `useHydrateAuth` / `ChatInput` 单测                            | ⬜   | §3.1 |
 | S9  | 5    | 前端 Agent 测试：组件 + hook + E2E                             | ⬜   | §3.1 |
 | S10 | 7    | 自动化「复制」                                                 | ⬜   | §3.1 |
 | S11 | —    | `packages/ui` 补测试后加回覆盖率阈值                           | ⬜   | §6   |
-| S12 | 7    | 记忆检索评测集（Recall@K / MRR / 引用准确率）                  | ⬜   | §2   |
+| S12 | 7    | 记忆检索评测集（Recall@K / MRR / 引用准确率）                  | ✅   | §2.1 |
 | S13 | —    | 硬编码文案检测（61 文件 / 458 行，等于一次 i18n 迁移）         | ⬜   | §6   |
 | S14 | 7    | Mobile / Desktop 侧 Phase 7 控制界面                           | ⬜   | §2   |
 
@@ -95,6 +95,28 @@
 > 已实现的是「增删改查 + 界面」的控制面；Phase 7 文档 §4（记忆写入流程）、§5.1（混合检索）、
 > §6.1（知识入库流水线）、§7.3（从经验生成 Skill）、§8.2（Webhook 触发）、§11.3（Skill 评测门禁）
 > 所描述的**核心机制尚未实现**。逐条见 §3.1。
+>
+> ✅ **2026-09-29 更正的更正**：上述六项里，**§4（记忆写入流程）与 §5.1（混合检索）已实现**，
+> 见 §2.1；其余四项（§6.1 知识入库、§7.3 从经验生成 Skill、§8.2 Webhook、§11.3 Skill 评测门禁）
+> 仍未实现，对应 §0 的 M3 / M4 / M5，状态不变。
+
+### 2.1 记忆抽取与混合检索（2026-09-29 交付）
+
+分支 `feature/memory-extraction-hybrid-search`，43 个 commit。**以下每条都核对过文件与行号**，
+不以「做了记忆相关的活」整片推断。
+
+| 条目 | 状态 | 证据                                                                                                                                                                                                                                                                                                                                 |
+| ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M1   | ✅   | `services/memory_extraction.py` 的 `extract_from_run` 依次做抽取 → `classify_sensitivity` → `find_duplicate` → `find_conflict` → `decide_status` → 激活时补 embedding。**链路闭环有据**：`workers/agent_worker.py:120` 投 `enqueue_extraction` → Redis `memory:extract` → `workers/memory_worker.py:29` 取出并调用 —— 不是只有控制面 |
+| M2   | ✅   | `models/memory.py:103` 的 `embedding` 已是 `Vector(EMBEDDING_DIMENSIONS)`（迁移 `q1a2b3c4d5e6_add_pgvector_columns.py`），不再是 JSON 列；`search_vector` 为 TSVECTOR；`services/memory_retrieval.py` 以 RRF 融合 FTS 臂与 pgvector `cosine_distance` 臂，后接确定性规则 rerank                                                      |
+| S2   | ✅   | `services/memory_node.py` 把 `local_node` 记忆路由到用户的桌面执行节点；节点不在线时 `MemoryPage.local_unavailable` 明确置真（按「本页含 `local_node` 行」且 `select_fresh_node(...) is None` 纯 SQL 判定，不发节点 RPC），不再静默过滤                                                                                              |
+| S4   | 🟡   | **只有 `/memories` 加了游标分页**（`api/v1/memories.py:72` 的 `cursor` 参数）；`knowledge_bases` / `skills` / `automations` 三个列表接口仍无分页。本行按字面是「Phase 7 列表接口」复数，故只能标部分                                                                                                                                 |
+| S5   | ✅   | `GET /memories/export`，路由声明在 `/{memory_id}` 之前以免被吞；伪造游标返回 422 而非静默首页                                                                                                                                                                                                                                        |
+| S12  | ✅   | 评测集 + Recall@K / MRR / 引用准确率三条 floor（0.80 / 0.80 / 1.0），三轮重测一致。**floor 正好卡在本语料关键词检索天花板**：20 条标注查询中 4 条与答案无字面重叠，其余 16 条首位命中，16/20 = 0.80                                                                                                                                  |
+
+> ⚠️ **部署前提（不满足则上述能力在生产环境空转）**：`memory:worker` 与 `node:sweeper`
+> 必须作为常驻进程部署。前者不跑则 agent run 永不抽取记忆，后者不跑则失联节点永不置
+> `offline`。四个 worker 的启动方式见 [开发运行指南](dev-guide.md)。
 
 | 面       | 证据                                                                                                                                                                |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
