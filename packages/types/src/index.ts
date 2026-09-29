@@ -938,10 +938,12 @@ export interface MemoryPage {
   localUnavailable: boolean
 }
 
-/** 记忆导出快照。 */
+/** 记忆导出快照；本机节点记忆的正文不在文件里，导出不会去节点取。 */
 export interface MemoryExport {
   exportedAt: string
   items: Memory[]
+  /** 为 `true` 时本次导出含本机节点记忆、且导出那一刻节点不可达。 */
+  localUnavailable: boolean
 }
 
 /** 更新记忆内容或生命周期状态的参数。 */

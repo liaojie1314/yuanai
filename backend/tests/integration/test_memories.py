@@ -310,3 +310,64 @@ def test_cloud_declares_the_same_query_ceiling_as_the_node() -> None:
     declared = re.search(r"MAX_MEMORY_SEARCH_QUERY_CHARS = (\d+)", node_source)
     assert declared is not None
     assert int(declared.group(1)) == MEMORY_SEARCH_MAX_QUERY_CHARS
+
+
+@pytest.mark.asyncio
+async def test_export_says_why_local_bodies_are_missing(client, db, test_user, auth_headers):
+    """导出必须说明本机正文为何为空，否则用户拿到的是一份没有解释的空壳。"""
+
+    assistant = await _assistant(db, test_user.id)
+    db.add(
+        Memory(
+            user_id=test_user.id,
+            assistant_id=assistant.id,
+            memory_type=MemoryType.semantic,
+            content=None,
+            source_type="user_input",
+            source_id="source-1",
+            storage_location=MemoryStorageLocation.local_node,
+        )
+    )
+    await db.commit()
+
+    exported = await client.get("/api/v1/memories/export", headers=auth_headers)
+    assert exported.status_code == 200
+    assert exported.json()["localUnavailable"] is True
+
+    node = ExecutionNode(
+        user_id=test_user.id,
+        name="导出测试节点1",
+        platform="linux",
+        app_version="0.1.0",
+        status=ExecutionNodeStatus.online,
+        capabilities=["memory.search"],
+        policy={"allowed_tools": ["memory.search"]},
+        last_seen_at=datetime.now(UTC),
+    )
+    db.add(node)
+    await db.commit()
+
+    with_node = await client.get("/api/v1/memories/export", headers=auth_headers)
+    assert with_node.json()["localUnavailable"] is False
+
+
+@pytest.mark.asyncio
+async def test_cloud_only_export_never_claims_local_trouble(client, db, test_user, auth_headers):
+    """只有云端记忆时不得挂上本地不可用标记，也不得为此去查节点。"""
+
+    assistant = await _assistant(db, test_user.id)
+    db.add(
+        Memory(
+            user_id=test_user.id,
+            assistant_id=assistant.id,
+            memory_type=MemoryType.semantic,
+            content="记忆内容A",
+            source_type="user_input",
+            source_id="source-2",
+        )
+    )
+    await db.commit()
+
+    exported = await client.get("/api/v1/memories/export", headers=auth_headers)
+    assert exported.status_code == 200
+    assert exported.json()["localUnavailable"] is False

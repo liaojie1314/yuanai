@@ -93,10 +93,17 @@ class MemoryPage(MemorySchema):
 
 
 class MemoryExport(MemorySchema):
-    """一次性导出的记忆快照。"""
+    """一次性导出的记忆快照。
+
+    导出文件里 local_node 记忆的正文恒为 ``None`` —— 正文只在用户自己的机器上，
+    导出不会去节点取。``local_unavailable`` 补上文件本身看不出来的那一半：
+    导出这一刻节点是否可达。哪几条受影响不另列名单，
+    每条记录自带 ``storage_location`` 与 ``content``，再存一份 id 只会和它们走散。
+    """
 
     exported_at: datetime
     items: list[MemoryResponse]
+    local_unavailable: bool = False
 
 
 class MemorySearchResult(MemorySchema):
