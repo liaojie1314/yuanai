@@ -459,3 +459,46 @@ async def test_retrieval_skips_the_node_when_there_are_no_local_memories(
     assert calls == []
     assert outcome.local_unavailable is False
     assert [result.content for result in outcome.results] == ["记忆内容A"]
+
+
+@pytest.mark.asyncio
+async def test_node_score_cannot_outrank_the_cloud_arms(
+    db: AsyncSession, test_user: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """节点命中只按名次参与排序，自报的 score 不得影响跨路名次。
+
+    节点回包的 score 是 `1/(index+1)`，是它自己的名次倒数而非可比较的相关度，
+    且属于不可信输入、没有上限。若照原值同表排序，节点首名恒为 1.0，
+    而云端经 RRF 融合与规则重排后最高只有 0.383 —— 节点会无条件吃满整个 limit，
+    把云端记忆静默挤出上下文，挤出与相关度无关。
+    """
+
+    assistant, _node = await _fixture(db, test_user)
+    cloud = Memory(
+        user_id=test_user.id,
+        assistant_id=assistant.id,
+        memory_type=MemoryType.profile,
+        content="记忆内容A",
+        source_type="run",
+        status=MemoryStatus.active,
+        confidence=1.0,
+    )
+    local = _local_memory(user_id=test_user.id, assistant_id=assistant.id)
+    db.add_all([cloud, local])
+    await db.flush()
+    monkeypatch.setattr(
+        "app.services.memory_node.run_node_job",
+        _stub_outcome(
+            NodeJobOutcome(
+                status="succeeded",
+                data={"memories": [{"id": str(local.id), "content": "记忆内容B", "score": 9.0}]},
+            )
+        ),
+    )
+
+    outcome = await search_active_memories(
+        user_id=test_user.id, assistant_id=assistant.id, query="记忆内容A", db=db, limit=1
+    )
+    assert outcome.local_unavailable is False
+    # 只容得下一条时，命中查询且高置信度的云端记忆必须胜出
+    assert [result.content for result in outcome.results] == ["记忆内容A"]

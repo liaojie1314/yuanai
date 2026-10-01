@@ -139,9 +139,21 @@ async def search_active_memories(
     )
     if not local_results:
         return MemorySearchOutcome(results=cloud_results, local_unavailable=local_unavailable)
-    # ponytail: 两路分数量纲不同（云端是 RRF 重排分，节点是它自己的相关度），
-    # 直接同表排序只是可用的近似；要真正融合需要把节点也纳入 RRF 的名次口径。
-    merged = sorted(cloud_results + local_results, key=lambda result: (-result.score, result.id))
+    # 节点回包的 score 是 1/(index+1)，节点侧注释也写明「云端按名次与元数据再做融合排序」：
+    # 那是名次的倒数，不是能与云端比较的相关度。云端分数经 RRF 融合与规则重排后上限 0.383、
+    # 典型值约 0.08，而节点首名恒为 1.0 —— 直接同表排序会让节点命中无条件吃满整个 limit
+    # （limit=8 实测 8/8），云端记忆被静默挤出上下文，且挤出与相关度毫无关系。
+    # 这个 score 还是不可信输入：节点报一个 9.0 就能霸榜，`_parse_node_hits` 不设上限。
+    # 云端与本地记忆按 storage_location 互斥，绝不会出现在同一条 RRF 里，
+    # 于是「把节点当第三路召回」退化成纯按名次给分，即 1/(RRF_K+r)，与云端单臂完全同口径。
+    local_by_rank = [
+        result.model_copy(update={"score": 1.0 / (RRF_K + rank)})
+        for rank, result in enumerate(local_results, start=1)
+    ]
+    # ponytail: 云端分数是规则重排之后的（乘子 0.45~1.15），本地这一路没有重排，
+    # 因此默认 confidence（0.0）的云端命中在同名次上仍会输给节点命中，倍率约 2.2 倍；
+    # 彻底修法是两路都先出 RRF 名次分、再共用一次 apply_rule_rerank。
+    merged = sorted(cloud_results + local_by_rank, key=lambda result: (-result.score, result.id))
     return MemorySearchOutcome(results=merged[:limit], local_unavailable=local_unavailable)
 
 
