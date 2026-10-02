@@ -16,6 +16,7 @@ from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue, QueueItem
 from app.workers.agent_worker import AgentWorker, CancellationToken, execute_agent_run
 from app.workers.recovery_worker import RecoveryWorker
+from tests.unit.test_agent_metrics import metric_value
 
 
 class FakeRedis:
@@ -489,9 +490,11 @@ async def test_recovery_requeues_running_run_without_lease() -> None:
         await queue.enqueue(_tenant_id, _run_id)
 
     recovery = RecoveryWorker(queue, list_running=list_running, requeue=requeue)
+    before = metric_value('agent_recovery_total{reason="lease_lost"}')
     assert await recovery.recover_once() == 1
     assert statuses[run_id] is AgentRunStatus.queued
     assert await queue.dequeue(tenant_id) == QueueItem(tenant_id, run_id)
+    assert metric_value('agent_recovery_total{reason="lease_lost"}') == before + 1
 
 
 @pytest.mark.asyncio

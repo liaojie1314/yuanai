@@ -40,7 +40,7 @@ PHASE5_METRIC_NAMES = (
 )
 
 
-def _value(series: str) -> float:
+def metric_value(series: str) -> float:
     """从当前渲染结果里读取一条序列的值；未出现过的序列按 0 处理。
 
     指标是进程级全局状态，整套测试共享，因此断言必须比较调用前后的差值。
@@ -123,7 +123,7 @@ def test_counter_renders_escaped_labels_and_rejects_bad_input() -> None:
     counter.inc(kind='a"b')
     counter.inc(2, kind='a"b')
 
-    assert _value('unit_counter_total{kind="a\\"b"}') == 2 + 1
+    assert metric_value('unit_counter_total{kind="a\\"b"}') == 2 + 1
     with pytest.raises(ValueError):
         counter.inc(-1, kind="a")
     with pytest.raises(ValueError):
@@ -136,11 +136,11 @@ def test_histogram_buckets_are_cumulative_with_sum_and_count() -> None:
     histogram.observe(1.0)
     histogram.observe(7.0)
 
-    assert _value('unit_latency_seconds_bucket{le="1"}') == 2
-    assert _value('unit_latency_seconds_bucket{le="2"}') == 2
-    assert _value('unit_latency_seconds_bucket{le="+Inf"}') == 3
-    assert _value("unit_latency_seconds_count") == 3
-    assert _value("unit_latency_seconds_sum") == 8.5
+    assert metric_value('unit_latency_seconds_bucket{le="1"}') == 2
+    assert metric_value('unit_latency_seconds_bucket{le="2"}') == 2
+    assert metric_value('unit_latency_seconds_bucket{le="+Inf"}') == 3
+    assert metric_value("unit_latency_seconds_count") == 3
+    assert metric_value("unit_latency_seconds_sum") == 8.5
 
 
 def test_render_metrics_declares_all_eight_phase5_metrics() -> None:
@@ -156,12 +156,12 @@ async def test_coordinator_run_records_run_tool_and_token_metrics() -> None:
 
     model = "metrics-test-model"
     before = {
-        "runs": _value(f'agent_runs_total{{status="succeeded",model="{model}"}}'),
-        "tool": _value('agent_tool_calls_total{tool="echo",status="succeeded"}'),
-        "input": _value(f'agent_tokens_total{{model="{model}",direction="input"}}'),
-        "output": _value(f'agent_tokens_total{{model="{model}",direction="output"}}'),
-        "duration": _value("agent_run_duration_seconds_count"),
-        "steps": _value("agent_steps_per_run_sum"),
+        "runs": metric_value(f'agent_runs_total{{status="succeeded",model="{model}"}}'),
+        "tool": metric_value('agent_tool_calls_total{tool="echo",status="succeeded"}'),
+        "input": metric_value(f'agent_tokens_total{{model="{model}",direction="input"}}'),
+        "output": metric_value(f'agent_tokens_total{{model="{model}",direction="output"}}'),
+        "duration": metric_value("agent_run_duration_seconds_count"),
+        "steps": metric_value("agent_steps_per_run_sum"),
     }
     coordinator = AgentCoordinator(
         model_stream=_scripted_model(
@@ -192,16 +192,20 @@ async def test_coordinator_run_records_run_tool_and_token_metrics() -> None:
     result = await coordinator.run(run)
 
     assert result.status is AgentRunStatus.succeeded
-    assert _value(f'agent_runs_total{{status="succeeded",model="{model}"}}') == before["runs"] + 1
-    assert _value('agent_tool_calls_total{tool="echo",status="succeeded"}') == before["tool"] + 1
-    assert _value(f'agent_tokens_total{{model="{model}",direction="input"}}') == (
+    assert metric_value(f'agent_runs_total{{status="succeeded",model="{model}"}}') == (
+        before["runs"] + 1
+    )
+    assert metric_value('agent_tool_calls_total{tool="echo",status="succeeded"}') == (
+        before["tool"] + 1
+    )
+    assert metric_value(f'agent_tokens_total{{model="{model}",direction="input"}}') == (
         before["input"] + 11
     )
-    assert _value(f'agent_tokens_total{{model="{model}",direction="output"}}') == (
+    assert metric_value(f'agent_tokens_total{{model="{model}",direction="output"}}') == (
         before["output"] + 7
     )
-    assert _value("agent_run_duration_seconds_count") == before["duration"] + 1
-    assert _value("agent_steps_per_run_sum") == before["steps"] + run.current_step
+    assert metric_value("agent_run_duration_seconds_count") == before["duration"] + 1
+    assert metric_value("agent_steps_per_run_sum") == before["steps"] + run.current_step
 
 
 @pytest.mark.asyncio
@@ -219,8 +223,8 @@ async def test_approval_decision_records_wait_seconds() -> None:
     )
     step = AgentStep(id=uuid.uuid4(), run_id=run.id, sequence=1, kind=AgentStepKind.approval)
 
-    before_count = _value("agent_approval_wait_seconds_count")
-    before_sum = _value("agent_approval_wait_seconds_sum")
+    before_count = metric_value("agent_approval_wait_seconds_count")
+    before_sum = metric_value("agent_approval_wait_seconds_sum")
 
     # 未落库的请求上 created_at 不存在，不应记录也不应抛错
     pending = await service.create_request(
@@ -233,7 +237,7 @@ async def test_approval_decision_records_wait_seconds() -> None:
         action_summary="执行工具 echo",
     )
     await service.approve(pending.id, user_id=run.user_id)
-    assert _value("agent_approval_wait_seconds_count") == before_count
+    assert metric_value("agent_approval_wait_seconds_count") == before_count
 
     timed = await service.create_request(
         run=run,
@@ -247,5 +251,5 @@ async def test_approval_decision_records_wait_seconds() -> None:
     timed.created_at = datetime.now(UTC) - timedelta(seconds=30)
     await service.deny(timed.id, user_id=run.user_id)
 
-    assert _value("agent_approval_wait_seconds_count") == before_count + 1
-    assert _value("agent_approval_wait_seconds_sum") >= before_sum + 30
+    assert metric_value("agent_approval_wait_seconds_count") == before_count + 1
+    assert metric_value("agent_approval_wait_seconds_sum") >= before_sum + 30
