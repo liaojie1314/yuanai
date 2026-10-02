@@ -4,13 +4,19 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
-    passWithNoTests: true,
+    setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/index.ts'],
-      // 本包尚无测试文件，覆盖率恒为 0%，设阈值只会让 test:coverage 永远失败。
+      exclude: ['src/**/*.test.{ts,tsx}', 'src/**/index.ts'],
+      // 防退化棘轮：阈值取当前实测值向下取整，只用于拦住「覆盖率变差」。
+      thresholds: {
+        lines: 100,
+        functions: 100,
+        branches: 100,
+        statements: 100,
+      },
     },
   },
 })
