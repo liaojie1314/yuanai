@@ -110,6 +110,22 @@ class DesktopOAuthExchangeRequest(BaseModel):
         return v
 
 
+class GoogleNativeLoginRequest(BaseModel):
+    """原生 Google Sign-In 用 id_token 交换本站会话的请求体（字段别名 `idToken`）。"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    id_token: str
+
+    @field_validator("id_token")
+    @classmethod
+    def validate_id_token(cls, v: str) -> str:
+        # 只做形状预检（JWS compact 三段式），签名/aud/exp 由 oauth_service 校验
+        if not re.fullmatch(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+", v):
+            raise ValueError("id_token 不是合法的 JWT")
+        return v
+
+
 class UserResponse(BaseModel):
     """序列化为 camelCase，与前端 User 类型对齐"""
 

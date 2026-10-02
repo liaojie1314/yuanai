@@ -11,6 +11,7 @@ from app.schemas.auth import (
     ChangeEmailRequest,
     ChangePasswordRequest,
     DesktopOAuthExchangeRequest,
+    GoogleNativeLoginRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -413,6 +414,25 @@ async def google_callback(
     return RedirectResponse(
         await oauth_service.build_platform_redirect(resp, platform), status_code=302
     )
+
+
+@router.post("/google/native", response_model=AuthResponse)
+async def google_native_login(req: GoogleNativeLoginRequest, db: DB) -> AuthResponse:
+    """原生 Google Sign-In：用移动端 SDK 返回的 id_token 换本站 JWT。
+
+    服务端校验 id_token 的签名 / `iss` / `exp` / `aud`（见
+    `oauth_service.verify_google_id_token`），再按 `google_id` → email 顺序
+    关联或新建用户，签发与 Web 回调同口径的 access/refresh token。
+    """
+    try:
+        return await oauth_service.complete_google_native_login(req.id_token, db)
+    except OAuthConfigError as e:
+        raise HTTPException(503, {"code": "OAUTH_NOT_CONFIGURED", "message": str(e)}) from e
+    except OAuthFlowError as e:
+        # 网络问题归 503（服务端可重试）；邮箱不可用是请求内容问题 → 400；
+        # 其余一律是客户端提交的 id_token 不可信 → 401。
+        status = {"OAUTH_NETWORK_ERROR": 503, "OAUTH_EMAIL_UNAVAILABLE": 400}.get(e.code, 401)
+        raise HTTPException(status, {"code": e.code, "message": e.message}) from e
 
 
 @router.post("/desktop/exchange", response_model=AuthResponse)

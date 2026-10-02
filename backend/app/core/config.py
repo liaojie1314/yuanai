@@ -181,6 +181,11 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+    # 原生 Google Sign-In（POST /auth/google/native）允许的 id_token `aud`，逗号分隔。
+    # 移动端 id_token 的 aud 取决于客户端配置：配了 serverClientId 时是 Web client id，
+    # 否则是 Android / iOS 自身的 client id，所以必须支持配置多个而不能只认一个。
+    # google_client_id 始终隐含在允许集合内，无需在此重复填写。
+    google_native_client_ids: str = ""
     # 前端回调页面；后端 exchange 完 code 后把 access/refresh token 通过 302 拼在 URL 中
     web_app_url: str = "http://localhost:3000"
 
