@@ -1,6 +1,7 @@
 """三个无副作用内置工具。"""
 
 from app.tools.builtin.calculate import CALCULATE_SPEC, calculate
+from app.tools.builtin.content_generation import PHASE6_WAVE2_BUILTINS
 from app.tools.builtin.current_time import CURRENT_TIME_SPEC, get_current_time
 from app.tools.builtin.desktop import DESKTOP_BUILTINS
 from app.tools.builtin.file_metadata import (
@@ -26,6 +27,8 @@ def build_phase6_registry() -> ToolRegistry:
 
     registry = build_builtin_registry()
     for spec, handler in PHASE6_BUILTINS:
+        registry.register(spec, handler)
+    for spec, handler in PHASE6_WAVE2_BUILTINS:
         registry.register(spec, handler)
     for spec, handler in DESKTOP_BUILTINS:
         registry.register(spec, handler)
