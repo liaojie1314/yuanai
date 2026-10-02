@@ -31,6 +31,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# 本地离线 OCR：扫描件/图片入库才需要，未安装时入库作业降级为 degraded 而不是失败
+ocr = [
+    "rapidocr-onnxruntime>=1.3.0",
+]
 dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",

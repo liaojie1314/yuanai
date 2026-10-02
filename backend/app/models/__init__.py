@@ -21,6 +21,9 @@ from app.models.conversation import Conversation
 from app.models.expo_push_token import ExpoPushToken
 from app.models.file import File, MessageFile
 from app.models.knowledge import (
+    IngestionJob,
+    IngestionJobStage,
+    IngestionJobStatus,
     KnowledgeBase,
     KnowledgeBaseMember,
     KnowledgeBaseMemberRole,
@@ -88,6 +91,9 @@ __all__ = [
     "KnowledgeDocument",
     "KnowledgeDocumentStatus",
     "KnowledgeChunk",
+    "IngestionJob",
+    "IngestionJobStatus",
+    "IngestionJobStage",
     "Skill",
     "SkillVersion",
     "SkillVersionStatus",

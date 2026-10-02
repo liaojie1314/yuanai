@@ -6,7 +6,12 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from app.models.knowledge import KnowledgeBaseMemberRole, KnowledgeDocumentStatus
+from app.models.knowledge import (
+    IngestionJobStage,
+    IngestionJobStatus,
+    KnowledgeBaseMemberRole,
+    KnowledgeDocumentStatus,
+)
 
 
 class KnowledgeSchema(BaseModel):
@@ -82,9 +87,43 @@ class KnowledgeDocumentResponse(KnowledgeSchema):
     source_id: uuid.UUID
     version: int
     content_hash: str
+    parser: str
     status: KnowledgeDocumentStatus
     created_at: datetime
     published_at: datetime | None
+
+
+class KnowledgeFileIngestRequest(KnowledgeSchema):
+    """把一个已上传文件送入入库流水线。
+
+    `source_id` 为空时新建来源，否则为该来源追加一个待发布版本（重新摄取）。
+    """
+
+    file_id: uuid.UUID
+    name: str | None = Field(default=None, min_length=1, max_length=300)
+    source_uri: str | None = Field(default=None, max_length=2_000)
+    source_id: uuid.UUID | None = None
+
+
+class IngestionJobResponse(KnowledgeSchema):
+    """入库作业的阶段、解析器、降级原因与质量告警。"""
+
+    id: uuid.UUID
+    knowledge_base_id: uuid.UUID
+    source_id: uuid.UUID | None
+    document_id: uuid.UUID | None
+    file_id: uuid.UUID | None
+    status: IngestionJobStatus
+    stage: IngestionJobStage
+    parser: str | None
+    ocr_used: bool
+    error_code: str | None
+    error_detail: str | None
+    warnings: list[str]
+    chunk_count: int
+    char_count: int
+    created_at: datetime
+    finished_at: datetime | None
 
 
 class KnowledgeSourceWithDocumentsResponse(KnowledgeSchema):

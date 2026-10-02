@@ -8,16 +8,19 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DB, CurrentUser
 from app.models.knowledge import (
+    IngestionJob,
     KnowledgeBase,
     KnowledgeBaseMember,
     KnowledgeDocument,
     KnowledgeSource,
 )
 from app.schemas.knowledge import (
+    IngestionJobResponse,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
     KnowledgeCitation,
     KnowledgeDocumentResponse,
+    KnowledgeFileIngestRequest,
     KnowledgeMemberGrant,
     KnowledgeMemberResponse,
     KnowledgeSearchRequest,
@@ -25,6 +28,7 @@ from app.schemas.knowledge import (
     KnowledgeTextSourceCreate,
     KnowledgeTextVersionCreate,
 )
+from app.services.knowledge_ingestion import ingest_file, list_ingestion_jobs
 from app.services.knowledge_service import (
     KnowledgeNotFoundError,
     KnowledgePermissionError,
@@ -158,6 +162,54 @@ async def create_source_version(
     await db.commit()
     await db.refresh(document)
     return document
+
+
+@router.post(
+    "/{knowledge_base_id}/sources/file", response_model=IngestionJobResponse, status_code=201
+)
+async def ingest_source_file(
+    knowledge_base_id: uuid.UUID,
+    request: KnowledgeFileIngestRequest,
+    current_user: CurrentUser,
+    db: DB,
+) -> IngestionJob:
+    """把已上传文件走完入库流水线，返回作业状态而不是直接返回文档。
+
+    解析失败、格式不支持、OCR 不可用都会返回 201 加对应的作业状态与错误码：
+    作业本身是一条需要留存的审计记录，用 HTTP 错误码会把它丢掉。
+    """
+
+    try:
+        job = await ingest_file(
+            knowledge_base_id=knowledge_base_id,
+            user_id=current_user.id,
+            file_id=request.file_id,
+            name=request.name,
+            source_uri=request.source_uri,
+            source_id=request.source_id,
+            db=db,
+        )
+    except KnowledgeNotFoundError as error:
+        raise HTTPException(status_code=404, detail="KNOWLEDGE_INGEST_TARGET_NOT_FOUND") from error
+    except KnowledgePermissionError as error:
+        raise HTTPException(status_code=403, detail="KNOWLEDGE_BASE_WRITE_FORBIDDEN") from error
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.get("/{knowledge_base_id}/ingestion-jobs", response_model=list[IngestionJobResponse])
+async def get_ingestion_jobs(
+    knowledge_base_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> list[IngestionJob]:
+    """列出可访问知识库的最近入库作业与失败原因。"""
+
+    try:
+        return await list_ingestion_jobs(
+            knowledge_base_id=knowledge_base_id, user_id=current_user.id, db=db
+        )
+    except KnowledgeNotFoundError as error:
+        raise HTTPException(status_code=404, detail="KNOWLEDGE_BASE_NOT_FOUND") from error
 
 
 @router.post(

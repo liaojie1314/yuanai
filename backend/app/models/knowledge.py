@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    JSON,
     Computed,
     DateTime,
     Enum,
@@ -40,6 +41,26 @@ class KnowledgeDocumentStatus(StrEnum):
     published = "published"
     superseded = "superseded"
     failed = "failed"
+
+
+class IngestionJobStatus(StrEnum):
+    """入库作业的终态与中间态，degraded 表示产出可用但有能力缺失。"""
+
+    pending = "pending"
+    running = "running"
+    completed = "completed"
+    degraded = "degraded"
+    failed = "failed"
+
+
+class IngestionJobStage(StrEnum):
+    """入库流水线的阶段，失败时保留停在哪一步。"""
+
+    fetch = "fetch"
+    parse = "parse"
+    quality_check = "quality_check"
+    chunk = "chunk"
+    embed = "embed"
 
 
 class KnowledgeBase(Base):
@@ -126,6 +147,7 @@ class KnowledgeDocument(Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     normalized_content: Mapped[str] = mapped_column(Text, nullable=False)
+    parser: Mapped[str] = mapped_column(String(40), nullable=False, default="text")
     status: Mapped[KnowledgeDocumentStatus] = mapped_column(
         Enum(KnowledgeDocumentStatus, native_enum=False, length=16),
         nullable=False,
@@ -169,3 +191,48 @@ class KnowledgeChunk(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class IngestionJob(Base):
+    """一次文件入库的流水线记录：停在哪个阶段、用了什么解析器、有哪些质量问题。"""
+
+    __tablename__ = "ingestion_jobs"
+    __table_args__ = (
+        Index("ix_ingestion_jobs_base_created", "knowledge_base_id", "created_at"),
+        Index("ix_ingestion_jobs_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    knowledge_base_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_bases.id", ondelete="CASCADE"), nullable=False
+    )
+    source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="SET NULL"), nullable=True
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("knowledge_documents.id", ondelete="SET NULL"), nullable=True
+    )
+    file_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("files.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[IngestionJobStatus] = mapped_column(
+        Enum(IngestionJobStatus, native_enum=False, length=16),
+        nullable=False,
+        default=IngestionJobStatus.pending,
+    )
+    stage: Mapped[IngestionJobStage] = mapped_column(
+        Enum(IngestionJobStage, native_enum=False, length=20),
+        nullable=False,
+        default=IngestionJobStage.fetch,
+    )
+    parser: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    ocr_used: Mapped[bool] = mapped_column(nullable=False, default=False)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    warnings: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
