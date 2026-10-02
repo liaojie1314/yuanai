@@ -272,4 +272,27 @@ describe('MemoryCenter', () => {
       expect(body, `${selector} 使用了原始颜色值`).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
     }
   })
+
+  it('手动添加的记忆必须带上 sourceId', async () => {
+    // 后端 create_candidate 对缺少 source_id 的候选一律 422，而前端不渲染后端的
+    // detail 码，漏发时用户点完没有任何反馈、记忆也不会出现。这条用例盯住请求体本身。
+    let body: Record<string, unknown> | null = null
+    server.use(
+      http.post(`${API_BASE_URL}/memories`, async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json({ ...firstMemory, id: 'memory-new' }, { status: 201 })
+      })
+    )
+
+    const user = userEvent.setup()
+    renderCenter()
+
+    const input = await screen.findByPlaceholderText('输入要记住的内容')
+    await user.type(input, '演示记忆：偏好深色主题')
+    await user.click(screen.getByRole('button', { name: '添加记忆' }))
+
+    await waitFor(() => expect(body).not.toBeNull())
+    expect(body?.['sourceType']).toBe('user_input')
+    expect(String(body?.['sourceId'] ?? '')).not.toBe('')
+  })
 })

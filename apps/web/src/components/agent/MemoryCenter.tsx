@@ -76,6 +76,10 @@ export default function MemoryCenter(): JSX.Element {
       content: value,
       memoryType: 'preference',
       sourceType: 'user_input',
+      // 后端的 create_candidate 要求每条记忆都能回溯到来源，缺 sourceId 一律 422。
+      // 手动添加没有上游产物可指，就为这一次录入生成一个唯一 id，让它至少能被指认。
+      // 漏掉它的后果不是报错而是静默失败：前端不渲染后端 detail 码，用户点完什么都看不到。
+      sourceId: crypto.randomUUID(),
     })
     setContent('')
   }
