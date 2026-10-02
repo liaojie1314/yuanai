@@ -10,6 +10,7 @@ import {
   getMyPreferences,
   getMyStats,
   login,
+  loginWithGoogleIdToken,
   logout,
   register,
   resetPassword,
@@ -93,6 +94,24 @@ export function useResetPassword() {
       verifyCode: string
       newPassword: string
     }) => resetPassword(email, verifyCode, newPassword),
+  })
+}
+
+/**
+ * 原生 Google Sign-In：把 SDK 返回的 id_token 换成本站会话并写入 auth store。
+ *
+ * 与 {@link useLogin} 同口径 —— 成功后 setAuth 落盘（移动端走 SecureStore）
+ * 并失效 `['me']` 查询，调用方只需跳转路由。
+ */
+export function useGoogleNativeLogin() {
+  const { setAuth } = useAuthStore()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: loginWithGoogleIdToken,
+    onSuccess: (data) => {
+      setAuth(data.user, data.access_token, data.refresh_token)
+      void qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
 }
 

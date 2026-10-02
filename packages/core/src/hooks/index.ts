@@ -3,6 +3,7 @@ export type { StreamParams, TemporaryStreamParams, TemporaryChatMessage } from '
 export {
   useCurrentUser,
   useDesktopOAuthExchange,
+  useGoogleNativeLogin,
   useLogin,
   useLogout,
   useRegister,

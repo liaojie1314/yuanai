@@ -53,6 +53,19 @@ export async function exchangeDesktopOAuthCode(code: string): Promise<AuthRespon
   return res.data
 }
 
+/**
+ * 用原生 Google Sign-In SDK 返回的 id_token 交换本站登录会话。
+ *
+ * 后端 `POST /auth/google/native` 会校验 id_token 的签名 / iss / exp / aud，
+ * 再按 googleId → email 顺序关联或新建账号。
+ * @param idToken 原生 SDK 返回的 Google ID token（JWS compact 形式）
+ * @returns 包含用户与 access/refresh token 的认证响应
+ */
+export async function loginWithGoogleIdToken(idToken: string): Promise<AuthResponse> {
+  const res = await apiClient.post<AuthResponse>('/auth/google/native', { idToken })
+  return res.data
+}
+
 /** 退出登录 */
 export async function logout(): Promise<void> {
   await apiClient.post('/auth/logout')
