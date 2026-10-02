@@ -8,7 +8,7 @@
 
 **图例**：✅ 已交付 · 🟡 已交付但有未关闭的验收项 · ⬜ 未开工（仅有阶段文档）
 
-**最后更新**：2026-09-18
+**最后更新**：2026-10-02
 
 ---
 
@@ -29,7 +29,7 @@
 | M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §3.1  |
 | M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §3.1  |
 | M6  | 7    | 专属助手人格 Persona（复用 `memories.assistant_id` 隔离，人格不提权）                 | ⬜   | §5 N1 |
-| M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | ⬜   | §3.1  |
+| M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | 🟡   | §2.4  |
 | M8  | 4    | `yuanai://` 向系统注册 + `electron-builder.yml` + `resources/` 打包资产               | ⬜   | §3.1  |
 | M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | ⬜   | §3.1  |
 | M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ✅   | §2.3  |
@@ -82,7 +82,7 @@
 | Phase 2  | Next.js Web 端                       | 🟡   | 功能验收通过；`packages/ui` 已补齐（§2.3），余 S18 / S19 |
 | Phase 3  | Expo React Native 移动端             | 🟡   | 已合入 `dev`；原生 Google 登录未实现（§3.1）             |
 | Phase 4  | Electron 桌面端                      | 🟡   | `yuanai://` 未向系统注册、打包资产缺失（§3.1）           |
-| Phase 5  | Agent 运行时与任务状态机             | 🟡   | 指标未实现、token/金额预算未接线（§3.1）                 |
+| Phase 5  | Agent 运行时与任务状态机             | 🟡   | 指标已暴露（§2.4）、token/金额预算未接线（§3.1）         |
 | Phase 6  | 工具系统、MCP、沙箱、执行节点        | 🟡   | Wave 2 若干项与协议版本门未做（§3.1）                    |
 | Phase 7  | 记忆、知识库、Skills、自动化         | 🟡   | **控制面已落地，核心机制未实现**（§2 更正、§3.1）        |
 | Phase 8  | 治理、控制中心、运营后台、可观测     | ⬜   | 仅有阶段文档                                             |
@@ -204,6 +204,39 @@
 > `pnpm-workspace.yaml` 的 `publicHoistPattern: '*'` 解析 —— 与 `packages/core` 同一形态。
 > 显式声明会连带把 pnpm 重新解析出的无关 peer-id churn 写进 `pnpm-lock.yaml`，故维持现状。
 
+### 2.4 Agent 运行时可观测性（2026-10-02 交付，Phase 5 / M7）
+
+2026-09-18 审计登记的「§14 可观测性指标未实现」已基本关闭。**逐条核对过文件与行号。**
+指标注册表与 8 个具名指标集中在 `backend/app/core/metrics.py`（counter + histogram
+两种类型自写约 190 行，**未引入 prometheus-client**），`/metrics` 由
+`backend/app/main.py:128` 以 Prometheus 文本格式暴露，与 `/health` 同样不要求认证
+（标签全是低基数枚举，无用户内容与原始身份）。
+
+| 指标                                  | 状态 | 定义 / 埋点 / 测试                                                                                                                                                                                                         |
+| ------------------------------------- | ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_runs_total{status,model}`      | ✅   | `core/metrics.py:171` 定义；`services/agent/coordinator.py:216` 在 `_record_run_metrics`（唯一汇合点，`run()` 包住整个 bounded loop）上报；`tests/unit/test_agent_metrics.py:154`                                          |
+| `agent_run_duration_seconds`          | ✅   | `core/metrics.py:174`；`coordinator.py:227`，只在终态（`TERMINAL_RUN_STATUSES`）观测，避免把审批暂停片段计成一次完整 Run；`tests/unit/test_agent_metrics.py:154`                                                           |
+| `agent_steps_per_run`                 | ✅   | `core/metrics.py:177`（桶 1/2/4/8/12/20/40）；`coordinator.py:228`；`tests/unit/test_agent_metrics.py:154`                                                                                                                 |
+| `agent_tool_calls_total{tool,status}` | ✅   | `core/metrics.py:180`；四个埋点覆盖成功与三类失败：`coordinator.py:593`（succeeded）、`:568`（timeout）、`:582`（ToolError 按错误码分 timeout/failed）、`:543`（桌面节点执行失败）；`tests/unit/test_agent_metrics.py:154` |
+| `agent_approval_wait_seconds`         | ✅   | `core/metrics.py:183`；`approval_service.py:210` 在 `decide()` 这个 approve/deny 的唯一汇合点调用 `_record_approval_wait`（`:78`）；`tests/unit/test_agent_metrics.py:212`                                                 |
+| `agent_recovery_total{reason}`        | ✅   | `core/metrics.py:186`；`workers/recovery_worker.py:83` 记 `reason="inflight"`、`:95` 记 `reason="lease_lost"`；`tests/unit/test_agent_runtime_workers.py:493`                                                              |
+| `agent_tokens_total{model,direction}` | ✅   | `core/metrics.py:187`；`coordinator.py:220/222` 按**本次片段增量**上报（审批恢复会在同一 Run 上再调一次 `run()`，上报累计值会重复计数）；`tests/unit/test_agent_metrics.py:154`                                            |
+| `agent_estimated_cost_usd{model}`     | 🟡   | `core/metrics.py:190` 已定义并在 `coordinator.py:225` 接上 `run.estimated_cost_usd` 的片段增量，`/metrics` 也声明了该指标；**但该字段全仓从未被累加**（只在 `coordinator.py:180` 初始化为 0），因此序列恒为 0 —— 无测试    |
+
+> ⚠️ **M7 记 🟡 的唯一原因**：`agent_estimated_cost_usd` 没有数据源。成本核算需要一张
+> 单价表 + 汇率口径，而 `ai_service.py:506/521` 只有 DeepSeek 两个模型的**人民币**单价，
+> 其余模型无价。拍单价与汇率属独立决策，不在本轮瞎凑，与 §3.1 Phase 5「token / 金额上限
+> 在生产路径未生效」同根。
+>
+> 另两处有意为之的简化：指标存在**进程内存**里（API 与四个 worker 各自暴露自己的值，
+> 由采集端按 instance 聚合，进程重启归零 —— counter 的正常语义）；coordinator 抛异常
+> 逃出 `run()` 时不记录终态（`agent_worker.py` 会 `logger.exception` 兜住，这类 Run
+> 的状态留在 `running`，由恢复 worker 重投并计入 `agent_recovery_total`）。
+>
+> `services/agent/metrics.py` 的结构化日志 `AgentMetrics` **保持原样**：它记的是带
+> `run_id` / `step_id` / 哈希 `user_id` 的事件日志（Phase 5 §14 后半句的要求），
+> 与本节的聚合指标是两件事，没有合并。
+
 ---
 
 ## 3. 前序阶段仍未关闭的验收项
@@ -257,7 +290,7 @@
 
 | 状态 | 条目                                                                                                                                                                                                                                             |
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| ⬜   | §14 可观测性指标未实现：`services/agent/metrics.py` 是结构化**日志**，唯一调用点传的是 SSE 事件名而非指标名。8 个规定指标（`agent_runs_total` 等）均不存在，无标签、无 counter/histogram、`main.py` 无 `/metrics`                                |
+| 🟡   | §14 可观测性指标**已实现**（2026-10-02，见 §2.4）：8 个具名指标定义在 `app/core/metrics.py`，`main.py:128` 暴露 `/metrics`。仅 `agent_estimated_cost_usd` 因 `run.estimated_cost_usd` 从未被累加而恒为 0                                         |
 | 🟡   | token / 金额上限**在生产路径未生效**：`workers/agent_worker.py` 构造 `AgentCoordinator` 时未传 `budget=`，默认 `max_tokens=None`、`max_cost_usd=None`；限额代码只被单测覆盖。验收项「达到 token 或金额上限时可预测地停止」实际只对步数与时间成立 |
 | ⬜   | §13.3 前端集成/E2E 测试**一个都没有**：无 AgentWorkspace 组件测试、无 `useAgentRun` hook 测试、无 agent E2E spec                                                                                                                                 |
 
