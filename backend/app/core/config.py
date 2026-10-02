@@ -206,5 +206,13 @@ class Settings(BaseSettings):
     # 指标哈希盐只用于避免在日志中写入用户原始标识。
     agent_metrics_hash_salt: str = "yuanai-agent-metrics"
 
+    # 自动化 Webhook 入口：公网未认证端点，三道校验的参数都不允许运行期放宽。
+    # 时间戳窗口同时作为重放记录的保留时长下限，窗口越大需要记住的签名越多。
+    webhook_timestamp_tolerance_seconds: int = 300
+    webhook_max_payload_bytes: int = 64 * 1024
+    webhook_rate_limit_per_minute: int = 60
+    # 第三方 payload 是不可信输入，进入 Run 目标前必须截断并显式围栏。
+    webhook_payload_context_max_chars: int = 2_000
+
 
 settings = Settings()  # type: ignore[call-arg]

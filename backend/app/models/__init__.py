@@ -16,6 +16,7 @@ from app.models.automation import (
     AutomationStatus,
     AutomationTrigger,
     AutomationTriggerType,
+    WebhookEndpoint,
 )
 from app.models.conversation import Conversation
 from app.models.expo_push_token import ExpoPushToken
@@ -113,6 +114,7 @@ __all__ = [
     "AutomationTriggerType",
     "AutomationRun",
     "AutomationRunStatus",
+    "WebhookEndpoint",
     "AgentRun",
     "AgentRunStatus",
     "RunStatus",

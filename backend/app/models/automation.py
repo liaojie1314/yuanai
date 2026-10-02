@@ -8,6 +8,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Enum,
     ForeignKey,
@@ -36,10 +37,11 @@ class AutomationStatus(StrEnum):
 
 
 class AutomationTriggerType(StrEnum):
-    """首版支持的一次性和 cron 触发器。"""
+    """一次性、cron 和第三方事件三类触发器。"""
 
     once = "once"
     cron = "cron"
+    webhook = "webhook"
 
 
 class AutomationRunStatus(StrEnum):
@@ -92,6 +94,9 @@ class Automation(Base):
         back_populates="automation",
         cascade="all, delete-orphan",
         order_by="AutomationRun.created_at.desc()",
+    )
+    webhook_endpoint: Mapped[WebhookEndpoint | None] = relationship(
+        back_populates="automation", uselist=False, cascade="all, delete-orphan"
     )
 
 
@@ -160,3 +165,32 @@ class AutomationRun(Base):
 
     automation: Mapped[Automation] = relationship(back_populates="runs")
     agent_run: Mapped[AgentRun | None] = relationship()
+
+
+class WebhookEndpoint(Base):
+    """自动化的公网事件入口；密钥只以 SecretStore 引用形式落库。
+
+    `public_id` 是随机不可枚举的，数据库里没有任何自增或可推导的对外标识；
+    `secret_ref` 指向 `TenantSecretStore`，本表永远不保存签名密钥明文。
+    """
+
+    __tablename__ = "webhook_endpoints"
+    __table_args__ = (UniqueConstraint("automation_id", name="uq_webhook_endpoints_automation"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    automation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("automations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    public_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    secret_ref: Mapped[str] = mapped_column(String(200), nullable=False)
+    # 密钥明文前缀，只用于让用户在界面上认出是哪一把钥匙，不足以重算签名。
+    secret_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    rate_limit_per_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=60)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    automation: Mapped[Automation] = relationship(back_populates="webhook_endpoint")

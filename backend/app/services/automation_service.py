@@ -172,6 +172,7 @@ def _automation_query() -> Select[tuple[Automation]]:
     return select(Automation).options(
         selectinload(Automation.assistant),
         selectinload(Automation.trigger),
+        selectinload(Automation.webhook_endpoint),
         selectinload(Automation.runs),
     )
 
@@ -194,6 +195,11 @@ async def create_automation(
             raise AutomationValidationError("SCHEDULED_AT_REQUIRED")
         next_run_at = trigger_request.scheduled_at.astimezone(UTC)
         scheduled_at = next_run_at
+    elif trigger_request.trigger_type is AutomationTriggerType.webhook:
+        # Webhook 触发器不参与时间调度：next_run_at 保持为空，因此永远不会被
+        # claim_due_automations 选中，只能由验签通过的投递驱动。
+        scheduled_at = None
+        next_run_at = None
     else:
         if trigger_request.cron_expression is None:
             raise AutomationValidationError("CRON_REQUIRED")

@@ -24,6 +24,7 @@ from app.api.v1 import (
     skills,
     tools,
     voice,
+    webhooks,
 )
 from app.api.v1 import files as files_router
 from app.core.config import settings
@@ -118,6 +119,8 @@ app.include_router(memories.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(automations.router, prefix="/api/v1")
+app.include_router(webhooks.automation_router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
 
 
 @app.get("/health")
