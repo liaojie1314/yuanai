@@ -4,6 +4,24 @@
 接入 DeepSeek、Agnes、OpenAI 与 Anthropic 等模型，并提供文件理解、语音输入、图片/视频/音乐
 生成和可配置联网搜索。
 
+## 界面预览
+
+以下截图全部由本机真实运行的全栈模式实截（真实 FastAPI 后端 + PostgreSQL + 真实模型接口），
+不是设计稿。链路为：登录 → 新建会话 → 流式对话 → 记忆中心 → 工具控制台，
+均由 Playwright 驱动真实界面操作产生，图中数据皆为演示用的合成内容。
+
+| 登录                                            | 新建会话                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------ |
+| ![登录页](docs/assets/screenshots/01-login.png) | ![新会话欢迎页](docs/assets/screenshots/02-chat-welcome.png) |
+
+| 流式对话                                                    | 记忆中心                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| ![对话页](docs/assets/screenshots/03-chat-conversation.png) | ![记忆中心](docs/assets/screenshots/04-memory-center.png) |
+
+<p align="center">
+  <img alt="工具控制台" src="docs/assets/screenshots/05-tool-control-center.png" width="70%">
+</p>
+
 ## 技术栈
 
 | 层          | 技术                                             |
