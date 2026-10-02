@@ -14,16 +14,18 @@ from app.tools.builtin.desktop import (
     MEMORY_DELETE_SPEC,
     MEMORY_SEARCH_SPEC,
     MEMORY_WRITE_SPEC,
+    READ_CLIPBOARD_SPEC,
     READ_GRANTED_FILE_SPEC,
     WRITE_WORKSPACE_FILE_SPEC,
     list_granted_directory,
     memory_delete,
     memory_search,
     memory_write,
+    read_clipboard,
     read_granted_file,
     write_workspace_file,
 )
-from app.tools.contracts import ToolContext, ToolError, ToolRisk
+from app.tools.contracts import SideEffect, ToolContext, ToolError, ToolRisk
 from app.tools.registry import ToolRegistry, validate_arguments_against_schema
 
 
@@ -48,6 +50,7 @@ def test_desktop_file_tools_share_node_only_execution_location() -> None:
         "read_granted_file",
         "list_granted_directory",
         "write_workspace_file",
+        "read_clipboard",
         "memory.search",
         "memory.write",
         "memory.delete",
@@ -64,6 +67,19 @@ def test_memory_search_is_a_read_risk_tool() -> None:
     """只读检索才允许节点侧自动接受，风险等级必须是 read。"""
 
     assert MEMORY_SEARCH_SPEC.risk_level is ToolRisk.read
+
+
+def test_read_clipboard_is_never_auto_accepted() -> None:
+    """phase-6 §9.4 要求剪贴板每次确认；Python 侧等级必须让策略关掉自动放行。
+
+    节点侧的 AUTO_ACCEPT_TOOLS 只含 memory.search，这里锁住云端这一半：
+    风险等级若被降回 read，PolicyEngine 会直接放行，用户再也看不到确认卡。
+    """
+
+    assert READ_CLIPBOARD_SPEC.risk_level is not ToolRisk.read
+    assert READ_CLIPBOARD_SPEC.risk_level is not ToolRisk.low
+    # 真实副作用仍为 none：读取不改变任何状态
+    assert READ_CLIPBOARD_SPEC.side_effect is SideEffect.none
 
 
 @pytest.mark.parametrize("spec", [MEMORY_WRITE_SPEC, MEMORY_DELETE_SPEC])
@@ -84,6 +100,7 @@ async def test_memory_tools_fail_closed_in_api_process() -> None:
             {"memoryId": str(uuid.uuid4()), "content": "正文A", "memoryType": "profile"},
         ),
         (memory_delete, {"memoryId": str(uuid.uuid4())}),
+        (read_clipboard, {}),
     ):
         with pytest.raises(ToolError, match="DESKTOP_TOOL_REQUIRES_NODE"):
             await handler(arguments, context)

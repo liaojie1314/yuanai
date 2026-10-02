@@ -211,6 +211,7 @@ app.whenReady().then(() => {
     appVersion: __APP_VERSION__,
     dialog,
     shell,
+    clipboard,
     onStatus: (status) =>
       trustedWebContents.forEach((webContents) =>
         webContents.send(IPC.events.executionNode, status)

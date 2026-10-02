@@ -13,6 +13,7 @@ vi.mock('node:fs/promises', () => ({ ...mockFs, default: mockFs }))
 import {
   DesktopJobsExecutor,
   JobCancelledError,
+  MAX_CLIPBOARD_CHARS,
   MAX_MEMORY_SEARCH_QUERY_CHARS,
   ToolExecutionFailure,
   assertResultSize,
@@ -56,6 +57,7 @@ function createExecutor(
   overrides: {
     resolvePath?: (resourceId: string) => string
     memoryStore?: DesktopJobsExecutorOptions['memoryStore']
+    clipboard?: DesktopJobsExecutorOptions['clipboard']
   } = {}
 ): DesktopJobsExecutor {
   return new DesktopJobsExecutor({
@@ -64,6 +66,7 @@ function createExecutor(
     },
     shell: { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) },
     memoryStore: overrides.memoryStore ?? createStubMemoryStore(),
+    clipboard: overrides.clipboard ?? { readText: () => '测试剪贴板内容' },
     workspaceRoot: WORKSPACE_ROOT,
   })
 }
@@ -537,6 +540,69 @@ describe('DesktopJobsExecutor.executeJob', () => {
       )
       await expectToolFailure(
         () => executor.executeJob(createInput({}, { toolName: 'memory.delete' })),
+        'TOOL_INVALID_INPUT'
+      )
+    })
+  })
+
+  describe('read_clipboard', () => {
+    it('returns the clipboard text with its character count', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => '测试剪贴板内容' } })
+      const onProgress = vi.fn()
+
+      const outcome = await executor.executeJob(
+        createInput({}, { toolName: 'read_clipboard', onProgress })
+      )
+
+      expect(outcome.result).toEqual({
+        text: '测试剪贴板内容',
+        char_count: 7,
+        truncated: false,
+      })
+      expect(onProgress).toHaveBeenLastCalledWith(100)
+    })
+
+    it('truncates at the requested bound instead of failing', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => 'abcdefghij' } })
+
+      const outcome = await executor.executeJob(
+        createInput({ max_chars: 4 }, { toolName: 'read_clipboard' })
+      )
+
+      expect(outcome.result).toEqual({ text: 'abcd', char_count: 4, truncated: true })
+    })
+
+    it('reports an empty clipboard as empty text rather than as a failure', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => '' } })
+
+      const outcome = await executor.executeJob(createInput({}, { toolName: 'read_clipboard' }))
+
+      expect(outcome.result).toEqual({ text: '', char_count: 0, truncated: false })
+    })
+
+    it('fails loudly when the native clipboard cannot be read', async () => {
+      const executor = createExecutor({
+        clipboard: {
+          readText: () => {
+            throw new Error('clipboard unavailable')
+          },
+        },
+      })
+
+      await expectToolFailure(
+        () => executor.executeJob(createInput({}, { toolName: 'read_clipboard' })),
+        'TOOL_EXECUTION_FAILED'
+      )
+    })
+
+    it('rejects a max_chars outside the declared bound', async () => {
+      const executor = createExecutor()
+
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput({ max_chars: MAX_CLIPBOARD_CHARS + 1 }, { toolName: 'read_clipboard' })
+          ),
         'TOOL_INVALID_INPUT'
       )
     })

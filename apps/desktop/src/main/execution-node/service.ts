@@ -21,6 +21,7 @@ export const EXECUTION_NODE_CAPABILITIES = [
   'read_granted_file',
   'list_granted_directory',
   'write_workspace_file',
+  'read_clipboard',
   'memory.search',
   'memory.write',
   'memory.delete',
@@ -67,6 +68,8 @@ export interface ExecutionNodeServiceOptions {
   dialog: ExecutionNodeFileDialog
   /** 系统默认浏览器调用能力。 */
   shell: { openExternal(url: string): Promise<void> }
+  /** 系统原生剪贴板的只读能力。 */
+  clipboard: { readText(): string }
   /** 状态广播回调，把净化快照发给各 renderer。 */
   onStatus(status: DesktopExecutionNodeStatus): void
   /** 测试可注入的 WebSocket 构造器。 */
@@ -112,6 +115,7 @@ export class ExecutionNodeService {
         grants: options.grants,
         shell: options.shell,
         memoryStore: options.memoryStore,
+        clipboard: options.clipboard,
         app: options.app,
       })
     this.client = new ExecutionNodeClient({

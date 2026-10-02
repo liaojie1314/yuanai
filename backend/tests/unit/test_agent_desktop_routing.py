@@ -135,6 +135,27 @@ async def test_run_node_job_reports_unavailable_without_a_fresh_node(db, test_us
     assert outcome.data is None
 
 
+async def test_read_clipboard_reports_unavailable_without_an_online_node(
+    db, test_user: User
+) -> None:
+    """节点不在线时剪贴板必须显式报不可用，不能静默返回空字符串假装读到了。
+
+    剪贴板是用户本机的东西，云端碰不到；把「没有节点」当成「剪贴板是空的」
+    会让用户以为自己刚才的复制丢了。
+    """
+
+    outcome = await run_node_job(
+        user_id=test_user.id,
+        tool_name="read_clipboard",
+        arguments={},
+        db=db,
+        timeout_seconds=5,
+    )
+    assert outcome.status == "unavailable"
+    assert outcome.data is None
+    assert outcome.error_code is None
+
+
 async def _accept_late(*, user_id: uuid.UUID, delay_seconds: float) -> None:
     """另开一个会话，等 delay_seconds 后模拟用户点下「允许本次执行」并回传成功。"""
 

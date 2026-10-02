@@ -22,6 +22,8 @@ _SAFE_RELATIVE_PATH_PATTERN = (
 _MAX_READ_BYTES = 24_576
 _MAX_DIRECTORY_ENTRIES = 200
 _MAX_WORKSPACE_CONTENT_BYTES = 65_536
+# 剪贴板正文会整体回传模型上下文，必须远低于节点的结果字节上限
+_MAX_CLIPBOARD_CHARS = 10_000
 
 # 记忆作业的边界与 MemoryCreateCandidate / memories 检索接口保持一致
 _MAX_MEMORY_CONTENT_CHARS = 10_000
@@ -188,6 +190,48 @@ async def write_workspace_file(arguments: dict[str, object], _context: ToolConte
     raise ToolError(ToolErrorCode.EXECUTION_FAILED, "DESKTOP_TOOL_REQUIRES_NODE")
 
 
+READ_CLIPBOARD_SPEC = ToolSpec(
+    name="read_clipboard",
+    description=(
+        "读取 Desktop 节点当前的系统剪贴板纯文本；剪贴板可能含密码等敏感内容，每次都需用户确认。"
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "max_chars": {"type": "integer", "minimum": 1, "maximum": _MAX_CLIPBOARD_CHARS}
+        },
+        "additionalProperties": False,
+    },
+    output_schema={
+        "type": "object",
+        "properties": {
+            "text": {"type": "string"},
+            "char_count": {"type": "integer"},
+            "truncated": {"type": "boolean"},
+        },
+    },
+    # 剪贴板是用户本机的私密缓冲区，phase-6 §9.4 要求「仅在用户主动触发且每次确认」。
+    # PolicyEngine 对 read 与 local_write 会自动放行，只有更高等级才会每次都走审批卡，
+    # 因此这里取 external_side_effect —— 它在风险表里的默认策略正是「每次确认」。
+    # 真实副作用为 none：读取不改变任何状态。
+    risk_level=ToolRisk.external_side_effect,
+    side_effect=SideEffect.none,
+    # 剪贴板内容随时变化，同样的参数两次调用结果不同，不能被当作可重放的幂等作业。
+    idempotent=False,
+    execution_location="desktop",
+    execution_locations={"desktop"},
+    timeout_seconds=30,
+    tags={"desktop", "clipboard"},
+)
+
+
+async def read_clipboard(arguments: dict[str, object], _context: ToolContext) -> ToolOutput:
+    """拒绝在 API 进程执行 Desktop 工具，任务只允许交给节点。"""
+
+    del arguments
+    raise ToolError(ToolErrorCode.EXECUTION_FAILED, "DESKTOP_TOOL_REQUIRES_NODE")
+
+
 MEMORY_SEARCH_SPEC = ToolSpec(
     name="memory.search",
     description=(
@@ -298,6 +342,7 @@ DESKTOP_BUILTINS = (
     (READ_GRANTED_FILE_SPEC, read_granted_file),
     (LIST_GRANTED_DIRECTORY_SPEC, list_granted_directory),
     (WRITE_WORKSPACE_FILE_SPEC, write_workspace_file),
+    (READ_CLIPBOARD_SPEC, read_clipboard),
     (MEMORY_SEARCH_SPEC, memory_search),
     (MEMORY_WRITE_SPEC, memory_write),
     (MEMORY_DELETE_SPEC, memory_delete),

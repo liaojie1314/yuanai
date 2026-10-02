@@ -14,6 +14,8 @@ export const MAX_READ_BYTES = 24_576
 export const MAX_DIRECTORY_ENTRIES = 200
 /** 写入工作区文件的内容最大字符数，与后端 input_schema 一致。 */
 export const MAX_WORKSPACE_CONTENT_CHARS = 65_536
+/** 剪贴板读取的字符上限，与后端 _MAX_CLIPBOARD_CHARS 一致。 */
+export const MAX_CLIPBOARD_CHARS = 10_000
 /** 本地记忆检索一次最多返回的条数。 */
 export const MAX_MEMORY_SEARCH_LIMIT = 50
 /**
@@ -60,6 +62,8 @@ export interface DesktopJobsExecutorOptions {
   shell: { openExternal(url: string): Promise<void> }
   /** 本地加密记忆存储，承接 memory.* 三类作业。 */
   memoryStore: Pick<LocalMemoryStore, 'search' | 'put' | 'remove'>
+  /** 系统原生剪贴板的只读能力。 */
+  clipboard: { readText(): string }
   /** Agent 工作区根目录；缺省为 userData/agent-workspace。 */
   workspaceRoot?: string
   /** Electron app 依赖，仅用于推导缺省工作区根目录。 */
@@ -315,6 +319,42 @@ async function runWriteWorkspaceFile(
 /** memory.* 三类作业所依赖的本地记忆存储能力。 */
 type MemoryStoreLike = Pick<LocalMemoryStore, 'search' | 'put' | 'remove'>
 
+/**
+ * 读取系统剪贴板纯文本。
+ *
+ * 剪贴板为空是真实状态，必须如实返回空串加 char_count=0；读取本身失败才是
+ * 执行错误。把两者混成同一种结果会让「剪贴板没有内容」和「读不到剪贴板」
+ * 无法区分，用户会以为自己的复制丢了。
+ */
+async function runReadClipboard(
+  input: ExecuteJobInput,
+  clipboard: { readText(): string }
+): Promise<Record<string, unknown>> {
+  const maxChars = readOptionalInteger(
+    input.arguments,
+    'max_chars',
+    1,
+    MAX_CLIPBOARD_CHARS,
+    MAX_CLIPBOARD_CHARS
+  )
+  assertNotAborted(input.signal)
+  input.onProgress(50)
+  let raw: string
+  try {
+    raw = clipboard.readText()
+  } catch {
+    throw new ToolExecutionFailure('TOOL_EXECUTION_FAILED', '读取系统剪贴板失败')
+  }
+  if (typeof raw !== 'string') {
+    throw new ToolExecutionFailure('TOOL_EXECUTION_FAILED', '读取系统剪贴板失败')
+  }
+  assertNotAborted(input.signal)
+  input.onProgress(100)
+  const truncated = raw.length > maxChars
+  const text = truncated ? raw.slice(0, maxChars) : raw
+  return { text, char_count: text.length, truncated }
+}
+
 async function runMemorySearch(
   input: ExecuteJobInput,
   memoryStore: MemoryStoreLike
@@ -390,12 +430,14 @@ export class DesktopJobsExecutor {
   private readonly grants: Pick<ExecutionNodeGrantStore, 'resolvePath'>
   private readonly shell: { openExternal(url: string): Promise<void> }
   private readonly memoryStore: MemoryStoreLike
+  private readonly clipboard: { readText(): string }
   private readonly workspaceRoot: string
 
   public constructor(options: DesktopJobsExecutorOptions) {
     this.grants = options.grants
     this.shell = options.shell
     this.memoryStore = options.memoryStore
+    this.clipboard = options.clipboard
     this.workspaceRoot =
       options.workspaceRoot ??
       (options.app ? join(options.app.getPath('userData'), 'agent-workspace') : '')
@@ -422,6 +464,9 @@ export class DesktopJobsExecutor {
         break
       case 'write_workspace_file':
         result = await runWriteWorkspaceFile(input, this.resolveWorkspaceRoot(input))
+        break
+      case 'read_clipboard':
+        result = await runReadClipboard(input, this.clipboard)
         break
       case 'memory.search':
         result = await runMemorySearch(input, this.memoryStore)
