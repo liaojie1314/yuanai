@@ -11,6 +11,7 @@ from enum import StrEnum
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import AGENT_APPROVAL_WAIT_SECONDS
 from app.models.agent_run import AgentRun, AgentRunStatus, AgentStep, AgentStepKind, AgentStepStatus
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStatus
 from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
@@ -72,6 +73,20 @@ def payload_hash(arguments: dict[str, object]) -> str:
         arguments, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
     )
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _record_approval_wait(request: ApprovalRequest, decided_at: datetime) -> None:
+    """记录用户从收到审批到做出决定的等待时长。
+
+    ``created_at`` 由数据库 server_default 填充：未落库的内存请求上它还不存在，
+    而 flush 过但未刷新的实例上直接取属性会在异步上下文里触发同步懒加载
+    （MissingGreenlet），因此只读实例字典里已有的值，取不到就不记录 —— 指标
+    绝不能让审批本身失败。
+    """
+
+    created_at = request.__dict__.get("created_at")
+    if isinstance(created_at, datetime) and created_at.tzinfo is not None:
+        AGENT_APPROVAL_WAIT_SECONDS.observe((decided_at - created_at).total_seconds())
 
 
 class ApprovalService:
@@ -192,6 +207,7 @@ class ApprovalService:
         )
         request.decided_at = now
         request.decision_note = note[:500] if note else None
+        _record_approval_wait(request, now)
         if db is not None:
             await db.flush()
         return request

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import (
@@ -26,6 +27,7 @@ from app.api.v1 import (
 )
 from app.api.v1 import files as files_router
 from app.core.config import settings
+from app.core.metrics import render_metrics
 
 
 @asynccontextmanager
@@ -121,3 +123,15 @@ app.include_router(automations.router, prefix="/api/v1")
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Prometheus 抓取端点。
+
+    只暴露聚合计数与分布，标签全是低基数枚举（状态、模型、工具、方向、原因），
+    不含用户内容、原始用户标识或凭证，因此与 ``/health`` 一样不要求认证；
+    生产环境应在入口层把本路径限制为内网采集器可达。
+    """
+
+    return render_metrics()
