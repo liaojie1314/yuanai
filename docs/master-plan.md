@@ -25,13 +25,13 @@
 | --- | ---- | ------------------------------------------------------------------------------------- | ---- | ----- |
 | M1  | 7    | 记忆写入流水线 MemoryExtractor：从 Run 抽取 → 敏感度分级 → 去重 → 冲突检测 → 自动激活 | ✅   | §2.1  |
 | M2  | 7    | 混合检索：pgvector 迁移（`embedding` 现为 JSON 列）+ FTS + RRF + rerank               | ✅   | §2.1  |
-| M3  | 7    | 知识入库流水线：多格式解析、OCR、结构感知分块、`ingestion_jobs`、质量检查             | ⬜   | §3.1  |
+| M3  | 7    | 知识入库流水线：多格式解析、OCR、结构感知分块、`ingestion_jobs`、质量检查             | ✅   | §2.5  |
 | M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §3.1  |
 | M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §3.1  |
 | M6  | 7    | 专属助手人格 Persona（复用 `memories.assistant_id` 隔离，人格不提权）                 | ⬜   | §5 N1 |
 | M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | 🟡   | §2.4  |
 | M8  | 4    | `yuanai://` 向系统注册 + `electron-builder.yml` + `resources/` 打包资产               | ⬜   | §3.1  |
-| M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | ⬜   | §3.1  |
+| M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | 🟡   | §2.6  |
 | M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ✅   | §2.3  |
 | M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ⬜   | §3.1  |
 | M12 | 5/7  | 任何端都没有「创建助理」入口，Agent 与 Phase 7 控制面对新用户全部不可用               | ⬜   | §2.2  |
@@ -65,6 +65,8 @@
 | S23 | 7    | 执行节点永久丢失后，`local_node` 记忆永远删不掉，无强制通道         | ⬜   | §2.2 |
 | S24 | 6    | `run_node_job` 内部 `commit()` 会连带提交调用方的未提交改动         | ⬜   | §2.2 |
 | S25 | 1/2  | 微信三方登录后端完全不存在，Web 入口已于 2026-10-02 隐藏            | ⬜   | §2.2 |
+| S26 | 7    | 知识检索启用向量后**反而不走任何过滤**，只取最近 400 条 chunk       | ⬜   | §2.2 |
+| S27 | —    | `conftest` 的 `_TRUNCATE_SQL` 不含知识/记忆/入库表，隔离靠级联      | ⬜   | §2.2 |
 
 ### 本轮不做（⛔）
 
@@ -109,8 +111,9 @@
 > 所描述的**核心机制尚未实现**。逐条见 §3.1。
 >
 > ✅ **2026-09-29 更正的更正**：上述六项里，**§4（记忆写入流程）与 §5.1（混合检索）已实现**，
-> 见 §2.1；其余四项（§6.1 知识入库、§7.3 从经验生成 Skill、§8.2 Webhook、§11.3 Skill 评测门禁）
-> 仍未实现，对应 §0 的 M3 / M4 / M5，状态不变。
+> 见 §2.1。**§6.1（知识入库流水线）已于 2026-10-02 实现**，见 §2.5；其余三项
+> （§7.3 从经验生成 Skill、§8.2 Webhook 触发、§11.3 Skill 评测门禁）仍未实现，
+> 对应 §0 的 M4 / M5。
 
 ### 2.1 记忆抽取与混合检索（2026-09-29 交付）
 
@@ -173,6 +176,8 @@
 | S24 | **`run_node_job` 内部会 `commit()`**。它必须提交执行记录才能让节点网关看见（`tool_runtime_service.py`），于是**连带提交调用方当时所有未提交的改动**。当前三个调用点都安全，但安全性全靠调用顺序：`create_candidate` 刻意把 `push_local_memory` 放在 `db.add` 之前，一次检索里 `_cloud_results` 写的 `last_used_at` 则会被本地臂的这次 commit 顺手提交。下一个在改了一半数据之后调用它的人会拿到静默的部分提交，而且不会有任何报错                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | M12 | **任何端都没有「创建助理」入口**（2026-10-02 登记）。后端有 `POST /agent/assistants`（`backend/app/api/v1/agent.py:78`），`packages/core` 也导出了 `createAssistant`（`packages/core/src/api/agent.ts:50`），但 `apps/web`、`apps/mobile`、`apps/desktop` 三端加起来**零处调用**，注册流程也不自动建默认助理（`is_default` 在 `backend/app/services/` 下只出现在 `ai_service.py` 的模型列表里，与助理无关）。后果是新用户的助理列表恒为空，而五个控制面全部以「取到助理」为前提：`MemoryCenter.tsx:112/136`（记忆类型开关与「添加记忆」按钮恒 `disabled`）、`AgentWorkspace.tsx:438`（`if (!assistant …) return`，**连 Agent Run 都发不出去**）、`AgentSettings.tsx:59`、`SkillCenter.tsx:241`、`AutomationCenter.tsx:35`。也就是说 Phase 5/7 的控制面对真实用户整体不可达，只有直接打 API 建过助理的人才看得见功能——本仓此前所有 Phase 7 界面验证都是在这种前提下做的 |
 | S25 | **微信三方登录只有壳**（2026-10-02 登记并隐藏入口）。后端 `auth.py` / `oauth_service.py` / `config.py` 里 `wechat`、`weixin` **零命中**，没有路由、没有服务、没有配置；而 Web 登录页一直渲染着一个 `disabled` 的「微信」按钮（`title="第三方登录即将开放"`），设置页也有一行恒为「未绑定」且点不动的微信绑定。已按用户要求把这两个入口删掉（`login/page.tsx` 的按钮、`SettingsModal.tsx` 的绑定行，连同只为微信存在的 `available` 开关与其死分支），i18n 文案与图标资源保留，等后端落地再放回来。移动端与桌面端本来就没有微信入口，无需改动                                                                                                                                                                                                                                                                                                                            |
+| S26 | **知识检索一旦启用向量就不做任何过滤**（2026-10-02 登记，已逐行核对 `knowledge_service.py:275-290`）。`query_embedding is None` 时才会加 `WHERE`（FTS + ilike 关键词，`:275-281`）；**非 None 时整段过滤被跳过**，候选集退化成 `order_by(KnowledgeChunk.created_at.desc()).limit(min(limit*20, 400))`，即「最近 400 条 chunk」，再在 Python 里打分。后果是知识库一旦超过 400 条 chunk，更早的相关内容**永远召回不到**，且**配了 API Key 的生产环境反而比没配 Key 的开发环境更差**（后者走关键词过滤，至少命中全库）。记忆侧 `memory_retrieval.py` 已有正确的 pgvector + FTS + RRF 实现，知识侧应复用。这条直接影响 phase-7「pgvector + FTS 混合检索达到阈值」的验收                                                                                                                                                                                                    |
+| S27 | **测试库清理清单不全**（2026-10-02 登记）。`backend/tests/conftest.py` 的 `_TRUNCATE_SQL` 没有列出知识库 / 记忆 / `ingestion_jobs` 等表，用例间隔离完全依赖 `users ... CASCADE` 级联。任何未来不以 `users` 为外键根的新表都会在用例之间静默串状态，且失败现象会出现在别的用例里，很难定位                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 > 另有一条**已在本轮修掉**、值得记住的失效模式：`tests/integration/test_browser_worker.py`
 > 断言了 example.com 的线上正文，该站点删掉 `<h1>` 后本仓 CI 会直接变红（CI 跑集成套件且带
@@ -231,7 +236,87 @@
 > 单价表 + 汇率口径，而 `ai_service.py:506/521` 只有 DeepSeek 两个模型的**人民币**单价，
 > 其余模型无价。拍单价与汇率属独立决策，不在本轮瞎凑，与 §3.1 Phase 5「token / 金额上限
 > 在生产路径未生效」同根。
->
+
+### 2.5 知识入库流水线（2026-10-02 交付，Phase 7 / M3）
+
+2026-09-18 审计登记的「知识入库流水线未实现」已关闭。流水线为
+`取文件 → 解析/OCR → 质量检查 → 结构感知分块 → 向量化`，落在三个新服务里：
+`knowledge_parse.py`（多格式结构化解析，347 行）、`knowledge_ocr.py`（RapidOCR 适配 +
+降级，53 行）、`knowledge_ingestion.py`（流水线与作业状态机，254 行）。
+`ingestion_jobs` 表与 `knowledge_documents.parser` 列由迁移 `u6f7a8b9c0d1` 建立。
+
+| 验收项             | 状态 | 证据                                                                                                                                                                                                                                |
+| ------------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 多格式解析         | ✅   | Markdown/HTML 按标题路径、PDF 按 `第 N 页`、xlsx 按 `工作表 X 第 a-b 行`、csv 按行区间、docx 按标题样式、Python 按 AST 顶层符号（`file.py::name`）分块                                                                              |
+| OCR                | 🟡   | RapidOCR 作为**可选 extra**（`pyproject.toml` 的 `[project.optional-dependencies] ocr`，不进默认安装）；未安装时降级而非失败。**真实引擎从未跑过**，适配层 `result, _ = engine(image)` 的返回形状未经真引擎验证，首次真装必须先核对 |
+| 结构感知分块       | ✅   | `create_document_version(blocks, parser)` 保留 section 与字符偏移；`test_markdown_file_ingests_and_citations_keep_section` 断言发布后引用的 `section == "测试文档1 > 引用定位"`                                                     |
+| `ingestion_jobs`   | ✅   | 迁移在真实 Postgres 上验证过：`upgrade head` 走 `t5e6f7a8b9c0 -> u6f7a8b9c0d1`，`alembic heads` 单头，`downgrade -1` 后表与列均归零                                                                                                 |
+| 质量检查           | ✅   | `EMPTY_CONTENT`/`GARBLED_CONTENT` 致命；`PARTIALLY_GARBLED`/`SHORT_CONTENT`/`DUPLICATE_CONTENT`/`OCR_UNAVAILABLE` 告警。失败的文档**不建 document**，不会污染检索结果                                                               |
+| 降级路径有测试覆盖 | ✅   | `test_scanned_image_without_ocr_is_degraded_not_failed`：作业 `degraded`、`errorCode=OCR_UNAVAILABLE`、不建文档，并捕获到 `WARNING app.services.knowledge_ocr: OCR 不可用…`                                                         |
+
+新增接口两个：`POST /knowledge-bases/{id}/sources/file`（201 返回 `IngestionJobResponse`）、
+`GET /knowledge-bases/{id}/ingestion-jobs`。解析/格式/OCR 问题一律返回 201 + 作业状态
+（`failed`/`degraded`）与 `errorCode`，不转成 HTTP 错误——作业本身就是审计记录；
+404/403 只用于 ACL 与文件不存在。
+
+实测门禁：`pytest` 全量 **648 passed, 1 skipped**（本功能自身 18 条）；
+`ruff check` 全通过、`ruff format --check` 239 文件已格式化、`mypy app/` 120 文件无问题
+（无新增 `# type: ignore`，无 `Any`/`object` 兜底）。提交 `8fb0412`。
+
+**M3 未做到的部分**（不含在 M3 条目里，但如实记）：
+
+1. 病毒扫描（phase-7 §6.1 的流水线步骤）未实现——本机没有扫描器，且不在 M3 条目内
+2. **流水线在请求内同步跑**，没有队列/worker（代码里有 `ponytail:` 标注）。这是刻意的：
+   再加一个常驻 worker 会重蹈 `memory:worker` 的覆辙——没启动时静默缺功能。
+   大文件与批量导入需要重新考虑
+3. 没有作业重试接口；重新入库只能重新上传并带 `sourceId`。phase-7 §10 的顶层
+   `/knowledge-sources`（connect/sync/pause/re-ingest）与 `/knowledge-documents` 两个路由族
+   仍不存在，只有挂在 knowledge-bases 下的嵌套路由
+4. 邮件/聊天线程分块（§6.2）未实现——目前没有这类来源类型。非 Python 的代码文件退化为整文件块
+5. 页码以文本形式存在 `section` 里（`第 3 页`），不是数值列
+6. 入库作业没有任何前端界面（本任务只做后端）
+7. 开发/测试环境下 `maybe_embed_text` 在无 `OPENAI_API_KEY` 时返回 `None`，
+   chunk 向量为空、检索退化为关键词——这是既有行为，本次未改变
+
+### 2.6 原生 Google Sign-In（2026-10-02 交付，Phase 3 / M9）
+
+后端新增 `POST /api/v1/auth/google/native`（免认证），请求体只收 `idToken`，
+返回与既有回调同口径的 JWT。移动端接 `@react-native-google-signin/google-signin`
+（**原本就在 `apps/mobile/package.json` 里**，无幽灵依赖），拿到 id_token 后调该接口。
+未改表结构，**没有新增迁移**——`users.google_id` 列早已存在。
+
+**id_token 校验是真的在验签**（已逐行核对 `oauth_service.py:368-387`）：
+用 Google JWKS 公钥集 `jwt.decode`，`algorithms=["RS256"]` 写死（堵掉 `alg: none`），
+`issuer` 比对、`require_exp: True`；`verify_aud` 关掉**不是跳过校验**，而是因为 jose 只
+接受单个 aud，紧接着在 `:381-386` 手工比对允许集合（`GOOGLE_CLIENT_ID` 恒在内
+
+- `GOOGLE_NATIVE_CLIENT_IDS` 逗号分隔，解决 Android 客户端 aud 可能是 Web 或 Android
+  client id 的问题）。JWKS 按 1 小时 TTL 缓存。
+
+错误码：401 `OAUTH_ID_TOKEN_INVALID`（验签/iss/exp/aud 任一不过）、
+400 `OAUTH_EMAIL_UNAVAILABLE`（无邮箱或 `email_verified` 非 true）、
+503 `OAUTH_NOT_CONFIGURED`、503 `OAUTH_NETWORK_ERROR`（拉不到 JWKS）。
+
+实测门禁：后端全量 `648 passed, 1 skipped`（新增 19 例，oauth 相关共 40 passed）；
+`ruff check` 全通过、`mypy app/` 120 文件无问题；`pnpm typecheck` 6/6、`pnpm lint` 3/3、
+`pnpm test:unit` 全绿（ui 17 / mobile 52 / desktop 327 / core 136 / web 213）。
+安全向用例在测试里**自生成 RSA 密钥对签 token 并走真实 jose 验签路径**，只省掉对 Google
+的网络请求：`test_wrong_signing_key_rejected`（攻击者自签、claims 全合法但公钥不在 JWKS）、
+`test_foreign_audience_rejected`、`test_expired_token_rejected`、`test_wrong_issuer_rejected`、
+`test_missing_exp_rejected`、`test_unverified_email_rejected`。
+提交 `8aef8fd`（后端）、`3ce1f1b`（移动端）、`64967e3`（文档）。
+
+配套文档 `docs/guides/google-android-oauth.md`（已进 `docs/README.md` 索引）：
+包名取法、debug / release SHA-1 的三种取法、Web 与 Android client id 的 `aud` 对应关系、
+后端与移动端环境变量、以及「Google OAuth 本身不收费」的说明，全文只用占位符。
+
+> ⚠️ **M9 记 🟡 而不是 ✅ 的原因**：**完整原生链路从未真机/模拟器联调过**
+> （SDK 弹账号选择器 → 真 id_token → 后端换 JWT）。这是**用户当次拍板的范围裁剪**
+> （先写代码+文档，不申请真实 Android OAuth 客户端），不是实现缺口。
+> 另：iOS 全部未实测（无 macOS/iOS 设备），`app.json` 的 `plugins` 里**没有**加该库的
+> 配置插件（iOS 的 `iosUrlScheme` 需要真实 iOS client id）；移动端也没跑
+> `expo prebuild` 或 Android 构建。
+
 > 另两处有意为之的简化：指标存在**进程内存**里（API 与四个 worker 各自暴露自己的值，
 > 由采集端按 instance 聚合，进程重启归零 —— counter 的正常语义）；coordinator 抛异常
 > 逃出 `run()` 时不记录终态（`agent_worker.py` 会 `logger.exception` 兜住，这类 Run
