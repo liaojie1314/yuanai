@@ -1,5 +1,6 @@
 """Tool Runtime 的安全契约测试。"""
 
+import io
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
@@ -25,6 +26,7 @@ from app.services.tool_runtime_service import (
 )
 from app.services.tools.sandbox import SandboxExecutionError, execute_python
 from app.services.tools.web_security import UrlPolicyError, validate_public_url
+from app.tools.builtin.content_generation import docx_write
 from app.tools.contracts import SideEffect, ToolContext, ToolRisk, ToolSpec
 from app.tools.registry import ToolRegistry
 
@@ -279,6 +281,83 @@ async def test_expired_artifact_is_unreadable_and_purgeable(db: AsyncSession, te
     assert await service.purge_expired_artifacts(db=db) == 1
     with pytest.raises(ToolRuntimeError, match="ARTIFACT_NOT_FOUND"):
         await service.get_artifact(artifact.id, user_id=test_user.id, db=db)
+
+
+@pytest.mark.asyncio
+async def test_generated_document_artifact_round_trips_through_storage(
+    db: AsyncSession, test_user
+) -> None:
+    """生成工具产出的二进制文档必须真的落到对象存储，并能读回打开出原文。
+
+    只断言工具返回成功会让一个「登记了 Artifact 但内容为空」的实现照样过关，
+    因此这里从存储读回字节并交给 python-docx 重新打开。
+    """
+
+    from docx import Document
+
+    service = ToolRuntimeService()
+    execution = await service.create_execution(
+        user_id=test_user.id,
+        tool_name="docx_write",
+        arguments={"name": "测试报告.docx", "blocks": [{"text": "正文段落。"}]},
+        execution_location="cloud",
+        db=db,
+    )
+    output = await docx_write(
+        {"name": "测试报告.docx", "blocks": [{"text": "正文段落。"}]},
+        ToolContext(user_id=test_user.id, db=db),
+    )
+
+    await service.complete_success(execution, output=output, db=db)
+
+    assert execution.status is ToolExecutionStatus.succeeded
+    assert execution.result_json is not None
+    data = execution.result_json["data"]
+    assert isinstance(data, dict)
+    # base64 载荷不得留在结果里回传模型上下文
+    assert "content_base64" not in data
+    assert "workspace" not in data
+    artifact_id = uuid.UUID(str(data["artifact_id"]))
+    assert execution.artifact_ids == [str(artifact_id)]
+    artifact, content = await service.read_artifact_content(
+        artifact_id, user_id=test_user.id, db=db
+    )
+    assert artifact.name == "测试报告.docx"
+    assert artifact.kind.value == "document"
+    assert artifact.size_bytes == len(content)
+    paragraphs = [item.text for item in Document(io.BytesIO(content)).paragraphs if item.text]
+    assert paragraphs == ["正文段落。"]
+
+
+@pytest.mark.asyncio
+async def test_corrupt_base64_payload_does_not_register_an_artifact(
+    db: AsyncSession, test_user
+) -> None:
+    """非法 base64 必须显式失败，不能悄悄登记一个空 Artifact。"""
+
+    service = ToolRuntimeService()
+    execution = await service.create_execution(
+        user_id=test_user.id,
+        tool_name="docx_write",
+        arguments={"name": "坏文档.docx", "blocks": []},
+        execution_location="cloud",
+        db=db,
+    )
+
+    with pytest.raises(ToolRuntimeError, match="TOOL_ARTIFACT_CONTENT_INVALID"):
+        await service.complete_success(
+            execution,
+            output={
+                "name": "坏文档.docx",
+                "content_base64": "not base64!!!",
+                "mime_type": (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                ),
+                "workspace": True,
+            },
+            db=db,
+        )
+    assert execution.artifact_ids == []
 
 
 @pytest.mark.asyncio

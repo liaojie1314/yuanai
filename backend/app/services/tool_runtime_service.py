@@ -8,9 +8,9 @@ import binascii
 import hashlib
 import hmac
 import json
-import re
 import secrets
 import time
+import unicodedata
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -74,8 +74,6 @@ from app.tools.contracts import (
     ToolValidationError,
 )
 from app.tools.registry import ToolRegistry, validate_arguments_against_schema
-
-_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 
 class ToolRuntimeError(RuntimeError):
@@ -292,10 +290,29 @@ def artifact_download_url(artifact_id: uuid.UUID, user_id: uuid.UUID) -> str:
 
 
 def _safe_name(value: str) -> str:
-    """把用户可控文件名压缩为不会逃逸 Artifact 前缀的路径片段。"""
+    """把用户可控文件名压缩为不会逃逸 Artifact 前缀的路径片段。
 
-    name = _NAME_RE.sub("_", value.strip()).strip("._") or "artifact"
-    return str(PurePosixPath(name).name)[:255]
+    只剥离真正危险的部分 —— 控制字符与路径分隔符，保留 CJK 等 Unicode 字符。
+    早先按 ``[^A-Za-z0-9._-]`` 白名单过滤会把「测试报告.docx」压成「docx」，
+    用户在 Artifact 列表里只看得到一个扩展名，分不清自己生成了哪一个文件。
+    """
+
+    cleaned = "".join("_" if _is_unsafe_name_char(char) else char for char in value.strip())
+    name = cleaned.strip("._") or "artifact"
+    # 取 basename 挡掉残余的路径段；再按扩展名裁剪，避免截断后连类型都看不出来
+    name = str(PurePosixPath(name).name)
+    if len(name) <= 255:
+        return name
+    stem, _dot, suffix = name.rpartition(".")
+    if not stem or len(suffix) >= 255:
+        return name[:255]
+    return f"{stem[: 255 - len(suffix) - 1]}.{suffix}"
+
+
+def _is_unsafe_name_char(char: str) -> bool:
+    """判断文件名中的单个字符是否需要替换掉。"""
+
+    return char in {"/", "\\", "\x00"} or unicodedata.category(char).startswith("C")
 
 
 def _artifact_kind(mime_type: str) -> ArtifactKind:
@@ -309,6 +326,8 @@ def _artifact_kind(mime_type: str) -> ArtifactKind:
         return ArtifactKind.video
     if "spreadsheet" in mime_type or mime_type in {"text/csv", "application/vnd.ms-excel"}:
         return ArtifactKind.spreadsheet
+    if "wordprocessingml" in mime_type or "presentationml" in mime_type:
+        return ArtifactKind.document
     if "json" in mime_type or mime_type.startswith("text/"):
         return ArtifactKind.document
     return ArtifactKind.archive
@@ -1450,18 +1469,31 @@ class ToolRuntimeService:
         artifact_ids: list[str] = []
         artifact_refs: list[ArtifactRef] = []
         content = result_json.pop("content", None)
+        content_base64 = result_json.pop("content_base64", None)
+        artifact_data: bytes | None = None
+        artifact_preview: dict[str, object] = {}
         if isinstance(content, str) and result_json.get("workspace") is True:
+            artifact_data = content.encode("utf-8")
+            artifact_preview = {"text": content[:2_000]}
+        elif isinstance(content_base64, str) and result_json.get("workspace") is True:
+            # 二进制产出（DOCX/XLSX/PPTX）走 base64 传递，不能当成 UTF-8 文本编码
+            try:
+                artifact_data = base64.b64decode(content_base64, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ToolRuntimeError("TOOL_ARTIFACT_CONTENT_INVALID") from error
+            artifact_preview = {"size_bytes": len(artifact_data)}
+        if artifact_data is not None:
             name = str(result_json.get("name", "artifact.txt"))
             mime_type = str(result_json.get("mime_type", "text/plain"))
             artifact = await self.create_artifact(
                 user_id=execution.user_id,
-                data=content.encode("utf-8"),
+                data=artifact_data,
                 name=name,
                 mime_type=mime_type,
                 db=db,
                 run_id=execution.run_id,
                 tool_execution_id=execution.id,
-                preview={"text": content[:2_000]},
+                preview=artifact_preview,
             )
             artifact_ids.append(str(artifact.id))
             artifact_refs.append(
