@@ -54,11 +54,12 @@
 
 ## 开发者专项指南
 
-| 文档                                           | 说明                     |
-| ---------------------------------------------- | ------------------------ |
-| [OAuth 配置](guides/oauth-setup.md)            | 三方登录 Client 配置步骤 |
-| [移动端排障](guides/mobile-troubleshooting.md) | Expo / Android 真机问题  |
-| [通知测试](guides/notifications-testing.md)    | 推送与本地通知验证方法   |
+| 文档                                                       | 说明                                  |
+| ---------------------------------------------------------- | ------------------------------------- |
+| [OAuth 配置](guides/oauth-setup.md)                        | 三方登录 Client 配置步骤              |
+| [Android 原生 Google 登录](guides/google-android-oauth.md) | Android OAuth 客户端申请与 `aud` 配置 |
+| [移动端排障](guides/mobile-troubleshooting.md)             | Expo / Android 真机问题               |
+| [通知测试](guides/notifications-testing.md)                | 推送与本地通知验证方法                |
 
 ## 过程记录
 

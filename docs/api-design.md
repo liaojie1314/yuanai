@@ -235,6 +235,37 @@ scope 固定为 `read:user user:email`。
 
 ---
 
+### POST `/auth/google/native` — 原生 Google Sign-In 换 Token（无需认证）
+
+移动端用 `@react-native-google-signin/google-signin` 原生 SDK 拿到 Google ID token 后调用本端点，
+无需浏览器跳转、无需 state / code 交换。
+
+**Request:**
+
+```json
+{ "idToken": "eyJhbGciOiJSUzI1NiIs..." }
+```
+
+服务端校验：RS256 签名（公钥取 Google JWKS 并缓存 1 小时）、`iss` ∈
+{`accounts.google.com`, `https://accounts.google.com`}、`exp` 必须存在且未过期、
+`aud` 必须命中允许的 client id 集合（`GOOGLE_CLIENT_ID` + `GOOGLE_NATIVE_CLIENT_IDS`，
+后者逗号分隔，用于登记 Android / iOS client id）。
+通过后按 `google_id` → `email` 顺序关联或新建账号（规则同 GitHub 回调），签发同口径 JWT。
+
+**Response 200:** 与 `POST /auth/login` 相同的 `{ access_token, refresh_token, token_type, expires_in, user }`
+
+| HTTP | Code                      | 触发条件                                                           |
+| ---- | ------------------------- | ------------------------------------------------------------------ |
+| 422  | —                         | `idToken` 缺失或不是 JWS compact 三段式                            |
+| 401  | `OAUTH_ID_TOKEN_INVALID`  | 签名验不过 / `iss` 不对 / 缺 `exp` 或已过期 / `aud` 不在允许集合内 |
+| 400  | `OAUTH_EMAIL_UNAVAILABLE` | id_token 无 email 或 `email_verified` 不为 true                    |
+| 503  | `OAUTH_NOT_CONFIGURED`    | 允许的 client id 集合为空                                          |
+| 503  | `OAUTH_NETWORK_ERROR`     | 拉不到 Google JWKS 验签公钥                                        |
+
+Android OAuth 客户端申请与 `aud` 配置见 [guides/google-android-oauth.md](guides/google-android-oauth.md)。
+
+---
+
 ### POST `/auth/refresh` — 刷新 Token
 
 **Request:**
