@@ -136,13 +136,21 @@ Phase 7 只落地了控制面而记忆抽取/pgvector/知识入库流水线/Webh
 Phase 8-15 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增）。
 
 2026-09-29 更新：Phase 7 缺口中**记忆抽取流水线与 pgvector 混合检索已实现**且端到端闭环
-（逐条证据见 [交付状态总表 §2.1](docs/master-plan.md)），**知识入库流水线与 Webhook 触发仍未实现**。
+（逐条证据见 [交付状态总表 §2.1](docs/master-plan.md)）。
 记忆能力依赖 `memory:worker` 与 `node:sweeper` 等常驻 worker，`pnpm dev:real` 不启动它们，
 未启动时**静默缺功能而不报错**（见 [开发运行指南](docs/dev-guide.md)）。
 
 2026-10-02 更新：`packages/ui` 共享组件库缺口已补齐（`tokens.css`、`Button`、`MessageBubble`
 与 17 条测试，覆盖率阈值已加回），见 [交付状态总表 §2.3](docs/master-plan.md)；
 但 `apps/web` 仍未 import 该包，Web 端等价组件仍留在 `apps/web/src/components/`。
+同日交付：**知识入库流水线**（§2.5，M3）、**Agent 运行时 8 个指标 + `/metrics`**（§2.4，M7 🟡）、
+**原生 Google Sign-In**（§2.6，M9 🟡，未真机联调）。**Webhook 触发与 Skill 评测门禁仍未实现**
+（M4 / M5，范围决策已定见 §2.7）。
+
+同日审计出三个同类缺口，**共同模式是「控制面建完即记为交付，但没人验证有没有消费者」**：
+三端都没有「创建助理」入口以致 Agent 与 Phase 7 控制面对新用户整体不可达（M12）、
+Skill 全链路没有运行时消费者（M13）、知识检索一旦启用向量反而不做任何过滤（S26）。
+**新增功能时必须同时确认消费侧存在且可达，否则不得记为交付。**
 
 **逐条缺口见 [交付状态总表 §3.1](docs/master-plan.md)**，不要以「已合入 dev」推断功能完整。
 

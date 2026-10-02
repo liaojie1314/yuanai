@@ -250,10 +250,19 @@ yuanai/
 Phase 14 终端 TUI、Phase 15 小程序端为 2026-09-17 新增）。
 
 2026-09-29 更新：上述 Phase 7 缺口中，**记忆抽取流水线与 pgvector 混合检索已实现**
-（端到端闭环，逐条证据见[交付状态总表 §2.1](docs/master-plan.md)）；
-**知识入库流水线与 Webhook 触发仍未实现**。记忆能力依赖 `memory:worker`、`node:sweeper`
-等常驻 worker，`pnpm dev:real` 不会启动它们，不启动则静默缺功能而不报错，
-启动方式见[开发运行指南](docs/dev-guide.md)。
+（端到端闭环，逐条证据见[交付状态总表 §2.1](docs/master-plan.md)）。记忆能力依赖
+`memory:worker`、`node:sweeper` 等常驻 worker，`pnpm dev:real` 不会启动它们，
+不启动则静默缺功能而不报错，启动方式见[开发运行指南](docs/dev-guide.md)。
+
+2026-10-02 更新：新增交付 **知识入库流水线**（多格式解析 + 可选 RapidOCR + 结构感知分块 +
+`ingestion_jobs` + 质量检查，[§2.5](docs/master-plan.md)）、**Agent 运行时 8 个指标与
+`/metrics`**（[§2.4](docs/master-plan.md)）、**原生 Google Sign-In**（id_token 走 Google JWKS
+真实验签，[§2.6](docs/master-plan.md)，**未真机联调**）、**`packages/ui` 共享组件库**
+（[§2.3](docs/master-plan.md)）。**Webhook 触发与 Skill 评测门禁仍未实现。**
+微信三方登录后端完全不存在，Web 入口已于当日隐藏。
+
+同日审计出三个同类缺口：三端都没有「创建助理」入口，以致 Agent 与 Phase 7 控制面对新用户
+整体不可达；Skill 全链路没有运行时消费者；知识检索一旦启用向量反而不做任何过滤。
 
 **逐条缺口见[交付状态总表 §3.1](docs/master-plan.md)**；「已合入 dev / CI 全绿」不等于功能完整。
 

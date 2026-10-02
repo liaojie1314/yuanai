@@ -26,14 +26,14 @@
 | M1  | 7    | 记忆写入流水线 MemoryExtractor：从 Run 抽取 → 敏感度分级 → 去重 → 冲突检测 → 自动激活 | ✅   | §2.1  |
 | M2  | 7    | 混合检索：pgvector 迁移（`embedding` 现为 JSON 列）+ FTS + RRF + rerank               | ✅   | §2.1  |
 | M3  | 7    | 知识入库流水线：多格式解析、OCR、结构感知分块、`ingestion_jobs`、质量检查             | ✅   | §2.5  |
-| M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §3.1  |
-| M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §3.1  |
+| M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §2.7  |
+| M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §2.7  |
 | M6  | 7    | 专属助手人格 Persona（复用 `memories.assistant_id` 隔离，人格不提权）                 | ⬜   | §5 N1 |
 | M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | 🟡   | §2.4  |
 | M8  | 4    | `yuanai://` 向系统注册 + `electron-builder.yml` + `resources/` 打包资产               | ⬜   | §3.1  |
 | M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | 🟡   | §2.6  |
 | M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ✅   | §2.3  |
-| M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ⬜   | §3.1  |
+| M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ⬜   | §2.8  |
 | M12 | 5/7  | 任何端都没有「创建助理」入口，Agent 与 Phase 7 控制面对新用户全部不可用               | ⬜   | §2.2  |
 | M13 | 7    | Skill 全链路没有运行时消费者：建了/验了/激活了，Agent 从不加载                        | ⬜   | §2.2  |
 
@@ -327,6 +327,41 @@
 > `services/agent/metrics.py` 的结构化日志 `AgentMetrics` **保持原样**：它记的是带
 > `run_id` / `step_id` / 哈希 `user_id` 的事件日志（Phase 5 §14 后半句的要求），
 > 与本节的聚合指标是两件事，没有合并。
+
+### 2.7 M4 / M5 本轮未实现，但范围决策已定（2026-10-02）
+
+M4（Webhook 触发）与 M5（Skill 评测门禁 + 从经验生成 Skill）**本轮未交付**，
+代码只写到一半就按用户要求暂停。**但下面四条范围决策已经拍定，接手会话不要重新讨论**：
+
+1. **评测门禁只在「替换已有 active 版本」时强制**，首次激活放行。依据是 phase-7 §11.3
+   「不通过不替换 active」的字面语义；改成全量强制会让 12 条既有 skill 集成测试全红，
+   那是用测试迁就实现
+2. **评测取静态契约，不做真实执行**。依据见 §2.2 的 M13：Skill 没有运行时消费者，
+   没有执行面就没有「成功率 / 成本 / 平均 Step」可测。真执行需要先建 Skill 执行链，
+   属独立的大事，不在 M5 范围内
+3. **`skill_evaluations.estimated_cost_usd` 与 `avg_steps` 在无执行面时必须留 `NULL`**，
+   禁止填 0 或编数字。M7 已经因为同类问题记 🟡（`agent_estimated_cost_usd` 定义了但
+   无数据源、序列恒为 0）——一个恒为 0 的指标比 `NULL` 更有害，因为它看起来像真的。
+   `validation_result` 里如实标 `"executed": false` 与原因
+4. **从经验生成 Skill 用规则聚类，不用 LLM**。归一化 + 关键词 Jaccard 阈值，确定可测零成本；
+   评测门禁是安全向机制，引入非确定性没有收益
+
+Webhook 侧已定的设计要点：`webhook_endpoints.public_id` 用 `secrets.token_urlsafe(32)`
+（**不可枚举**，不是自增）；密钥走既有 `TenantSecretStore` 的 AES-GCM，不新造加密，明文只在
+创建/轮换时返回一次；签名用**原始 body 字节**做 HMAC-SHA256 并以 `hmac.compare_digest`
+常量时间比对（重序列化 JSON 会因键序差异让合法请求验签失败）；重放防护以签名摘要为 nonce
+写 Redis 且**不可用时 fail closed（503）而不是放行**；限流按 endpoint 的分钟桶计数；
+触发时 `occurrence_key = f"webhook:{endpoint.id}:{delivery_id}"` 使重复投递天然幂等。
+迁移 id 预留 `v7a8b9c0d1e2`（Webhook）与 `w8b9c0d1e2f3`（`skill_evaluations`），
+`down_revision` 依次接 `u6f7a8b9c0d1`。
+
+### 2.8 M11 本轮未实现（2026-10-02）
+
+M11（Wave 2 工具：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板）**本轮未交付**，同样写到一半暂停。
+已定的要点：图片 OCR **复用 §2.5 的 `knowledge_ocr.py`**（RapidOCR 可选 extra + 降级），
+不写第二份适配；文档生成的文件名来自模型输出，属不可信输入，**必须复用
+`knowledge_service` 的基目录约束**挡路径穿越；剪贴板是用户本机资源，走执行节点通道，
+节点不在线必须明确报不可用，禁止静默返回空串假装成功。
 
 ---
 
