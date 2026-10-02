@@ -140,6 +140,10 @@ Phase 8-15 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增
 记忆能力依赖 `memory:worker` 与 `node:sweeper` 等常驻 worker，`pnpm dev:real` 不启动它们，
 未启动时**静默缺功能而不报错**（见 [开发运行指南](docs/dev-guide.md)）。
 
+2026-10-02 更新：`packages/ui` 共享组件库缺口已补齐（`tokens.css`、`Button`、`MessageBubble`
+与 17 条测试，覆盖率阈值已加回），见 [交付状态总表 §2.3](docs/master-plan.md)；
+但 `apps/web` 仍未 import 该包，Web 端等价组件仍留在 `apps/web/src/components/`。
+
 **逐条缺口见 [交付状态总表 §3.1](docs/master-plan.md)**，不要以「已合入 dev」推断功能完整。
 
 以上均为本地真实运行时证据，**不构成生产部署放行**。

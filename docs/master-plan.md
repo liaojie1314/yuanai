@@ -32,7 +32,7 @@
 | M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | ⬜   | §3.1  |
 | M8  | 4    | `yuanai://` 向系统注册 + `electron-builder.yml` + `resources/` 打包资产               | ⬜   | §3.1  |
 | M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | ⬜   | §3.1  |
-| M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ⬜   | §3.1  |
+| M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ✅   | §2.3  |
 | M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ⬜   | §3.1  |
 
 ### 小任务（S）
@@ -49,7 +49,7 @@
 | S8  | 3    | `useHydrateAuth` / `ChatInput` 单测                                 | ⬜   | §3.1 |
 | S9  | 5    | 前端 Agent 测试：组件 + hook + E2E                                  | ⬜   | §3.1 |
 | S10 | 7    | 自动化「复制」                                                      | ⬜   | §3.1 |
-| S11 | —    | `packages/ui` 补测试后加回覆盖率阈值                                | ⬜   | §6   |
+| S11 | —    | `packages/ui` 补测试后加回覆盖率阈值                                | ✅   | §2.3 |
 | S12 | 7    | 记忆检索评测集（Recall@K / MRR / 引用准确率）                       | ✅   | §2.1 |
 | S13 | —    | 硬编码文案检测（61 文件 / 458 行，等于一次 i18n 迁移）              | ⬜   | §6   |
 | S14 | 7    | Mobile / Desktop 侧 Phase 7 控制界面                                | ⬜   | §2   |
@@ -75,24 +75,24 @@
 
 ## 1. 阶段状态总表
 
-| 阶段     | 主题                                 | 状态 | 说明                                               |
-| -------- | ------------------------------------ | ---- | -------------------------------------------------- |
-| Phase 0  | Monorepo 脚手架                      | ✅   | Turborepo + pnpm + 三端骨架                        |
-| Phase 1  | FastAPI 后端核心                     | ✅   | 认证、会话、消息、SSE、文件；审计无缺口            |
-| Phase 2  | Next.js Web 端                       | 🟡   | 功能验收通过；`packages/ui` 交付物从未创建（§3.1） |
-| Phase 3  | Expo React Native 移动端             | 🟡   | 已合入 `dev`；原生 Google 登录未实现（§3.1）       |
-| Phase 4  | Electron 桌面端                      | 🟡   | `yuanai://` 未向系统注册、打包资产缺失（§3.1）     |
-| Phase 5  | Agent 运行时与任务状态机             | 🟡   | 指标未实现、token/金额预算未接线（§3.1）           |
-| Phase 6  | 工具系统、MCP、沙箱、执行节点        | 🟡   | Wave 2 若干项与协议版本门未做（§3.1）              |
-| Phase 7  | 记忆、知识库、Skills、自动化         | 🟡   | **控制面已落地，核心机制未实现**（§2 更正、§3.1）  |
-| Phase 8  | 治理、控制中心、运营后台、可观测     | ⬜   | 仅有阶段文档                                       |
-| Phase 9  | 生活/学习/工作空间与连接器           | ⬜   | 仅有阶段文档                                       |
-| Phase 10 | 自主性、委派与评测                   | ⬜   | 仅有阶段文档                                       |
-| Phase 11 | 个人数字孪生（含助手形象、实时语音） | ⬜   | 仅有阶段文档；形象与实时语音为本次新增范围         |
-| Phase 12 | 开放生态（含跨渠道机器人）           | ⬜   | 仅有阶段文档；机器人章节为本次扩写                 |
-| Phase 13 | 实时视频对话与视觉理解               | ⬜   | **本次新增阶段**，仅有阶段文档                     |
-| Phase 14 | 终端 TUI 与本地执行节点              | ⬜   | **本次新增阶段**，仅有阶段文档                     |
-| Phase 15 | 小程序端（Taro）                     | ⬜   | **本次新增阶段**，仅有阶段文档                     |
+| 阶段     | 主题                                 | 状态 | 说明                                                     |
+| -------- | ------------------------------------ | ---- | -------------------------------------------------------- |
+| Phase 0  | Monorepo 脚手架                      | ✅   | Turborepo + pnpm + 三端骨架                              |
+| Phase 1  | FastAPI 后端核心                     | ✅   | 认证、会话、消息、SSE、文件；审计无缺口                  |
+| Phase 2  | Next.js Web 端                       | 🟡   | 功能验收通过；`packages/ui` 已补齐（§2.3），余 S18 / S19 |
+| Phase 3  | Expo React Native 移动端             | 🟡   | 已合入 `dev`；原生 Google 登录未实现（§3.1）             |
+| Phase 4  | Electron 桌面端                      | 🟡   | `yuanai://` 未向系统注册、打包资产缺失（§3.1）           |
+| Phase 5  | Agent 运行时与任务状态机             | 🟡   | 指标未实现、token/金额预算未接线（§3.1）                 |
+| Phase 6  | 工具系统、MCP、沙箱、执行节点        | 🟡   | Wave 2 若干项与协议版本门未做（§3.1）                    |
+| Phase 7  | 记忆、知识库、Skills、自动化         | 🟡   | **控制面已落地，核心机制未实现**（§2 更正、§3.1）        |
+| Phase 8  | 治理、控制中心、运营后台、可观测     | ⬜   | 仅有阶段文档                                             |
+| Phase 9  | 生活/学习/工作空间与连接器           | ⬜   | 仅有阶段文档                                             |
+| Phase 10 | 自主性、委派与评测                   | ⬜   | 仅有阶段文档                                             |
+| Phase 11 | 个人数字孪生（含助手形象、实时语音） | ⬜   | 仅有阶段文档；形象与实时语音为本次新增范围               |
+| Phase 12 | 开放生态（含跨渠道机器人）           | ⬜   | 仅有阶段文档；机器人章节为本次扩写                       |
+| Phase 13 | 实时视频对话与视觉理解               | ⬜   | **本次新增阶段**，仅有阶段文档                           |
+| Phase 14 | 终端 TUI 与本地执行节点              | ⬜   | **本次新增阶段**，仅有阶段文档                           |
+| Phase 15 | 小程序端（Taro）                     | ⬜   | **本次新增阶段**，仅有阶段文档                           |
 
 ---
 
@@ -183,6 +183,29 @@
 
 ---
 
+### 2.3 `packages/ui` 共享组件库（2026-10-02 交付，Phase 2 / M10 + S11）
+
+2026-09-18 审计登记的「交付物从未创建」已关闭。**逐条核对过文件与行号**。
+
+| 条目 | 状态 | 证据                                                                                                                                                                                                                                                                           |
+| ---- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M10  | ✅   | `packages/ui/src/styles/tokens.css`（79 行）照 `docs/ui-spec.md` 落背景/文字/品牌/边框/功能色/代码块/间距/圆角/字体全部变量，`tokens.css:62` 的 `[data-theme='dark']` 覆盖暗色；`packages/ui/src/styles/globals.css:2` 引入它，使 `@yuanai/ui/styles` 单入口即可拿到全部 token |
+| M10  | ✅   | `packages/ui/src/components/Button.tsx:8` 的 `cva` 定义 primary/secondary/ghost/danger 四变体与 sm/md/lg/icon 四尺寸；`Button.tsx:67` 原生分支置 `aria-busy` 并把 `loading` 并入 `disabled`，`Button.tsx:68` 注入 spinner；`Button.tsx:58` 的 `asChild` 分支走 Radix `Slot`    |
+| M10  | ✅   | `packages/ui/src/components/MessageBubble.tsx:20` 助手消息无气泡直出正文，`MessageBubble.tsx:25` 用户消息右对齐渐变气泡（`rounded-[18px_18px_4px_18px]`），与 `docs/ui-spec.md`「核心组件规范 / MessageBubble」一致                                                            |
+| M10  | ✅   | `packages/ui/src/index.ts:2` 经 `src/components/index.ts` 导出 `Button` / `MessageBubble` 及其 props 类型；全部导出带中文 JSDoc，包内零平台专用 API                                                                                                                            |
+| M10  | ✅   | 测试 17 条：`src/components/__tests__/Button.test.tsx`（10 条，含 disabled / loading / asChild / 变体 / `cn` 覆盖）、`MessageBubble.test.tsx`（4 条）、`src/lib/__tests__/cn.test.ts`（3 条）；`packages/ui/tests/setup.ts` 接 `jest-dom` 并在每例后 `cleanup`                 |
+| S11  | ✅   | 实测覆盖率 **100 / 100 / 100 / 100**（stmts / branch / funcs / lines），按仓库防退化棘轮约定写回 `packages/ui/vitest.config.ts:14`；同时去掉 `passWithNoTests`，测试集消失即报错                                                                                               |
+
+> ⚠️ **仍未做**：`apps/web` 依旧没有任何文件 import `@yuanai/ui`，Web 端的 Button /
+> 消息气泡等价物留在 `apps/web/src/components/`。把 Web 迁到共享包属独立改动（会动 Phase 2
+> 已验收的界面），不在 M10 范围内。
+>
+> `react-dom` 是 `@testing-library/react` 的 peer，本包未显式声明，靠
+> `pnpm-workspace.yaml` 的 `publicHoistPattern: '*'` 解析 —— 与 `packages/core` 同一形态。
+> 显式声明会连带把 pnpm 重新解析出的无关 peer-id churn 写进 `pnpm-lock.yaml`，故维持现状。
+
+---
+
 ## 3. 前序阶段仍未关闭的验收项
 
 这些来自 Phase 4/5/6，属于「代码已合并但不构成生产放行」的部分：
@@ -209,9 +232,9 @@
 
 #### Phase 2 — Web 端
 
-| 状态 | 条目                                                                                                                                                                                                                                                                                                                                         |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ⬜   | `packages/ui` 的 Phase 2 交付物从未创建：缺 `styles/tokens.css`、`components/Button.tsx`、`components/MessageBubble.tsx`。该包 `src/` 下只有 `index.ts` / `lib/cn.ts` / `styles/globals.css`；`apps/web` 声明了依赖但没有任何文件 import 它。功能等价物写在 `apps/web/src/components/`，因此 11 条验收项仍然通过 —— 缺的是**共享组件库本身** |
+| 状态 | 条目                                                                                                                                                                                                                                                                                   |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅   | ~~`packages/ui` 的 Phase 2 交付物从未创建~~ 2026-10-02 补齐 `styles/tokens.css`、`components/Button.tsx`、`components/MessageBubble.tsx` 与三份测试，覆盖率阈值同时加回，逐条证据见 §2.3。**`apps/web` 仍未 import 该包** —— 功能等价物留在 `apps/web/src/components/`，迁移属独立决策 |
 
 #### Phase 3 — 移动端
 
@@ -356,7 +379,7 @@ Hermes Agent 只作参考形态，按 Phase 5 D7 不 fork；命令名为 `yuanai
 | ✅   | ~~无覆盖率门禁~~ 2026-09-17 补齐：CI 新增 `pnpm test:coverage` 与 `pnpm test:scripts`；web/desktop/core 的阈值改为**取当前实测值的防退化棘轮**（web 44/50/70/44、desktop 81/64/75/81、core 42/68/75/42），原先 70-80 的阈值从未被执行过，属纸面数字                  |
 | ✅   | ~~Husky `pre-push` 只跑 `typecheck` + `test:unit`~~ 2026-09-17 补齐：扩为 `typecheck` → `lint` → `format:check` → `test:unit` → 后端 Ruff/mypy/单测（检测到 `uv` 与 `backend/.venv` 才跑，否则跳过并提示）。后端集成测试仍留给 CI（需 docker compose）               |
 | 🟡   | **硬编码文案仍无检测**：上一条只保证两份语言包结构一致，不阻止组件里直接写中文。实测 `apps/web/src` 有 61 个文件、458 行含中文字面量，加 `no-literal-string` 类规则等于一次 i18n 迁移工程，未在本次范围内                                                            |
-| 🟡   | `packages/ui` 无任何单元测试（0 测试文件），覆盖率恒为 0%，已移除其纸面阈值；补测试时需同时加回                                                                                                                                                                      |
+| ✅   | ~~`packages/ui` 无任何单元测试（0 测试文件），覆盖率恒为 0%，已移除其纸面阈值~~ 2026-10-02 补齐 17 条用例，阈值按实测值（100/100/100/100）写回，见 §2.3                                                                                                              |
 | 🟡   | 覆盖率棘轮阈值远低于目标（web/core 行覆盖仅 4x%），只防退化不代表覆盖充分                                                                                                                                                                                            |
 | 🟡   | `apps/mobile` 未纳入覆盖率门禁：其 vitest 按设计只跑平台无关的纯 TS 模块，RN 组件需 Detox/RTL-native 另行覆盖，百分比不可比                                                                                                                                          |
 | ⚪   | Mobile / Desktop 未接 Phase 7 控制界面（见 §2）                                                                                                                                                                                                                      |
