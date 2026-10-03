@@ -598,6 +598,7 @@
     "install": "启用",
     "installed": "已启用",
     "validate": "验证",
+    "evaluate": "评测",
     "activate": "激活",
     "rollback": "回滚",
     "draft": "草稿",
@@ -613,7 +614,17 @@
     "destructive": "破坏性操作",
     "financial": "财务操作",
     "privileged": "特权操作",
-    "actionFailed": "操作失败，请重试"
+    "actionFailed": "操作失败，请重试",
+    "evaluationPassed": "评测通过（{passed}/{total} 条用例）",
+    "evaluationFailed": "评测未通过（{passed}/{total} 条用例）",
+    "evaluationStaticOnly": "静态契约评测，未真实执行，无成本与平均 Step 数据",
+    "suggestionsTitle": "建议保存为技能",
+    "suggestionsHint": "以下候选由重复成功的任务归纳，确认后仍需验证与评测",
+    "suggestionOccurrences": "已成功完成 {count} 次",
+    "suggestionSteps": "步骤",
+    "suggestionParameters": "参数化位置",
+    "suggestionNoParameters": "暂未发现跨次变化的参数",
+    "acceptSuggestion": "保存为草稿"
   },
   "knowledge": {
     "agent": "Agent",

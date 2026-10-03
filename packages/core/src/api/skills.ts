@@ -1,8 +1,10 @@
 import type {
   Skill,
   SkillDraft,
+  SkillEvaluation,
   SkillInstallation,
   SkillInstallationUpdate,
+  SkillSuggestion,
   SkillVersion,
 } from '@yuanai/types'
 
@@ -11,6 +13,11 @@ import { apiClient } from './client.js'
 /** 列出当前用户可管理的 Skill。 */
 export async function listSkills(): Promise<Skill[]> {
   return (await apiClient.get<Skill[]>('/skills')).data
+}
+
+/** 列出由重复成功任务归纳出的 Skill 候选。 */
+export async function listSkillSuggestions(): Promise<SkillSuggestion[]> {
+  return (await apiClient.get<SkillSuggestion[]>('/skills/suggestions')).data
 }
 
 /** 创建一个 Skill 及其首个不可变草稿版本。 */
@@ -30,6 +37,16 @@ export async function validateSkillVersion(
 ): Promise<SkillVersion> {
   return (await apiClient.post<SkillVersion>(`/skills/${skillId}/versions/${versionId}/validate`))
     .data
+}
+
+/** 对 Skill 版本重放静态契约评测；替换活动版本前必须通过。 */
+export async function evaluateSkillVersion(
+  skillId: string,
+  versionId: string
+): Promise<SkillEvaluation> {
+  return (
+    await apiClient.post<SkillEvaluation>(`/skills/${skillId}/versions/${versionId}/evaluate`)
+  ).data
 }
 
 /** 显式激活一个已验证的 Skill 版本。 */

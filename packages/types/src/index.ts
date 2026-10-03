@@ -1006,6 +1006,46 @@ export type SkillRiskCeiling =
 /** 已安装 Skill 的用户可见范围。 */
 export type SkillInstallationScope = 'global' | 'assistant'
 
+/** 一次 Skill 版本评测的终态。 */
+export type SkillEvaluationStatus = 'passed' | 'failed'
+
+/**
+ * 评测取样方式。
+ *
+ * `static_contract` 不执行 Skill，只重放契约检查，因此没有成本与步数；
+ * `executed` 预留给未来的真实执行面。读取方必须据此判断指标是否可信。
+ */
+export type SkillEvaluationMode = 'static_contract' | 'executed'
+
+/** 一条静态用例的判定结果。 */
+export interface SkillEvaluationCase {
+  name: string
+  status: 'passed' | 'failed'
+  detail: string
+}
+
+/**
+ * 一次评测的用例明细与门禁结论。
+ *
+ * `mode` 为 `static_contract` 时 `estimatedCostUsd` 与 `avgSteps` 恒为 `null`：
+ * 静态契约评测没有执行面，这两个指标没有数据源。
+ */
+export interface SkillEvaluation {
+  id: string
+  skillId: string
+  versionId: string
+  status: SkillEvaluationStatus
+  mode: SkillEvaluationMode
+  caseResults: SkillEvaluationCase[]
+  totalCases: number
+  passedCases: number
+  passRate: string
+  estimatedCostUsd: string | null
+  avgSteps: string | null
+  durationMs: number
+  createdAt: string
+}
+
 /** 不可变 Skill 版本的 manifest、指令和验证记录。 */
 export interface SkillVersion {
   id: string
@@ -1021,6 +1061,7 @@ export interface SkillVersion {
   validationErrors: string[]
   createdAt: string
   validatedAt: string | null
+  latestEvaluation: SkillEvaluation | null
 }
 
 /** 用户为活动 Skill 选择的安装范围。 */
@@ -1056,6 +1097,26 @@ export interface SkillDraft {
 export interface SkillInstallationUpdate {
   scope: SkillInstallationScope
   assistantId?: string
+}
+
+/**
+ * 由重复成功任务归纳出的 Skill 候选。
+ *
+ * `manifest` 与 `skillMd` 可直接提交给创建草稿接口；后端只生成候选，不预先写库，
+ * 必须由用户确认后才进入验证流程。
+ */
+export interface SkillSuggestion {
+  slug: string
+  name: string
+  description: string
+  occurrences: number
+  runIds: string[]
+  steps: string[]
+  parameters: string[]
+  requiredTools: string[]
+  riskCeiling: SkillRiskCeiling
+  manifest: string
+  skillMd: string
 }
 
 export * from './knowledge'

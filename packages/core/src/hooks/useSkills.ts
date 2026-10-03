@@ -5,7 +5,9 @@ import {
   activateSkillVersion,
   createSkill,
   createSkillVersion,
+  evaluateSkillVersion,
   listSkills,
+  listSkillSuggestions,
   rollbackSkillVersion,
   updateSkillInstallation,
   validateSkillVersion,
@@ -18,6 +20,16 @@ export function useSkills() {
   return useQuery({
     queryKey: ['skills'],
     queryFn: listSkills,
+    enabled: Boolean(accessToken),
+  })
+}
+
+/** 获取由重复成功任务归纳出的 Skill 候选。 */
+export function useSkillSuggestions() {
+  const accessToken = useAuthStore((state) => state.accessToken)
+  return useQuery({
+    queryKey: ['skills', 'suggestions'],
+    queryFn: listSkillSuggestions,
     enabled: Boolean(accessToken),
   })
 }
@@ -38,6 +50,13 @@ export function useCreateSkillVersion() {
 export function useValidateSkillVersion() {
   return useSkillMutation(({ skillId, versionId }: { skillId: string; versionId: string }) =>
     validateSkillVersion(skillId, versionId)
+  )
+}
+
+/** 对指定 Skill 版本执行评测并刷新管理列表。 */
+export function useEvaluateSkillVersion() {
+  return useSkillMutation(({ skillId, versionId }: { skillId: string; versionId: string }) =>
+    evaluateSkillVersion(skillId, versionId)
   )
 }
 

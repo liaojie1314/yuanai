@@ -598,6 +598,7 @@
     "install": "Install",
     "installed": "Installed",
     "validate": "Validate",
+    "evaluate": "Evaluate",
     "activate": "Activate",
     "rollback": "Rollback",
     "draft": "Draft",
@@ -613,7 +614,17 @@
     "destructive": "Destructive",
     "financial": "Financial",
     "privileged": "Privileged",
-    "actionFailed": "Action failed. Please try again."
+    "actionFailed": "Action failed. Please try again.",
+    "evaluationPassed": "Evaluation passed ({passed}/{total} cases)",
+    "evaluationFailed": "Evaluation failed ({passed}/{total} cases)",
+    "evaluationStaticOnly": "Static contract evaluation; not executed, so no cost or average step data",
+    "suggestionsTitle": "Suggested skills",
+    "suggestionsHint": "Candidates derived from repeatedly successful tasks; they still need validation and evaluation",
+    "suggestionOccurrences": "Completed successfully {count} times",
+    "suggestionSteps": "Steps",
+    "suggestionParameters": "Parameterized inputs",
+    "suggestionNoParameters": "No inputs varied across runs yet",
+    "acceptSuggestion": "Save as draft"
   },
   "knowledge": {
     "agent": "Agent",

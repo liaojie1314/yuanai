@@ -85,8 +85,10 @@ export {
   useActivateSkillVersion,
   useCreateSkill,
   useCreateSkillVersion,
+  useEvaluateSkillVersion,
   useRollbackSkillVersion,
   useSkills,
+  useSkillSuggestions,
   useUpdateSkillInstallation,
   useValidateSkillVersion,
 } from './useSkills'
