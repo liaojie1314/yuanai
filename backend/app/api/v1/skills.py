@@ -7,21 +7,25 @@ import uuid
 from fastapi import APIRouter, HTTPException
 
 from app.api.deps import DB, CurrentUser
-from app.models.skill import Skill, SkillInstallation, SkillVersion
+from app.models.skill import Skill, SkillEvaluation, SkillInstallation, SkillVersion
 from app.schemas.skill import (
     SkillDraftCreate,
+    SkillEvaluationResponse,
     SkillInstallationResponse,
     SkillInstallationUpdate,
     SkillResponse,
+    SkillSuggestion,
     SkillVersionDraftCreate,
     SkillVersionResponse,
 )
+from app.services.skill_experience import suggest_skills_from_runs
 from app.services.skill_service import (
     SkillNotFoundError,
     SkillStateError,
     activate_skill_version,
     create_skill_draft,
     create_skill_version_draft,
+    evaluate_skill_version,
     install_skill,
     list_skills,
     rollback_skill_version,
@@ -37,6 +41,13 @@ async def get_skills(current_user: CurrentUser, db: DB) -> list[Skill]:
     """列出当前用户的 Skill、版本与安装范围。"""
 
     return await list_skills(user_id=current_user.id, db=db)
+
+
+@router.get("/suggestions", response_model=list[SkillSuggestion])
+async def get_skill_suggestions(current_user: CurrentUser, db: DB) -> list[object]:
+    """返回由重复成功任务归纳出的 Skill 候选，仅供用户确认，不写库。"""
+
+    return list(await suggest_skills_from_runs(user_id=current_user.id, db=db))
 
 
 @router.post("", response_model=SkillResponse, status_code=201)
@@ -83,6 +94,20 @@ async def validate_version(
         raise HTTPException(status_code=404, detail="SKILL_VERSION_NOT_FOUND") from error
     except SkillStateError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.post("/{skill_id}/versions/{version_id}/evaluate", response_model=SkillEvaluationResponse)
+async def evaluate_version(
+    skill_id: uuid.UUID, version_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> SkillEvaluation:
+    """对版本重放静态契约评测；替换 active 版本前必须通过。"""
+
+    try:
+        return await evaluate_skill_version(
+            skill_id=skill_id, version_id=version_id, user_id=current_user.id, db=db
+        )
+    except SkillNotFoundError as error:
+        raise HTTPException(status_code=404, detail="SKILL_VERSION_NOT_FOUND") from error
 
 
 @router.post("/{skill_id}/versions/{version_id}/activate", response_model=SkillResponse)

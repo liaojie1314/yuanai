@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -61,6 +62,18 @@ class ParsedToolRequirement:
     version_requirement: str
 
 
+def content_digest(manifest_text: str, skill_md: str) -> str:
+    """计算版本内容指纹；写入与评测复核必须用同一个公式。"""
+
+    return hashlib.sha256(f"{manifest_text}\n{skill_md}".encode()).hexdigest()
+
+
+def risk_rank(risk: ToolRisk) -> int:
+    """返回风险等级的可比较序号，供上限比较和取最大值使用。"""
+
+    return _RISK_ORDER[risk]
+
+
 def parse_manifest(manifest_text: str, skill_md: str) -> SkillManifest:
     """安全解析 YAML，并拒绝动态字段或不安全的引用路径。"""
 
@@ -108,7 +121,7 @@ def validate_manifest_tools(manifest: SkillManifest, registry: ToolRegistry) -> 
         if not version_satisfies(spec.version, requirement.version_requirement):
             errors.append("SKILL_TOOL_VERSION_UNSUPPORTED")
             continue
-        if _RISK_ORDER[spec.risk_level] > _RISK_ORDER[manifest.risk_ceiling]:
+        if risk_rank(spec.risk_level) > risk_rank(manifest.risk_ceiling):
             errors.append("SKILL_RISK_CEILING_TOO_LOW")
             continue
         validated.append(

@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
-from app.models.skill import SkillInstallationScope, SkillVersionStatus
+from app.models.skill import (
+    SkillEvaluationMode,
+    SkillEvaluationStatus,
+    SkillInstallationScope,
+    SkillVersionStatus,
+)
 from app.tools.contracts import ToolRisk
 
 
@@ -39,6 +45,28 @@ class SkillInstallationUpdate(SkillSchema):
     assistant_id: uuid.UUID | None = None
 
 
+class SkillEvaluationResponse(SkillSchema):
+    """一次评测的用例明细与门禁结论。
+
+    `estimatedCostUsd` 与 `avgSteps` 在 `mode` 为 `static_contract` 时恒为 `null`：
+    静态契约评测不执行 Skill，这两个指标没有数据源，填 0 会被误读成真实测量值。
+    """
+
+    id: uuid.UUID
+    skill_id: uuid.UUID
+    version_id: uuid.UUID
+    status: SkillEvaluationStatus
+    mode: SkillEvaluationMode
+    case_results: list[dict[str, str]]
+    total_cases: int
+    passed_cases: int
+    pass_rate: Decimal
+    estimated_cost_usd: Decimal | None
+    avg_steps: Decimal | None
+    duration_ms: int
+    created_at: datetime
+
+
 class SkillVersionResponse(SkillSchema):
     """Skill 版本内容及其可审计验证状态。"""
 
@@ -55,6 +83,7 @@ class SkillVersionResponse(SkillSchema):
     validation_errors: list[str]
     created_at: datetime
     validated_at: datetime | None
+    latest_evaluation: SkillEvaluationResponse | None = None
 
 
 class SkillInstallationResponse(SkillSchema):
@@ -65,6 +94,25 @@ class SkillInstallationResponse(SkillSchema):
     scope: SkillInstallationScope
     assistant_id: uuid.UUID | None
     created_at: datetime
+
+
+class SkillSuggestion(SkillSchema):
+    """由重复成功任务归纳出的 Skill 候选，必须由用户确认后才进入草稿流程。
+
+    `manifest` 与 `skillMd` 可直接提交给 `POST /skills`，后端不会预先写库。
+    """
+
+    slug: str
+    name: str
+    description: str
+    occurrences: int
+    run_ids: list[uuid.UUID]
+    steps: list[str]
+    parameters: list[str]
+    required_tools: list[str]
+    risk_ceiling: ToolRisk
+    manifest: str
+    skill_md: str
 
 
 class SkillResponse(SkillSchema):

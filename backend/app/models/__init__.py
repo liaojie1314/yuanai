@@ -48,6 +48,9 @@ from app.models.qr_login import QRLoginChallenge, QRLoginEvent
 from app.models.share import ConversationShare
 from app.models.skill import (
     Skill,
+    SkillEvaluation,
+    SkillEvaluationMode,
+    SkillEvaluationStatus,
     SkillInstallation,
     SkillInstallationScope,
     SkillVersion,
@@ -98,6 +101,9 @@ __all__ = [
     "Skill",
     "SkillVersion",
     "SkillVersionStatus",
+    "SkillEvaluation",
+    "SkillEvaluationMode",
+    "SkillEvaluationStatus",
     "SkillInstallation",
     "SkillInstallationScope",
     "ConversationShare",
