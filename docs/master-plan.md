@@ -26,48 +26,55 @@
 | M1  | 7    | 记忆写入流水线 MemoryExtractor：从 Run 抽取 → 敏感度分级 → 去重 → 冲突检测 → 自动激活 | ✅   | §2.1  |
 | M2  | 7    | 混合检索：pgvector 迁移（`embedding` 现为 JSON 列）+ FTS + RRF + rerank               | ✅   | §2.1  |
 | M3  | 7    | 知识入库流水线：多格式解析、OCR、结构感知分块、`ingestion_jobs`、质量检查             | ✅   | §2.5  |
-| M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ⬜   | §2.7  |
-| M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ⬜   | §2.7  |
+| M4  | 7    | Webhook 触发：`webhook_endpoints`、`/webhooks/{public_id}`、签名/重放/限流            | ✅   | §2.9  |
+| M5  | 7    | Skill 评测门禁 `skill_evaluations`（不通过不替换 active）+ 从经验生成 Skill           | ✅   | §2.10 |
 | M6  | 7    | 专属助手人格 Persona（复用 `memories.assistant_id` 隔离，人格不提权）                 | ⬜   | §5 N1 |
 | M7  | 5    | 可观测性：8 个具名指标 + `/metrics` 暴露                                              | 🟡   | §2.4  |
 | M8  | 4    | `yuanai://` 向系统注册 + `electron-builder.yml` + `resources/` 打包资产               | ⬜   | §3.1  |
 | M9  | 3    | 原生 Google Sign-In + `POST /auth/google/native`                                      | 🟡   | §2.6  |
 | M10 | 2    | `packages/ui` 组件库：`tokens.css` + `Button` + `MessageBubble` + 测试                | ✅   | §2.3  |
-| M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ⬜   | §2.8  |
+| M11 | 6    | Wave 2 补齐：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板工具                                | ✅   | §2.11 |
 | M12 | 5/7  | 任何端都没有「创建助理」入口，Agent 与 Phase 7 控制面对新用户全部不可用               | ⬜   | §2.2  |
 | M13 | 7    | Skill 全链路没有运行时消费者：建了/验了/激活了，Agent 从不加载                        | ⬜   | §2.2  |
 
 ### 小任务（S）
 
-| ID  | 阶段 | 条目                                                                | 状态 | 详情 |
-| --- | ---- | ------------------------------------------------------------------- | ---- | ---- |
-| S1  | 5    | `agent_worker` 构造 Coordinator 时传 `budget=`，并加 config 键      | 🟡   | §3.1 |
-| S2  | 7    | `local_node` 记忆不再静默过滤：路由到在线节点或明确提示不可用       | ✅   | §2.1 |
-| S3  | 7    | MemoryCenter 三层测试（组件 / hook / api）                          | ⬜   | §2   |
-| S4  | 7    | Phase 7 列表接口游标分页                                            | 🟡   | §2.1 |
-| S5  | 7    | 记忆导出 API                                                        | ✅   | §2.1 |
-| S6  | 6    | `GET /tool-executions/{id}`；`/mcp-servers` 测试 / 启停 / 删除      | ⬜   | §3.1 |
-| S7  | 6    | `update_required` 节点状态接线 + 测试（当前是死枚举）               | ⬜   | §3.1 |
-| S8  | 3    | `useHydrateAuth` / `ChatInput` 单测                                 | ⬜   | §3.1 |
-| S9  | 5    | 前端 Agent 测试：组件 + hook + E2E                                  | ⬜   | §3.1 |
-| S10 | 7    | 自动化「复制」                                                      | ⬜   | §3.1 |
-| S11 | —    | `packages/ui` 补测试后加回覆盖率阈值                                | ✅   | §2.3 |
-| S12 | 7    | 记忆检索评测集（Recall@K / MRR / 引用准确率）                       | ✅   | §2.1 |
-| S13 | —    | 硬编码文案检测（61 文件 / 458 行，等于一次 i18n 迁移）              | ⬜   | §6   |
-| S14 | 7    | Mobile / Desktop 侧 Phase 7 控制界面                                | ⬜   | §2   |
-| S15 | 7    | 知识库检索的中文长查询静默退化（声明 10000 字，FTS 实为 2046 字节） | ⬜   | §2.2 |
-| S16 | 7    | 检索仍顶 `updated_at`：响应字段对用户撒谎 + 污染新鲜度排序          | ⬜   | §2.2 |
-| S17 | 7    | 记忆导出不含本机正文，文件永远无法完整还原本地记忆                  | ⬜   | §2.2 |
-| S18 | 2    | Web 不渲染后端 detail 码，记忆增删改的错误全显示「操作失败」        | ⬜   | §2.2 |
-| S19 | 2    | `ChatInterface.tsx` 2600+ 行无渲染测试（仅纯函数测试）              | ⬜   | §2.2 |
-| S20 | 5    | `agent_steps.output_json` 是死列，drop 属独立迁移决策               | ⬜   | §2.2 |
-| S21 | —    | `feature/memory-extraction-hybrid-search` 全分支 review 未完成      | ✅   | §2.2 |
-| S22 | 7    | 向量臂无相关度下限：余弦 −1 的查询照样满分召回全部记忆              | ⬜   | §2.2 |
-| S23 | 7    | 执行节点永久丢失后，`local_node` 记忆永远删不掉，无强制通道         | ⬜   | §2.2 |
-| S24 | 6    | `run_node_job` 内部 `commit()` 会连带提交调用方的未提交改动         | ⬜   | §2.2 |
-| S25 | 1/2  | 微信三方登录后端完全不存在，Web 入口已于 2026-10-02 隐藏            | ⬜   | §2.2 |
-| S26 | 7    | 知识检索启用向量后**反而不走任何过滤**，只取最近 400 条 chunk       | ⬜   | §2.2 |
-| S27 | —    | `conftest` 的 `_TRUNCATE_SQL` 不含知识/记忆/入库表，隔离靠级联      | ⬜   | §2.2 |
+| ID  | 阶段 | 条目                                                                | 状态 | 详情  |
+| --- | ---- | ------------------------------------------------------------------- | ---- | ----- |
+| S1  | 5    | `agent_worker` 构造 Coordinator 时传 `budget=`，并加 config 键      | 🟡   | §3.1  |
+| S2  | 7    | `local_node` 记忆不再静默过滤：路由到在线节点或明确提示不可用       | ✅   | §2.1  |
+| S3  | 7    | MemoryCenter 三层测试（组件 / hook / api）                          | ⬜   | §2    |
+| S4  | 7    | Phase 7 列表接口游标分页                                            | 🟡   | §2.1  |
+| S5  | 7    | 记忆导出 API                                                        | ✅   | §2.1  |
+| S6  | 6    | `GET /tool-executions/{id}`；`/mcp-servers` 测试 / 启停 / 删除      | ⬜   | §3.1  |
+| S7  | 6    | `update_required` 节点状态接线 + 测试（当前是死枚举）               | ⬜   | §3.1  |
+| S8  | 3    | `useHydrateAuth` / `ChatInput` 单测                                 | ⬜   | §3.1  |
+| S9  | 5    | 前端 Agent 测试：组件 + hook + E2E                                  | ⬜   | §3.1  |
+| S10 | 7    | 自动化「复制」                                                      | ⬜   | §3.1  |
+| S11 | —    | `packages/ui` 补测试后加回覆盖率阈值                                | ✅   | §2.3  |
+| S12 | 7    | 记忆检索评测集（Recall@K / MRR / 引用准确率）                       | ✅   | §2.1  |
+| S13 | —    | 硬编码文案检测（61 文件 / 458 行，等于一次 i18n 迁移）              | ⬜   | §6    |
+| S14 | 7    | Mobile / Desktop 侧 Phase 7 控制界面                                | ⬜   | §2    |
+| S15 | 7    | 知识库检索的中文长查询静默退化（声明 10000 字，FTS 实为 2046 字节） | ⬜   | §2.2  |
+| S16 | 7    | 检索仍顶 `updated_at`：响应字段对用户撒谎 + 污染新鲜度排序          | ⬜   | §2.2  |
+| S17 | 7    | 记忆导出不含本机正文，文件永远无法完整还原本地记忆                  | ⬜   | §2.2  |
+| S18 | 2    | Web 不渲染后端 detail 码，记忆增删改的错误全显示「操作失败」        | ⬜   | §2.2  |
+| S19 | 2    | `ChatInterface.tsx` 2600+ 行无渲染测试（仅纯函数测试）              | ⬜   | §2.2  |
+| S20 | 5    | `agent_steps.output_json` 是死列，drop 属独立迁移决策               | ⬜   | §2.2  |
+| S21 | —    | `feature/memory-extraction-hybrid-search` 全分支 review 未完成      | ✅   | §2.2  |
+| S22 | 7    | 向量臂无相关度下限：余弦 −1 的查询照样满分召回全部记忆              | ⬜   | §2.2  |
+| S23 | 7    | 执行节点永久丢失后，`local_node` 记忆永远删不掉，无强制通道         | ⬜   | §2.2  |
+| S24 | 6    | `run_node_job` 内部 `commit()` 会连带提交调用方的未提交改动         | ⬜   | §2.2  |
+| S25 | 1/2  | 微信三方登录后端完全不存在，Web 入口已于 2026-10-02 隐藏            | ⬜   | §2.2  |
+| S26 | 7    | 知识检索启用向量后**反而不走任何过滤**，只取最近 400 条 chunk       | ⬜   | §2.2  |
+| S27 | —    | `conftest` 的 `_TRUNCATE_SQL` 不含知识/记忆/入库表，隔离靠级联      | ⬜   | §2.2  |
+| S28 | 7    | Webhook payload 只有文本围栏，未按工具返回值隔离（依赖 M13）        | ⬜   | §2.9  |
+| S29 | 7    | Skill 评测拿不到成功率/成本/平均 Step，要等执行面（依赖 M13）       | ⬜   | §2.10 |
+| S30 | 6    | `complete_success` 两个分支体完全相同，是死分支                     | ⬜   | §2.11 |
+| S31 | 6    | `ToolRisk.low = "read"` 是枚举别名陷阱，两个名字同一成员            | ⬜   | §2.11 |
+| S32 | 6    | 二进制 Artifact 的预览只带 `{"size_bytes": N}`，界面无可展示内容    | ⬜   | §2.11 |
+| S33 | 6    | `ArtifactKind` 没有 `presentation`，PPTX 被归到 `document`          | ⬜   | §2.11 |
+| S34 | 7    | Skill 候选只扫最近 200 条 Run，更早的重复经验归纳不到               | ⬜   | §2.10 |
 
 ### 本轮不做（⛔）
 
@@ -88,8 +95,8 @@
 | Phase 3  | Expo React Native 移动端             | 🟡   | 已合入 `dev`；原生 Google 登录未实现（§3.1）             |
 | Phase 4  | Electron 桌面端                      | 🟡   | `yuanai://` 未向系统注册、打包资产缺失（§3.1）           |
 | Phase 5  | Agent 运行时与任务状态机             | 🟡   | 指标已暴露（§2.4）、token/金额预算未接线（§3.1）         |
-| Phase 6  | 工具系统、MCP、沙箱、执行节点        | 🟡   | Wave 2 若干项与协议版本门未做（§3.1）                    |
-| Phase 7  | 记忆、知识库、Skills、自动化         | 🟡   | **控制面已落地，核心机制未实现**（§2 更正、§3.1）        |
+| Phase 6  | 工具系统、MCP、沙箱、执行节点        | 🟡   | Wave 2 已补齐（§2.11），余协议版本门与 S30–S33           |
+| Phase 7  | 记忆、知识库、Skills、自动化         | 🟡   | 六项核心机制均有代码面；Skill 仍无运行时消费者（M13）    |
 | Phase 8  | 治理、控制中心、运营后台、可观测     | ⬜   | 仅有阶段文档                                             |
 | Phase 9  | 生活/学习/工作空间与连接器           | ⬜   | 仅有阶段文档                                             |
 | Phase 10 | 自主性、委派与评测                   | ⬜   | 仅有阶段文档                                             |
@@ -112,9 +119,11 @@
 > 所描述的**核心机制尚未实现**。逐条见 §3.1。
 >
 > ✅ **2026-09-29 更正的更正**：上述六项里，**§4（记忆写入流程）与 §5.1（混合检索）已实现**，
-> 见 §2.1。**§6.1（知识入库流水线）已于 2026-10-02 实现**，见 §2.5；其余三项
-> （§7.3 从经验生成 Skill、§8.2 Webhook 触发、§11.3 Skill 评测门禁）仍未实现，
-> 对应 §0 的 M4 / M5。
+> 见 §2.1。**§6.1（知识入库流水线）已于 2026-10-02 实现**，见 §2.5。
+> **§7.3（从经验生成 Skill）、§8.2（Webhook 触发）、§11.3（Skill 评测门禁）已于
+> 2026-10-03 实现**，见 §2.9 / §2.10 —— 六项核心机制至此全部有代码面。
+> 但 §11.3 想要的「成功率 / 成本 / 平均 Step」仍测不出来（Skill 无执行面，见 M13 与 S29），
+> 评测取的是静态契约检查。
 
 ### 2.1 记忆抽取与混合检索（2026-09-29 交付）
 
@@ -328,10 +337,13 @@
 > `run_id` / `step_id` / 哈希 `user_id` 的事件日志（Phase 5 §14 后半句的要求），
 > 与本节的聚合指标是两件事，没有合并。
 
-### 2.7 M4 / M5 本轮未实现，但范围决策已定（2026-10-02）
+### 2.7 M4 / M5 的范围决策（2026-10-02 拍定）
 
-M4（Webhook 触发）与 M5（Skill 评测门禁 + 从经验生成 Skill）**本轮未交付**，
-代码只写到一半就按用户要求暂停。**但下面四条范围决策已经拍定，接手会话不要重新讨论**：
+> **两项均已于 2026-10-03 交付**，交付证据见 [§2.9](#29-webhook-触发2026-10-03-交付phase-7--m4)
+> 与 [§2.10](#210-skill-评测门禁与从经验生成-skill2026-10-03-交付phase-7--m5)。
+> 本节保留当时的范围决策记录，解释实现为什么长这样，**不要据此以为还没做**。
+
+M4（Webhook 触发）与 M5（Skill 评测门禁 + 从经验生成 Skill）的四条范围决策：
 
 1. **评测门禁只在「替换已有 active 版本」时强制**，首次激活放行。依据是 phase-7 §11.3
    「不通过不替换 active」的字面语义；改成全量强制会让 12 条既有 skill 集成测试全红，
@@ -355,13 +367,116 @@ Webhook 侧已定的设计要点：`webhook_endpoints.public_id` 用 `secrets.to
 迁移 id 预留 `v7a8b9c0d1e2`（Webhook）与 `w8b9c0d1e2f3`（`skill_evaluations`），
 `down_revision` 依次接 `u6f7a8b9c0d1`。
 
-### 2.8 M11 本轮未实现（2026-10-02）
+### 2.8 M11 的范围决策（2026-10-02 拍定）
 
-M11（Wave 2 工具：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板）**本轮未交付**，同样写到一半暂停。
-已定的要点：图片 OCR **复用 §2.5 的 `knowledge_ocr.py`**（RapidOCR 可选 extra + 降级），
+> **已于 2026-10-03 交付**，证据见 [§2.11](#211-wave-2-工具2026-10-03-交付phase-6--m11)。
+> 本节保留当时的范围决策记录。
+
+M11（Wave 2 工具：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板）已定的要点：
+图片 OCR **复用 §2.5 的 `knowledge_ocr.py`**（RapidOCR 可选 extra + 降级），
 不写第二份适配；文档生成的文件名来自模型输出，属不可信输入，**必须复用
 `knowledge_service` 的基目录约束**挡路径穿越；剪贴板是用户本机资源，走执行节点通道，
 节点不在线必须明确报不可用，禁止静默返回空串假装成功。
+
+### 2.9 Webhook 触发（2026-10-03 交付，Phase 7 / M4）
+
+提交 `329e051`。新增迁移 `v7a8b9c0d1e2`、`app/api/v1/webhooks.py`、
+`app/services/webhook_service.py`，`automation_triggers.trigger_type` 扩出 `webhook`
+并把库里的 `varchar(4)` 对齐到模型声明的 16（`create_all` 的测试库看不到这个差异，
+只在迁移链上存在）。
+
+公网未认证入口 `POST /webhooks/{public_id}`，三道校验**全部 fail closed**（已核对代码）：
+HMAC-SHA256 用 `hmac.compare_digest` 常量时间比对（`webhook_service.py:403`）且签名覆盖
+时间戳；时间戳窗口外拒绝，窗口内以签名摘要为 nonce 登记防重放；按 endpoint 的分钟桶限流。
+**重放与限流存储不可用时返回 503 而不是放行**（`WEBHOOK_GUARD_UNAVAILABLE` /
+`WEBHOOK_SECRET_UNAVAILABLE`，均为 503）。`public_id` 取 `secrets.token_urlsafe(32)`
+不可枚举；签名密钥走既有 `TenantSecretStore` 加密，库里只存引用与辨认前缀，明文仅在
+创建与轮换响应各出现一次。触发时 `occurrence_key = webhook:{endpoint.id}:{delivery_id}`
+使重复投递天然幂等。
+
+> ⚠️ 第三方 payload 进入 Run 目标时只加了**显式数据围栏并截断**，这是降低 prompt
+> injection 成功率的缓解措施，**不是隔离**。彻底的做法是让 payload 以工具返回值进入
+> 上下文，取决于 M13 的 Skill / 工具执行面，已登记为 S28。
+
+### 2.10 Skill 评测门禁与从经验生成 Skill（2026-10-03 交付，Phase 7 / M5）
+
+迁移 `w8b9c0d1e2f3` 建 `skill_evaluations`（已在独立 scratch 库上实跑
+`upgrade head → downgrade -1 → upgrade head`，`alembic heads` 单头 `w8b9c0d1e2f3`）。
+新增 `app/services/skill_evaluation.py`（纯函数用例，不碰库）与
+`app/services/skill_experience.py`（规则聚类），接口
+`POST /skills/{id}/versions/{vid}/evaluate` 与 `GET /skills/suggestions`。
+
+**门禁语义**：`_set_active_version` 在 `rollback=False` 且**已存在 active 版本**且目标
+版本不是它时，要求目标版本**最近一次**评测为 `passed`，否则
+409 `SKILL_VERSION_EVALUATION_REQUIRED`（从未评测）/ `SKILL_VERSION_EVALUATION_FAILED`。
+只看最近一次，是为了让注册表变化后重测出的失败能推翻此前的通过记录。
+**首次激活与回滚不设门禁**：首次激活没有可被弄坏的生产版本；回滚是 phase-7 §7.2 里
+「评测回退时」的恢复手段，给它加门禁等于堵掉唯一退路。
+
+六条静态用例（固定六条，manifest 解析失败时依赖用例**判失败而不是跳过**，否则通过率虚高）：
+
+| 用例                         | 判什么                                                 |
+| ---------------------------- | ------------------------------------------------------ |
+| `manifest_contract`          | manifest 仍能按受限契约解析，且声明版本与版本行一致    |
+| `content_integrity`          | 内容指纹与入库时一致（检测落库后被改写）               |
+| `tool_contract`              | 声明工具在**评测时点**仍注册、版本可满足、不超风险上限 |
+| `declared_tool_coverage`     | 指令里反引号引用的工具必须在 `required_tools` 内       |
+| `risk_ceiling_not_escalated` | 新版本不得把风险上限抬高过待替换的 active 版本         |
+| `secret_scan`                | manifest 与指令里没有内联凭据字面量                    |
+
+`declared_tool_coverage` **只认反引号包裹的工具名**：散文里的 "calculate the total" 不该
+被当成调用 `calculate`，有专门的用例守这条（`test_prose_mention_without_backticks_...`）。
+`secret_scan` 的 detail **只回报模式名、不回显命中内容**，同样有用例守。
+未声明工具会绕过 manifest 的风险上限，审批与预算就按错的上限算，这是
+`declared_tool_coverage` 存在的原因。
+
+**从经验生成 Skill**（phase-7 §7.3）：扫最近 200 条 `succeeded` 的 Run，目标文本切词后按
+Jaccard ≥ 0.6 贪心聚类，**≥ 3 次**才出候选。中文切**二元组而不是单字** —— 单字会让
+「写周报」和「写邮件」因共享「写」而相似度虚高，有用例守这条。候选给出步骤（成功工具
+步骤的工具名按首现顺序）、参数化位置（同一工具跨次取值不同的参数键）、`name@^major`
+形式的 `required_tools`、以及所用工具的最高风险作 `risk_ceiling`。候选**在返回前先自检**
+（走一遍 `parse_manifest` + `validate_manifest_tools`），自检不过就不递给客户端，免得用户
+点「保存为草稿」拿到 422。**不写库**：用户点按钮才走既有 `POST /skills`，落为 `draft`，
+仍需验证 → 评测 → 激活，满足 §7.3「必须由用户确认后进入验证流程」。
+
+**消费侧同时落地**（CLAUDE.md 的「新增功能必须确认消费侧可达」）：不加 UI 的话，门禁会
+让用户在界面上**永远无法替换 active 版本** —— 有门禁、没有触发评测的入口。
+`packages/types` 补 `SkillEvaluation` / `SkillEvaluationCase` / `SkillSuggestion` 与
+`SkillVersion.latestEvaluation`；`packages/core` 补 `evaluateSkillVersion` /
+`listSkillSuggestions` 与两个 hook；Web `SkillCenter` 在 `validated` 版本上加「评测」按钮、
+展示最近一次评测的通过数与失败用例明细，并新增候选区（步骤 / 参数化位置 / 工具 / 风险 +
+「保存为草稿」）。中英语言包各补 11 条键，`locale-parity` 通过。
+
+**诚实指标**：`mode` 恒为 `static_contract`，`estimated_cost_usd` 与 `avg_steps`
+**留 NULL**，界面显示「静态契约评测，未真实执行，无成本与平均 Step 数据」。
+不填 0 的理由是 M7 已因同类问题记 🟡（指标定义了但无数据源、序列恒为 0）——
+一个恒为 0 的指标比 `NULL` 更有害，因为它看起来像真的。
+
+实测门禁：后端全量 `pytest` **714 收集 / 713 passed + 1 skipped，退出码 0**
+（新增 `tests/unit/test_skill_evaluation.py` 9 例、
+`tests/integration/test_skills_api.py` 4 例，其中 2 例新增）；`ruff check app/ tests/` 通过、
+`mypy app/` 125 文件无问题；`pnpm typecheck` 6/6、`pnpm lint` 3/3、`pnpm format:check`
+（改动文件）通过、`pnpm test:unit` 全绿（ui 17 / mobile 52 / desktop 332 / core 137 / web 215）。
+
+> ⚠️ **评测是静态契约检查，不是真实执行**。phase-7 §11.3 想要的「成功率、成本、平均
+> Step、错误恢复」测不出来，因为 Skill 还没有运行时消费者（M13）。真实执行面落地后，
+> 本节的 `mode` 需要出现 `executed` 的行，届时才有这四个指标。已登记为 S29。
+
+### 2.11 Wave 2 工具（2026-10-03 交付，Phase 6 / M11）
+
+提交 `b839db5`（OCR + DOCX/XLSX/PPTX 生成）、`493fefa`（二进制产物持久化与 Unicode 文件名）、
+`c9350ea`（桌面端经执行节点读系统剪贴板）。注册表新增 `image_ocr`、`docx_write`、
+`xlsx_write`、`pptx_write`、`read_clipboard`（已在 `build_phase6_registry()` 实列出来核对）。
+
+按 §2.8 的决策执行：OCR 复用知识入库的 RapidOCR 适配层，引擎未安装时返回 `degraded`
+而不是把工具执行打成失败，测试注入假后端不下载权重；文档生成的文件名来自模型输出，
+路径分隔符与穿越段在工具边界即拒绝；生成的字节必须能被 python-docx / openpyxl /
+python-pptx 重新打开读回原文，数值单元格保留原生类型（否则表格求和与排序失效）；
+剪贴板走执行节点通道，节点不在线明确报不可用。
+
+`493fefa` 顺手修掉一个自 Phase 6 Wave 1 就存在的缺陷：`_safe_name` 的
+`[^A-Za-z0-9._-]` 白名单会把 `测试报告.docx` 压成 `docx`，**所有中文名产物此前只显示
+扩展名**。本轮新登记的 M11 相关债见 S30–S33。
 
 ---
 
@@ -422,32 +537,35 @@ M11（Wave 2 工具：图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板）**本轮�
 
 #### Phase 6 — 工具与执行
 
-| 状态 | 条目                                                                                                                    |
-| ---- | ----------------------------------------------------------------------------------------------------------------------- |
-| 🟡   | §10 Wave 2「图片 OCR 统一解析入口」未实现：`file_extract_service.py` 对图片只返回空预览，全仓无 OCR 实现                |
-| 🟡   | §10 Wave 2「工作区文件生成 DOCX/XLSX/PPTX」未实现：`files_write` 只写文本；python-docx 仅用于读取                       |
-| 🟡   | §9.4 首批本地工具缺「获取剪贴板内容」                                                                                   |
-| 🟡   | §12.1 缺 `GET /tool-executions/{id}` 快照；`/mcp-servers` 缺测试/启停/删除                                              |
-| ⬜   | §13.3「Desktop 低于最小协议版本进入 `update_required`」未实现：该枚举值是死代码，从未被赋值，只做精确字符串拒绝，无测试 |
+| 状态 | 条目                                                                                                                      |
+| ---- | ------------------------------------------------------------------------------------------------------------------------- |
+| ✅   | §10 Wave 2「图片 OCR 统一解析入口」**已实现**（2026-10-03，见 §2.11）：`image_ocr` 工具复用知识入库的 RapidOCR 适配层     |
+| ✅   | §10 Wave 2「工作区文件生成 DOCX/XLSX/PPTX」**已实现**（2026-10-03，见 §2.11）：`docx_write` / `xlsx_write` / `pptx_write` |
+| ✅   | §9.4「获取剪贴板内容」**已实现**（2026-10-03，见 §2.11）：`read_clipboard` 经执行节点通道，节点离线明确报不可用           |
+| 🟡   | §12.1 缺 `GET /tool-executions/{id}` 快照；`/mcp-servers` 缺测试/启停/删除                                                |
+| ⬜   | §13.3「Desktop 低于最小协议版本进入 `update_required`」未实现：该枚举值是死代码，从未被赋值，只做精确字符串拒绝，无测试   |
 
 #### Phase 7 — 记忆/知识库/Skills/自动化
 
-**这是最大的一簇。**控制面（CRUD + UI）确实完成，但文档描述的核心机制基本没做：
+**这是最大的一簇。**2026-09-18 审计时控制面（CRUD + UI）完成而核心机制基本没做；
+下表的状态列已按后续交付逐条更新，**条目文字保留当时的审计结论**便于回溯。
 
-| 状态 | 条目                                                                                                                                                                                                                                                                 |
-| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ⬜   | §4 记忆写入流程 / MemoryExtractor 不存在：`create_candidate` 的唯一调用点是用户手动 POST。没有从成功 Run 中抽取、没有 PII/敏感度分级、没有去重、没有冲突检测、没有自动激活策略、没有新事实覆盖旧事实                                                                 |
-| ⬜   | pgvector 完全缺席：`memories.embedding` 与知识库 embedding 都是 `JSON` 列，检索是 Python 内存里的 `(关键词重合 + 余弦)/2` 全量打分（代码里已有 `ponytail:` 注释自陈待迁移）。§5.1 的 RRF 混合检索与 rerank 不存在，§12 验收项「pgvector + FTS 混合检索」结构上不可达 |
-| ⬜   | §6.1 知识入库流水线不存在：只有文本规范化 + 固定长度分块。无病毒扫描、无 OCR、无 PDF/Office/表格/代码解析、无结构感知分块、无质量检查；唯一来源类型是 `text`                                                                                                         |
-| ⬜   | §8.2 Webhook 触发完全缺席：触发类型只有 `once                                                                                                                                                                                                                        | cron`，全仓 `webhook`**0 命中**，无`/webhooks/{public_id}` 路由 |
-| ⬜   | §3.3-3.6 的表未建：`ingestion_jobs`、`skill_tool_requirements`、`skill_evaluations`、`webhook_endpoints`（`assistant_personas` 见 §5 N1）                                                                                                                            |
-| ⬜   | §7.3「从经验生成 Skill」不存在；§11.3「评测不通过不得替换 active 版本」不存在（校验只做 manifest schema 与风险上限）                                                                                                                                                 |
-| ⬜   | §5.3 本地记忆：`storage_location == local_node` 的记忆被检索**直接静默过滤**，既没有路由到在线桌面节点，也没有「本地私密记忆暂不可用」的提示                                                                                                                         |
-| ⬜   | §10 API 缺口：记忆导出、Phase 7 全部列表接口的游标分页、knowledge-sources/documents 生命周期端点、自动化「复制」                                                                                                                                                     |
-| ⬜   | MemoryCenter 三层全无测试（组件 / hook / api），而另外三个 Center 都有                                                                                                                                                                                               |
+| 状态 | 条目                                                                                                                                                                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ✅   | §4 记忆写入流程 / MemoryExtractor **已实现**（2026-09-29，见 §2.1）。原审计结论：`create_candidate` 的唯一调用点是用户手动 POST，没有从成功 Run 中抽取、没有 PII/敏感度分级、没有去重、没有冲突检测、没有自动激活策略                        |
+| ✅   | pgvector 与 §5.1 RRF 混合检索**已实现**（2026-09-29，见 §2.1）。原审计结论：两处 embedding 都是 `JSON` 列，检索是 Python 内存里的 `(关键词重合 + 余弦)/2` 全量打分，RRF 与 rerank 不存在。**知识库侧仍有 S26**（启用向量后反而不过滤）       |
+| ✅   | §6.1 知识入库流水线**已实现**（2026-10-02，见 §2.5）。原审计结论：只有文本规范化 + 固定长度分块，无 OCR、无 PDF/Office/表格/代码解析、无结构感知分块、无质量检查                                                                             |
+| ✅   | §8.2 Webhook 触发**已实现**（2026-10-03，见 §2.9）。原审计结论：触发类型只有 `once                                                                                                                                                           | cron`，全仓 `webhook`**0 命中**，无`/webhooks/{public_id}` 路由 |
+| 🟡   | §3.3-3.6 的表：`ingestion_jobs`（§2.5）、`webhook_endpoints`（§2.9）、`skill_evaluations`（§2.10）**已建**；`skill_tool_requirements` 仍未建（声明工具目前存在 `skill_versions.required_tools` 的 JSON 列里），`assistant_personas` 见 §5 N1 |
+| 🟡   | §7.3「从经验生成 Skill」与 §11.3「评测不通过不得替换 active 版本」**已实现**（2026-10-03，见 §2.10）。评测取静态契约检查，§11.3 的「成功率 / 成本 / 平均 Step」仍测不出来（M13 / S29）                                                       |
+| ✅   | §5.3 本地记忆**已不再静默过滤**（2026-09-29，见 §2.1 / S2）：路由到在线桌面节点，节点离线时明确提示不可用。节点永久丢失后的强制删除通道仍缺（S23）                                                                                           |
+| 🟡   | §10 API 缺口：记忆导出已实现（S5）、knowledge-sources/documents 生命周期端点已实现（§2.5）；游标分页仍只覆盖部分接口（S4）、自动化「复制」仍缺（S10）                                                                                        |
+| ⬜   | MemoryCenter 三层全无测试（组件 / hook / api），而另外三个 Center 都有                                                                                                                                                                       |
 
-> 以上条目均为**代码审计结论**，已逐条核对文件与行号；其中 pgvector、budget 未接线、
-> `setAsDefaultProtocolClient` 缺失、`packages/ui` 空壳、webhook 0 命中五项由本会话二次复核确认。
+> 以上条目均为 2026-09-18 的**代码审计结论**，已逐条核对文件与行号；其中 pgvector、
+> budget 未接线、`setAsDefaultProtocolClient` 缺失、`packages/ui` 空壳、webhook 0 命中
+> 五项由当时会话二次复核确认。**状态列随后续交付更新**（✅ 的行附了交付章节号），
+> 只有仍为 ⬜ / 🟡 的行才是待办。
 
 ---
 

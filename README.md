@@ -246,7 +246,8 @@ yuanai/
 截至 2026-09-18：Phase 2-7 已合入 `dev`，远程 CI 全绿。但 2026-09-18 的代码审计发现
 **每个阶段都有此前未登记的缺口**（Phase 7 只落地了控制面，记忆抽取、pgvector 混合检索、
 知识入库流水线、Webhook 触发等核心机制未实现；桌面端 `yuanai://` 未向系统注册；
-移动端原生 Google 登录未实现等）。Phase 8-15 仅有阶段文档（Phase 13 实时视频、
+移动端原生 Google 登录未实现等）。**其中 Phase 7 的核心机制已于 2026-09-29 至 10-03
+陆续补齐**，见下文各次更新。Phase 8-15 仅有阶段文档（Phase 13 实时视频、
 Phase 14 终端 TUI、Phase 15 小程序端为 2026-09-17 新增）。
 
 2026-09-29 更新：上述 Phase 7 缺口中，**记忆抽取流水线与 pgvector 混合检索已实现**
@@ -258,8 +259,14 @@ Phase 14 终端 TUI、Phase 15 小程序端为 2026-09-17 新增）。
 `ingestion_jobs` + 质量检查，[§2.5](docs/master-plan.md)）、**Agent 运行时 8 个指标与
 `/metrics`**（[§2.4](docs/master-plan.md)）、**原生 Google Sign-In**（id_token 走 Google JWKS
 真实验签，[§2.6](docs/master-plan.md)，**未真机联调**）、**`packages/ui` 共享组件库**
-（[§2.3](docs/master-plan.md)）。**Webhook 触发与 Skill 评测门禁仍未实现。**
-微信三方登录后端完全不存在，Web 入口已于当日隐藏。
+（[§2.3](docs/master-plan.md)）。微信三方登录后端完全不存在，Web 入口已于当日隐藏。
+
+2026-10-03 更新：新增交付 **Webhook 触发**（公网入口签名 / 重放 / 限流三道校验全部
+fail closed，[§2.9](docs/master-plan.md)）、**Skill 评测门禁与从经验生成 Skill**
+（[§2.10](docs/master-plan.md)）、**Wave 2 工具**（图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板，
+[§2.11](docs/master-plan.md)）。Phase 7 文档描述的六项核心机制至此全部有代码面。
+**但 Skill 评测是静态契约检查而非真实执行**：Skill 仍没有运行时消费者，
+「成功率 / 成本 / 平均 Step」无从测起，相应指标留空而不是填 0。
 
 同日审计出三个同类缺口：三端都没有「创建助理」入口，以致 Agent 与 Phase 7 控制面对新用户
 整体不可达；Skill 全链路没有运行时消费者；知识检索一旦启用向量反而不做任何过滤。
