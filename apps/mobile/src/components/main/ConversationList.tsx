@@ -378,110 +378,112 @@ export function ConversationList({
         />
       </View>
 
-      {/* Conversation groups: FlashList only mounts rows near the viewport. */}
-      <TypedConversationFlashList
-        style={styles.conversationList}
-        data={listRows}
-        extraData={{ activeId, selectionMode, selected, streams, theme, t }}
-        contentContainerStyle={{ paddingVertical: spacing.sm }}
-        keyboardShouldPersistTaps="handled"
-        estimatedItemSize={46}
-        keyExtractor={(item) => item.id}
-        getItemType={(item) => item.kind}
-        ListEmptyComponent={
-          <View style={styles.emptyList}>
-            <Text style={{ fontSize: 13, color: theme.text.muted }}>{t('chat.emptyList')}</Text>
-          </View>
-        }
-        renderItem={({ item }) => {
-          if (item.kind === 'group') {
-            return (
-              <Text style={[styles.groupLabel, { color: theme.text.muted }]}>{item.label}</Text>
-            )
+      {/* Conversation groups: FlashList only mounts rows near the viewport.
+          FlashList 不接受 style，撑开高度必须由外层 View 承担，否则只会收到告警而不生效。 */}
+      <View style={styles.conversationList}>
+        <TypedConversationFlashList
+          data={listRows}
+          extraData={{ activeId, selectionMode, selected, streams, theme, t }}
+          contentContainerStyle={{ paddingVertical: spacing.sm }}
+          keyboardShouldPersistTaps="handled"
+          estimatedItemSize={46}
+          keyExtractor={(item) => item.id}
+          getItemType={(item) => item.kind}
+          ListEmptyComponent={
+            <View style={styles.emptyList}>
+              <Text style={{ fontSize: 13, color: theme.text.muted }}>{t('chat.emptyList')}</Text>
+            </View>
           }
+          renderItem={({ item }) => {
+            if (item.kind === 'group') {
+              return (
+                <Text style={[styles.groupLabel, { color: theme.text.muted }]}>{item.label}</Text>
+              )
+            }
 
-          const c = item.conversation
-          const isActive = c.id === activeId
-          const isSelected = selected.has(c.id)
-          const isStreaming = streams[c.id] !== undefined
-          return (
-            <Pressable
-              onPress={() => handlePick(c.id)}
-              onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
-              style={[
-                styles.convItem,
-                { paddingVertical: theme.density.convPy },
-                isActive && !selectionMode && { backgroundColor: theme.brand.selected },
-                selectionMode && isSelected && { backgroundColor: theme.brand.selected },
-              ]}
-            >
-              {selectionMode ? (
-                isSelected ? (
-                  <CheckSquare size={14} color={brand.solid} />
-                ) : (
-                  <Square size={14} color={theme.text.muted} />
-                )
-              ) : c.isPinned ? (
-                <Pin size={12} color={brand.solid} fill={brand.solid} />
-              ) : (
-                <View style={{ width: 12 }} />
-              )}
-              <Text
+            const c = item.conversation
+            const isActive = c.id === activeId
+            const isSelected = selected.has(c.id)
+            const isStreaming = streams[c.id] !== undefined
+            return (
+              <Pressable
+                onPress={() => handlePick(c.id)}
+                onLongPress={() => handleLongPress(c.id, c.title, c.isPinned)}
                 style={[
-                  styles.convTitle,
-                  { color: theme.text.primary, fontSize: theme.typography.title },
-                  isActive && { color: theme.brand.selectedFg, fontWeight: '600' as const },
+                  styles.convItem,
+                  { paddingVertical: theme.density.convPy },
+                  isActive && !selectionMode && { backgroundColor: theme.brand.selected },
+                  selectionMode && isSelected && { backgroundColor: theme.brand.selected },
                 ]}
-                numberOfLines={1}
               >
-                {c.title}
-              </Text>
-              {!isStreaming && c.titleSource === 'fallback' ? (
-                <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
-                  <LoaderCircle size={13} color={theme.text.muted} />
-                </View>
-              ) : null}
-              {!selectionMode && isStreaming ? (
-                <View accessibilityLabel={`${c.title} 正在生成`} accessibilityRole="progressbar">
-                  <ActivityIndicator size="small" color={brand.solid} />
-                </View>
-              ) : null}
-              {selectionMode ? (
-                <View style={styles.convMore}>
-                  {isSelected ? <Check size={14} color={brand.solid} /> : null}
-                </View>
-              ) : (
-                <View style={styles.convActions}>
-                  {isStreaming ? (
+                {selectionMode ? (
+                  isSelected ? (
+                    <CheckSquare size={14} color={brand.solid} />
+                  ) : (
+                    <Square size={14} color={theme.text.muted} />
+                  )
+                ) : c.isPinned ? (
+                  <Pin size={12} color={brand.solid} fill={brand.solid} />
+                ) : (
+                  <View style={{ width: 12 }} />
+                )}
+                <Text
+                  style={[
+                    styles.convTitle,
+                    { color: theme.text.primary, fontSize: theme.typography.title },
+                    isActive && { color: theme.brand.selectedFg, fontWeight: '600' as const },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {c.title}
+                </Text>
+                {!isStreaming && c.titleSource === 'fallback' ? (
+                  <View accessibilityLabel="正在生成会话标题" accessibilityRole="progressbar">
+                    <LoaderCircle size={13} color={theme.text.muted} />
+                  </View>
+                ) : null}
+                {!selectionMode && isStreaming ? (
+                  <View accessibilityLabel={`${c.title} 正在生成`} accessibilityRole="progressbar">
+                    <ActivityIndicator size="small" color={brand.solid} />
+                  </View>
+                ) : null}
+                {selectionMode ? (
+                  <View style={styles.convMore}>
+                    {isSelected ? <Check size={14} color={brand.solid} /> : null}
+                  </View>
+                ) : (
+                  <View style={styles.convActions}>
+                    {isStreaming ? (
+                      <Pressable
+                        onPress={(event) => {
+                          event.stopPropagation()
+                          stop(c.id)
+                        }}
+                        hitSlop={8}
+                        style={styles.convMore}
+                        accessibilityLabel={`停止生成：${c.title}`}
+                      >
+                        <Square size={11} color={theme.text.muted} fill={theme.text.muted} />
+                      </Pressable>
+                    ) : null}
                     <Pressable
                       onPress={(event) => {
                         event.stopPropagation()
-                        stop(c.id)
+                        openContextMenu(c.id, c.title, c.isPinned)
                       }}
                       hitSlop={8}
                       style={styles.convMore}
-                      accessibilityLabel={`停止生成：${c.title}`}
+                      accessibilityLabel={t('common.edit')}
                     >
-                      <Square size={11} color={theme.text.muted} fill={theme.text.muted} />
+                      <MoreVertical size={14} color={theme.text.muted} />
                     </Pressable>
-                  ) : null}
-                  <Pressable
-                    onPress={(event) => {
-                      event.stopPropagation()
-                      openContextMenu(c.id, c.title, c.isPinned)
-                    }}
-                    hitSlop={8}
-                    style={styles.convMore}
-                    accessibilityLabel={t('common.edit')}
-                  >
-                    <MoreVertical size={14} color={theme.text.muted} />
-                  </Pressable>
-                </View>
-              )}
-            </Pressable>
-          )
-        }}
-      />
+                  </View>
+                )}
+              </Pressable>
+            )
+          }}
+        />
+      </View>
 
       {selectionMode ? null : (
         <View style={[styles.footer, { borderTopColor: theme.border.default }]}>
