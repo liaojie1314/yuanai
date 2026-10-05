@@ -152,8 +152,13 @@ export interface QrLoginRequestScope {
 
 // ============ 会话 ============
 
-/** 会话标题的最终来源。 */
-export type ConversationTitleSource = 'default' | 'fallback' | 'ai' | 'manual'
+/**
+ * 会话标题的最终来源。
+ *
+ * `fallback` 表示 AI 标题仍在生成，客户端据此显示「生成中」；
+ * `fallback_final` 表示生成已失败并放弃，回退标题就是最终标题。
+ */
+export type ConversationTitleSource = 'default' | 'fallback' | 'fallback_final' | 'ai' | 'manual'
 
 /** 对话会话（侧边栏列表项） */
 export interface Conversation {

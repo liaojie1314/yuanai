@@ -118,6 +118,20 @@ function parseSseError(data: string): Error {
   return new Error('消息发送失败，请稍后重试')
 }
 
+/**
+ * 允许进入会话缓存的标题来源。
+ *
+ * 写成按来源取键的表而不是字符串数组：联合类型新增成员时这里会因缺键编译失败。
+ * 漏掉一个值的后果是静默丢弃该 title event，界面停在上一个状态且无任何报错。
+ */
+const TITLE_SOURCES: Record<ConversationTitleSource, true> = {
+  default: true,
+  fallback: true,
+  fallback_final: true,
+  ai: true,
+  manual: true,
+}
+
 /** 验证后端 title event，避免畸形 SSE 污染 TanStack 会话缓存。 */
 function parseConversationTitle(data: Record<string, unknown>): {
   conversationId: string
@@ -133,7 +147,7 @@ function parseConversationTitle(data: Record<string, unknown>): {
     typeof conversationId !== 'string' ||
     typeof title !== 'string' ||
     typeof titleGeneratedAt !== 'string' ||
-    !['default', 'fallback', 'ai', 'manual'].includes(String(titleSource))
+    !Object.prototype.hasOwnProperty.call(TITLE_SOURCES, String(titleSource))
   ) {
     return null
   }
