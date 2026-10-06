@@ -1,9 +1,22 @@
+import threading
 import uuid
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import httpx
 import pytest
 
 from app.services.tools import search
+
+
+class _OkHandler(BaseHTTPRequestHandler):
+    """只回 200 的最小环回服务端，用于验证请求确实打到了本机。"""
+
+    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler 规定的方法名
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *_args: object) -> None:
+        """屏蔽 stderr 噪声。"""
 
 
 class FakeRedis:
@@ -127,3 +140,29 @@ async def test_unavailable_redis_never_calls_provider(monkeypatch: pytest.Monkey
     with pytest.raises(search.SearchUnavailableError, match="WEB_SEARCH_CACHE_UNAVAILABLE"):
         await search.search_web(user_id=uuid.uuid4(), query="stable query")
     assert provider.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_searxng_health_ignores_environment_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    """环回健康检查不得走环境代理，否则联网搜索会静默判定为不可用。
+
+    httpx 的 no_proxy 不认 ``127.0.0.0/8`` 这类网段写法，本机地址照样被发往代理。
+    这里把代理指向一个没人监听的端口：只要实现读了环境变量，健康检查必然失败。
+    """
+    server = HTTPServer(("127.0.0.1", 0), _OkHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        dead_proxy = "http://127.0.0.1:9"
+        for name in ("HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+            monkeypatch.setenv(name, dead_proxy)
+        monkeypatch.setenv("NO_PROXY", "localhost,127.0.0.0/8,::1")
+
+        provider = search.SearxngSearchProvider(f"http://127.0.0.1:{port}")
+
+        assert await provider.healthy() is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
