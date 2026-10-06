@@ -570,7 +570,13 @@
     "exporting": "正在导出…",
     "typeToggles": "记忆类型开关",
     "typeEnabled": "记录中",
-    "typeDisabled": "已关闭"
+    "typeDisabled": "已关闭",
+    "typeSection": "记录哪些类型",
+    "typeSectionHint": "关闭后助理不再记录该类型，已有记忆保留",
+    "createSection": "手动添加",
+    "statusSection": "按状态筛选",
+    "statusAll": "全部",
+    "emptyHint": "助理会在对话中自动记录值得长期记住的内容，也可以在上方手动添加一条"
   },
   "skills": {
     "agent": "Agent",

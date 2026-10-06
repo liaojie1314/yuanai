@@ -9,10 +9,59 @@
 .memory-list,
 .memory-filters,
 .memory-types,
-.memory-more {
+.memory-more,
+.memory-panel,
+.memory-empty {
   max-width: 1180px;
   margin-left: auto;
   margin-right: auto;
+}
+
+/* 控制区统一收进一张卡片：此前类型开关、添加输入框和状态筛选三者裸排在
+   背景上，两排胶囊样式完全相同却分别管「记录什么」和「筛选什么」。 */
+.memory-panel {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.memory-field {
+  display: grid;
+  gap: 8px;
+}
+.memory-field h2 {
+  margin: 0;
+  font-size: 15px;
+}
+.memory-field-hint {
+  margin: -4px 0 0;
+  color: var(--fg2);
+  font-size: 13px;
+}
+.memory-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 44px 18px;
+  border: 1px dashed var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--fg2);
+  text-align: center;
+}
+.memory-empty svg {
+  color: var(--brand);
+}
+.memory-empty-title {
+  margin: 0;
+  color: var(--fg);
+  font-weight: 600;
+}
+.memory-empty p {
+  margin: 0;
 }
 .memory-header {
   display: flex;
@@ -68,6 +117,14 @@
   display: flex;
   justify-content: center;
   margin-top: 16px;
+}
+/* 这三块移进卡片后，自己的下边距会和卡片的 gap 叠加；
+   顶部那条共享规则的 margin:auto 在更窄的卡片里会把它们居中，必须一并归零。 */
+.memory-panel .memory-types,
+.memory-panel .memory-create,
+.memory-panel .memory-filters {
+  margin: 0;
+  max-width: none;
 }
 .memory-banner {
   max-width: 1180px;

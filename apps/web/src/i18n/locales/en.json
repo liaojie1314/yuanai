@@ -570,7 +570,13 @@
     "exporting": "Exporting…",
     "typeToggles": "Memory types",
     "typeEnabled": "Recording",
-    "typeDisabled": "Off"
+    "typeDisabled": "Off",
+    "typeSection": "What to record",
+    "typeSectionHint": "Turning a type off stops new entries; existing memories are kept",
+    "createSection": "Add manually",
+    "statusSection": "Filter by status",
+    "statusAll": "All",
+    "emptyHint": "Your assistant records what is worth keeping as you chat, or add one above"
   },
   "skills": {
     "agent": "Agent",

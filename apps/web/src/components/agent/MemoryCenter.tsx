@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent, type JSX } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Brain } from 'lucide-react'
 import type { Memory, MemoryExport, MemoryType } from '@yuanai/types'
 import { listAssistants, updateAssistant } from '@yuanai/core/api'
 import {
@@ -101,62 +102,76 @@ export default function MemoryCenter(): JSX.Element {
           {exportAll.isPending ? t('exporting') : t('export')}
         </button>
       </header>
-      <div className="memory-types" role="group" aria-label={t('typeToggles')}>
-        {MEMORY_TYPES.map((type) => {
-          const off = disabledTypes.includes(type)
-          return (
+      <div className="memory-panel">
+        <section className="memory-field">
+          <h2>{t('typeSection')}</h2>
+          <p className="memory-field-hint">{t('typeSectionHint')}</p>
+          <div className="memory-types" role="group" aria-label={t('typeToggles')}>
+            {MEMORY_TYPES.map((type) => {
+              const off = disabledTypes.includes(type)
+              return (
+                <button
+                  key={type}
+                  aria-pressed={!off}
+                  className={off ? 'memory-btn' : 'memory-btn is-active'}
+                  disabled={!assistant || patchAssistant.isPending}
+                  onClick={() => toggleType(type)}
+                  type="button"
+                >
+                  {t(type)} · {off ? t('typeDisabled') : t('typeEnabled')}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+        <section className="memory-field">
+          <h2>{t('createSection')}</h2>
+          <form className="memory-create" onSubmit={submit}>
+            <input
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder={t('createPlaceholder')}
+              aria-label={t('createPlaceholder')}
+            />
             <button
-              key={type}
-              aria-pressed={!off}
-              className={off ? 'memory-btn' : 'memory-btn is-active'}
-              disabled={!assistant || patchAssistant.isPending}
-              onClick={() => toggleType(type)}
+              className="memory-btn memory-btn--primary"
+              type="submit"
+              disabled={create.isPending || !assistant}
+            >
+              {t('create')}
+            </button>
+          </form>
+        </section>
+        <section className="memory-field">
+          <h2>{t('statusSection')}</h2>
+          {/* 「全部」是一个真实的筛选项；此前这里放的是「状态」二字，
+              样式上与其余选项完全相同，读起来像选中了一个叫「状态」的筛选。 */}
+          <nav className="memory-filters" aria-label={t('statusSection')}>
+            <button
+              className={!status ? 'is-active' : ''}
+              onClick={() => setStatus(undefined)}
               type="button"
             >
-              {t(type)} · {off ? t('typeDisabled') : t('typeEnabled')}
+              {t('statusAll')}
             </button>
-          )
-        })}
+            {STATUSES.map((item) => (
+              <button
+                key={item}
+                className={status === item ? 'is-active' : ''}
+                onClick={() => setStatus(item)}
+                type="button"
+              >
+                {t(item)}
+              </button>
+            ))}
+          </nav>
+        </section>
       </div>
       {exportAll.isError || patchAssistant.isError ? (
         <p className="memory-alert" role="alert">
           {t('actionFailed')}
         </p>
       ) : null}
-      <form className="memory-create" onSubmit={submit}>
-        <input
-          value={content}
-          onChange={(event) => setContent(event.target.value)}
-          placeholder={t('createPlaceholder')}
-          aria-label={t('createPlaceholder')}
-        />
-        <button
-          className="memory-btn memory-btn--primary"
-          type="submit"
-          disabled={create.isPending || !assistant}
-        >
-          {t('create')}
-        </button>
-      </form>
-      <nav className="memory-filters" aria-label={t('status')}>
-        <button
-          className={!status ? 'is-active' : ''}
-          onClick={() => setStatus(undefined)}
-          type="button"
-        >
-          {t('status')}
-        </button>
-        {STATUSES.map((item) => (
-          <button
-            key={item}
-            className={status === item ? 'is-active' : ''}
-            onClick={() => setStatus(item)}
-            type="button"
-          >
-            {t(item)}
-          </button>
-        ))}
-      </nav>
       {memories.isLoading ? <p className="memory-muted">{t('loading')}</p> : null}
       {localUnavailable ? (
         <p className="memory-banner" role="status">
@@ -164,7 +179,11 @@ export default function MemoryCenter(): JSX.Element {
         </p>
       ) : null}
       {!memories.isLoading && items.length === 0 ? (
-        <p className="memory-muted">{t('empty')}</p>
+        <div className="memory-empty">
+          <Brain aria-hidden="true" size={28} />
+          <p className="memory-empty-title">{t('empty')}</p>
+          <p className="memory-muted">{t('emptyHint')}</p>
+        </div>
       ) : null}
       <ul className="memory-list">
         {items.map((memory) => (

@@ -232,9 +232,11 @@ export default function SkillCenter(): JSX.Element {
       </section>
 
       {suggestions.data?.length ? (
-        <section aria-label={t('suggestionsTitle')}>
-          <h2>{t('suggestionsTitle')}</h2>
-          <p className="skill-muted">{t('suggestionsHint')}</p>
+        <section className="skill-section" aria-label={t('suggestionsTitle')}>
+          <div className="skill-section-head">
+            <h2>{t('suggestionsTitle')}</h2>
+            <p className="skill-muted">{t('suggestionsHint')}</p>
+          </div>
           <ul className="skill-list">
             {suggestions.data.map((suggestion) => (
               <li className="skill-card" key={suggestion.slug}>
