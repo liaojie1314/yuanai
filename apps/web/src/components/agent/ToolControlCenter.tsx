@@ -167,7 +167,7 @@ function CatalogTab(): JSX.Element {
       {items.map((item: ToolCatalogItem) => (
         <li key={item.name} className="tools-card">
           <div className="tools-card-head">
-            <strong>{item.name}</strong>
+            <strong title={item.name}>{item.name}</strong>
             <StatusBadge
               tone={riskTone(item.riskLevel)}
               label={t(`risk.${riskKey(item.riskLevel)}`)}
