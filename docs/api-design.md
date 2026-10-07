@@ -535,6 +535,8 @@ Google 已按同一模式落地；未来接入微信时继续复用。
     {
       "id": "uuid",
       "title": "如何学习 Rust",
+      "title_source": "ai",
+      "title_generated_at": "2026-01-01T10:00:02Z",
       "model": "gpt-4o",
       "is_pinned": false,
       "last_message_at": "2026-01-01T12:00:00Z",
@@ -545,6 +547,26 @@ Google 已按同一模式落地；未来接入微信时继续复用。
   "has_more": true
 }
 ```
+
+#### `title_source` 的五个取值
+
+标题由首问同步回退、后台 AI 生成或用户改名三条路径确定，客户端靠这个字段判断
+当前标题是不是最终结果：
+
+| 值               | 含义                    | 客户端表现             |
+| ---------------- | ----------------------- | ---------------------- |
+| `default`        | 新建空会话，还没有首问  | 不提示                 |
+| `fallback`       | 首问截断的临时标题      | **显示「标题生成中」** |
+| `fallback_final` | AI 生成失败，回退即最终 | 不提示                 |
+| `ai`             | AI 生成成功             | 不提示                 |
+| `manual`         | 用户手动改名            | 不提示                 |
+
+`fallback` 与 `fallback_final` 必须分开：只有一个「fallback」时，**终态和进行中共用
+同一个值**，客户端的「生成中」提示就没有退出条件，生成一失败便永久转圈。
+后端在生成失败时负责推进到 `fallback_final`，客户端不得自行超时猜测。
+
+AI 标题生成绝不覆盖 `manual`：落库用 `WHERE title_source = 'fallback'` 作乐观条件，
+用户在生成期间改名会让该更新的 rowcount 变为零，从而自然保留用户标题。
 
 ---
 
@@ -661,6 +683,11 @@ Google 已按同一模式落地；未来接入微信时继续复用。
 `enabled` 为 `false` 时，`reason` 为 `"disabled"` 或 `"unavailable"`；客户端必须禁用
 联网搜索开关，而不是猜测 provider 配置。
 
+`unavailable` 只说明「探测没通过」，不区分原因。SearXNG 的探测固定走环回地址且
+**不读环境代理变量** —— httpx 的 `no_proxy` 不认 `127.0.0.0/8` 这类网段写法，
+设了 `HTTP_PROXY` 的机器上本机请求会被发往代理并失败，表现为能力恒为 `false`
+且没有任何报错。Brave / Tavily 是真外部服务，仍尊重用户的代理设置。
+
 ---
 
 ### POST `/chat/stream` — 流式对话（SSE，需认证）
@@ -726,6 +753,10 @@ data: {"tool_call_id":"search-1","status":"done","result":"已检索 3 条来源
 event: message_end
 data: {"tokens_used":256,"finish_reason":"stop"}
 
+# 首问的 AI 标题结果（可选；仅首条消息，且仅在标题任务赶上流结束时发出）
+event: conversation_title
+data: {"conversation_id":"uuid","title":"学习 Rust 的路径","title_source":"ai","title_generated_at":"2026-01-01T10:00:02Z"}
+
 # 错误事件
 event: error
 data: {"code":"MODEL_QUOTA_EXCEEDED","message":"模型调用额度不足"}
@@ -733,6 +764,13 @@ data: {"code":"MODEL_QUOTA_EXCEEDED","message":"模型调用额度不足"}
 # 流结束
 data: [DONE]
 ```
+
+`conversation_title` 的 `title_source` 可能是 `ai`（生成成功）或 `fallback_final`
+（生成失败，回退标题即最终标题），取值含义见上文「`title_source` 的五个取值」。
+标题任务在流结束时只等 0.25 秒：它不会延迟首个回复 token，超时后任务继续独立落库，
+客户端在下次会话列表刷新时读到最终标题。**客户端解析该事件时若用白名单校验
+`title_source`，必须让新增取值编译失败而不是静默丢弃事件** —— 丢弃的后果是界面
+停在上一个状态且无任何报错。
 
 **Error 400:** `CONVERSATION_NOT_FOUND` 或 `CONVERSATION_ACCESS_DENIED`
 
