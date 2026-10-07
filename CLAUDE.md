@@ -38,6 +38,8 @@ yuanai 是一个多端 AI 聊天应用，功能对标 ChatGPT，支持 Android�
 | [Phase 13 — 实时视频](docs/phases/phase-13-realtime-video.md)                   | 视频通话、视觉理解与屏幕共享          |
 | [Phase 14 — 终端 TUI](docs/phases/phase-14-cli.md)                              | TUI 与本地执行节点                    |
 | [Phase 15 — 小程序端](docs/phases/phase-15-miniprogram.md)                      | Taro 小程序端                         |
+| [Phase 16 — 上下文工程](docs/phases/phase-16-context-engineering.md)            | 人格文件、上下文压缩、钩子、外置记忆  |
+| [Phase 17 — 多 Agent 协作](docs/phases/phase-17-multi-agent-collaboration.md)   | 协作对象模型、协作模式、调度器        |
 
 ## 技术栈
 
@@ -134,7 +136,8 @@ yuanai/
 移动端原生 Google 登录未实现、`yuanai://` 未向系统注册、Agent 指标与预算未接线、
 Phase 7 只落地了控制面而记忆抽取/pgvector/知识入库流水线/Webhook 触发等核心机制未实现，
 **这批 Phase 7 缺口已于 2026-09-29 至 10-03 陆续补齐**，见下文）；
-Phase 8-15 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增）。
+Phase 8-17 仅有阶段文档，尚未开工（Phase 13-15 为 2026-09-17 新增，
+Phase 16-17 为 2026-10-07 新增）。
 
 2026-09-29 更新：Phase 7 缺口中**记忆抽取流水线与 pgvector 混合检索已实现**且端到端闭环
 （逐条证据见 [交付状态总表 §2.1](docs/master-plan.md)）。

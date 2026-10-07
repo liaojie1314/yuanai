@@ -33,24 +33,26 @@
 
 见 [phases/](phases/)。阶段状态不写在阶段文档里，统一看 [master-plan.md](master-plan.md)。
 
-| 阶段                                                        | 主题                               |
-| ----------------------------------------------------------- | ---------------------------------- |
-| [Phase 0](phases/phase-0-scaffold.md)                       | Monorepo 脚手架                    |
-| [Phase 1](phases/phase-1-backend.md)                        | FastAPI 后端核心                   |
-| [Phase 2](phases/phase-2-web.md)                            | Next.js Web 端                     |
-| [Phase 3](phases/phase-3-mobile.md)                         | Expo React Native 移动端           |
-| [Phase 4](phases/phase-4-desktop.md)                        | Electron 桌面端                    |
-| [Phase 5](phases/phase-5-agent-runtime.md)                  | Agent 运行时与任务状态机           |
-| [Phase 6](phases/phase-6-tools-execution.md)                | 工具系统、MCP、沙箱与执行节点      |
-| [Phase 7](phases/phase-7-memory-skills-automation.md)       | 记忆、知识库、Skills、自动化、人格 |
-| [Phase 8](phases/phase-8-governance-admin-observability.md) | 治理、控制中心、运营后台、可观测性 |
-| [Phase 9](phases/phase-9-life-work-connectors.md)           | 生活/学习/工作空间与连接器         |
-| [Phase 10](phases/phase-10-autonomy-delegation-evals.md)    | 自主性、委派与评测                 |
-| [Phase 11](phases/phase-11-personal-digital-twin.md)        | 数字孪生、助手形象与实时语音       |
-| [Phase 12](phases/phase-12-open-ecosystem.md)               | 开放生态与跨渠道机器人             |
-| [Phase 13](phases/phase-13-realtime-video.md)               | 视频通话、视觉理解与屏幕共享       |
-| [Phase 14](phases/phase-14-cli.md)                          | 终端 TUI 与本地执行节点            |
-| [Phase 15](phases/phase-15-miniprogram.md)                  | Taro 小程序端                      |
+| 阶段                                                        | 主题                                 |
+| ----------------------------------------------------------- | ------------------------------------ |
+| [Phase 0](phases/phase-0-scaffold.md)                       | Monorepo 脚手架                      |
+| [Phase 1](phases/phase-1-backend.md)                        | FastAPI 后端核心                     |
+| [Phase 2](phases/phase-2-web.md)                            | Next.js Web 端                       |
+| [Phase 3](phases/phase-3-mobile.md)                         | Expo React Native 移动端             |
+| [Phase 4](phases/phase-4-desktop.md)                        | Electron 桌面端                      |
+| [Phase 5](phases/phase-5-agent-runtime.md)                  | Agent 运行时与任务状态机             |
+| [Phase 6](phases/phase-6-tools-execution.md)                | 工具系统、MCP、沙箱与执行节点        |
+| [Phase 7](phases/phase-7-memory-skills-automation.md)       | 记忆、知识库、Skills、自动化、人格   |
+| [Phase 8](phases/phase-8-governance-admin-observability.md) | 治理、控制中心、运营后台、可观测性   |
+| [Phase 9](phases/phase-9-life-work-connectors.md)           | 生活/学习/工作空间与连接器           |
+| [Phase 10](phases/phase-10-autonomy-delegation-evals.md)    | 自主性、委派与评测                   |
+| [Phase 11](phases/phase-11-personal-digital-twin.md)        | 数字孪生、助手形象与实时语音         |
+| [Phase 12](phases/phase-12-open-ecosystem.md)               | 开放生态与跨渠道机器人               |
+| [Phase 13](phases/phase-13-realtime-video.md)               | 视频通话、视觉理解与屏幕共享         |
+| [Phase 14](phases/phase-14-cli.md)                          | 终端 TUI 与本地执行节点              |
+| [Phase 15](phases/phase-15-miniprogram.md)                  | Taro 小程序端                        |
+| [Phase 16](phases/phase-16-context-engineering.md)          | 人格文件、上下文压缩、钩子、外置记忆 |
+| [Phase 17](phases/phase-17-multi-agent-collaboration.md)    | 多 Agent 协作对象模型与调度器        |
 
 ## 开发者专项指南
 
