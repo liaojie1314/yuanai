@@ -19,11 +19,13 @@ from __future__ import annotations
 
 import re
 import secrets
+import time
 import uuid
-from typing import cast
+from typing import Any, cast
 from urllib.parse import urlencode
 
 import httpx
+from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +44,14 @@ GITHUB_API_EMAILS = "https://api.github.com/user/emails"
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_API_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
+# 原生 Sign-In 返回的 id_token 用这组公钥验签
+GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+# Google id_token 的 iss 两种写法都合法
+GOOGLE_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
+# JWKS 缓存 1 小时：Google 证书轮换留有数小时重叠期，1 小时足以跟上且避免每次登录都发请求
+_JWKS_TTL_SECONDS = 60 * 60
+# (过期时刻 monotonic 秒, JWKS)
+_google_jwks_cache: tuple[float, dict[str, Any]] | None = None
 
 # state 生存期：5 分钟足以覆盖用户授权耗时，避免 Redis 长期堆积
 _STATE_TTL_SECONDS = 5 * 60
@@ -260,7 +270,6 @@ async def _fetch_google_profile(access_token: str) -> dict[str, str]:
     """拿 Google OpenID userinfo；返回统一 profile dict（`provider_id` 键）。
 
     userinfo 端点返回 `sub`（稳定用户 id）、`email`、`email_verified`、`name`、`picture`。
-    未验证邮箱直接拒绝，避免拿到不可信 email 误关联到他人账号。
     """
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -275,7 +284,15 @@ async def _fetch_google_profile(access_token: str) -> dict[str, str]:
         ) from e
     if resp.status_code != 200:
         raise OAuthFlowError("OAUTH_PROFILE_FETCH_FAILED", "无法获取 Google 用户信息")
-    info = resp.json()
+    return _google_profile_from_claims(resp.json())
+
+
+def _google_profile_from_claims(info: dict[str, Any]) -> dict[str, str]:
+    """把 Google userinfo 响应 / id_token claims 归一成统一 profile dict。
+
+    两处来源字段同名（`sub` / `email` / `email_verified` / `picture`）。
+    未验证邮箱直接拒绝，避免拿到不可信 email 误关联到他人账号。
+    """
     sub = info.get("sub")
     email = info.get("email")
     # email_verified 可能是 bool 或字符串 "true"
@@ -288,14 +305,102 @@ async def _fetch_google_profile(access_token: str) -> dict[str, str]:
             "OAUTH_EMAIL_UNAVAILABLE",
             "Google 账号邮箱不可用或未验证，无法完成登录",
         )
-    # 用邮箱前缀兜底 username base；Google name 常含空格/中文不符合 username 规则
-    login = str(email).split("@", 1)[0]
     return {
         "provider_id": str(sub),
         "email": str(email).lower(),
-        "login": login,
+        # 用邮箱前缀兜底 username base；Google name 常含空格/中文不符合 username 规则
+        "login": str(email).split("@", 1)[0],
         "avatar_url": str(info.get("picture") or ""),
     }
+
+
+# ── 原生 Google Sign-In（移动端 id_token）───────────
+def _google_native_audiences() -> set[str]:
+    """原生 id_token 允许的 `aud` 集合。
+
+    Android / iOS 原生 Sign-In 拿到的 id_token，其 `aud` 取决于客户端配置：
+    配了 serverClientId 时是 **Web** client id，否则是平台自身的 client id。
+    因此用 `GOOGLE_NATIVE_CLIENT_IDS`（逗号分隔）登记全部可接受值，
+    并始终把 Web 流程用的 `GOOGLE_CLIENT_ID` 一并算进来。
+    """
+    ids = {item.strip() for item in settings.google_native_client_ids.split(",")}
+    ids.add(settings.google_client_id.strip())
+    return {item for item in ids if item}
+
+
+async def _fetch_google_jwks() -> dict[str, Any]:
+    """拉取 Google 的 JWKS 公钥集并按 TTL 缓存，供 id_token 验签使用。"""
+    global _google_jwks_cache
+    now = time.monotonic()
+    if _google_jwks_cache is not None and now < _google_jwks_cache[0]:
+        return _google_jwks_cache[1]
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(GOOGLE_JWKS_URL)
+    except httpx.RequestError as e:
+        raise OAuthFlowError(
+            "OAUTH_NETWORK_ERROR",
+            f"无法获取 Google 验签公钥：{type(e).__name__}",
+        ) from e
+    if resp.status_code != 200:
+        raise OAuthFlowError("OAUTH_NETWORK_ERROR", "Google 验签公钥端点返回异常状态")
+    jwks: dict[str, Any] = resp.json()
+    if not jwks.get("keys"):
+        raise OAuthFlowError("OAUTH_NETWORK_ERROR", "Google 验签公钥集为空")
+    _google_jwks_cache = (now + _JWKS_TTL_SECONDS, jwks)
+    return jwks
+
+
+async def verify_google_id_token(raw_token: str) -> dict[str, Any]:
+    """校验原生 Google Sign-In 返回的 id_token，返回其 claims。
+
+    校验项（任一不满足都抛错，绝不放过）：
+    - RS256 签名，公钥取自 Google JWKS；
+    - `iss` ∈ {accounts.google.com, https://accounts.google.com}；
+    - `exp` 必须存在且未过期（`iat` / `nbf` 由 jose 一并校验）；
+    - `aud` 必须命中 `_google_native_audiences()`。
+    """
+    audiences = _google_native_audiences()
+    if not audiences:
+        raise OAuthConfigError(
+            "Google 原生登录未配置（缺少 GOOGLE_NATIVE_CLIENT_IDS / GOOGLE_CLIENT_ID）"
+        )
+    jwks = await _fetch_google_jwks()
+    try:
+        claims: dict[str, Any] = jwt.decode(
+            raw_token,
+            jwks,
+            algorithms=["RS256"],
+            issuer=GOOGLE_ISSUERS,
+            # aud 允许多个而 jose 只接受单值，这里关掉由下面手工比对；
+            # at_hash 需要配套 access_token，原生登录只送 id_token 故跳过。
+            options={"verify_aud": False, "verify_at_hash": False, "require_exp": True},
+        )
+    except JWTError as e:
+        raise OAuthFlowError("OAUTH_ID_TOKEN_INVALID", f"Google id_token 校验失败：{e}") from e
+    aud = claims.get("aud")
+    if not isinstance(aud, str) or aud not in audiences:
+        raise OAuthFlowError(
+            "OAUTH_ID_TOKEN_INVALID",
+            "Google id_token 的 aud 不在允许的客户端 ID 列表内",
+        )
+    return claims
+
+
+async def complete_google_native_login(raw_id_token: str, db: AsyncSession) -> AuthResponse:
+    """原生 Google Sign-In：校验 id_token → 关联/建号 → 签发本站 JWT。
+
+    与 `complete_google_callback` 共用账号关联与 JWT 签发，只是身份来源不同：
+    这里直接采信**经签名校验**的 id_token，不需要 state 与 code 交换。
+    """
+    claims = await verify_google_id_token(raw_id_token)
+    profile = _google_profile_from_claims(claims)
+    user = await _link_or_create_user("google", profile, db)
+
+    # 复用 auth_service 的 refresh token 写 Redis 逻辑，避免两处代码分叉
+    from app.services.auth_service import build_auth_response
+
+    return await build_auth_response(user)
 
 
 async def _link_or_create_user(provider: str, profile: dict[str, str], db: AsyncSession) -> User:

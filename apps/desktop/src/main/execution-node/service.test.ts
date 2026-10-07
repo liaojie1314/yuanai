@@ -7,6 +7,7 @@ import { ExecutionNodeService } from './service'
 import { generateEd25519KeyPair } from './protocol'
 import type { ExecutionNodeIdentity, ExecutionNodeIdentityStore } from './identity-store'
 import type { ExecutionNodeGrantStore } from './grants'
+import type { LocalMemoryStore } from './memory-store'
 import type { NodeFetchLike, NodeWebSocketConstructor } from './client'
 
 type Listener = (event?: unknown) => void
@@ -154,10 +155,22 @@ function createFakeGrants(): { store: ExecutionNodeGrantStore; items: Array<{ pa
   return { store: store as unknown as ExecutionNodeGrantStore, items }
 }
 
+/** 最小本地记忆存储替身；服务只需要它能 hydrate 与 clear。 */
+function createFakeMemoryStore(): LocalMemoryStore {
+  return {
+    hydrate: vi.fn(async () => {}),
+    put: vi.fn(async () => {}),
+    remove: vi.fn(async () => false),
+    search: vi.fn(() => []),
+    clear: vi.fn(async () => {}),
+  } as unknown as LocalMemoryStore
+}
+
 interface Harness {
   service: ExecutionNodeService
   identityStore: ReturnType<typeof createFakeIdentityStore>
   grants: ReturnType<typeof createFakeGrants>
+  memoryStore: LocalMemoryStore
   statuses: DesktopExecutionNodeStatus[]
   ws: () => FakeWebSocket
   jobs: { executeJob: ReturnType<typeof vi.fn> }
@@ -172,6 +185,7 @@ function createHarness(
   FakeWebSocket.instances = []
   const identityStore = createFakeIdentityStore(identity)
   const grants = createFakeGrants()
+  const memoryStore = createFakeMemoryStore()
   const statuses: DesktopExecutionNodeStatus[] = []
   const jobs = { executeJob: overrides.jobsExecute ?? vi.fn() }
   const fetchFn = vi.fn(async () => ({
@@ -183,11 +197,13 @@ function createHarness(
   const service = new ExecutionNodeService({
     identityStore: identityStore.store,
     grants: grants.store,
+    memoryStore,
     runtimeConfig: { apiBaseUrl: API_BASE },
     app: { getPath: () => '/tmp/yuanai-test', getVersion: () => '0.1.0' },
     appVersion: '0.1.0',
     dialog,
     shell: { openExternal: vi.fn(async () => {}) },
+    clipboard: { readText: () => '测试剪贴板内容' },
     onStatus: (status) => statuses.push(status),
     webSocketCtor: FakeWebSocket as unknown as NodeWebSocketConstructor,
     fetchFn: fetchFn as unknown as NodeFetchLike,
@@ -198,6 +214,7 @@ function createHarness(
     service,
     identityStore,
     grants,
+    memoryStore,
     statuses,
     jobs,
     fetchFn,
@@ -308,6 +325,10 @@ describe('ExecutionNodeService.register', () => {
       'read_granted_file',
       'list_granted_directory',
       'write_workspace_file',
+      'read_clipboard',
+      'memory.search',
+      'memory.write',
+      'memory.delete',
     ])
     expect(status.nodeId).toBe('node-1')
     expect(status.name).toBe('新节点')
@@ -423,6 +444,64 @@ describe('ExecutionNodeService job decisions', () => {
     expect(harness.statuses.at(-1)?.pendingJob).toBeNull()
   })
 
+  it('只读的 memory.search 作业自动接受，不进入待确认列表', async () => {
+    const harness = createHarness(createIdentity(), {
+      jobsExecute: vi.fn(async () => ({ result: { memories: [] } })),
+    })
+    await harness.service.start()
+    const socket = await completeHandshake(harness)
+
+    socket.serverMessage({
+      type: 'job_offer',
+      protocol_version: '1',
+      execution_id: 'exec-memory-search',
+      tool_name: 'memory.search',
+      tool_version: '1.0.0',
+      arguments: { query: '杭州', limit: 8 },
+      arguments_preview: '{}',
+      policy: {},
+      expires_at: new Date(CURRENT_TIME + 60_000).toISOString(),
+      signature: 'server-signature',
+    })
+    await flush()
+
+    expect(socket.sentMessages()).toContainEqual({
+      type: 'accepted',
+      execution_id: 'exec-memory-search',
+    })
+    expect(harness.statuses.at(-1)?.pendingJob).toBeNull()
+    expect(harness.jobs.executeJob).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: 'memory.search' })
+    )
+  })
+
+  it('memory.write 仍然需要用户确认', async () => {
+    const harness = createHarness(createIdentity())
+    await harness.service.start()
+    const socket = await completeHandshake(harness)
+
+    socket.serverMessage({
+      type: 'job_offer',
+      protocol_version: '1',
+      execution_id: 'exec-memory-write',
+      tool_name: 'memory.write',
+      tool_version: '1.0.0',
+      arguments: { memoryId: 'm1', content: '杭州', memoryType: 'profile' },
+      arguments_preview: '{}',
+      policy: {},
+      expires_at: new Date(CURRENT_TIME + 60_000).toISOString(),
+      signature: 'server-signature',
+    })
+    await flush()
+
+    expect(socket.sentMessages()).not.toContainEqual({
+      type: 'accepted',
+      execution_id: 'exec-memory-write',
+    })
+    expect(harness.statuses.at(-1)?.pendingJob?.toolName).toBe('memory.write')
+    expect(harness.jobs.executeJob).not.toHaveBeenCalled()
+  })
+
   it('removes a pending approval when the server cancels the offer', async () => {
     const harness = createHarness(createIdentity())
     await harness.service.start()
@@ -522,6 +601,7 @@ describe('ExecutionNodeService teardown', () => {
 
     expect(harness.identityStore.current()).toBeNull()
     expect(harness.grants.store.clear).toHaveBeenCalledOnce()
+    expect(harness.memoryStore.clear).toHaveBeenCalledOnce()
     expect(harness.statuses.at(-1)).toMatchObject({
       state: 'idle',
       capabilities: [],

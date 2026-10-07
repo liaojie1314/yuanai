@@ -107,6 +107,15 @@
   gap: 10px;
 }
 
+/* 工具名过长时截断成省略号：换行会把卡片顶高，同一行里的卡片高度参差。
+   截断会藏掉信息，所以元素上同时挂 title，悬停仍能看到完整名字。 */
+.tools-card-head strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tools-card-meta {
   display: grid;
   gap: 4px;
@@ -185,6 +194,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
+  /* 徽章在 flex 行里默认可压缩，工具名一长就被压到只剩一个字宽，「只读」会竖着排。 */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .tools-badge--ok {

@@ -8,13 +8,15 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
+  FALLBACK_CHAT_MODEL_ID,
   TABLET_MIN_WIDTH,
   filterChatModels,
   useChatCapabilities,
   useCreateConversation,
+  useCreateMediaTask,
   useModels,
 } from '@yuanai/core'
-import type { AIModel } from '@yuanai/types'
+import type { AIModel, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
 
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
@@ -47,6 +49,7 @@ export default function ChatNewScreen(): React.JSX.Element {
   const dialog = useDialog()
 
   const createConv = useCreateConversation()
+  const createMediaTask = useCreateMediaTask()
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
@@ -62,7 +65,7 @@ export default function ChatNewScreen(): React.JSX.Element {
   const activeModelId = useMemo(() => {
     if (pickedModelId && models.some((m) => m.id === pickedModelId)) return pickedModelId
     const def = models.find((m) => m.isDefault)
-    return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
+    return def?.id ?? models[0]?.id ?? FALLBACK_CHAT_MODEL_ID
   }, [pickedModelId, models])
   const activeModel = useMemo(
     () => models.find((m) => m.id === activeModelId),
@@ -126,6 +129,58 @@ export default function ChatNewScreen(): React.JSX.Element {
     [createConv, activeModelId, router, dialog, t]
   )
 
+  /**
+   * 空态屏发起媒体生成：先建会话再建任务，然后跳到会话页看进度。
+   *
+   * 媒体任务必须挂在一个已存在的会话上，所以这里不能像聊天那样把草稿透传给
+   * 会话页自动发送 —— 任务一旦创建成功，进度卡就已经在那个会话里了。
+   * 建会话成功但建任务失败时保留这个空会话：删掉它要再发一次请求，
+   * 而用户下一步大概率是重试，重试会复用同一个会话。
+   */
+  const handleCreateMediaTask = useCallback(
+    async ({
+      content,
+      fileIds,
+      type,
+      options,
+    }: {
+      content: string
+      fileIds?: string[]
+      type: MediaGenerationType
+      options: MediaGenerationOptions
+    }): Promise<boolean> => {
+      if (busyRef.current || !content.trim() || createMediaTask.isPending) return false
+      busyRef.current = true
+      setSubmitting(true)
+      try {
+        const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
+        const conv = await createConv.mutateAsync({ model: activeModelId, title })
+        await createMediaTask.mutateAsync({
+          conversationId: conv.id,
+          type,
+          prompt: content,
+          options,
+          ...(fileIds && fileIds.length > 0 ? { sourceFileIds: fileIds } : {}),
+        })
+        router.replace({
+          pathname: '/(main)/chat/[conversationId]',
+          params: { conversationId: conv.id },
+        })
+        // 成功后不复位 busyRef：本屏即将被 replace 卸载
+        return true
+      } catch (err) {
+        void dialog.alert({
+          title: t('chat.media.createTaskFailed'),
+          message: err instanceof Error ? err.message : t('chat.createConvFailed'),
+        })
+        busyRef.current = false
+        setSubmitting(false)
+        return false
+      }
+    },
+    [createConv, createMediaTask, activeModelId, router, dialog, t]
+  )
+
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.bg.base }]}
@@ -182,6 +237,9 @@ export default function ChatNewScreen(): React.JSX.Element {
           onSend={handleSend}
           bottomInset={insets.bottom}
           webSearchAvailable={webSearchAvailable}
+          mediaGenerationEnabled
+          mediaTaskCreating={createMediaTask.isPending || submitting}
+          onCreateMediaTask={handleCreateMediaTask}
         />
       </View>
 

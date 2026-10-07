@@ -383,6 +383,9 @@ textarea:focus-visible {
 
 .settings-update-panel {
   display: grid;
+  /* 状态占满剩余宽度、操作按钮靠右，两者同一行；进度条另起一行横跨整宽。 */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 10px;
   margin-top: 14px;
   padding: 12px;
@@ -395,6 +398,7 @@ textarea:focus-visible {
 }
 
 .settings-update-panel__status {
+  grid-area: 1 / 1;
   display: grid;
   gap: 4px;
 }
@@ -405,13 +409,17 @@ textarea:focus-visible {
 }
 
 .settings-update-panel__progress {
+  /* 显式落在第二行并横跨两列：它是可选元素，交给自动排布会把操作按钮挤下去。 */
+  grid-area: 2 / 1 / 3 / -1;
   width: 100%;
   height: 6px;
 }
 
 .settings-update-panel__actions {
+  grid-area: 1 / 2;
   display: flex;
   flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 .settings-inline-field {

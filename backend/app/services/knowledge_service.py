@@ -24,7 +24,7 @@ from app.models.knowledge import (
     KnowledgeSource,
 )
 from app.schemas.knowledge import KnowledgeCitation, KnowledgeTextSourceCreate
-from app.services.memory_retrieval import maybe_embed_text
+from app.services.ai_service import maybe_embed_text
 
 MAX_CHUNK_CHARS = 1_000
 _TOKEN_PATTERN = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
@@ -99,7 +99,7 @@ async def list_knowledge_sources(
 ) -> list[KnowledgeSource]:
     """列出可访问知识库的来源及其版本，供发布控制恢复状态。"""
 
-    await _readable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
+    await readable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
     result = await db.scalars(
         select(KnowledgeSource)
         .options(selectinload(KnowledgeSource.documents))
@@ -148,7 +148,7 @@ async def create_text_source(
 ) -> tuple[KnowledgeSource, KnowledgeDocument]:
     """创建纯文本来源及其首个暂存版本，尚不对检索公开。"""
 
-    await _writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
+    await writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
     source = KnowledgeSource(
         knowledge_base_id=knowledge_base_id,
         name=request.name,
@@ -171,8 +171,8 @@ async def create_text_version(
 ) -> KnowledgeDocument:
     """为已有来源构建一个待发布版本。"""
 
-    await _writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
-    source = await _source_in_base(source_id=source_id, knowledge_base_id=knowledge_base_id, db=db)
+    await writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
+    source = await source_in_base(source_id=source_id, knowledge_base_id=knowledge_base_id, db=db)
     return await _create_document(source=source, content=content, db=db)
 
 
@@ -186,7 +186,7 @@ async def publish_document(
 ) -> KnowledgeDocument:
     """在一个事务内切换来源版本，失败时保持原已发布版本不变。"""
 
-    await _writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
+    await writable_base(knowledge_base_id=knowledge_base_id, user_id=user_id, db=db)
     source = await db.scalar(
         select(KnowledgeSource)
         .where(
@@ -327,9 +327,31 @@ async def _create_document(
 ) -> KnowledgeDocument:
     """归一化、切块并为一个来源构建待发布版本。"""
 
-    normalized = normalize_text(content)
-    if not normalized:
+    return await create_document_version(
+        source=source, blocks=[(None, content)], parser="text", db=db
+    )
+
+
+async def create_document_version(
+    *,
+    source: KnowledgeSource,
+    blocks: Sequence[tuple[str | None, str]],
+    parser: str,
+    db: AsyncSession,
+) -> KnowledgeDocument:
+    """按结构块构建待发布版本，每个片段保留 section 与归一化文本中的字符范围。
+
+    `blocks` 为 (section, 原始文本) 序列：解析阶段已经还原过标题、页码或工作表
+    区域，这里只做归一化与块内切分，不跨块合并，避免引用落到另一个章节。
+    """
+
+    normalized_blocks = [
+        (section, normalize_text(content)) for section, content in blocks if content.strip()
+    ]
+    normalized_blocks = [(section, text) for section, text in normalized_blocks if text]
+    if not normalized_blocks:
         raise ValueError("知识库文本归一化后为空")
+    normalized = "\n\n".join(text for _, text in normalized_blocks)
     version = (
         await db.scalar(
             select(func.max(KnowledgeDocument.version)).where(
@@ -343,21 +365,29 @@ async def _create_document(
         version=version,
         content_hash=hashlib.sha256(normalized.encode()).hexdigest(),
         normalized_content=normalized,
+        parser=parser,
         status=KnowledgeDocumentStatus.staged,
     )
     db.add(document)
     await db.flush()
-    for index, (chunk, char_start, char_end) in enumerate(chunk_text(normalized)):
-        db.add(
-            KnowledgeChunk(
-                document_id=document.id,
-                chunk_index=index,
-                content=chunk,
-                char_start=char_start,
-                char_end=char_end,
-                embedding=await maybe_embed_text(chunk),
+    chunk_index = 0
+    block_offset = 0
+    for section, text in normalized_blocks:
+        for chunk, char_start, char_end in chunk_text(text):
+            db.add(
+                KnowledgeChunk(
+                    document_id=document.id,
+                    chunk_index=chunk_index,
+                    content=chunk,
+                    section=section,
+                    char_start=block_offset + char_start,
+                    char_end=block_offset + char_end,
+                    embedding=await maybe_embed_text(chunk),
+                )
             )
-        )
+            chunk_index += 1
+        # 块间分隔符是两个换行，偏移量必须跟着加上，否则引用会整体前移
+        block_offset += len(text) + 2
     await db.flush()
     return document
 
@@ -378,7 +408,7 @@ async def _owned_base(
     return knowledge_base
 
 
-async def _readable_base(
+async def readable_base(
     *, knowledge_base_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
 ) -> KnowledgeBase:
     """返回用户通过所有权或成员关系可访问的知识库。"""
@@ -394,7 +424,7 @@ async def _readable_base(
     return knowledge_base
 
 
-async def _writable_base(
+async def writable_base(
     *, knowledge_base_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
 ) -> KnowledgeBase:
     """返回所有者或 editor 成员可写的知识库。"""
@@ -420,7 +450,7 @@ async def _writable_base(
     return knowledge_base
 
 
-async def _source_in_base(
+async def source_in_base(
     *, source_id: uuid.UUID, knowledge_base_id: uuid.UUID, db: AsyncSession
 ) -> KnowledgeSource:
     """将来源限定在调用路径给定的知识库内。"""

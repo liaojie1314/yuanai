@@ -45,6 +45,11 @@ _AI_CLIENTS: dict[str, AsyncOpenAI] = {}
 ASSEMBLYAI_API_BASE_URL = "https://api.assemblyai.com"
 ASSEMBLYAI_SPEECH_MODEL = "universal-3-5-pro"
 AGNES_VIDEO_API_BASE_URL = "https://apihub.agnes-ai.com/v1"
+AGNES_VIDEO_FLASH_MODEL = "agnes-video-2.5-flash"
+AGNES_VIDEO_FLASH_SIZE = "720P"
+AGNES_VIDEO_FLASH_MODES = frozenset({"text", "keyframe", "reference"})
+AGNES_VIDEO_FLASH_MAX_IMAGES = 5
+AGNES_VIDEO_FLASH_MAX_AUDIOS = 3
 ELEVENLABS_MUSIC_API_BASE_URL = "https://api.elevenlabs.io"
 _LOCAL_MUSIC_MODEL_LOCK = asyncio.Lock()
 _LOCAL_MUSIC_PROCESSOR: object | None = None
@@ -151,15 +156,30 @@ PROVIDER_CONFIG: dict[str, dict[str, str]] = {
     },
     "deepseek-v4-flash": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
     "deepseek-v4-pro": {"provider": "deepseek", "base_url": "https://api.deepseek.com"},
+    "agnes-3.0-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "chat",
+    },
     "agnes-2.5-flash": {
         "provider": "agnes",
         "base_url": "https://apihub.agnes-ai.com/v1",
         "kind": "chat",
     },
+    "agnes-image-2.5-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "image",
+    },
     "agnes-image-2.1-flash": {
         "provider": "agnes",
         "base_url": "https://apihub.agnes-ai.com/v1",
         "kind": "image",
+    },
+    "agnes-video-2.5-flash": {
+        "provider": "agnes",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "kind": "video",
     },
     "agnes-video-v2.0": {
         "provider": "agnes",
@@ -235,6 +255,10 @@ class MediaLyricsGenerationError(MediaProviderError):
 
     def __init__(self) -> None:
         super().__init__()
+
+
+class AgnesVideoValidationError(ValueError):
+    """Flash 视频请求在本地即判定非法，不得发往供应商触发排队与计费。"""
 
 
 @dataclass(frozen=True)
@@ -462,6 +486,16 @@ def _parse_text_tool_calls(content: str) -> list[_PendingToolCall]:
 
 AVAILABLE_MODELS = [
     {
+        "id": "agnes-3.0-flash",
+        "name": "Agnes 3.0 Flash",
+        "provider": "agnes",
+        "description": "512K 上下文，支持推理、工具调用与图像理解",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 512_000,
+        "is_default": True,
+    },
+    {
         "id": "deepseek-v4-flash",
         "name": "DeepSeek V4 Flash-0731",
         "provider": "deepseek",
@@ -474,7 +508,7 @@ AVAILABLE_MODELS = [
             "input_uncached_cny_per_million": 1.0,
             "output_cny_per_million": 2.0,
         },
-        "is_default": True,
+        "is_default": False,
     },
     {
         "id": "deepseek-v4-pro",
@@ -502,6 +536,17 @@ AVAILABLE_MODELS = [
         "is_default": False,
     },
     {
+        "id": "agnes-image-2.5-flash",
+        "name": "Agnes Image 2.5 Flash",
+        "provider": "agnes",
+        "description": "文本生成图片与图片编辑",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "image_generation",
+    },
+    {
         "id": "agnes-image-2.1-flash",
         "name": "Agnes Image 2.1 Flash",
         "provider": "agnes",
@@ -511,6 +556,17 @@ AVAILABLE_MODELS = [
         "context_length": 0,
         "is_default": False,
         "capability": "image_generation",
+    },
+    {
+        "id": "agnes-video-2.5-flash",
+        "name": "Agnes Video 2.5 Flash",
+        "provider": "agnes",
+        "description": "异步文本生成视频，支持关键帧与参考素材",
+        "supports_vision": True,
+        "supports_files": True,
+        "context_length": 0,
+        "is_default": False,
+        "capability": "video_generation",
     },
     {
         "id": "agnes-video-v2.0",
@@ -648,14 +704,19 @@ def _normalize_agnes_video_status(value: str | None) -> str:
 
 
 async def generate_agnes_image(
-    prompt: str, *, size: str, ratio: str, image_urls: tuple[str, ...] = ()
+    prompt: str,
+    *,
+    size: str,
+    ratio: str,
+    image_urls: tuple[str, ...] = (),
+    model: str = "agnes-image-2.1-flash",
 ) -> AgnesImageResult:
-    """调用 Agnes Image 2.1 Flash，返回仅供后端持久化的临时输出 URL。
+    """调用指定的 Agnes 图片模型，返回仅供后端持久化的临时输出 URL。
 
     图片不会将该 URL 返回给客户端；调用方必须下载、校验并写入 YuanAI 对象存储。
     """
     _require_agnes_key()
-    config = PROVIDER_CONFIG["agnes-image-2.1-flash"]
+    config = PROVIDER_CONFIG[model]
     client = _get_client(config["provider"], config["base_url"])
     try:
         async with asyncio.timeout(settings.media_image_timeout_seconds):
@@ -663,7 +724,7 @@ async def generate_agnes_image(
             if image_urls:
                 image_body["image"] = list(image_urls)
             response = await client.images.generate(
-                model="agnes-image-2.1-flash",
+                model=model,
                 prompt=prompt,
                 size=size,
                 # Agnes requires ratio at the top level and its response/image extensions
@@ -1174,6 +1235,83 @@ def _video_snapshot(payload: object, fallback_video_id: str | None = None) -> Ag
     )
 
 
+def build_video_flash_body(
+    *,
+    prompt: str,
+    seconds: str,
+    mode: str,
+    size: str,
+    aspect_ratio: str,
+    image_urls: tuple[str, ...] = (),
+    audio_urls: tuple[str, ...] = (),
+) -> dict[str, object]:
+    """构造 Agnes Video 2.5 Flash 请求体，并在发出请求前校验全部约束。
+
+    供应商承诺「校验先于建任务、排队、计费与推理」，因此非法组合必须在本地拒绝，
+    不能靠上游报错，否则用户会为一次注定失败的请求付费。
+
+    Args:
+        prompt: 生成提示词。
+        seconds: Flash 使用字符串时长，而非 V2.0 的帧数。
+        mode: ``text`` / ``keyframe`` / ``reference`` 三种显式模式之一。
+        size: 目前仅支持 ``720P``。
+        aspect_ratio: 画面比例。
+        image_urls: 参考图或关键帧，最多 5 张。
+        audio_urls: 参考音频，最多 3 条。
+
+    Raises:
+        AgnesVideoValidationError: 任一约束不满足。
+    """
+    if size != AGNES_VIDEO_FLASH_SIZE:
+        raise AgnesVideoValidationError(f"Agnes Video 2.5 Flash 仅支持 {AGNES_VIDEO_FLASH_SIZE}")
+    if mode not in AGNES_VIDEO_FLASH_MODES:
+        raise AgnesVideoValidationError("不支持的 Flash 生成模式")
+    if len(image_urls) > AGNES_VIDEO_FLASH_MAX_IMAGES:
+        raise AgnesVideoValidationError(f"参考图片最多 {AGNES_VIDEO_FLASH_MAX_IMAGES} 张")
+    if len(audio_urls) > AGNES_VIDEO_FLASH_MAX_AUDIOS:
+        raise AgnesVideoValidationError(f"参考音频最多 {AGNES_VIDEO_FLASH_MAX_AUDIOS} 条")
+    body: dict[str, object] = {
+        "model": AGNES_VIDEO_FLASH_MODEL,
+        "prompt": prompt,
+        "seconds": seconds,
+        "mode": mode,
+        "size": size,
+        "aspect_ratio": aspect_ratio,
+    }
+    if image_urls:
+        body["image"] = list(image_urls)
+    if audio_urls:
+        body["audio"] = list(audio_urls)
+    return body
+
+
+async def create_agnes_video_flash(
+    prompt: str,
+    *,
+    seconds: str,
+    mode: str,
+    size: str,
+    aspect_ratio: str,
+    image_urls: tuple[str, ...] = (),
+    audio_urls: tuple[str, ...] = (),
+) -> AgnesVideoSnapshot:
+    """创建 Agnes Video 2.5 Flash 异步任务并返回初始标准化快照。"""
+    body = build_video_flash_body(
+        prompt=prompt,
+        seconds=seconds,
+        mode=mode,
+        size=size,
+        aspect_ratio=aspect_ratio,
+        image_urls=image_urls,
+        audio_urls=audio_urls,
+    )
+    payload = await _agnes_video_request("POST", "/videos", json_body=body)
+    snapshot = _video_snapshot(payload)
+    if snapshot.video_id is None:
+        raise MediaProviderError()
+    return snapshot
+
+
 async def create_agnes_video(
     prompt: str,
     *,
@@ -1207,9 +1345,18 @@ async def create_agnes_video(
     return snapshot
 
 
-async def get_agnes_video(video_id: str) -> AgnesVideoSnapshot:
-    """查询一个 Agnes 视频任务并将结果归一化。"""
-    payload = await _agnes_video_request("GET", "/agnesapi", params={"video_id": video_id})
+async def get_agnes_video(video_id: str, *, model_name: str | None = None) -> AgnesVideoSnapshot:
+    """查询一个 Agnes 视频任务并将结果归一化。
+
+    Args:
+        video_id: 创建任务时供应商返回的视频 ID。
+        model_name: Agnes Video 2.5 Flash 查询结果时必须回传的模型名；
+            V2.0 任务不带该参数。
+    """
+    params = {"video_id": video_id}
+    if model_name is not None:
+        params["model_name"] = model_name
+    payload = await _agnes_video_request("GET", "/agnesapi", params=params)
     return _video_snapshot(payload, fallback_video_id=video_id)
 
 
@@ -1311,6 +1458,148 @@ async def generate_conversation_title(question: str) -> str | None:
     except (TimeoutError, OpenAIError, httpx.HTTPError, TypeError, ValueError):
         return None
     return None
+
+
+MEMORY_EXTRACTION_MODEL = "agnes-2.5-flash"
+MEMORY_EXTRACTION_TIMEOUT_SECONDS = 20
+MEMORY_EXTRACTION_MAX_TOKENS = 1024
+MEMORY_EXTRACTION_PROMPT = (
+    "你是记忆抽取器。阅读用户与助理的一次任务记录，只提取值得长期记住的用户事实。"
+    '只输出 JSON，形如 {"memories": [...]}，每项包含 memoryType'
+    "（profile/preference/semantic/episodic 之一）、content（一句中文陈述）、"
+    "subject（该事实所描述的对象，用于冲突检测）、confidence（0 到 1）、"
+    "explicit（用户是否明确说过）、stable（是否长期稳定而非临时状态）。"
+    '没有值得记住的内容时输出 {"memories": []}。不要输出解释。'
+)
+MEMORY_EXTRACTION_TYPES = frozenset({"profile", "preference", "semantic", "episodic"})
+
+
+@dataclass(frozen=True)
+class ExtractedMemory:
+    """模型抽取出的单条候选记忆。"""
+
+    memory_type: str
+    content: str
+    subject: str
+    confidence: float
+    explicit: bool
+    stable: bool
+
+
+def _parse_extracted_memories(content: str) -> list[ExtractedMemory] | None:
+    """解析抽取模型的 JSON 输出，结构不符时整体作废。"""
+
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    items = payload.get("memories")
+    if not isinstance(items, list):
+        return None
+    parsed: list[ExtractedMemory] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("content")
+        memory_type = item.get("memoryType")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        if memory_type not in MEMORY_EXTRACTION_TYPES:
+            continue
+        subject = item.get("subject")
+        confidence = item.get("confidence")
+        parsed.append(
+            ExtractedMemory(
+                memory_type=str(memory_type),
+                content=text.strip(),
+                subject=(
+                    subject.strip()
+                    if isinstance(subject, str) and subject.strip()
+                    else text.strip()
+                ),
+                confidence=(
+                    min(1.0, max(0.0, float(confidence)))
+                    if isinstance(confidence, int | float) and not isinstance(confidence, bool)
+                    else 0.0
+                ),
+                explicit=bool(item.get("explicit")),
+                stable=bool(item.get("stable")),
+            )
+        )
+    return parsed
+
+
+async def extract_memory_candidates(*, goal: str, transcript: str) -> list[ExtractedMemory] | None:
+    """从一次成功的 Run 中抽取候选记忆；不可用或输出异常时返回 ``None``。
+
+    返回 ``None`` 表示模型没能给出结果，空列表表示模型认为没有值得记住的内容。
+    调用方对两者都不写库，但日志需要区分。
+    """
+
+    if not settings.agnes_api_key or not goal.strip():
+        return None
+    config = PROVIDER_CONFIG[MEMORY_EXTRACTION_MODEL]
+    client = _get_client(config["provider"], config["base_url"])
+    messages = cast(
+        list[ChatCompletionMessageParam],
+        [
+            {"role": "system", "content": MEMORY_EXTRACTION_PROMPT},
+            {
+                "role": "user",
+                "content": f"任务目标：{goal.strip()}\n\n任务记录：\n{transcript.strip()}",
+            },
+        ],
+    )
+    try:
+        async with asyncio.timeout(MEMORY_EXTRACTION_TIMEOUT_SECONDS):
+            completion = await client.chat.completions.create(
+                model=MEMORY_EXTRACTION_MODEL,
+                messages=messages,
+                temperature=0,
+                max_tokens=MEMORY_EXTRACTION_MAX_TOKENS,
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+            )
+    except (TimeoutError, OpenAIError, httpx.HTTPError, TypeError, ValueError):
+        return None
+    if not completion.choices:
+        return None
+    content = completion.choices[0].message.content
+    if not isinstance(content, str):
+        return None
+    return _parse_extracted_memories(content)
+
+
+EMBEDDING_MODEL = "text-embedding-3-small"
+
+
+class EmbeddingUnavailableError(Exception):
+    """未配置或不可用的 embedding provider 不得降级到其他模型。"""
+
+
+async def embed_text(text: str) -> list[float]:
+    """调用已批准的 OpenAI embedding 模型；缺少密钥时显式失败。"""
+
+    if not settings.openai_api_key.strip():
+        raise EmbeddingUnavailableError("OPENAI_API_KEY 未配置")
+    try:
+        async with AsyncOpenAI(api_key=settings.openai_api_key) as client:
+            response = await client.embeddings.create(input=text, model=EMBEDDING_MODEL)
+    except OpenAIError as error:
+        raise EmbeddingUnavailableError("embedding provider 不可用") from error
+    if not response.data or not response.data[0].embedding:
+        raise EmbeddingUnavailableError("embedding provider 返回空向量")
+    return list(response.data[0].embedding)
+
+
+async def maybe_embed_text(text: str) -> list[float] | None:
+    """仅使用已批准的 provider 生成向量；不可用时保留关键词检索。"""
+
+    try:
+        return await embed_text(text)
+    except EmbeddingUnavailableError:
+        return None
 
 
 def _chat_extra_body(provider: str, enable_thinking: bool) -> dict[str, object] | None:

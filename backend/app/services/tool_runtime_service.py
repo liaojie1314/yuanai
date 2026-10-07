@@ -2,25 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import hashlib
 import hmac
 import json
-import re
 import secrets
+import time
+import unicodedata
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
-from typing import cast
+from typing import Literal, cast
 
 import httpx
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from jose import JWTError, jwt
-from sqlalchemy import or_, select, update
+from sqlalchemy import ColumnElement, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -71,8 +74,6 @@ from app.tools.contracts import (
     ToolValidationError,
 )
 from app.tools.registry import ToolRegistry, validate_arguments_against_schema
-
-_NAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 
 class ToolRuntimeError(RuntimeError):
@@ -289,10 +290,29 @@ def artifact_download_url(artifact_id: uuid.UUID, user_id: uuid.UUID) -> str:
 
 
 def _safe_name(value: str) -> str:
-    """把用户可控文件名压缩为不会逃逸 Artifact 前缀的路径片段。"""
+    """把用户可控文件名压缩为不会逃逸 Artifact 前缀的路径片段。
 
-    name = _NAME_RE.sub("_", value.strip()).strip("._") or "artifact"
-    return str(PurePosixPath(name).name)[:255]
+    只剥离真正危险的部分 —— 控制字符与路径分隔符，保留 CJK 等 Unicode 字符。
+    早先按 ``[^A-Za-z0-9._-]`` 白名单过滤会把「测试报告.docx」压成「docx」，
+    用户在 Artifact 列表里只看得到一个扩展名，分不清自己生成了哪一个文件。
+    """
+
+    cleaned = "".join("_" if _is_unsafe_name_char(char) else char for char in value.strip())
+    name = cleaned.strip("._") or "artifact"
+    # 取 basename 挡掉残余的路径段；再按扩展名裁剪，避免截断后连类型都看不出来
+    name = str(PurePosixPath(name).name)
+    if len(name) <= 255:
+        return name
+    stem, _dot, suffix = name.rpartition(".")
+    if not stem or len(suffix) >= 255:
+        return name[:255]
+    return f"{stem[: 255 - len(suffix) - 1]}.{suffix}"
+
+
+def _is_unsafe_name_char(char: str) -> bool:
+    """判断文件名中的单个字符是否需要替换掉。"""
+
+    return char in {"/", "\\", "\x00"} or unicodedata.category(char).startswith("C")
 
 
 def _artifact_kind(mime_type: str) -> ArtifactKind:
@@ -306,6 +326,8 @@ def _artifact_kind(mime_type: str) -> ArtifactKind:
         return ArtifactKind.video
     if "spreadsheet" in mime_type or mime_type in {"text/csv", "application/vnd.ms-excel"}:
         return ArtifactKind.spreadsheet
+    if "wordprocessingml" in mime_type or "presentationml" in mime_type:
+        return ArtifactKind.document
     if "json" in mime_type or mime_type.startswith("text/"):
         return ArtifactKind.document
     return ArtifactKind.archive
@@ -1447,18 +1469,31 @@ class ToolRuntimeService:
         artifact_ids: list[str] = []
         artifact_refs: list[ArtifactRef] = []
         content = result_json.pop("content", None)
+        content_base64 = result_json.pop("content_base64", None)
+        artifact_data: bytes | None = None
+        artifact_preview: dict[str, object] = {}
         if isinstance(content, str) and result_json.get("workspace") is True:
+            artifact_data = content.encode("utf-8")
+            artifact_preview = {"text": content[:2_000]}
+        elif isinstance(content_base64, str) and result_json.get("workspace") is True:
+            # 二进制产出（DOCX/XLSX/PPTX）走 base64 传递，不能当成 UTF-8 文本编码
+            try:
+                artifact_data = base64.b64decode(content_base64, validate=True)
+            except (binascii.Error, ValueError) as error:
+                raise ToolRuntimeError("TOOL_ARTIFACT_CONTENT_INVALID") from error
+            artifact_preview = {"size_bytes": len(artifact_data)}
+        if artifact_data is not None:
             name = str(result_json.get("name", "artifact.txt"))
             mime_type = str(result_json.get("mime_type", "text/plain"))
             artifact = await self.create_artifact(
                 user_id=execution.user_id,
-                data=content.encode("utf-8"),
+                data=artifact_data,
                 name=name,
                 mime_type=mime_type,
                 db=db,
                 run_id=execution.run_id,
                 tool_execution_id=execution.id,
-                preview={"text": content[:2_000]},
+                preview=artifact_preview,
             )
             artifact_ids.append(str(artifact.id))
             artifact_refs.append(
@@ -2156,3 +2191,145 @@ async def set_node_online(node: ExecutionNode, db: AsyncSession) -> None:
     node.status = ExecutionNodeStatus.online
     node.last_seen_at = datetime.now(UTC)
     await db.flush()
+
+
+def node_is_fresh(now: datetime) -> ColumnElement[bool]:
+    """构造「心跳未过期」的 SQL 条件。
+
+    ``ExecutionNode.status`` 只会被写成 online，没有任何代码让它回落，
+    因此单看 status 会把已关闭的桌面端当成在线节点。
+    """
+
+    threshold = now - timedelta(seconds=settings.execution_node_heartbeat_stale_seconds)
+    return and_(
+        ExecutionNode.status == ExecutionNodeStatus.online,
+        ExecutionNode.last_seen_at.is_not(None),
+        ExecutionNode.last_seen_at >= threshold,
+    )
+
+
+async def select_fresh_node(
+    *,
+    user_id: uuid.UUID,
+    tool_name: str,
+    db: AsyncSession,
+    now: datetime | None = None,
+) -> ExecutionNode | None:
+    """选出当前用户下心跳新鲜、且策略允许该工具的节点。
+
+    多节点时取心跳最新的一个，避免原先「数据库返回顺序」带来的不确定选择。
+    """
+
+    current_time = now or datetime.now(UTC)
+    nodes = await db.scalars(
+        select(ExecutionNode)
+        .where(ExecutionNode.user_id == user_id, node_is_fresh(current_time))
+        .order_by(ExecutionNode.last_seen_at.desc())
+    )
+    for node in nodes:
+        allowed = _string_list(node.policy.get("allowed_tools")) if node.policy else []
+        if tool_name in allowed and tool_name in (node.capabilities or []):
+            return node
+    return None
+
+
+@dataclass(frozen=True)
+class NodeJobOutcome:
+    """一次节点作业的归一化结果。
+
+    ``approval_timeout`` 与 ``timeout`` 必须分开：前者是人没来得及点确认，
+    节点本身是好的；把它归到「节点不可用」会让用户去排查一台正常工作的机器。
+    """
+
+    status: Literal["succeeded", "unavailable", "timeout", "approval_timeout", "failed"]
+    data: dict[str, object] | None = None
+    error_code: str | None = None
+
+
+NODE_JOB_POLL_INTERVAL_SECONDS = 0.5
+
+
+async def run_node_job(
+    *,
+    user_id: uuid.UUID,
+    tool_name: str,
+    arguments: dict[str, object],
+    db: AsyncSession,
+    timeout_seconds: float,
+    approval_timeout_seconds: float | None = None,
+    now: datetime | None = None,
+) -> NodeJobOutcome:
+    """向用户的在线节点派发一个作业并等待终态。
+
+    没有新鲜节点时立刻返回 ``unavailable``，不排队也不空等，
+    这样调用方可以直接给出「本地功能暂不可用」而不是让用户等满超时。
+
+    ``timeout_seconds`` 只覆盖投递与执行，从节点回传 accepted（即用户已批准）那一刻起算；
+    需要本机用户逐次确认的作业另传 ``approval_timeout_seconds``，
+    人做决定的时间由它单独计时。两者混成一个预算时，用户手慢几秒就会让一台
+    完全健康的节点被判成超时，而投递本身已经吃掉了其中一部分。
+    """
+
+    node = await select_fresh_node(user_id=user_id, tool_name=tool_name, db=db, now=now)
+    if node is None:
+        return NodeJobOutcome(status="unavailable")
+    service = ToolRuntimeService()
+    try:
+        execution = await service.create_execution(
+            user_id=user_id,
+            tool_name=tool_name,
+            arguments=arguments,
+            execution_location="desktop",
+            db=db,
+            node_id=node.id,
+        )
+    except ToolRuntimeError as error:
+        # 登记失败（工具未注册、参数不合法、节点刚被撤销）与节点执行失败对调用方等价。
+        return NodeJobOutcome(status="failed", error_code=str(error))
+    # 执行记录由本会话写入，必须先提交，节点网关扫描才能看见并投递。
+    await db.commit()
+    accept_deadline = time.monotonic() + max(
+        1.0, timeout_seconds if approval_timeout_seconds is None else approval_timeout_seconds
+    )
+    run_deadline: float | None = None
+    while True:
+        await db.refresh(execution)
+        if execution.status is ToolExecutionStatus.succeeded:
+            payload = execution.result_json or {}
+            data = payload.get("data") if isinstance(payload, dict) else None
+            return NodeJobOutcome(status="succeeded", data=data if isinstance(data, dict) else None)
+        if execution.status in {ToolExecutionStatus.failed, ToolExecutionStatus.cancelled}:
+            return NodeJobOutcome(status="failed", error_code=execution.error_code)
+        if run_deadline is None and execution.status is ToolExecutionStatus.running:
+            # 节点回了 accepted：该批准的人已经批准，投递与执行预算从此刻才开始走。
+            run_deadline = time.monotonic() + max(1.0, timeout_seconds)
+        if time.monotonic() >= (accept_deadline if run_deadline is None else run_deadline):
+            break
+        await asyncio.sleep(NODE_JOB_POLL_INTERVAL_SECONDS)
+    if run_deadline is None and approval_timeout_seconds is not None:
+        await service.fail_execution(
+            execution, code="TOOL_APPROVAL_TIMEOUT", message="用户未在期限内批准节点作业", db=db
+        )
+        await db.commit()
+        return NodeJobOutcome(status="approval_timeout", error_code="TOOL_APPROVAL_TIMEOUT")
+    await service.fail_execution(execution, code="TOOL_TIMEOUT", message="执行节点作业超时", db=db)
+    await db.commit()
+    return NodeJobOutcome(status="timeout", error_code="TOOL_TIMEOUT")
+
+
+async def sweep_stale_nodes(*, now: datetime, db: AsyncSession) -> int:
+    """把心跳过期的 online 节点置为 offline，返回本轮变更条数。"""
+
+    threshold = now - timedelta(seconds=settings.execution_node_heartbeat_stale_seconds)
+    result = await db.execute(
+        update(ExecutionNode)
+        .where(
+            ExecutionNode.status == ExecutionNodeStatus.online,
+            or_(
+                ExecutionNode.last_seen_at.is_(None),
+                ExecutionNode.last_seen_at < threshold,
+            ),
+        )
+        .values(status=ExecutionNodeStatus.offline)
+    )
+    return int(getattr(result, "rowcount", 0) or 0)

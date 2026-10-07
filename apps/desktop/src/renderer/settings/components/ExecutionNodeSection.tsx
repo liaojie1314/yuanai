@@ -11,6 +11,9 @@ const NODE_CAPABILITIES = [
   'read_granted_file',
   'list_granted_directory',
   'write_workspace_file',
+  'memory.search',
+  'memory.write',
+  'memory.delete',
 ]
 
 function formatExpiry(value: string | null, locale: string): string {

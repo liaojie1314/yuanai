@@ -39,6 +39,44 @@ const version = {
   validationErrors: [],
   createdAt: '2026-09-11T00:00:00Z',
   validatedAt: '2026-09-11T00:00:00Z',
+  latestEvaluation: null,
+}
+
+const failedEvaluation = {
+  id: 'evaluation-1',
+  skillId: 'skill-1',
+  versionId: 'version-1',
+  status: 'failed',
+  mode: 'static_contract',
+  caseResults: [
+    { name: 'manifest_contract', status: 'passed', detail: 'manifest 字段与版本号一致' },
+    {
+      name: 'risk_ceiling_not_escalated',
+      status: 'failed',
+      detail: '风险上限由 read 抬高到 privileged',
+    },
+  ],
+  totalCases: 6,
+  passedCases: 5,
+  passRate: '0.8333',
+  estimatedCostUsd: null,
+  avgSteps: null,
+  durationMs: 2,
+  createdAt: '2026-09-11T00:00:00Z',
+}
+
+const suggestion = {
+  slug: 'experience.calculate.1a2b3c4d',
+  name: '统计每周销售额',
+  description: '由 3 次成功任务归纳：calculate',
+  occurrences: 3,
+  runIds: ['run-1', 'run-2', 'run-3'],
+  steps: ['calculate'],
+  parameters: ['calculate.expression'],
+  requiredTools: ['calculate@^1'],
+  riskCeiling: 'read',
+  manifest: 'id: experience.calculate.1a2b3c4d',
+  skillMd: '# 统计每周销售额',
 }
 
 const skill = {
@@ -74,6 +112,7 @@ beforeEach(() => {
   useAuthStore.getState().setAccessToken('test-token')
   server.use(
     http.get(`${API_BASE_URL}/skills`, () => HttpResponse.json([skill])),
+    http.get(`${API_BASE_URL}/skills/suggestions`, () => HttpResponse.json([])),
     http.get(`${API_BASE_URL}/agent/assistants`, () => HttpResponse.json([assistant]))
   )
 })
@@ -130,6 +169,60 @@ describe('SkillCenter', () => {
     await user.click(screen.getByRole('button', { name: '启用' }))
     await waitFor(() =>
       expect(installSpy).toHaveBeenCalledWith({ scope: 'assistant', assistantId: 'assistant-1' })
+    )
+  })
+
+  it('exposes an evaluate action and surfaces the failing gate case', async () => {
+    const user = userEvent.setup()
+    const evaluateSpy = vi.fn()
+    server.use(
+      http.post(`${API_BASE_URL}/skills/skill-1/versions/version-1/evaluate`, () => {
+        evaluateSpy()
+        return HttpResponse.json(failedEvaluation)
+      }),
+      http.get(`${API_BASE_URL}/skills`, () =>
+        HttpResponse.json([
+          {
+            ...skill,
+            versions: [
+              {
+                ...version,
+                latestEvaluation: evaluateSpy.mock.calls.length ? failedEvaluation : null,
+              },
+            ],
+          },
+        ])
+      )
+    )
+    renderCenter()
+    await user.click(await screen.findByRole('button', { name: '评测' }))
+    await waitFor(() => expect(evaluateSpy).toHaveBeenCalled())
+    expect(await screen.findByText('评测未通过（5/6 条用例）')).toBeInTheDocument()
+    expect(screen.getByText(/风险上限由 read 抬高到 privileged/)).toBeInTheDocument()
+    // 静态契约评测没有执行面，界面必须说明而不是显示 0 成本。
+    expect(screen.getByText('静态契约评测，未真实执行，无成本与平均 Step 数据')).toBeInTheDocument()
+  })
+
+  it('submits an experience-derived suggestion verbatim as a draft', async () => {
+    const user = userEvent.setup()
+    const createSpy = vi.fn()
+    server.use(
+      http.get(`${API_BASE_URL}/skills/suggestions`, () => HttpResponse.json([suggestion])),
+      http.post(`${API_BASE_URL}/skills`, async ({ request }) => {
+        createSpy(await request.json())
+        return HttpResponse.json(skill, { status: 201 })
+      })
+    )
+    renderCenter()
+    expect(await screen.findByText('统计每周销售额')).toBeInTheDocument()
+    expect(screen.getByText('已成功完成 3 次')).toBeInTheDocument()
+    expect(screen.getByText(/calculate.expression/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '保存为草稿' }))
+    await waitFor(() =>
+      expect(createSpy).toHaveBeenCalledWith({
+        manifest: suggestion.manifest,
+        skillMd: suggestion.skillMd,
+      })
     )
   })
 })

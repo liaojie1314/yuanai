@@ -8,12 +8,13 @@ import { Controller, useForm } from 'react-hook-form'
 import { Pressable, Text, View } from 'react-native'
 import { z } from 'zod'
 
-import { API_BASE_URL, useLogin } from '@yuanai/core'
+import { API_BASE_URL, useGoogleNativeLogin, useLogin } from '@yuanai/core'
 
 import { AuthButton } from '@/components/auth/AuthButton'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { AuthTextInput } from '@/components/auth/AuthTextInput'
 import { useDialog } from '@/components/ui/Dialog'
+import { getGoogleIdToken, isGoogleNativeAvailable } from '@/lib/googleSignIn'
 import { brand, spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -31,12 +32,13 @@ function makeSchema(t: (k: string) => string) {
  *
  * 后端契约：
  * - POST /auth/login { email, password } → { access_token, refresh_token, user }
+ * - POST /auth/google/native { idToken } → 同上（原生 Google Sign-In 走这条）
  * - GET  /auth/github → 302 到 GitHub 授权；回调后写 cookie；mobile 场景由后端
  *   302 到 yuanai://oauth/callback?access_token=...&refresh_token=... 由
  *   `oauth-callback` 屏消费
- * - GET  /auth/google → 同上
+ * - GET  /auth/google → 同上（未配置原生 client id 时的回退路径）
  *
- * mobile 端 OAuth 走 `WebBrowser.openAuthSessionAsync`：拉起系统浏览器 → 用户完成授权
+ * mobile 端 browser OAuth 走 `WebBrowser.openAuthSessionAsync`：拉起系统浏览器 → 用户完成授权
  * → 系统识别 yuanai:// scheme → 回到 App，Linking 事件由 `useLinkingHandler` 处理。
  */
 export default function LoginScreen(): React.JSX.Element {
@@ -45,6 +47,7 @@ export default function LoginScreen(): React.JSX.Element {
   const theme = useTheme()
   const router = useRouter()
   const loginMutation = useLogin()
+  const googleNativeMutation = useGoogleNativeLogin()
   const dialog = useDialog()
   const [showPwd, setShowPwd] = useState(false)
 
@@ -84,6 +87,27 @@ export default function LoginScreen(): React.JSX.Element {
       if (result.type === 'success' && result.url) {
         // 交给全局 Linking handler；这里不解析 token
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t('auth.oauthFailed')
+      void dialog.alert({ title: t('auth.oauthFailed'), message: msg })
+    }
+  }
+
+  /**
+   * 原生 Google 登录：SDK 取 id_token → POST /auth/google/native 换本站 JWT。
+   * 未配置 client id 时回退到系统浏览器 OAuth，保证没凭据的开发环境依然能登录。
+   */
+  const handleGoogle = async (): Promise<void> => {
+    if (!isGoogleNativeAvailable()) {
+      await handleOAuth('google')
+      return
+    }
+    try {
+      const idToken = await getGoogleIdToken()
+      // null = 用户主动取消，静默返回
+      if (!idToken) return
+      await googleNativeMutation.mutateAsync(idToken)
+      router.replace('/(main)/chat')
     } catch (err) {
       const msg = err instanceof Error ? err.message : t('auth.oauthFailed')
       void dialog.alert({ title: t('auth.oauthFailed'), message: msg })
@@ -201,8 +225,9 @@ export default function LoginScreen(): React.JSX.Element {
         </Pressable>
         <Pressable
           onPress={() => {
-            void handleOAuth('google')
+            void handleGoogle()
           }}
+          disabled={googleNativeMutation.isPending}
           style={{
             flex: 1,
             height: 46,

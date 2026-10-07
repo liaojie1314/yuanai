@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.database import AsyncSessionLocal
 from app.core.redis import redis_client
-from app.models.agent_run import AgentRun
+from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.assistant import Assistant
 from app.services.agent.coordinator import AgentCoordinator
@@ -23,6 +23,7 @@ from app.services.agent.queue import (
     AgentQueue,
     QueueItem,
 )
+from app.services.memory_queue import enqueue_extraction
 from app.tools.builtin import build_phase6_registry
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,9 @@ async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
             approval_id=approval.id if approval is not None else None,
         )
         await db.commit()
+        # 抽取必须在 Run 事务提交之后投递：记忆是旁路能力，不能回滚或拖慢主链路。
+        if run.status is AgentRunStatus.succeeded:
+            await enqueue_extraction(user_id=item.tenant_id, run_id=run.id)
 
 
 class AgentWorker:

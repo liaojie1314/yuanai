@@ -85,7 +85,7 @@ interface ChatInputProps {
   onStop?: () => void
   /** 后端返回的联网搜索能力；不可用时 Globe 保持禁用。 */
   webSearchAvailable?: boolean
-  /** 当前页面是否有持久化会话，只有这时显示图片/视频生成入口。 */
+  /** 是否显示图片/视频/音乐生成入口。空态屏也开启：由 onCreateMediaTask 先建会话。 */
   mediaGenerationEnabled?: boolean
   /** 创建任务请求进行中，防止重复提交。 */
   mediaTaskCreating?: boolean

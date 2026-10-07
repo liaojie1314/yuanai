@@ -4,6 +4,41 @@
 接入 DeepSeek、Agnes、OpenAI 与 Anthropic 等模型，并提供文件理解、语音输入、图片/视频/音乐
 生成和可配置联网搜索。
 
+## 界面预览
+
+以下截图全部由本机真实运行的全栈模式实截（真实 FastAPI 后端 + PostgreSQL + 真实模型接口），
+不是设计稿。链路为：登录 → 新建会话 → 流式对话 → 记忆中心 → 工具控制台 → 技能中心，
+Web 与桌面端由 Playwright 驱动真实界面操作产生，移动端在 Android 模拟器上实截，
+图中数据皆为演示用的合成内容。
+
+### Web 端
+
+| 登录                                            | 新建会话                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------ |
+| ![登录页](docs/assets/screenshots/01-login.png) | ![新会话欢迎页](docs/assets/screenshots/02-chat-welcome.png) |
+
+| 流式对话                                                    | 记忆中心                                                  |
+| ----------------------------------------------------------- | --------------------------------------------------------- |
+| ![对话页](docs/assets/screenshots/03-chat-conversation.png) | ![记忆中心](docs/assets/screenshots/04-memory-center.png) |
+
+| 工具控制台                                                        | 技能中心（含评测门禁）                                   |
+| ----------------------------------------------------------------- | -------------------------------------------------------- |
+| ![工具控制台](docs/assets/screenshots/05-tool-control-center.png) | ![技能中心](docs/assets/screenshots/06-skill-center.png) |
+
+### 桌面端（Electron）
+
+| 登录                                                      | 对话                                                     |
+| --------------------------------------------------------- | -------------------------------------------------------- |
+| ![桌面登录](docs/assets/screenshots/07-desktop-login.png) | ![桌面对话](docs/assets/screenshots/08-desktop-chat.png) |
+
+### 移动端（Android 模拟器）
+
+| 登录                                                     | 对话                                                    |
+| -------------------------------------------------------- | ------------------------------------------------------- |
+| ![移动登录](docs/assets/screenshots/09-mobile-login.png) | ![移动对话](docs/assets/screenshots/10-mobile-chat.png) |
+
+> iOS 端未实测：本机只有 Android 模拟器与 Android 真机，无 macOS/iOS 设备。
+
 ## 技术栈
 
 | 层          | 技术                                             |
@@ -228,10 +263,38 @@ yuanai/
 截至 2026-09-18：Phase 2-7 已合入 `dev`，远程 CI 全绿。但 2026-09-18 的代码审计发现
 **每个阶段都有此前未登记的缺口**（Phase 7 只落地了控制面，记忆抽取、pgvector 混合检索、
 知识入库流水线、Webhook 触发等核心机制未实现；桌面端 `yuanai://` 未向系统注册；
-移动端原生 Google 登录未实现等）。Phase 8-15 仅有阶段文档（Phase 13 实时视频、
+移动端原生 Google 登录未实现等）。**其中 Phase 7 的核心机制已于 2026-09-29 至 10-03
+陆续补齐**，见下文各次更新。Phase 8-15 仅有阶段文档（Phase 13 实时视频、
 Phase 14 终端 TUI、Phase 15 小程序端为 2026-09-17 新增）。
 
+2026-09-29 更新：上述 Phase 7 缺口中，**记忆抽取流水线与 pgvector 混合检索已实现**
+（端到端闭环，逐条证据见[交付状态总表 §2.1](docs/master-plan.md)）。记忆能力依赖
+`memory:worker`、`node:sweeper` 等常驻 worker，`pnpm dev:real` 不会启动它们，
+不启动则静默缺功能而不报错，启动方式见[开发运行指南](docs/dev-guide.md)。
+
+2026-10-02 更新：新增交付 **知识入库流水线**（多格式解析 + 可选 RapidOCR + 结构感知分块 +
+`ingestion_jobs` + 质量检查，[§2.5](docs/master-plan.md)）、**Agent 运行时 8 个指标与
+`/metrics`**（[§2.4](docs/master-plan.md)）、**原生 Google Sign-In**（id_token 走 Google JWKS
+真实验签，[§2.6](docs/master-plan.md)，**未真机联调**）、**`packages/ui` 共享组件库**
+（[§2.3](docs/master-plan.md)）。微信三方登录后端完全不存在，Web 入口已于当日隐藏。
+
+2026-10-03 更新：新增交付 **Webhook 触发**（公网入口签名 / 重放 / 限流三道校验全部
+fail closed，[§2.9](docs/master-plan.md)）、**Skill 评测门禁与从经验生成 Skill**
+（[§2.10](docs/master-plan.md)）、**Wave 2 工具**（图片 OCR、DOCX/XLSX/PPTX 生成、剪贴板，
+[§2.11](docs/master-plan.md)）。Phase 7 文档描述的六项核心机制至此全部有代码面。
+**但 Skill 评测是静态契约检查而非真实执行**：Skill 仍没有运行时消费者，
+「成功率 / 成本 / 平均 Step」无从测起，相应指标留空而不是填 0。
+
+同日审计出三个同类缺口：三端都没有「创建助理」入口，以致 Agent 与 Phase 7 控制面对新用户
+整体不可达；Skill 全链路没有运行时消费者；知识检索一旦启用向量反而不做任何过滤。
+
 **逐条缺口见[交付状态总表 §3.1](docs/master-plan.md)**；「已合入 dev / CI 全绿」不等于功能完整。
+
+2026-10-06 更新：补完 Web / 桌面 / Android 三端的界面证据（见上方界面预览），过程中发现并
+修掉**七项此前无人登记的 UI 缺陷**（[§2.12](docs/master-plan.md)）：会话列表回复结束后永久
+转圈、移动端联网搜索开关恒为禁用、暗色模式选中项白字白底、新会话输入栏缺图片/视频/音乐开关，
+以及记忆中心与技能页的版式问题。**这七项 typecheck、lint、单测全部通过，只有真跑界面才暴露**
+—— 功能验收不能只看测试结果。
 
 已有的自动化与真实运行证据**不构成生产部署放行**；全量 Web E2E 使用受控路由 mock，
 只能证明 UI 回归。音乐生成是独立媒体能力，不计入 Phase 6 的 Wave。

@@ -13,23 +13,60 @@ vi.mock('node:fs/promises', () => ({ ...mockFs, default: mockFs }))
 import {
   DesktopJobsExecutor,
   JobCancelledError,
+  MAX_CLIPBOARD_CHARS,
+  MAX_MEMORY_SEARCH_QUERY_CHARS,
   ToolExecutionFailure,
   assertResultSize,
   assertSafeHttpsUrl,
   resolveWorkspacePath,
 } from './jobs'
-import type { ExecuteJobInput } from './jobs'
+import type { DesktopJobsExecutorOptions, ExecuteJobInput } from './jobs'
+import type { LocalMemoryRecord } from './memory-store'
 
 const WORKSPACE_ROOT = '/tmp/yuanai-test/agent-workspace'
 
+/** 最小本地记忆存储替身；检索退化为子串过滤，排序规则由 memory-store 自己的测试覆盖。 */
+function createStubMemoryStore(
+  initial: Array<{ id: string; content: string }> = []
+): DesktopJobsExecutorOptions['memoryStore'] {
+  const records: LocalMemoryRecord[] = initial.map((item) => ({
+    id: item.id,
+    content: item.content,
+    memoryType: 'profile',
+    updatedAt: '2026-09-18T00:00:00.000Z',
+  }))
+  return {
+    search: (query: string, limit: number) =>
+      records.filter((item) => item.content.includes(query)).slice(0, limit),
+    put: async (record: LocalMemoryRecord) => {
+      const index = records.findIndex((item) => item.id === record.id)
+      if (index >= 0) records.splice(index, 1, record)
+      else records.push(record)
+      return Promise.resolve()
+    },
+    remove: async (id: string) => {
+      const index = records.findIndex((item) => item.id === id)
+      if (index < 0) return Promise.resolve(false)
+      records.splice(index, 1)
+      return Promise.resolve(true)
+    },
+  }
+}
+
 function createExecutor(
-  overrides: { resolvePath?: (resourceId: string) => string } = {}
+  overrides: {
+    resolvePath?: (resourceId: string) => string
+    memoryStore?: DesktopJobsExecutorOptions['memoryStore']
+    clipboard?: DesktopJobsExecutorOptions['clipboard']
+  } = {}
 ): DesktopJobsExecutor {
   return new DesktopJobsExecutor({
     grants: {
       resolvePath: overrides.resolvePath ?? ((resourceId: string) => `/granted/${resourceId}`),
     },
     shell: { openExternal: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) },
+    memoryStore: overrides.memoryStore ?? createStubMemoryStore(),
+    clipboard: overrides.clipboard ?? { readText: () => '测试剪贴板内容' },
     workspaceRoot: WORKSPACE_ROOT,
   })
 }
@@ -376,6 +413,195 @@ describe('DesktopJobsExecutor.executeJob', () => {
               { relative_path: '../evil.txt', content: 'x' },
               { toolName: 'write_workspace_file' }
             )
+          ),
+        'TOOL_INVALID_INPUT'
+      )
+    })
+  })
+
+  describe('memory jobs', () => {
+    it('memory.search 返回本地命中的记忆', async () => {
+      const executor = createExecutor({
+        memoryStore: createStubMemoryStore([{ id: 'm1', content: '杭州' }]),
+      })
+
+      const outcome = await executor.executeJob(
+        createInput({ query: '杭州', limit: 8 }, { toolName: 'memory.search' })
+      )
+
+      expect(outcome.result['memories']).toEqual([
+        expect.objectContaining({ id: 'm1', content: '杭州' }),
+      ])
+    })
+
+    it('memory.search 的查询长度边界与后端契约一致', async () => {
+      // 这个数字同时写在后端 MEMORY_SEARCH_MAX_QUERY_CHARS；改一边不改另一边，
+      // 超限查询就会被云端放行、在这里失败，对用户显示成「本地记忆不可用」。
+      expect(MAX_MEMORY_SEARCH_QUERY_CHARS).toBe(500)
+      const executor = createExecutor({ memoryStore: createStubMemoryStore([]) })
+
+      const atLimit = await executor.executeJob(
+        createInput(
+          { query: '\u67e5'.repeat(MAX_MEMORY_SEARCH_QUERY_CHARS), limit: 8 },
+          { toolName: 'memory.search' }
+        )
+      )
+      expect(atLimit.result['memories']).toEqual([])
+
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput(
+              { query: '\u67e5'.repeat(MAX_MEMORY_SEARCH_QUERY_CHARS + 1), limit: 8 },
+              { toolName: 'memory.search' }
+            )
+          ),
+        'TOOL_INVALID_INPUT'
+      )
+    })
+
+    it('memory.search 没有命中时返回空列表而不是失败', async () => {
+      const executor = createExecutor({ memoryStore: createStubMemoryStore([]) })
+
+      const outcome = await executor.executeJob(
+        createInput({ query: '杭州', limit: 8 }, { toolName: 'memory.search' })
+      )
+
+      expect(outcome.result['memories']).toEqual([])
+    })
+
+    it('memory.write 写入后可被 memory.search 找到', async () => {
+      const store = createStubMemoryStore([])
+      const executor = createExecutor({ memoryStore: store })
+
+      const outcome = await executor.executeJob(
+        createInput(
+          { memoryId: 'm1', content: '杭州', memoryType: 'profile' },
+          { toolName: 'memory.write' }
+        )
+      )
+
+      expect(outcome.result).toEqual({ stored: true })
+      expect(store.search('杭州', 8)).toHaveLength(1)
+    })
+
+    it('memory.delete 删除不存在的记忆是幂等成功', async () => {
+      const executor = createExecutor({ memoryStore: createStubMemoryStore([]) })
+
+      const outcome = await executor.executeJob(
+        createInput({ memoryId: 'missing' }, { toolName: 'memory.delete' })
+      )
+
+      expect(outcome.result).toEqual({ deleted: true })
+    })
+
+    it('memory.delete 删除已有记忆后检索不到', async () => {
+      const store = createStubMemoryStore([{ id: 'm1', content: '杭州' }])
+      const executor = createExecutor({ memoryStore: store })
+
+      await executor.executeJob(createInput({ memoryId: 'm1' }, { toolName: 'memory.delete' }))
+
+      expect(store.search('杭州', 8)).toEqual([])
+    })
+
+    it('memory.search 结果超过大小上限时失败而不是截断', async () => {
+      const huge = 'x'.repeat(70_000)
+      const executor = createExecutor({
+        memoryStore: createStubMemoryStore([{ id: 'm1', content: huge }]),
+      })
+
+      await expectToolFailure(
+        () =>
+          executor.executeJob(createInput({ query: 'x', limit: 8 }, { toolName: 'memory.search' })),
+        'TOOL_OUTPUT_TOO_LARGE'
+      )
+    })
+
+    it('拒绝缺失或超长的记忆参数', async () => {
+      const executor = createExecutor()
+
+      await expectToolFailure(
+        () => executor.executeJob(createInput({ limit: 8 }, { toolName: 'memory.search' })),
+        'TOOL_INVALID_INPUT'
+      )
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput({ query: '杭州', limit: 0 }, { toolName: 'memory.search' })
+          ),
+        'TOOL_INVALID_INPUT'
+      )
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput({ memoryId: 'm1', content: '' }, { toolName: 'memory.write' })
+          ),
+        'TOOL_INVALID_INPUT'
+      )
+      await expectToolFailure(
+        () => executor.executeJob(createInput({}, { toolName: 'memory.delete' })),
+        'TOOL_INVALID_INPUT'
+      )
+    })
+  })
+
+  describe('read_clipboard', () => {
+    it('returns the clipboard text with its character count', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => '测试剪贴板内容' } })
+      const onProgress = vi.fn()
+
+      const outcome = await executor.executeJob(
+        createInput({}, { toolName: 'read_clipboard', onProgress })
+      )
+
+      expect(outcome.result).toEqual({
+        text: '测试剪贴板内容',
+        char_count: 7,
+        truncated: false,
+      })
+      expect(onProgress).toHaveBeenLastCalledWith(100)
+    })
+
+    it('truncates at the requested bound instead of failing', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => 'abcdefghij' } })
+
+      const outcome = await executor.executeJob(
+        createInput({ max_chars: 4 }, { toolName: 'read_clipboard' })
+      )
+
+      expect(outcome.result).toEqual({ text: 'abcd', char_count: 4, truncated: true })
+    })
+
+    it('reports an empty clipboard as empty text rather than as a failure', async () => {
+      const executor = createExecutor({ clipboard: { readText: () => '' } })
+
+      const outcome = await executor.executeJob(createInput({}, { toolName: 'read_clipboard' }))
+
+      expect(outcome.result).toEqual({ text: '', char_count: 0, truncated: false })
+    })
+
+    it('fails loudly when the native clipboard cannot be read', async () => {
+      const executor = createExecutor({
+        clipboard: {
+          readText: () => {
+            throw new Error('clipboard unavailable')
+          },
+        },
+      })
+
+      await expectToolFailure(
+        () => executor.executeJob(createInput({}, { toolName: 'read_clipboard' })),
+        'TOOL_EXECUTION_FAILED'
+      )
+    })
+
+    it('rejects a max_chars outside the declared bound', async () => {
+      const executor = createExecutor()
+
+      await expectToolFailure(
+        () =>
+          executor.executeJob(
+            createInput({ max_chars: MAX_CLIPBOARD_CHARS + 1 }, { toolName: 'read_clipboard' })
           ),
         'TOOL_INVALID_INPUT'
       )

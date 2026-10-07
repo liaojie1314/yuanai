@@ -83,7 +83,7 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
                   color:
                     theme.colorScheme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
                 }}
-                style={[styles.row, selected && styles.rowSelected]}
+                style={[styles.row, selected && { backgroundColor: theme.brand.selected }]}
                 accessibilityRole="button"
                 accessibilityLabel={`${t('chat.selectModel')} ${m.name}`}
                 accessibilityState={{ selected }}
@@ -97,7 +97,17 @@ export const ModelSelectorSheet = forwardRef<BottomSheetModal, ModelSelectorShee
                       {m.name}
                     </Text>
                     {m.isDefault ? (
-                      <Text style={styles.defaultBadge}>{t('chat.defaultModel')}</Text>
+                      <Text
+                        style={[
+                          styles.defaultBadge,
+                          {
+                            color: theme.brand.selectedFg,
+                            backgroundColor: theme.brand.selected,
+                          },
+                        ]}
+                      >
+                        {t('chat.defaultModel')}
+                      </Text>
                     ) : null}
                   </View>
                   <Text style={[styles.desc, { color: theme.text.secondary }]} numberOfLines={1}>
@@ -134,7 +144,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     borderRadius: radius.md,
   },
-  rowSelected: { backgroundColor: brand.light },
   avatar: {
     width: 36,
     height: 36,
@@ -146,11 +155,11 @@ const styles = StyleSheet.create({
   info: { flex: 1, gap: 2 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   name: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  // 选中态与默认徽章的底色必须走主题：brand.light 是明色专用的近白色，
+  // 暗色下会铺成白块，再叠上同样接近白色的 text.primary，标题直接读不出来。
   defaultBadge: {
     fontSize: 10,
     fontWeight: '600',
-    color: brand.hover,
-    backgroundColor: brand.light,
     paddingHorizontal: 6,
     paddingVertical: 1,
     borderRadius: radius.sm,

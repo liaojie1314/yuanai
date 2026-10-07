@@ -336,15 +336,7 @@ export default function LoginPage(): JSX.Element {
                   <Github size={18} className="soc-icon" aria-hidden="true" />
                   <span>GitHub</span>
                 </button>
-                <button
-                  className="soc-btn"
-                  aria-label={`${t('wechat')} ${t('login')}`}
-                  disabled
-                  title="第三方登录即将开放"
-                >
-                  <img src="/icons/wechat.svg" alt="" className="soc-icon" />
-                  <span>{t('wechat')}</span>
-                </button>
+                {/* 微信登录后端尚未落地（无路由、无服务、无配置），入口先不展示，免得用户点了没反应 */}
                 <button
                   className="soc-btn"
                   aria-label={`${t('google')} ${t('login')}`}

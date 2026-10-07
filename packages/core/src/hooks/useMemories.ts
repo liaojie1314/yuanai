@@ -1,22 +1,30 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Memory, MemoryCreateCandidate, MemoryUpdate } from '@yuanai/types'
 import { useAuthStore } from '../stores/auth.store.js'
 import {
   createMemory,
   deleteMemory,
+  exportMemories,
   listMemories,
   searchMemories,
   updateMemory,
 } from '../api/memories.js'
 
-/** 获取当前用户的记忆列表。 */
+/** 按游标分页获取当前用户的记忆列表。 */
 export function useMemories(status?: Memory['status']) {
   const accessToken = useAuthStore((state) => state.accessToken)
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: ['memories', status],
-    queryFn: () => listMemories(status),
+    queryFn: ({ pageParam }) => listMemories({ status, cursor: pageParam }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     enabled: Boolean(accessToken),
   })
+}
+
+/** 导出当前用户的全部记忆。 */
+export function useExportMemories() {
+  return useMutation({ mutationFn: () => exportMemories() })
 }
 
 /** 创建记忆候选并刷新记忆列表。 */

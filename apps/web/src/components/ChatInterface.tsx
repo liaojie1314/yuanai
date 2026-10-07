@@ -38,18 +38,18 @@ import type { TemporaryChatMessage } from '@yuanai/core/hooks'
 import {
   useConversations,
   useChatCapabilities,
+  useChatModels,
   useCreateMediaTask,
   useCreateConversation,
   useDeleteConversation,
   useDeleteConversations,
   useLogout,
   useMessages,
-  useModels,
   useMediaTasks,
   useUpdateConversation,
   uploadFileSmart,
 } from '@yuanai/core/hooks'
-import { filterChatModels } from '@yuanai/core/utils'
+import { FALLBACK_CHAT_MODEL } from '@yuanai/core/utils'
 import type { AIModel, MessageFile } from '@yuanai/types'
 import { MediaMusicDurationSeconds } from '@yuanai/types'
 import type { MockMessage, MockConversation } from '@yuanai/core/stores'
@@ -200,45 +200,6 @@ function OptionGroup<T extends string | number>({
 }
 
 // ── Static constants ─────────────────────────────────
-const MODELS: Model[] = [
-  {
-    id: 'deepseek-v4-flash',
-    name: 'DeepSeek V4 Flash-0731',
-    desc: '纯文本聊天，快速响应，高性价比',
-    provider: 'DeepSeek',
-    ctx: '1M',
-    color: '#3B82F6',
-    letter: 'D',
-    supportsFiles: false,
-    supportsVision: false,
-    gradient: 'linear-gradient(135deg,#1D4ED8,#3B82F6)',
-  },
-  {
-    id: 'deepseek-v4-pro',
-    name: 'DeepSeek V4 Pro-0813',
-    desc: '纯文本聊天，中文理解强，旗舰推理',
-    provider: 'DeepSeek',
-    ctx: '1M',
-    color: '#1D4ED8',
-    letter: 'D',
-    supportsFiles: false,
-    supportsVision: false,
-    gradient: 'linear-gradient(135deg,#1e3a8a,#1D4ED8)',
-  },
-  {
-    id: 'agnes-2.5-flash',
-    name: 'Agnes 2.5 Flash',
-    desc: '支持推理、工具调用、多轮对话和图像理解',
-    provider: 'Agnes AI',
-    ctx: '128K',
-    color: '#E04F16',
-    letter: 'A',
-    supportsFiles: true,
-    supportsVision: true,
-    gradient: 'linear-gradient(135deg,#C43F0B,#F27328)',
-  },
-]
-
 const MODEL_PRESENTATION: Record<string, { color: string; gradient: string }> = {
   agnes: { color: '#E04F16', gradient: 'linear-gradient(135deg,#C43F0B,#F27328)' },
   anthropic: { color: '#D97706', gradient: 'linear-gradient(135deg,#B45309,#F59E0B)' },
@@ -271,7 +232,8 @@ function toModelOption(model: AIModel): Model {
     name: model.name,
     desc: model.description,
     provider: formatModelProvider(model.provider),
-    ctx: formatContextLength(model.contextLength),
+    // 上下文长度为 0 表示目录未提供，留空让角标不渲染，不要显示误导性的「0」
+    ctx: model.contextLength > 0 ? formatContextLength(model.contextLength) : '',
     color: presentation.color,
     letter: model.name.slice(0, 1).toLocaleUpperCase(),
     supportsFiles: model.supportsFiles,
@@ -279,6 +241,9 @@ function toModelOption(model: AIModel): Model {
     gradient: presentation.gradient,
   }
 }
+
+/** 目录到达前的首屏模型：只有 ID 是真的，其余字段由兜底模型推导。 */
+const FALLBACK_MODEL_OPTION = toModelOption(FALLBACK_CHAT_MODEL)
 
 const LIKE_CATEGORIES = ['有帮助', '解释清晰', '创意出色', '回答详细', '思路新颖']
 const DISLIKE_CATEGORIES = ['信息有误', '答非所问', '内容冗余', '语言不自然', '缺乏细节']
@@ -377,15 +342,16 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const { mutate: deleteConv } = useDeleteConversation()
   const { mutate: deleteConvs } = useDeleteConversations()
   const { mutate: updateConv } = useUpdateConversation()
-  const modelsQuery = useModels()
+  const {
+    models: catalogModels,
+    isLoading: modelsLoading,
+    isFallback: modelsFallback,
+  } = useChatModels()
   const assistantsQuery = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
   const webSearchAvailable = webSearchCapability?.enabled === true
-  const chatModels = useMemo(() => {
-    const models = filterChatModels(modelsQuery.data ?? []).map(toModelOption)
-    return models.length > 0 ? models : MODELS
-  }, [modelsQuery.data])
+  const chatModels = useMemo(() => catalogModels.map(toModelOption), [catalogModels])
 
   const stream = useStream()
   const createMediaTask = useCreateMediaTask()
@@ -451,7 +417,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const [musicLyricsMode, setMusicLyricsMode] = useState<'instrumental' | 'lyrics'>('instrumental')
   const [musicLyrics, setMusicLyrics] = useState('')
   // SSR-safe: start with deterministic default, hydrate from sessionStorage on mount
-  const [activeModel, setActiveModel] = useState<Model>(MODELS[0] as Model)
+  const [activeModel, setActiveModel] = useState<Model>(FALLBACK_MODEL_OPTION)
   const [modelDropOpen, setModelDropOpen] = useState(false)
   const [userPanelOpen, setUserPanelOpen] = useState(false)
   const [cvMenuOpen, setCvMenuOpen] = useState<string | null>(null)
@@ -588,23 +554,20 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     return () => observer.disconnect()
   }, [])
 
-  // Hydrate active model from sessionStorage after mount (avoids SSR/client mismatch)
+  // 目录到达后确定当前模型：优先沿用已选，其次恢复 sessionStorage，最后取目录首位。
+  // 恢复逻辑必须和同步逻辑写在同一个 effect 里——拆成两个会在同一轮 flush 里互相覆盖，
+  // 后跑的那个把恢复出来的模型顶掉。
   useEffect(() => {
-    const saved = sessionStorage.getItem('yuanai-active-model')
-    if (saved) {
-      const found = chatModels.find((m) => m.id === saved)
-      if (found) setActiveModel(found)
-    }
-  }, [chatModels])
-
-  useEffect(() => {
+    if (chatModels.length === 0) return
     const matchingModel = chatModels.find((model) => model.id === activeModel.id)
     if (matchingModel) {
       if (matchingModel !== activeModel) setActiveModel(matchingModel)
       return
     }
-    const defaultModel = chatModels[0]
-    if (defaultModel) setActiveModel(defaultModel)
+    const saved = sessionStorage.getItem('yuanai-active-model')
+    const restored = saved ? chatModels.find((model) => model.id === saved) : undefined
+    const nextModel = restored ?? chatModels[0]
+    if (nextModel) setActiveModel(nextModel)
   }, [activeModel, chatModels])
 
   useEffect(() => {
@@ -1662,7 +1625,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               >
                 {activeModel.letter}
               </div>
-              <span>{activeModel.name}</span>
+              <span>{modelsLoading ? t('modelsLoading') : activeModel.name}</span>
               <ChevronDown size={12} />
             </button>
           </div>
@@ -2153,7 +2116,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                       >
                         {activeModel.letter}
                       </div>
-                      {activeModel.name}
+                      {modelsLoading ? t('modelsLoading') : activeModel.name}
                     </button>
                   ) : composerMode === 'agent' ? (
                     <span className="ch-media-model">Agent</span>
@@ -2229,6 +2192,11 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             })(),
           }}
         >
+          {modelsLoading ? (
+            <div className="ch-mdrop-grp">
+              <div className="ch-mdrop-lbl">{t('modelsLoading')}</div>
+            </div>
+          ) : null}
           {[...new Set(chatModels.map((model) => model.provider))].map((provider) => {
             const models = chatModels.filter((m) => m.provider === provider)
             if (!models.length) return null
@@ -2246,10 +2214,12 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                     </div>
                     <div className="ch-minfo">
                       <div className="ch-mname">{m.name}</div>
-                      <div className="ch-mdesc">{m.desc}</div>
+                      <div className="ch-mdesc">
+                        {m.desc || (modelsFallback ? t('modelsFallback') : '')}
+                      </div>
                     </div>
                     <div className="ch-mright">
-                      <span className="ch-mctx">{m.ctx}</span>
+                      {m.ctx ? <span className="ch-mctx">{m.ctx}</span> : null}
                       <span className="ch-mcheck">
                         <Check size={14} />
                       </span>

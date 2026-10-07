@@ -39,6 +39,7 @@ import { createTrayController, type TrayController } from './tray'
 import { installCloseToTrayBehavior } from './windows/close-to-tray'
 import { ExecutionNodeGrantStore } from './execution-node/grants'
 import { ExecutionNodeIdentityStore } from './execution-node/identity-store'
+import { LocalMemoryStore } from './execution-node/memory-store'
 import { ExecutionNodeService } from './execution-node/service'
 
 protocol.registerSchemesAsPrivileged([
@@ -200,14 +201,17 @@ app.whenReady().then(() => {
   })
   const executionNodeIdentityStore = new ExecutionNodeIdentityStore({ app, safeStorage })
   const executionNodeGrants = new ExecutionNodeGrantStore({ app, safeStorage })
+  const executionNodeMemoryStore = new LocalMemoryStore({ app, safeStorage })
   executionNodeService = new ExecutionNodeService({
     identityStore: executionNodeIdentityStore,
     grants: executionNodeGrants,
+    memoryStore: executionNodeMemoryStore,
     runtimeConfig,
     app,
     appVersion: __APP_VERSION__,
     dialog,
     shell,
+    clipboard,
     onStatus: (status) =>
       trustedWebContents.forEach((webContents) =>
         webContents.send(IPC.events.executionNode, status)

@@ -2,14 +2,23 @@
 
 import { useState, type FormEvent, type JSX } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import type { Skill, SkillInstallationScope, SkillRiskCeiling, SkillVersion } from '@yuanai/types'
+import type {
+  Skill,
+  SkillEvaluation,
+  SkillInstallationScope,
+  SkillRiskCeiling,
+  SkillSuggestion,
+  SkillVersion,
+} from '@yuanai/types'
 import { listAssistants } from '@yuanai/core/api'
 import {
   useActivateSkillVersion,
   useCreateSkill,
   useCreateSkillVersion,
+  useEvaluateSkillVersion,
   useRollbackSkillVersion,
   useSkills,
+  useSkillSuggestions,
   useUpdateSkillInstallation,
   useValidateSkillVersion,
 } from '@yuanai/core/hooks'
@@ -30,10 +39,12 @@ const RISK_CEILINGS: readonly SkillRiskCeiling[] = [
 export default function SkillCenter(): JSX.Element {
   const t = useTranslations('skills')
   const skills = useSkills()
+  const suggestions = useSkillSuggestions()
   const assistants = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
   const create = useCreateSkill()
   const createVersion = useCreateSkillVersion()
   const validate = useValidateSkillVersion()
+  const evaluate = useEvaluateSkillVersion()
   const activate = useActivateSkillVersion()
   const rollback = useRollbackSkillVersion()
   const install = useUpdateSkillInstallation()
@@ -52,6 +63,7 @@ export default function SkillCenter(): JSX.Element {
     create.isPending ||
     createVersion.isPending ||
     validate.isPending ||
+    evaluate.isPending ||
     activate.isPending ||
     rollback.isPending ||
     install.isPending
@@ -59,6 +71,7 @@ export default function SkillCenter(): JSX.Element {
     create.isError ||
     createVersion.isError ||
     validate.isError ||
+    evaluate.isError ||
     activate.isError ||
     rollback.isError ||
     install.isError
@@ -102,6 +115,12 @@ export default function SkillCenter(): JSX.Element {
       skillId,
       input: scope === 'assistant' && assistantId ? { scope, assistantId } : { scope },
     })
+  }
+
+  // 候选的 manifest 与指令正文由后端生成且已自检过，直接提交为草稿即可；
+  // 点击这个按钮就是 phase-7 §7.3 要求的用户确认，之后仍要走验证与评测。
+  const acceptSuggestion = (suggestion: SkillSuggestion): void => {
+    create.mutate({ manifest: suggestion.manifest, skillMd: suggestion.skillMd })
   }
 
   return (
@@ -212,6 +231,48 @@ export default function SkillCenter(): JSX.Element {
         ) : null}
       </section>
 
+      {suggestions.data?.length ? (
+        <section className="skill-section" aria-label={t('suggestionsTitle')}>
+          <div className="skill-section-head">
+            <h2>{t('suggestionsTitle')}</h2>
+            <p className="skill-muted">{t('suggestionsHint')}</p>
+          </div>
+          <ul className="skill-list">
+            {suggestions.data.map((suggestion) => (
+              <li className="skill-card" key={suggestion.slug}>
+                <div className="skill-card-head">
+                  <div>
+                    <h2>{suggestion.name}</h2>
+                    <p>{t('suggestionOccurrences', { count: String(suggestion.occurrences) })}</p>
+                  </div>
+                  <button
+                    className="skill-button skill-button--primary"
+                    disabled={isMutating}
+                    onClick={() => acceptSuggestion(suggestion)}
+                    type="button"
+                  >
+                    {t('acceptSuggestion')}
+                  </button>
+                </div>
+                <p className="skill-tools">
+                  {t('suggestionSteps')}: {suggestion.steps.join(' → ')}
+                </p>
+                <p className="skill-tools">
+                  {t('suggestionParameters')}:{' '}
+                  {suggestion.parameters.length
+                    ? suggestion.parameters.join(', ')
+                    : t('suggestionNoParameters')}
+                </p>
+                <p className="skill-muted">
+                  {t('requiredTools')}: {suggestion.requiredTools.join(', ')} · {t('riskCeiling')}:{' '}
+                  {t(suggestion.riskCeiling)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {skills.isLoading ? <p className="skill-muted">{t('loading')}</p> : null}
       {mutationError ? (
         <p className="skill-error" role="alert">
@@ -242,6 +303,7 @@ export default function SkillCenter(): JSX.Element {
                   isMutating={isMutating}
                   item={item}
                   onActivate={() => activate.mutate({ skillId: skill.id, versionId: item.id })}
+                  onEvaluate={() => evaluate.mutate({ skillId: skill.id, versionId: item.id })}
                   onInstall={() => installSkill(skill.id)}
                   onRollback={() => rollback.mutate({ skillId: skill.id, versionId: item.id })}
                   onValidate={() => validate.mutate({ skillId: skill.id, versionId: item.id })}
@@ -270,16 +332,18 @@ function SkillVersionRow({
   installDisabled,
   showInstall,
   onValidate,
+  onEvaluate,
   onActivate,
   onRollback,
   onInstall,
 }: {
   item: SkillVersion
-  t: (key: string) => string
+  t: (key: string, values?: Record<string, string>) => string
   isMutating: boolean
   installDisabled: boolean
   showInstall: boolean
   onValidate: () => void
+  onEvaluate: () => void
   onActivate: () => void
   onRollback: () => void
   onInstall: () => void
@@ -299,10 +363,18 @@ function SkillVersionRow({
       {item.validationErrors.length ? (
         <p className="skill-error">{item.validationErrors.join(', ')}</p>
       ) : null}
+      {item.latestEvaluation ? (
+        <EvaluationSummary evaluation={item.latestEvaluation} t={t} />
+      ) : null}
       <div className="skill-actions">
         {item.status === 'draft' || item.status === 'rejected' ? (
           <button className="skill-button" disabled={isMutating} onClick={onValidate} type="button">
             {t('validate')}
+          </button>
+        ) : null}
+        {item.status === 'validated' ? (
+          <button className="skill-button" disabled={isMutating} onClick={onEvaluate} type="button">
+            {t('evaluate')}
           </button>
         ) : null}
         {item.status === 'validated' ? (
@@ -332,6 +404,36 @@ function SkillVersionRow({
         ) : null}
       </div>
     </article>
+  )
+}
+
+/** 展示最近一次评测的结论与失败用例，替换活动版本前必须通过。 */
+function EvaluationSummary({
+  evaluation,
+  t,
+}: {
+  evaluation: SkillEvaluation
+  t: (key: string, values?: Record<string, string>) => string
+}): JSX.Element {
+  const failed = evaluation.caseResults.filter((item) => item.status === 'failed')
+  return (
+    <div>
+      <p className={failed.length ? 'skill-error' : 'skill-muted'}>
+        {t(evaluation.status === 'passed' ? 'evaluationPassed' : 'evaluationFailed', {
+          passed: String(evaluation.passedCases),
+          total: String(evaluation.totalCases),
+        })}
+      </p>
+      {failed.map((item) => (
+        <p className="skill-error" key={item.name}>
+          {item.name}: {item.detail}
+        </p>
+      ))}
+      {/* 静态契约评测没有执行面，成本与平均 Step 没有数据源，如实说明而不是显示 0。 */}
+      {evaluation.mode === 'static_contract' ? (
+        <p className="skill-muted">{t('evaluationStaticOnly')}</p>
+      ) : null}
+    </div>
   )
 }
 

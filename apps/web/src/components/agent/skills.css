@@ -65,6 +65,37 @@
   background: var(--surface);
 }
 
+/* 区块标题此前直接挂在无类名的 section 上：不受 1180px 栏宽约束，
+   贴着页面左边缘起排，和下方卡片差出一个缩进，读起来像另一个页面的内容。 */
+.skill-section {
+  display: grid;
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto 18px;
+}
+
+.skill-section-head {
+  display: grid;
+  gap: 4px;
+}
+
+.skill-section-head h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.skill-section-head p {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 顶部那条共享列宽规则（max-width + margin:auto）是给页面直接子元素写的，
+   列表嵌进 section 后 auto 边距会让它收缩居中，必须在这里归零。 */
+.skill-section .skill-list {
+  max-width: none;
+  margin: 0;
+}
+
 .skill-draft {
   display: grid;
   gap: 12px;

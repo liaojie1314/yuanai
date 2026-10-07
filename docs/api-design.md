@@ -235,6 +235,37 @@ scope 固定为 `read:user user:email`。
 
 ---
 
+### POST `/auth/google/native` — 原生 Google Sign-In 换 Token（无需认证）
+
+移动端用 `@react-native-google-signin/google-signin` 原生 SDK 拿到 Google ID token 后调用本端点，
+无需浏览器跳转、无需 state / code 交换。
+
+**Request:**
+
+```json
+{ "idToken": "eyJhbGciOiJSUzI1NiIs..." }
+```
+
+服务端校验：RS256 签名（公钥取 Google JWKS 并缓存 1 小时）、`iss` ∈
+{`accounts.google.com`, `https://accounts.google.com`}、`exp` 必须存在且未过期、
+`aud` 必须命中允许的 client id 集合（`GOOGLE_CLIENT_ID` + `GOOGLE_NATIVE_CLIENT_IDS`，
+后者逗号分隔，用于登记 Android / iOS client id）。
+通过后按 `google_id` → `email` 顺序关联或新建账号（规则同 GitHub 回调），签发同口径 JWT。
+
+**Response 200:** 与 `POST /auth/login` 相同的 `{ access_token, refresh_token, token_type, expires_in, user }`
+
+| HTTP | Code                      | 触发条件                                                           |
+| ---- | ------------------------- | ------------------------------------------------------------------ |
+| 422  | —                         | `idToken` 缺失或不是 JWS compact 三段式                            |
+| 401  | `OAUTH_ID_TOKEN_INVALID`  | 签名验不过 / `iss` 不对 / 缺 `exp` 或已过期 / `aud` 不在允许集合内 |
+| 400  | `OAUTH_EMAIL_UNAVAILABLE` | id_token 无 email 或 `email_verified` 不为 true                    |
+| 503  | `OAUTH_NOT_CONFIGURED`    | 允许的 client id 集合为空                                          |
+| 503  | `OAUTH_NETWORK_ERROR`     | 拉不到 Google JWKS 验签公钥                                        |
+
+Android OAuth 客户端申请与 `aud` 配置见 [guides/google-android-oauth.md](guides/google-android-oauth.md)。
+
+---
+
 ### POST `/auth/refresh` — 刷新 Token
 
 **Request:**
@@ -504,6 +535,8 @@ Google 已按同一模式落地；未来接入微信时继续复用。
     {
       "id": "uuid",
       "title": "如何学习 Rust",
+      "title_source": "ai",
+      "title_generated_at": "2026-01-01T10:00:02Z",
       "model": "gpt-4o",
       "is_pinned": false,
       "last_message_at": "2026-01-01T12:00:00Z",
@@ -514,6 +547,26 @@ Google 已按同一模式落地；未来接入微信时继续复用。
   "has_more": true
 }
 ```
+
+#### `title_source` 的五个取值
+
+标题由首问同步回退、后台 AI 生成或用户改名三条路径确定，客户端靠这个字段判断
+当前标题是不是最终结果：
+
+| 值               | 含义                    | 客户端表现             |
+| ---------------- | ----------------------- | ---------------------- |
+| `default`        | 新建空会话，还没有首问  | 不提示                 |
+| `fallback`       | 首问截断的临时标题      | **显示「标题生成中」** |
+| `fallback_final` | AI 生成失败，回退即最终 | 不提示                 |
+| `ai`             | AI 生成成功             | 不提示                 |
+| `manual`         | 用户手动改名            | 不提示                 |
+
+`fallback` 与 `fallback_final` 必须分开：只有一个「fallback」时，**终态和进行中共用
+同一个值**，客户端的「生成中」提示就没有退出条件，生成一失败便永久转圈。
+后端在生成失败时负责推进到 `fallback_final`，客户端不得自行超时猜测。
+
+AI 标题生成绝不覆盖 `manual`：落库用 `WHERE title_source = 'fallback'` 作乐观条件，
+用户在生成期间改名会让该更新的 rowcount 变为零，从而自然保留用户标题。
 
 ---
 
@@ -630,6 +683,11 @@ Google 已按同一模式落地；未来接入微信时继续复用。
 `enabled` 为 `false` 时，`reason` 为 `"disabled"` 或 `"unavailable"`；客户端必须禁用
 联网搜索开关，而不是猜测 provider 配置。
 
+`unavailable` 只说明「探测没通过」，不区分原因。SearXNG 的探测固定走环回地址且
+**不读环境代理变量** —— httpx 的 `no_proxy` 不认 `127.0.0.0/8` 这类网段写法，
+设了 `HTTP_PROXY` 的机器上本机请求会被发往代理并失败，表现为能力恒为 `false`
+且没有任何报错。Brave / Tavily 是真外部服务，仍尊重用户的代理设置。
+
 ---
 
 ### POST `/chat/stream` — 流式对话（SSE，需认证）
@@ -695,6 +753,10 @@ data: {"tool_call_id":"search-1","status":"done","result":"已检索 3 条来源
 event: message_end
 data: {"tokens_used":256,"finish_reason":"stop"}
 
+# 首问的 AI 标题结果（可选；仅首条消息，且仅在标题任务赶上流结束时发出）
+event: conversation_title
+data: {"conversation_id":"uuid","title":"学习 Rust 的路径","title_source":"ai","title_generated_at":"2026-01-01T10:00:02Z"}
+
 # 错误事件
 event: error
 data: {"code":"MODEL_QUOTA_EXCEEDED","message":"模型调用额度不足"}
@@ -702,6 +764,13 @@ data: {"code":"MODEL_QUOTA_EXCEEDED","message":"模型调用额度不足"}
 # 流结束
 data: [DONE]
 ```
+
+`conversation_title` 的 `title_source` 可能是 `ai`（生成成功）或 `fallback_final`
+（生成失败，回退标题即最终标题），取值含义见上文「`title_source` 的五个取值」。
+标题任务在流结束时只等 0.25 秒：它不会延迟首个回复 token，超时后任务继续独立落库，
+客户端在下次会话列表刷新时读到最终标题。**客户端解析该事件时若用白名单校验
+`title_source`，必须让新增取值编译失败而不是静默丢弃事件** —— 丢弃的后果是界面
+停在上一个状态且无任何报错。
 
 **Error 400:** `CONVERSATION_NOT_FOUND` 或 `CONVERSATION_ACCESS_DENIED`
 
@@ -738,6 +807,495 @@ data: [DONE]
 ---
 
 ### DELETE `/files/:id` — 删除文件（需认证）
+
+**Response 204:** No Content
+
+---
+
+## 知识库接口 `/knowledge-bases`
+
+> **字段风格**：`/auth`、`/chat`、`/files` 使用 snake_case；本节及以下各节的请求与响应
+> **一律是 camelCase**（Pydantic `alias_generator=to_camel`）。跨节复制字段名前先确认风格。
+
+### POST `/knowledge-bases` — 创建知识库（需认证）
+
+**Request:**
+
+```json
+{ "name": "产品手册", "spaceId": null }
+```
+
+**Response 201:** `{ "id", "ownerId", "name", "spaceId", "createdAt", "updatedAt" }`
+
+---
+
+### GET `/knowledge-bases` — 列出可访问知识库（需认证）
+
+**Response 200:** 上述对象的数组（自己拥有的 + 被授予成员身份的）。
+
+---
+
+### GET `/knowledge-bases/:id/sources` — 列出来源及其版本（需认证）
+
+**Response 200:**
+
+```json
+[
+  {
+    "id": "uuid",
+    "knowledgeBaseId": "uuid",
+    "name": "产品手册.pdf",
+    "sourceType": "file",
+    "sourceUri": null,
+    "createdAt": "2026-10-03T00:00:00Z",
+    "documents": [
+      {
+        "id": "uuid",
+        "sourceId": "uuid",
+        "version": 1,
+        "contentHash": "sha256:...",
+        "parser": "pdf",
+        "status": "published",
+        "createdAt": "2026-10-03T00:00:00Z",
+        "publishedAt": "2026-10-03T00:01:00Z"
+      }
+    ]
+  }
+]
+```
+
+`status`: `staged`（已构建未公开）| `published`（可检索）| `superseded` | `failed`。
+
+**Error 404:** `KNOWLEDGE_BASE_NOT_FOUND`
+
+---
+
+### PUT `/knowledge-bases/:id/members` — 授予成员权限（需认证，仅所有者）
+
+**Request:** `{ "userId": "uuid", "role": "viewer" }`，`role` 为 `viewer` | `editor`。
+
+**Response 200:** `{ "id", "knowledgeBaseId", "userId", "role", "createdAt" }`
+
+**Error 404:** `KNOWLEDGE_BASE_NOT_FOUND`　**Error 422:** 权限约束被违反（如给所有者重复授权）
+
+---
+
+### POST `/knowledge-bases/:id/sources/text` — 创建文本来源（需认证）
+
+**Request:**
+
+```json
+{ "name": "发布说明", "content": "……", "sourceUri": null }
+```
+
+`content` 最大 200,000 字符。创建出的首个版本是 `staged`，**必须显式发布后才能被检索**。
+
+**Response 201:** `KnowledgeDocument`（同上 `documents[]` 元素结构）
+
+**Error 403:** `KNOWLEDGE_BASE_WRITE_FORBIDDEN`　**Error 404:** `KNOWLEDGE_BASE_NOT_FOUND`
+
+---
+
+### POST `/knowledge-bases/:id/sources/:sourceId/documents/text` — 追加文本版本（需认证）
+
+**Request:** `{ "content": "……" }`
+
+**Response 201:** 新的 `staged` 版本。**Error 404:** `KNOWLEDGE_SOURCE_NOT_FOUND`
+
+---
+
+### POST `/knowledge-bases/:id/sources/file` — 文件入库流水线（需认证）
+
+把一个已通过 `POST /files/upload` 上传的文件送入「解析 → 质量检查 → 分块 → 向量化」流水线。
+
+**Request:**
+
+```json
+{
+  "fileId": "uuid",
+  "name": "产品手册.pdf",
+  "sourceUri": null,
+  "sourceId": null
+}
+```
+
+`sourceId` 为空时新建来源；传入时为该来源追加一个待发布版本（重新摄取）。
+
+**Response 201:** 返回**作业**而不是文档：
+
+```json
+{
+  "id": "uuid",
+  "knowledgeBaseId": "uuid",
+  "sourceId": "uuid",
+  "documentId": "uuid",
+  "fileId": "uuid",
+  "status": "completed",
+  "stage": "embed",
+  "parser": "pdf",
+  "ocrUsed": false,
+  "errorCode": null,
+  "errorDetail": null,
+  "warnings": ["SHORT_CONTENT"],
+  "chunkCount": 42,
+  "charCount": 18234,
+  "createdAt": "2026-10-03T00:00:00Z",
+  "finishedAt": "2026-10-03T00:00:06Z"
+}
+```
+
+**解析失败、格式不支持、OCR 不可用一律返回 201**，失败信息写在 `status` / `stage` /
+`errorCode` 上。作业是需要留存的审计记录，用 HTTP 错误码会把它丢掉——调用方必须读
+`status` 判断成败，不能只看 HTTP 状态码。
+
+- `status`: `pending` | `running` | `completed` | `degraded`（产出可用但有能力缺失）| `failed`
+- `stage`（失败时停在哪一步）: `fetch` | `parse` | `quality_check` | `chunk` | `embed`
+- `errorCode`（`failed` / `degraded` 时）: `SOURCE_FETCH_FAILED` | `UNSUPPORTED_FORMAT` |
+  `EMPTY_CONTENT` | `GARBLED_CONTENT`
+- `warnings`（不阻断发布，由用户决定）: `PARTIALLY_GARBLED` | `SHORT_CONTENT` |
+  `OCR_UNAVAILABLE` | `DUPLICATE_CONTENT`
+
+缺少 OCR 依赖导致正文为空时，`status` 是 `degraded` 而非 `failed`：这是本机能力降级，
+装上 `ocr` extra 重试即可，不是文档本身有问题。
+
+**Error 403:** `KNOWLEDGE_BASE_WRITE_FORBIDDEN`　**Error 404:** `KNOWLEDGE_INGEST_TARGET_NOT_FOUND`
+
+---
+
+### GET `/knowledge-bases/:id/ingestion-jobs` — 列出入库作业（需认证）
+
+**Response 200:** 最近的 `IngestionJob` 数组，用于展示失败原因与质量告警。
+
+**Error 404:** `KNOWLEDGE_BASE_NOT_FOUND`
+
+---
+
+### POST `/knowledge-bases/:id/sources/:sourceId/documents/:documentId/publish` — 发布版本（需认证）
+
+原子地把 `staged` 版本切为 `published`，同来源旧版本转 `superseded`。
+
+**Response 200:** 发布后的文档。**Error 404:** `KNOWLEDGE_DOCUMENT_NOT_FOUND`
+
+---
+
+### POST `/knowledge-bases/:id/search` — 检索（需认证）
+
+**Request:** `{ "query": "如何导出报表", "limit": 8 }`（`limit` 1–20，默认 8）
+
+**Response 200:** 可定位回源的引用数组：
+
+```json
+[
+  {
+    "knowledgeBaseId": "uuid",
+    "sourceId": "uuid",
+    "documentId": "uuid",
+    "sourceName": "产品手册.pdf",
+    "sourceUri": null,
+    "documentVersion": 2,
+    "chunkIndex": 7,
+    "section": "三、导出",
+    "charStart": 1820,
+    "charEnd": 2240,
+    "content": "……",
+    "score": 0.82
+  }
+]
+```
+
+只检索 `published` 版本。
+
+---
+
+## Skill 接口 `/skills`
+
+Skill = 不可变版本 + 可审计验证 + 评测门禁 + 安装范围。版本一经创建**内容不可修改**，
+修订只能追加新版本。
+
+> **当前限制**：Skill 没有运行时消费者，评测是**静态契约重放**而非真实执行，
+> 因此 `estimatedCostUsd` 与 `avgSteps` 恒为 `null`。见
+> [交付状态总表](master-plan.md) 的 M13。
+
+### GET `/skills` — 列出 Skill（需认证）
+
+**Response 200:**
+
+```json
+[
+  {
+    "id": "uuid",
+    "userId": "uuid",
+    "slug": "demo.weekly.rollup",
+    "name": "Weekly Rollup",
+    "description": "Roll up demo numbers into one summary",
+    "currentVersionId": "uuid",
+    "versions": [
+      {
+        "id": "uuid",
+        "skillId": "uuid",
+        "version": "1.1.0",
+        "manifestText": "id: demo.weekly.rollup\n……",
+        "skillMd": "# Weekly Rollup\n……",
+        "contentHash": "sha256:...",
+        "requiredTools": ["calculate@^1"],
+        "riskCeiling": "privileged",
+        "status": "validated",
+        "validationResult": { "tools": ["calculate@1.0.0"] },
+        "validationErrors": [],
+        "createdAt": "2026-10-03T00:00:00Z",
+        "validatedAt": "2026-10-03T00:00:01Z",
+        "latestEvaluation": {
+          "id": "uuid",
+          "skillId": "uuid",
+          "versionId": "uuid",
+          "status": "failed",
+          "mode": "static_contract",
+          "caseResults": [
+            { "name": "manifest_contract", "status": "passed", "detail": "" },
+            {
+              "name": "risk_ceiling_not_escalated",
+              "status": "failed",
+              "detail": "风险上限由 read 抬高到 privileged"
+            }
+          ],
+          "totalCases": 6,
+          "passedCases": 5,
+          "passRate": "0.8333",
+          "estimatedCostUsd": null,
+          "avgSteps": null,
+          "durationMs": 3,
+          "createdAt": "2026-10-03T00:00:02Z"
+        }
+      }
+    ],
+    "installations": [
+      {
+        "id": "uuid",
+        "skillId": "uuid",
+        "scope": "global",
+        "assistantId": null,
+        "createdAt": "2026-10-03T00:00:03Z"
+      }
+    ],
+    "createdAt": "2026-10-03T00:00:00Z",
+    "updatedAt": "2026-10-03T00:00:03Z"
+  }
+]
+```
+
+`version.status`: `draft` → `validating` → `validated` → `active`，另有 `rejected` /
+`deprecated`。
+
+---
+
+### GET `/skills/suggestions` — 从经验生成 Skill 候选（需认证）
+
+扫描当前用户最近的成功 Run，按目标文本相似度聚类，对出现 **≥3 次**的模式归纳候选。
+**纯读接口，不写库**；候选需用户确认后 `POST /skills` 才进入草稿流程。
+
+**Response 200:**
+
+```json
+[
+  {
+    "slug": "experience.calculate.3f9a1c2d",
+    "name": "统计第 N 周演示数值并汇总",
+    "description": "已成功完成 3 次的重复任务",
+    "occurrences": 3,
+    "runIds": ["uuid", "uuid", "uuid"],
+    "steps": ["调用 calculate"],
+    "parameters": ["第 {1} 周"],
+    "requiredTools": ["calculate@^1"],
+    "riskCeiling": "read",
+    "manifest": "id: experience.calculate.3f9a1c2d\n……",
+    "skillMd": "# 统计第 N 周演示数值并汇总\n……"
+  }
+]
+```
+
+`manifest` 与 `skillMd` 已自检通过，可原样提交给 `POST /skills`。已存在同 slug 的 Skill 不再建议。
+
+---
+
+### POST `/skills` — 创建 Skill 及首个草稿版本（需认证）
+
+**Request:** `{ "manifest": "…(≤20000 字符)", "skillMd": "…(≤100000 字符)" }`
+
+**Response 201:** `Skill`
+
+**Error 422:** manifest 解析失败，`detail` 是错误数组
+**Error 409:** `SKILL_SLUG_ALREADY_EXISTS`
+
+---
+
+### POST `/skills/:id/versions` — 追加草稿版本（需认证）
+
+**Request:** 同上。**Response 201:** `Skill`
+
+**Error 404:** `SKILL_NOT_FOUND`
+**Error 409:** `SKILL_VERSION_ALREADY_EXISTS` | `SKILL_MANIFEST_ID_MISMATCH`
+
+---
+
+### POST `/skills/:id/versions/:versionId/validate` — 验证版本（需认证）
+
+校验声明的工具是否存在、版本区间是否匹配、`riskCeiling` 是否覆盖所需工具的风险。
+
+**Response 200:** `SkillVersion`（`status` 变为 `validated` 或 `rejected`，失败原因在 `validationErrors`）
+
+**Error 404:** `SKILL_VERSION_NOT_FOUND`　**Error 409:** `SKILL_VERSION_NOT_VALIDATABLE`
+
+---
+
+### POST `/skills/:id/versions/:versionId/evaluate` — 评测版本（需认证）
+
+同步重放 6 条静态契约用例：`manifest_contract`、`content_integrity`、`tool_contract`、
+`declared_tool_coverage`、`risk_ceiling_not_escalated`、`secret_scan`。
+
+manifest 无法解析时，依赖它的用例**判失败而非跳过**——门禁 fail closed，不让通过率被跳过的用例抬高。
+`secret_scan` 的 `detail` 只报命中的规则名，**不回显命中的内容**。
+
+**Response 200:** `SkillEvaluation`（结构见 `GET /skills` 的 `latestEvaluation`）
+
+**Error 404:** `SKILL_VERSION_NOT_FOUND`
+
+---
+
+### POST `/skills/:id/versions/:versionId/activate` — 激活版本（需认证）
+
+**替换已有 active 版本时强制评测门禁**：该版本必须有一条 `passed` 评测。
+首次激活不设门禁（没有可被弄坏的生产版本）。
+
+**Response 200:** `Skill`
+
+**Error 404:** `SKILL_VERSION_NOT_FOUND`
+**Error 409:** `SKILL_VERSION_NOT_VALIDATED` | `SKILL_VERSION_EVALUATION_REQUIRED`（从未评测）|
+`SKILL_VERSION_EVALUATION_FAILED`（最近一次评测未通过）
+
+---
+
+### POST `/skills/:id/versions/:versionId/rollback` — 回滚到历史版本（需认证）
+
+**不设评测门禁**：回滚是评测回退时的恢复手段，再加门禁会把唯一的退路也堵上。
+
+**Response 200:** `Skill`
+
+**Error 404:** `SKILL_VERSION_NOT_FOUND`　**Error 409:** `SKILL_VERSION_NOT_ROLLBACKABLE`
+
+---
+
+### PUT `/skills/:id/installations` — 设置可用范围（需认证）
+
+**Request:** `{ "scope": "assistant", "assistantId": "uuid" }`，`scope` 为 `global` | `assistant`。
+
+**Response 200:** `SkillInstallation`
+
+**Error 404:** `SKILL_OR_ASSISTANT_NOT_FOUND`
+**Error 409:** `SKILL_ACTIVE_VERSION_REQUIRED` | `SKILL_ASSISTANT_REQUIRED` |
+`SKILL_GLOBAL_INSTALLATION_CANNOT_TARGET_ASSISTANT`
+
+---
+
+## Webhook 接口
+
+公网入口 `/webhooks/:publicId` 与管理接口 `/automations/:id/webhook` 分开：
+**前者没有任何认证依赖**，身份完全由 HMAC 签名证明；后者走普通用户认证。
+
+### POST `/webhooks/:publicId` — 接收第三方事件（**无认证**）
+
+触发一次标准 Agent Run。
+
+**Request Headers:**
+
+```
+X-YuanAi-Timestamp: 1759449600          # Unix 秒
+X-YuanAi-Signature: <hex sha256 hmac>
+```
+
+**签名算法：**
+
+```
+signature = HMAC-SHA256(secret, f"{timestamp}.{raw_body}").hexdigest()
+```
+
+签名覆盖的是**原始请求体字节**。调用方不得重新序列化 JSON——键序或空格变化都会使签名失效。
+
+**Request Body:** 任意 JSON 对象，最大 64 KB。内容作为上下文注入 Run，截断到 2000 字符。
+
+**Response 202:**
+
+```json
+{ "automationRunId": "uuid", "status": "queued" }
+```
+
+响应体只回最小信息，**不回显 payload**，避免把外部数据变成反射面。
+
+**校验顺序与错误：** 签名、时间戳窗口（默认 ±300 秒）、重放登记、限流（默认 60 次/分钟）
+全部在创建 Run **之前**完成，任何一步失败都不创建 Run。守卫存储或密钥存储不可用时
+**fail closed 返回 503**，而不是放行。
+
+| HTTP | Code                                                       | 说明                               |
+| ---- | ---------------------------------------------------------- | ---------------------------------- |
+| 404  | `WEBHOOK_ENDPOINT_NOT_FOUND`                               | publicId 不存在或入口已删除        |
+| 401  | `WEBHOOK_SIGNATURE_REQUIRED`                               | 缺签名或时间戳头                   |
+| 401  | `WEBHOOK_TIMESTAMP_INVALID`                                | 时间戳格式错或超出容差窗口         |
+| 401  | `WEBHOOK_SIGNATURE_INVALID`                                | 签名不匹配                         |
+| 409  | `WEBHOOK_REPLAY_DETECTED`                                  | 同一签名已被使用过                 |
+| 413  | `WEBHOOK_PAYLOAD_TOO_LARGE`                                | 请求体超过 64 KB                   |
+| 422  | `WEBHOOK_PAYLOAD_INVALID`                                  | 请求体不是 JSON 对象               |
+| 429  | `WEBHOOK_RATE_LIMITED`                                     | 超过该入口的分钟限流               |
+| 503  | `WEBHOOK_GUARD_UNAVAILABLE` / `WEBHOOK_SECRET_UNAVAILABLE` | 守卫/密钥存储不可用（fail closed） |
+
+---
+
+### POST `/automations/:id/webhook` — 创建入口（需认证）
+
+仅 webhook 触发型自动化可创建。
+
+**Request（可选）:** `{ "rateLimitPerMinute": 60 }`，范围 1–600；省略请求体时取全局配置默认值。
+
+**Response 201:**
+
+```json
+{
+  "id": "uuid",
+  "automationId": "uuid",
+  "publicId": "wh_3f9a1c2d…",
+  "secretPrefix": "whsec_3f9a",
+  "isActive": true,
+  "rateLimitPerMinute": 60,
+  "lastUsedAt": null,
+  "createdAt": "2026-10-03T00:00:00Z",
+  "rotatedAt": null,
+  "secret": "whsec_……"
+}
+```
+
+**`secret` 明文只在创建与轮换的响应中出现一次**，此后无法再读取。
+
+**Error 404:** `AUTOMATION_NOT_FOUND`　**Error 409:** 该自动化不是 webhook 触发型或入口已存在
+
+---
+
+### GET `/automations/:id/webhook` — 读取入口元数据（需认证）
+
+**Response 200:** 同上但**没有 `secret`**，只有用于辨认的 `secretPrefix`。
+
+**Error 404:** `AUTOMATION_NOT_FOUND` | `WEBHOOK_ENDPOINT_NOT_FOUND`
+
+---
+
+### POST `/automations/:id/webhook/rotate` — 轮换签名密钥（需认证）
+
+旧密钥**立即失效**，用于泄漏后的应急轮换。
+
+**Response 200:** 含一次性 `secret` 的完整对象。
+
+---
+
+### DELETE `/automations/:id/webhook` — 删除入口（需认证）
+
+`publicId` 立即失效，后续投递返回 404。
 
 **Response 204:** No Content
 
@@ -792,16 +1350,22 @@ data: [DONE]
 | `RATE_LIMIT_EXCEEDED`              | 429  | 请求频率超限                 |
 | `INTERNAL_ERROR`                   | 500  | 服务器内部错误               |
 
+知识库、Skill 与 Webhook 的错误码只在对应接口出现，列在各节内：
+[知识库](#知识库接口-knowledge-bases)（`KNOWLEDGE_*`）、[Skill](#skill-接口-skills)（`SKILL_*`）、
+[Webhook](#webhook-接口)（`WEBHOOK_*`）。入库作业的失败原因**不是 HTTP 错误码**，
+而是 `IngestionJob.errorCode`，见 `POST /knowledge-bases/:id/sources/file`。
+
 ### 频率限制
 
-| 接口                    | 限制             |
-| ----------------------- | ---------------- |
-| `/auth/login`           | 10 次/分钟/IP    |
-| `/auth/login/phone`     | 10 次/分钟/IP    |
-| `/auth/register`        | 5 次/小时/IP     |
-| `/auth/phone/send-code` | 3 次/分钟/手机号 |
-| `/auth/me/email-code`   | 3 次/分钟/用户   |
-| `/auth/me/phone-code`   | 3 次/分钟/用户   |
-| `/chat/stream`          | 30 次/分钟/用户  |
-| `/files/upload`         | 20 次/分钟/用户  |
-| 其他 GET 接口           | 120 次/分钟/用户 |
+| 接口                    | 限制                                  |
+| ----------------------- | ------------------------------------- |
+| `/auth/login`           | 10 次/分钟/IP                         |
+| `/auth/login/phone`     | 10 次/分钟/IP                         |
+| `/auth/register`        | 5 次/小时/IP                          |
+| `/auth/phone/send-code` | 3 次/分钟/手机号                      |
+| `/auth/me/email-code`   | 3 次/分钟/用户                        |
+| `/auth/me/phone-code`   | 3 次/分钟/用户                        |
+| `/chat/stream`          | 30 次/分钟/用户                       |
+| `/files/upload`         | 20 次/分钟/用户                       |
+| `/webhooks/:publicId`   | 60 次/分钟/入口（可按入口配置 1–600） |
+| 其他 GET 接口           | 120 次/分钟/用户                      |

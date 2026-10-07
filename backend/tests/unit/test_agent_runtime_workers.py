@@ -16,6 +16,7 @@ from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue, QueueItem
 from app.workers.agent_worker import AgentWorker, CancellationToken, execute_agent_run
 from app.workers.recovery_worker import RecoveryWorker
+from tests.unit.test_agent_metrics import metric_value
 
 
 class FakeRedis:
@@ -351,6 +352,7 @@ async def test_worker_execution_uses_controlled_tool_registry(
         id=run_id,
         user_id=tenant_id,
         assistant_id=uuid.uuid4(),
+        status=AgentRunStatus.succeeded,
     )
     assistant = SimpleNamespace(instructions="使用受控工具")
     expected_registry = object()
@@ -393,6 +395,13 @@ async def test_worker_execution_uses_controlled_tool_registry(
         raising=False,
     )
 
+    async def fake_enqueue(*, user_id: uuid.UUID, run_id: uuid.UUID) -> None:
+        """记录抽取投递，并确认它发生在 Run 事务提交之后。"""
+        captured["enqueued"] = (user_id, run_id)
+        captured["enqueued_after_commit"] = captured.get("committed") is True
+
+    monkeypatch.setattr(agent_worker_module, "enqueue_extraction", fake_enqueue)
+
     await execute_agent_run(
         QueueItem(tenant_id=tenant_id, run_id=run_id),
         SimpleNamespace(is_cancelled=lambda: False),
@@ -401,6 +410,8 @@ async def test_worker_execution_uses_controlled_tool_registry(
     assert captured["registry"] is expected_registry
     assert captured["approval_id"] is None
     assert captured["committed"] is True
+    assert captured["enqueued"] == (tenant_id, run_id)
+    assert captured["enqueued_after_commit"] is True
 
 
 @pytest.mark.asyncio
@@ -479,9 +490,11 @@ async def test_recovery_requeues_running_run_without_lease() -> None:
         await queue.enqueue(_tenant_id, _run_id)
 
     recovery = RecoveryWorker(queue, list_running=list_running, requeue=requeue)
+    before = metric_value('agent_recovery_total{reason="lease_lost"}')
     assert await recovery.recover_once() == 1
     assert statuses[run_id] is AgentRunStatus.queued
     assert await queue.dequeue(tenant_id) == QueueItem(tenant_id, run_id)
+    assert metric_value('agent_recovery_total{reason="lease_lost"}') == before + 1
 
 
 @pytest.mark.asyncio

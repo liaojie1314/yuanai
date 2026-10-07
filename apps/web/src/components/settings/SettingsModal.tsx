@@ -205,7 +205,7 @@ export default function SettingsModal({
   }
 
   // 第三方登录待解绑目标
-  const [unlinkTarget, setUnlinkTarget] = useState<'wechat' | 'google' | 'github' | null>(null)
+  const [unlinkTarget, setUnlinkTarget] = useState<'google' | 'github' | null>(null)
   const unlinkGithubMutation = useUnlinkGithub()
   const unlinkGoogleMutation = useUnlinkGoogle()
 
@@ -840,7 +840,6 @@ export default function SettingsModal({
                       cls: 'st-sl-github',
                       icon: '/icons/github.svg',
                       linked: !!currentUser?.githubId,
-                      available: true,
                     },
                     {
                       key: 'google' as const,
@@ -848,17 +847,9 @@ export default function SettingsModal({
                       cls: 'st-sl-google',
                       icon: '/icons/google.svg',
                       linked: !!currentUser?.googleId,
-                      available: true,
                     },
-                    {
-                      key: 'wechat' as const,
-                      label: '微信',
-                      cls: 'st-sl-wechat',
-                      icon: '/icons/wechat.svg',
-                      linked: false,
-                      available: false,
-                    },
-                  ].map(({ key, label, cls, icon, linked, available }) => (
+                    // 微信绑定后端尚未落地，整行先不展示
+                  ].map(({ key, label, cls, icon, linked }) => (
                     <div className="st-row" key={key}>
                       <div
                         className="st-row-r"
@@ -883,7 +874,7 @@ export default function SettingsModal({
                           >
                             解绑
                           </button>
-                        ) : available ? (
+                        ) : (
                           <button
                             className="st-btn-link"
                             onClick={() => {
@@ -892,15 +883,6 @@ export default function SettingsModal({
                               // 就能拿到 linked 状态
                               window.location.href = `${API_BASE_URL}/auth/${key}`
                             }}
-                          >
-                            绑定
-                          </button>
-                        ) : (
-                          <button
-                            className="st-btn-link"
-                            disabled
-                            title="第三方登录即将开放"
-                            style={{ opacity: 0.5, cursor: 'not-allowed' }}
                           >
                             绑定
                           </button>
@@ -1454,12 +1436,7 @@ export default function SettingsModal({
           <div className="st-sub-modal" onClick={(e) => e.stopPropagation()}>
             <div className="st-sub-hd">
               <span className="st-sub-title" style={{ color: '#ef4444' }}>
-                解绑{' '}
-                {unlinkTarget === 'github'
-                  ? 'GitHub'
-                  : unlinkTarget === 'google'
-                    ? 'Google'
-                    : '微信'}
+                解绑 {unlinkTarget === 'github' ? 'GitHub' : 'Google'}
               </span>
               <button
                 className="st-close-btn"
@@ -1473,13 +1450,8 @@ export default function SettingsModal({
             </div>
             <div className="st-sub-body">
               <p style={{ fontSize: 14, color: 'var(--fg2)', lineHeight: 1.7 }}>
-                解绑后将无法使用{' '}
-                {unlinkTarget === 'github'
-                  ? 'GitHub'
-                  : unlinkTarget === 'google'
-                    ? 'Google'
-                    : '微信'}{' '}
-                快速登录， 下次可通过邮箱密码方式登录。若你尚未设置本地密码，请先前往「账号安全 →
+                解绑后将无法使用 {unlinkTarget === 'github' ? 'GitHub' : 'Google'} 快速登录，
+                下次可通过邮箱密码方式登录。若你尚未设置本地密码，请先前往「账号安全 →
                 修改密码」补设， 否则解绑会被拒绝。
               </p>
             </div>
@@ -1496,13 +1468,11 @@ export default function SettingsModal({
               <button
                 className="st-btn-danger"
                 disabled={
-                  unlinkGithubMutation.isPending ||
-                  unlinkGoogleMutation.isPending ||
-                  (unlinkTarget !== 'github' && unlinkTarget !== 'google')
+                  unlinkGithubMutation.isPending || unlinkGoogleMutation.isPending || !unlinkTarget
                 }
                 onClick={async () => {
-                  // 仅 github / google 有真实解绑链路；wechat 尚未落地
-                  if (unlinkTarget !== 'github' && unlinkTarget !== 'google') return
+                  // 弹窗可能在未选中任何平台时渲染，这里兜住 null
+                  if (!unlinkTarget) return
                   const mutation =
                     unlinkTarget === 'github' ? unlinkGithubMutation : unlinkGoogleMutation
                   const label = unlinkTarget === 'github' ? 'GitHub' : 'Google'

@@ -152,8 +152,13 @@ export interface QrLoginRequestScope {
 
 // ============ 会话 ============
 
-/** 会话标题的最终来源。 */
-export type ConversationTitleSource = 'default' | 'fallback' | 'ai' | 'manual'
+/**
+ * 会话标题的最终来源。
+ *
+ * `fallback` 表示 AI 标题仍在生成，客户端据此显示「生成中」；
+ * `fallback_final` 表示生成已失败并放弃，回退标题就是最终标题。
+ */
+export type ConversationTitleSource = 'default' | 'fallback' | 'fallback_final' | 'ai' | 'manual'
 
 /** 对话会话（侧边栏列表项） */
 export interface Conversation {
@@ -218,6 +223,10 @@ export interface MediaGenerationOptions {
   lyrics?: string
 }
 
+/** 可由媒体任务 API 显式选择的图片或视频生成模型。 */
+export type MediaGenerationModel =
+  'agnes-image-2.5-flash' | 'agnes-image-2.1-flash' | 'agnes-video-2.5-flash' | 'agnes-video-v2.0'
+
 /** 创建媒体任务所需的跨端输入，不包含任何 provider URL 或本地路径。 */
 export interface CreateMediaGenerationTaskInput {
   conversationId: string
@@ -226,6 +235,8 @@ export interface CreateMediaGenerationTaskInput {
   options?: MediaGenerationOptions
   /** 仅接受当前用户已经上传的图片文件 ID。 */
   sourceFileIds?: string[]
+  /** 省略时由后端为该任务类型选择默认模型；音乐任务不接受显式模型。 */
+  model?: MediaGenerationModel
 }
 
 /** 后端持久化并关联到 assistant 消息卡的媒体生成任务。 */
@@ -236,8 +247,7 @@ export interface MediaGenerationTask {
   /** 发起此任务的用户消息；旧任务迁移失败时可为空。 */
   sourceMessageId: string | null
   type: MediaGenerationType
-  model:
-    'agnes-image-2.1-flash' | 'agnes-video-v2.0' | 'musicgen-small-local' | 'ace-step-v15-local'
+  model: MediaGenerationModel | 'musicgen-small-local' | 'ace-step-v15-local'
   prompt: string
   options: MediaGenerationOptions
   /** 仅用于恢复任务的引用标识，不包含对象存储路径。 */
@@ -540,6 +550,8 @@ export interface Assistant {
   defaultModel: string
   autonomyLevel: string
   isDefault: boolean
+  /** 该助理禁止写入与检索的记忆类型，`null` 表示未设置过任何限制。 */
+  disabledMemoryTypes: MemoryType[] | null
   createdAt: string
   updatedAt: string
 }
@@ -585,7 +597,6 @@ export interface AgentStep {
   kind: string
   status: string
   inputJson: Record<string, unknown> | null
-  outputJson: Record<string, unknown> | null
   errorCode: string | null
   errorMessage: string | null
   startedAt: string | null
@@ -904,7 +915,8 @@ export interface Memory {
   assistantId: string
   workspaceId: string | null
   memoryType: MemoryType
-  content: string
+  /** 落在本地节点且节点当前不可达时为 `null`。 */
+  content: string | null
   structuredData: Record<string, unknown> | null
   sourceType: string
   sourceId: string | null
@@ -912,12 +924,31 @@ export interface Memory {
   confidence: number
   sensitivity: MemorySensitivity
   storageLocation: 'cloud' | 'local_node'
+  /** 记忆所在的执行节点，云端记忆为 `null`。 */
+  nodeId: string | null
   status: MemoryStatus
   validFrom: string | null
   validUntil: string | null
   lastUsedAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+/** 记忆列表的一页，`nextCursor` 为 `null` 表示已是最后一页。 */
+export interface MemoryPage {
+  items: Memory[]
+  /** 后端生成的不透明游标，调用方只能原样回传。 */
+  nextCursor: string | null
+  /** 为 `true` 时本页含本机节点记忆、且节点此刻不可达，正文读不到。 */
+  localUnavailable: boolean
+}
+
+/** 记忆导出快照；本机节点记忆的正文不在文件里，导出不会去节点取。 */
+export interface MemoryExport {
+  exportedAt: string
+  items: Memory[]
+  /** 为 `true` 时本次导出含本机节点记忆、且导出那一刻节点不可达。 */
+  localUnavailable: boolean
 }
 
 /** 更新记忆内容或生命周期状态的参数。 */
@@ -947,6 +978,13 @@ export interface MemorySearchResult {
   score: number
 }
 
+/** 记忆检索的整体结果，含本地节点是否不可达。 */
+export interface MemorySearchOutcome {
+  results: MemorySearchResult[]
+  /** 为 `true` 时本地节点记忆缺席，结果不完整而非本就为空。 */
+  localUnavailable: boolean
+}
+
 /** 注入 Agent 上下文的记忆条目。 */
 export interface MemoryContextItem {
   memoryId: string
@@ -973,6 +1011,46 @@ export type SkillRiskCeiling =
 /** 已安装 Skill 的用户可见范围。 */
 export type SkillInstallationScope = 'global' | 'assistant'
 
+/** 一次 Skill 版本评测的终态。 */
+export type SkillEvaluationStatus = 'passed' | 'failed'
+
+/**
+ * 评测取样方式。
+ *
+ * `static_contract` 不执行 Skill，只重放契约检查，因此没有成本与步数；
+ * `executed` 预留给未来的真实执行面。读取方必须据此判断指标是否可信。
+ */
+export type SkillEvaluationMode = 'static_contract' | 'executed'
+
+/** 一条静态用例的判定结果。 */
+export interface SkillEvaluationCase {
+  name: string
+  status: 'passed' | 'failed'
+  detail: string
+}
+
+/**
+ * 一次评测的用例明细与门禁结论。
+ *
+ * `mode` 为 `static_contract` 时 `estimatedCostUsd` 与 `avgSteps` 恒为 `null`：
+ * 静态契约评测没有执行面，这两个指标没有数据源。
+ */
+export interface SkillEvaluation {
+  id: string
+  skillId: string
+  versionId: string
+  status: SkillEvaluationStatus
+  mode: SkillEvaluationMode
+  caseResults: SkillEvaluationCase[]
+  totalCases: number
+  passedCases: number
+  passRate: string
+  estimatedCostUsd: string | null
+  avgSteps: string | null
+  durationMs: number
+  createdAt: string
+}
+
 /** 不可变 Skill 版本的 manifest、指令和验证记录。 */
 export interface SkillVersion {
   id: string
@@ -988,6 +1066,7 @@ export interface SkillVersion {
   validationErrors: string[]
   createdAt: string
   validatedAt: string | null
+  latestEvaluation: SkillEvaluation | null
 }
 
 /** 用户为活动 Skill 选择的安装范围。 */
@@ -1023,6 +1102,26 @@ export interface SkillDraft {
 export interface SkillInstallationUpdate {
   scope: SkillInstallationScope
   assistantId?: string
+}
+
+/**
+ * 由重复成功任务归纳出的 Skill 候选。
+ *
+ * `manifest` 与 `skillMd` 可直接提交给创建草稿接口；后端只生成候选，不预先写库，
+ * 必须由用户确认后才进入验证流程。
+ */
+export interface SkillSuggestion {
+  slug: string
+  name: string
+  description: string
+  occurrences: number
+  runIds: string[]
+  steps: string[]
+  parameters: string[]
+  requiredTools: string[]
+  riskCeiling: SkillRiskCeiling
+  manifest: string
+  skillMd: string
 }
 
 export * from './knowledge'

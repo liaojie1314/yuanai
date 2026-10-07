@@ -24,7 +24,7 @@ class AutomationSchema(BaseModel):
 
 
 class AutomationTriggerCreate(AutomationSchema):
-    """创建一次性或 cron 触发器。"""
+    """创建一次性、cron 或 webhook 触发器。"""
 
     trigger_type: AutomationTriggerType
     scheduled_at: datetime | None = None
@@ -34,6 +34,10 @@ class AutomationTriggerCreate(AutomationSchema):
     def validate_shape(self) -> AutomationTriggerCreate:
         """确保触发器字段与触发类型一致。"""
 
+        if self.trigger_type is AutomationTriggerType.webhook:
+            if self.scheduled_at is not None or self.cron_expression is not None:
+                raise ValueError("webhook 触发器不能有 scheduledAt 或 cronExpression")
+            return self
         if self.trigger_type is AutomationTriggerType.once:
             if self.scheduled_at is None or self.cron_expression is not None:
                 raise ValueError("一次性触发器需要 scheduledAt 且不能有 cronExpression")
@@ -123,3 +127,29 @@ class AutomationRunStatusResponse(AutomationSchema):
     status: AutomationRunStatus
     agent_status: AgentRunStatus | None = None
     estimated_cost_usd: Decimal | None = None
+
+
+class WebhookEndpointCreate(AutomationSchema):
+    """创建 Webhook 入口时可选的限流覆盖。"""
+
+    rate_limit_per_minute: int | None = Field(default=None, ge=1, le=600)
+
+
+class WebhookEndpointResponse(AutomationSchema):
+    """Webhook 入口元数据；永远不包含签名密钥。"""
+
+    id: uuid.UUID
+    automation_id: uuid.UUID
+    public_id: str
+    secret_prefix: str
+    is_active: bool
+    rate_limit_per_minute: int
+    last_used_at: datetime | None
+    created_at: datetime
+    rotated_at: datetime | None
+
+
+class WebhookEndpointSecretResponse(WebhookEndpointResponse):
+    """创建或轮换时一次性返回明文密钥；此后无法再次读取。"""
+
+    secret: str

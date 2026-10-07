@@ -113,10 +113,15 @@
 | SearXNG                                               | 256-512 MB |
 | FastAPI 后端（uvicorn）                               | 0.5-1 GB   |
 | agent_worker + recovery_worker + automation_scheduler | ~1 GB      |
+| memory_worker + node_sweeper                          | ~256 MB    |
 | Next.js Web（production）                             | 0.5-1 GB   |
 | 系统与 Docker 自身                                    | ~1 GB      |
 
 合计常驻约 **4.5-6 GB**。
+
+> ⚠️ 常驻进程一共**五个**，全部列表与「不启动会怎样」见
+> [开发运行指南](dev-guide.md)。`memory_worker` 不跑则记忆抽取永不发生，
+> `node_sweeper` 不跑则失联的执行节点永远显示在线 —— 两者都是**静默失效**，不会报错。
 
 ### 2.2 配置档位
 

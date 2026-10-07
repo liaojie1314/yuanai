@@ -30,6 +30,8 @@
     "agent:worker": "uv --directory backend run python -m app.workers.agent_worker",
     "agent:recovery-worker": "uv --directory backend run python -m app.workers.recovery_worker",
     "automation:scheduler": "uv --directory backend run python -m app.workers.automation_scheduler",
+    "memory:worker": "uv --directory backend run python -m app.workers.memory_worker",
+    "node:sweeper": "uv --directory backend run python -m app.workers.node_sweeper",
     "preview:desktop": "pnpm --filter @yuanai/desktop preview",
     "setup": "node scripts/setup.mjs",
     "clean": "node scripts/clean.mjs",

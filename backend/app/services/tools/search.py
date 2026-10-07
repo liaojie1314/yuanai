@@ -6,7 +6,7 @@ import re
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from typing import Literal, Protocol
+from typing import ClassVar, Literal, Protocol
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -150,6 +150,10 @@ class _HttpSearchProvider:
     """HTTP provider 的公共超时和 JSON 错误处理。"""
 
     name: SearchProviderId
+    #: 是否读取环境里的代理变量。外部 provider 必须读（用户可能只能经代理出网），
+    #: 环回 provider 必须不读：httpx 的 no_proxy 不认 127.0.0.0/8 这类网段写法，
+    #: 本机请求会被发去代理，表现为联网搜索「不可用」且没有任何报错。
+    trust_env: ClassVar[bool] = True
 
     def __init__(self, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self._transport = transport
@@ -167,6 +171,7 @@ class _HttpSearchProvider:
             async with httpx.AsyncClient(
                 timeout=settings.web_search_timeout_seconds,
                 transport=self._transport,
+                trust_env=self.trust_env,
             ) as client:
                 response = await client.request(
                     method, url, params=params, headers=headers, json=json_body
@@ -187,6 +192,8 @@ class SearxngSearchProvider(_HttpSearchProvider):
     """私有 SearXNG JSON API 适配器。"""
 
     name: SearchProviderId = "searxng"
+    # 地址已由 _safe_loopback_base_url 限定为环回，走代理只会打到别处。
+    trust_env: ClassVar[bool] = False
 
     def __init__(self, base_url: str, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         super().__init__(transport=transport)
@@ -198,6 +205,7 @@ class SearxngSearchProvider(_HttpSearchProvider):
             async with httpx.AsyncClient(
                 timeout=settings.web_search_timeout_seconds,
                 transport=self._transport,
+                trust_env=self.trust_env,
             ) as client:
                 response = await client.get(self._base_url)
                 return response.is_success

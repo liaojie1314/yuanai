@@ -22,6 +22,8 @@ vi.mock('@/theme/useTheme', () => ({
   useTheme: () => ({
     density: { messagePy: 10 },
     text: { primary: '#111827', muted: '#6b7280' },
+    // 行内 code 与引用块的底色走主题 brand，桩缺这一层会直接崩在 useMemo 里。
+    brand: { selected: '#eff6ff', selectedFg: '#2563eb' },
     typography: { body: 15, bodyLineHeight: 22, h1: 26, h2: 22, h3: 18, code: 14 },
   }),
 }))

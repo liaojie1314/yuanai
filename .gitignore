@@ -39,6 +39,9 @@ Thumbs.db
 
 # 测试
 coverage/
+# 后端 uv run pytest --cov 生成的覆盖率数据（并行模式带 host.pid 后缀）
+.coverage
+.coverage.*
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

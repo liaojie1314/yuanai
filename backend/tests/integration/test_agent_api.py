@@ -27,6 +27,7 @@ from app.models.approval import ApprovalRequest, ApprovalRiskLevel, ApprovalStat
 from app.models.assistant import Assistant
 from app.models.user import User
 from app.schemas.agent import AgentRunCreateRequest
+from tests.conftest import TEST_DATABASE_URL
 
 
 async def _assistant(db: AsyncSession, user: User) -> Assistant:
@@ -123,7 +124,7 @@ async def test_concurrent_idempotent_run_creation_returns_one_run(
 
     monkeypatch.setattr(agent_api, "AgentQueue", NoopQueue)
     engine = create_async_engine(
-        "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test",
+        TEST_DATABASE_URL,
         poolclass=NullPool,
     )
     try:
@@ -232,7 +233,7 @@ async def test_cancel_run_concurrent_requests_append_one_event(
 
     async def cancel_with_independent_session() -> AgentRun:
         engine = create_async_engine(
-            "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test",
+            TEST_DATABASE_URL,
             poolclass=NullPool,
         )
         try:
@@ -543,7 +544,7 @@ async def test_event_append_does_not_block_behind_open_run_transaction(
     await db.refresh(run)
 
     engine = create_async_engine(
-        "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test",
+        TEST_DATABASE_URL,
         poolclass=NullPool,
     )
     try:

@@ -8,6 +8,7 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import {
+  FALLBACK_CHAT_MODEL_ID,
   TABLET_MIN_WIDTH,
   TEMPORARY_CONV_ID,
   filterChatModels,
@@ -76,7 +77,7 @@ export default function TemporaryChatScreen(): React.JSX.Element {
   const activeModelId = useMemo(() => {
     if (pickedModelId && models.some((m) => m.id === pickedModelId)) return pickedModelId
     const def = models.find((m) => m.isDefault)
-    return def?.id ?? models[0]?.id ?? 'deepseek-v4-flash'
+    return def?.id ?? models[0]?.id ?? FALLBACK_CHAT_MODEL_ID
   }, [pickedModelId, models])
   const activeModel = useMemo(
     () => models.find((m) => m.id === activeModelId),

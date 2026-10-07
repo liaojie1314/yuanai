@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     execution_node_protocol_version: str = "1"
     execution_node_min_protocol_version: str = "1"
     execution_node_encryption_key: str = ""
+    # 节点只会被写成 online，从不自动回落；心跳超过该阈值即视为离线。
+    # WebSocket 循环每 5 秒心跳一次，60 秒容得下十余次丢包才判定节点消失。
+    execution_node_heartbeat_stale_seconds: int = 60
 
     # 联网搜索：auto 优先使用本地无密钥 SearXNG，再使用显式配置的第三方 provider。
     search_provider: SearchProviderName = "auto"
@@ -178,6 +181,11 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/v1/auth/google/callback"
+    # 原生 Google Sign-In（POST /auth/google/native）允许的 id_token `aud`，逗号分隔。
+    # 移动端 id_token 的 aud 取决于客户端配置：配了 serverClientId 时是 Web client id，
+    # 否则是 Android / iOS 自身的 client id，所以必须支持配置多个而不能只认一个。
+    # google_client_id 始终隐含在允许集合内，无需在此重复填写。
+    google_native_client_ids: str = ""
     # 前端回调页面；后端 exchange 完 code 后把 access/refresh token 通过 302 拼在 URL 中
     web_app_url: str = "http://localhost:3000"
 
@@ -197,6 +205,14 @@ class Settings(BaseSettings):
     agent_allowlist_user_ids: str = ""
     # 指标哈希盐只用于避免在日志中写入用户原始标识。
     agent_metrics_hash_salt: str = "yuanai-agent-metrics"
+
+    # 自动化 Webhook 入口：公网未认证端点，三道校验的参数都不允许运行期放宽。
+    # 时间戳窗口同时作为重放记录的保留时长下限，窗口越大需要记住的签名越多。
+    webhook_timestamp_tolerance_seconds: int = 300
+    webhook_max_payload_bytes: int = 64 * 1024
+    webhook_rate_limit_per_minute: int = 60
+    # 第三方 payload 是不可信输入，进入 Run 目标前必须截断并显式围栏。
+    webhook_payload_context_max_chars: int = 2_000
 
 
 settings = Settings()  # type: ignore[call-arg]

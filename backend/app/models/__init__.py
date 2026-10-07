@@ -16,11 +16,15 @@ from app.models.automation import (
     AutomationStatus,
     AutomationTrigger,
     AutomationTriggerType,
+    WebhookEndpoint,
 )
 from app.models.conversation import Conversation
 from app.models.expo_push_token import ExpoPushToken
 from app.models.file import File, MessageFile
 from app.models.knowledge import (
+    IngestionJob,
+    IngestionJobStage,
+    IngestionJobStatus,
     KnowledgeBase,
     KnowledgeBaseMember,
     KnowledgeBaseMemberRole,
@@ -44,6 +48,9 @@ from app.models.qr_login import QRLoginChallenge, QRLoginEvent
 from app.models.share import ConversationShare
 from app.models.skill import (
     Skill,
+    SkillEvaluation,
+    SkillEvaluationMode,
+    SkillEvaluationStatus,
     SkillInstallation,
     SkillInstallationScope,
     SkillVersion,
@@ -88,9 +95,15 @@ __all__ = [
     "KnowledgeDocument",
     "KnowledgeDocumentStatus",
     "KnowledgeChunk",
+    "IngestionJob",
+    "IngestionJobStatus",
+    "IngestionJobStage",
     "Skill",
     "SkillVersion",
     "SkillVersionStatus",
+    "SkillEvaluation",
+    "SkillEvaluationMode",
+    "SkillEvaluationStatus",
     "SkillInstallation",
     "SkillInstallationScope",
     "ConversationShare",
@@ -107,6 +120,7 @@ __all__ = [
     "AutomationTriggerType",
     "AutomationRun",
     "AutomationRunStatus",
+    "WebhookEndpoint",
     "AgentRun",
     "AgentRunStatus",
     "RunStatus",

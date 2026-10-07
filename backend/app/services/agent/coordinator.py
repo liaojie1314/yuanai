@@ -15,6 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import (
+    AGENT_ESTIMATED_COST_USD,
+    AGENT_RUN_DURATION_SECONDS,
+    AGENT_RUNS_TOTAL,
+    AGENT_STEPS_PER_RUN,
+    AGENT_TOKENS_TOTAL,
+    AGENT_TOOL_CALLS_TOTAL,
+)
 from app.models.agent_run import (
     AgentRun,
     AgentRunStatus,
@@ -25,14 +33,9 @@ from app.models.agent_run import (
 from app.models.approval import ApprovalRequest, ApprovalRiskLevel
 from app.models.conversation import Conversation
 from app.models.message import Message, MessageRole
-from app.models.tool_runtime import (
-    ExecutionNode,
-    ExecutionNodeStatus,
-    ToolExecution,
-    ToolExecutionStatus,
-)
+from app.models.tool_runtime import ToolExecution, ToolExecutionStatus
 from app.schemas.knowledge import KnowledgeCitation
-from app.schemas.memory import MemoryContextItem
+from app.schemas.memory import MEMORY_SEARCH_MAX_QUERY_CHARS, MemoryContextItem
 from app.services import ai_service
 from app.services.agent.approval_service import (
     ApprovalError,
@@ -52,15 +55,19 @@ from app.services.ai_service import (
     ToolCallEnd,
     ToolCallStart,
     UsageDelta,
+    maybe_embed_text,
 )
 from app.services.knowledge_service import search_accessible_knowledge
 from app.services.memory_retrieval import (
-    maybe_embed_text,
     search_active_memories,
     to_context_items,
 )
 from app.services.secret_store import TenantSecretStore
-from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeService
+from app.services.tool_runtime_service import (
+    ToolRuntimeError,
+    ToolRuntimeService,
+    select_fresh_node,
+)
 from app.tools.contracts import (
     ToolContext,
     ToolError,
@@ -75,6 +82,9 @@ HARD_MAX_STEPS = 30
 DEFAULT_MAX_STEPS = 12
 MODEL_TIMEOUT_SECONDS = 60.0
 DEFAULT_TOOL_TIMEOUT_SECONDS = 30.0
+TERMINAL_RUN_STATUSES = frozenset(
+    {AgentRunStatus.succeeded, AgentRunStatus.failed, AgentRunStatus.cancelled}
+)
 
 
 class ModelStream(Protocol):
@@ -163,13 +173,75 @@ class AgentCoordinator:
         enable_thinking: bool = False,
         approval_id: uuid.UUID | None = None,
     ) -> CoordinatorResult:
+        """运行一次 bounded loop，并记录本次片段的运行指标。"""
+
+        started = time.monotonic()
+        tokens_before = (run.input_tokens or 0, run.output_tokens or 0)
+        cost_before = run.estimated_cost_usd or Decimal("0")
+        result = await self._run_bounded_loop(
+            run,
+            started=started,
+            db=db,
+            user_instructions=user_instructions,
+            history=history,
+            cancellation=cancellation,
+            enable_thinking=enable_thinking,
+            approval_id=approval_id,
+        )
+        self._record_run_metrics(
+            run,
+            result,
+            duration=time.monotonic() - started,
+            tokens_before=tokens_before,
+            cost_before=cost_before,
+        )
+        return result
+
+    def _record_run_metrics(
+        self,
+        run: AgentRun,
+        result: CoordinatorResult,
+        *,
+        duration: float,
+        tokens_before: tuple[int, int],
+        cost_before: Decimal,
+    ) -> None:
+        """记录本次 Run 片段的终态、耗时、Step 数、token 与估算成本。
+
+        token 与成本按**本次片段的增量**上报：审批暂停后恢复会在同一个 Run 上再调
+        一次 ``run()``，直接上报累计值会把恢复前的用量重复计一遍。耗时与 Step 数
+        只在 Run 真正进入终态时上报，避免把暂停片段计成一次完整 Run 的分布样本。
+        """
+
+        AGENT_RUNS_TOTAL.inc(status=result.status.value, model=run.model)
+        input_delta = max(0, (run.input_tokens or 0) - tokens_before[0])
+        output_delta = max(0, (run.output_tokens or 0) - tokens_before[1])
+        if input_delta:
+            AGENT_TOKENS_TOTAL.inc(input_delta, model=run.model, direction="input")
+        if output_delta:
+            AGENT_TOKENS_TOTAL.inc(output_delta, model=run.model, direction="output")
+        cost_delta = (run.estimated_cost_usd or Decimal("0")) - cost_before
+        if cost_delta > 0:
+            AGENT_ESTIMATED_COST_USD.inc(float(cost_delta), model=run.model)
+        if result.status in TERMINAL_RUN_STATUSES:
+            AGENT_RUN_DURATION_SECONDS.observe(duration)
+            AGENT_STEPS_PER_RUN.observe(run.current_step or 0)
+
+    async def _run_bounded_loop(
+        self,
+        run: AgentRun,
+        *,
+        started: float,
+        db: AsyncSession | None = None,
+        user_instructions: str = "",
+        history: Sequence[dict[str, object]] = (),
+        cancellation: asyncio.Event | Callable[[], Awaitable[bool]] | None = None,
+        enable_thinking: bool = False,
+        approval_id: uuid.UUID | None = None,
+    ) -> CoordinatorResult:
         """运行一次 bounded loop，并按需写回兼容的 assistant Message。"""
 
-        if run.status in {
-            AgentRunStatus.succeeded,
-            AgentRunStatus.failed,
-            AgentRunStatus.cancelled,
-        }:
+        if run.status in TERMINAL_RUN_STATUSES:
             return self._failure(run, AgentErrorCode.RUN_NOT_EXECUTABLE, "Run 已经结束")
         if await self._is_cancelled(cancellation):
             return self._finish(run, AgentRunStatus.cancelled, AgentErrorCode.AGENT_CANCELLED)
@@ -204,7 +276,6 @@ class AgentCoordinator:
             knowledge=knowledge_context,
         )
         tools = [self._tool_definition(spec) for spec in self._tool_registry.list_specs()]
-        started = time.monotonic()
         content = ""
         thinking = ""
         recent_calls: list[tuple[str, str]] = []
@@ -362,8 +433,8 @@ class AgentCoordinator:
                         if execution is None:
                             desktop_node_id: uuid.UUID | None = None
                             if execution_location == "desktop":
-                                desktop_node = await self._select_desktop_node(
-                                    run.user_id, call.name, db
+                                desktop_node = await select_fresh_node(
+                                    user_id=run.user_id, tool_name=call.name, db=db
                                 )
                                 if desktop_node is None:
                                     return self._failure(
@@ -469,6 +540,7 @@ class AgentCoordinator:
                         desktop_dispatch, timeout_seconds=timeout, db=db
                     )
                     if isinstance(desktop_result, CoordinatorResult):
+                        AGENT_TOOL_CALLS_TOTAL.inc(tool=call.name, status="failed")
                         return desktop_result
                     output = desktop_result
                 else:
@@ -493,6 +565,7 @@ class AgentCoordinator:
                                 message="工具执行超时",
                                 db=db,
                             )
+                        AGENT_TOOL_CALLS_TOTAL.inc(tool=call.name, status="timeout")
                         return self._failure(
                             run, AgentErrorCode.TOOL_TIMEOUT, "工具执行超时", error
                         )
@@ -506,6 +579,10 @@ class AgentCoordinator:
                             if error.code is ToolErrorCode.TIMEOUT
                             else AgentErrorCode.TOOL_FAILED
                         )
+                        AGENT_TOOL_CALLS_TOTAL.inc(
+                            tool=call.name,
+                            status="timeout" if code is AgentErrorCode.TOOL_TIMEOUT else "failed",
+                        )
                         return self._failure(run, code, error.code.value, error)
                     if execution is not None and db is not None:
                         await self._tool_runtime.complete_success(execution, output=output, db=db)
@@ -513,6 +590,7 @@ class AgentCoordinator:
                 tool_calls_summary.append(
                     {"name": call.name, "arguments": arguments, "output": output}
                 )
+                AGENT_TOOL_CALLS_TOTAL.inc(tool=call.name, status="succeeded")
                 await self._emit(
                     run,
                     "tool_completed",
@@ -534,18 +612,22 @@ class AgentCoordinator:
 
         if db is None:
             return []
+        # goal 是任务描述（上限 20000 字）而不是检索式，必须按检索查询的上限裁剪后再用：
+        # 整段下发会被工具契约判为非法参数，最终对用户显示成「本地记忆不可用」。
+        # 裁剪几乎不损失召回 —— 云端 FTS 在 2046 字节处就已经退化成空查询。
+        query = run.goal[:MEMORY_SEARCH_MAX_QUERY_CHARS]
         try:
-            results = await search_active_memories(
+            outcome = await search_active_memories(
                 user_id=run.user_id,
                 assistant_id=run.assistant_id,
-                query=run.goal,
-                query_embedding=await maybe_embed_text(run.goal),
+                query=query,
+                query_embedding=await maybe_embed_text(query),
                 db=db,
                 limit=8,
             )
         except SQLAlchemyError:
             return []
-        return to_context_items(results)
+        return to_context_items(outcome.results)
 
     async def _knowledge_context(
         self, run: AgentRun, db: AsyncSession | None
@@ -723,25 +805,6 @@ class AgentCoordinator:
         if isinstance(cancellation, asyncio.Event):
             return cancellation.is_set()
         return await cancellation()
-
-    @staticmethod
-    async def _select_desktop_node(
-        user_id: uuid.UUID, tool_name: str, db: AsyncSession
-    ) -> ExecutionNode | None:
-        """选择允许该工具的在线桌面节点；无匹配节点时返回 None。"""
-
-        nodes = await db.scalars(
-            select(ExecutionNode).where(
-                ExecutionNode.user_id == user_id,
-                ExecutionNode.status == ExecutionNodeStatus.online,
-            )
-        )
-        for node in nodes:
-            policy = node.policy if isinstance(node.policy, dict) else {}
-            allowed_tools = policy.get("allowed_tools")
-            if isinstance(allowed_tools, list) and tool_name in allowed_tools:
-                return node
-        return None
 
     async def _await_desktop_execution(
         self, execution: ToolExecution, *, timeout_seconds: float, db: AsyncSession

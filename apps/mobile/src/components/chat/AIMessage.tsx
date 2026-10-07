@@ -116,9 +116,10 @@ function AIMessageBase({
         marginBottom: spacing.xs,
       },
       link: { color: brand.solid, textDecorationLine: 'underline' as const },
+      // 同 ModelSelectorSheet：brand.light 是明色专用近白色，暗色下铺成刺眼白块。
       code_inline: {
-        backgroundColor: brand.light,
-        color: brand.hover,
+        backgroundColor: t.brand.selected,
+        color: t.brand.selectedFg,
         fontFamily: 'monospace',
         fontSize: t.typography.code,
         paddingHorizontal: 4,
@@ -128,7 +129,7 @@ function AIMessageBase({
       bullet_list: { marginBottom: spacing.sm },
       ordered_list: { marginBottom: spacing.sm },
       blockquote: {
-        backgroundColor: brand.light,
+        backgroundColor: t.brand.selected,
         borderLeftWidth: 3,
         borderLeftColor: brand.solid,
         paddingHorizontal: spacing.md,

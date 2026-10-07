@@ -11,6 +11,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from sqlalchemy import select
 
 from app.core.database import AsyncSessionLocal
+from app.core.metrics import AGENT_RECOVERY_TOTAL
 from app.core.redis import redis_client
 from app.models.agent_run import AgentRun, AgentRunStatus
 from app.services.agent.queue import AgentQueue
@@ -79,6 +80,7 @@ class RecoveryWorker:
         recovered = 0
         for item in await self._queue.recover_inflight():
             await self._requeue(item.tenant_id, item.run_id)
+            AGENT_RECOVERY_TOTAL.inc(reason="inflight")
             recovered += 1
         async for tenant_id, run_id, status in self._list_running():
             if await self._queue.lease_owner(tenant_id, run_id) is not None:
@@ -90,6 +92,7 @@ class RecoveryWorker:
             if status not in {AgentRunStatus.running, AgentRunStatus.queued}:
                 continue
             await self._requeue(tenant_id, run_id)
+            AGENT_RECOVERY_TOTAL.inc(reason="lease_lost")
             recovered += 1
         return recovered
 

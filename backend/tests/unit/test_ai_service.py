@@ -12,7 +12,6 @@
 """
 
 import asyncio
-import os
 import uuid
 from collections.abc import AsyncGenerator
 from types import SimpleNamespace
@@ -21,13 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import httpx
 import pytest
 
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://yuanai:password@localhost:5433/yuanai_test"
-)
-os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-unit-tests")
-
-import app.services.ai_service as ai_svc  # noqa: E402
-from app.services.ai_service import (  # noqa: E402
+import app.services.ai_service as ai_svc
+from app.services.ai_service import (
     AVAILABLE_MODELS,
     PROVIDER_CONFIG,
     AgnesImageResult,
@@ -57,7 +51,7 @@ from app.services.ai_service import (  # noqa: E402
     stream_chat,
     transcribe_audio,
 )
-from app.services.tools.search import SearchSource  # noqa: E402
+from app.services.tools.search import SearchSource
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -70,6 +64,18 @@ def clear_ai_clients() -> AsyncGenerator[None, None]:
     ai_svc._AI_CLIENTS.clear()
     yield  # type: ignore[misc]
     ai_svc._AI_CLIENTS.clear()
+
+
+class _StubChatClient:
+    """返回固定 completion 内容的最小 chat 客户端替身。"""
+
+    def __init__(self, content: str) -> None:
+        message = SimpleNamespace(content=content)
+        choice = SimpleNamespace(message=message, finish_reason="stop")
+        completion = SimpleNamespace(choices=[choice])
+        self.chat = SimpleNamespace(
+            completions=SimpleNamespace(create=AsyncMock(return_value=completion))
+        )
 
 
 def _build_mock_client(
@@ -367,10 +373,13 @@ def test_public_catalog_only_offers_current_models(monkeypatch: pytest.MonkeyPat
     models = get_available_models()
 
     assert [model["id"] for model in models] == [
+        "agnes-3.0-flash",
         "deepseek-v4-flash",
         "deepseek-v4-pro",
         "agnes-2.5-flash",
+        "agnes-image-2.5-flash",
         "agnes-image-2.1-flash",
+        "agnes-video-2.5-flash",
         "agnes-video-v2.0",
     ]
     assert all(model["id"] not in {"gpt-4o", "claude-3-5-sonnet-20241022"} for model in models)
@@ -386,6 +395,66 @@ def test_agnes_models_are_registered_without_embedded_credentials() -> None:
     assert PROVIDER_CONFIG["agnes-2.5-flash"]["base_url"] == "https://apihub.agnes-ai.com/v1"
     assert any(m["id"] == "agnes-image-2.1-flash" for m in AVAILABLE_MODELS)
     assert any(m["id"] == "agnes-video-v2.0" for m in AVAILABLE_MODELS)
+
+
+def test_agnes_3_flash_is_the_default_when_its_key_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """配置 Agnes 密钥后，默认模型是 agnes-3.0-flash。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    models = ai_svc.get_available_models()
+    assert models[0]["id"] == "agnes-3.0-flash"
+    assert models[0]["is_default"] is True
+
+
+def test_agnes_3_flash_declares_vision_and_its_real_context_window() -> None:
+    """目录里的能力声明必须与供应商文档一致：512K 上下文、支持图片输入。"""
+
+    entry = next(item for item in ai_svc.AVAILABLE_MODELS if item["id"] == "agnes-3.0-flash")
+    assert entry["supports_vision"] is True
+    assert entry["context_length"] == 512_000
+
+
+def test_only_one_model_is_marked_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """列表中有且只有一个默认模型。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    defaults = [item for item in ai_svc.get_available_models() if item["is_default"]]
+    assert len(defaults) == 1
+
+
+async def test_generate_agnes_image_uses_the_requested_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """图片生成必须把选中的模型传给供应商，而不是永远用 2.1。"""
+
+    captured: dict[str, object] = {}
+
+    async def _generate(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return SimpleNamespace(data=[SimpleNamespace(url="https://example.invalid/a.png")])
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(
+        ai_svc,
+        "_get_client",
+        lambda *_: SimpleNamespace(images=SimpleNamespace(generate=_generate)),
+    )
+    await ai_svc.generate_agnes_image(
+        "一只猫", size="2K", ratio="16:9", model="agnes-image-2.5-flash"
+    )
+    assert captured["model"] == "agnes-image-2.5-flash"
+
+
+def test_memory_extraction_stays_pinned_to_agnes_2_5_flash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """记忆抽取显式选模型，不跟随目录默认值变化。"""
+
+    monkeypatch.setitem(ai_svc.API_KEYS, "agnes", "test-key")
+    assert ai_svc.MEMORY_EXTRACTION_MODEL == "agnes-2.5-flash"
+    assert ai_svc.get_available_models()[0]["id"] != ai_svc.MEMORY_EXTRACTION_MODEL
 
 
 async def test_generate_conversation_title_retries_agnes_after_reasoning_budget_exhaustion(
@@ -1234,8 +1303,10 @@ async def test_stream_chat_deepseek_extra_body_disable_thinking() -> None:
     assert call_kwargs["extra_body"]["thinking"]["type"] == "disabled"
 
 
+@pytest.mark.parametrize("model", ["agnes-2.5-flash", "agnes-3.0-flash"])
 @pytest.mark.parametrize("enable_thinking", [True, False])
 async def test_stream_chat_agnes_passes_documented_thinking_toggle(
+    model: str,
     enable_thinking: bool,
 ) -> None:
     """Agnes OpenAI 兼容接口必须接收 chat_template_kwargs 开关。"""
@@ -1243,7 +1314,7 @@ async def test_stream_chat_agnes_passes_documented_thinking_toggle(
 
     with patch("app.services.ai_service._get_client", return_value=mock_client):
         async for _ in stream_chat(
-            "agnes-2.5-flash", [{"role": "user", "content": "hi"}], enable_thinking=enable_thinking
+            model, [{"role": "user", "content": "hi"}], enable_thinking=enable_thinking
         ):
             pass
 
@@ -1390,3 +1461,62 @@ async def test_transcribe_audio_hides_provider_exception(
             await transcribe_audio(filename="voice.webm", content=b"audio", mime_type="audio/webm")
 
     assert "sensitive upstream failure" not in str(exc_info.value)
+
+
+async def test_embed_text_refuses_to_run_without_an_approved_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """没有 OpenAI 密钥时必须显式失败，不得降级到其他模型。"""
+    monkeypatch.setattr(ai_svc.settings, "openai_api_key", "  ")
+
+    with pytest.raises(ai_svc.EmbeddingUnavailableError):
+        await ai_svc.embed_text("记住我偏好中文")
+
+
+async def test_maybe_embed_text_returns_none_instead_of_raising(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """maybe_embed_text 在 provider 不可用时返回 None，让检索退化为关键词。"""
+    monkeypatch.setattr(ai_svc.settings, "openai_api_key", "")
+
+    assert await ai_svc.maybe_embed_text("记住我偏好中文") is None
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_returns_none_without_a_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未配置 Agnes 密钥时不得抛出，抽取只是静默跳过。"""
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "")
+    assert await ai_svc.extract_memory_candidates(goal="订机票", transcript="") is None
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_parses_the_model_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型返回的 JSON 被解析成结构化候选，未知字段按默认值兜底。"""
+
+    payload = (
+        '{"memories": [{"memoryType": "preference", "content": "偏好靠窗座位", '
+        '"subject": "座位偏好", "confidence": 0.8, "explicit": true, "stable": true}]}'
+    )
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(ai_svc, "_get_client", lambda *_: _StubChatClient(payload))
+    candidates = await ai_svc.extract_memory_candidates(goal="订机票", transcript="我要靠窗")
+    assert candidates is not None
+    assert candidates[0].content == "偏好靠窗座位"
+    assert candidates[0].memory_type == "preference"
+    assert candidates[0].explicit is True
+
+
+@pytest.mark.asyncio
+async def test_extract_memory_candidates_returns_none_on_malformed_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型返回非 JSON 时视为不可用，绝不写入半成品候选。"""
+
+    monkeypatch.setattr(ai_svc.settings, "agnes_api_key", "test-key")
+    monkeypatch.setattr(ai_svc, "_get_client", lambda *_: _StubChatClient("not json at all"))
+    assert await ai_svc.extract_memory_candidates(goal="订机票", transcript="我要靠窗") is None

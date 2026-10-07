@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import (
@@ -23,9 +24,11 @@ from app.api.v1 import (
     skills,
     tools,
     voice,
+    webhooks,
 )
 from app.api.v1 import files as files_router
 from app.core.config import settings
+from app.core.metrics import render_metrics
 
 
 @asynccontextmanager
@@ -38,9 +41,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     ``AsyncHttpxClientWrapper.__del__`` 报错。
     """
     # ── startup ──────────────────────────────────────────────
+    from app.core.database import engine
+    from app.services.ai_service import _AI_CLIENTS
     from app.services.media_generation_service import run_media_generation_worker
     from app.services.storage_service import storage
 
+    # 连接池里的 asyncpg 连接绑定在创建它的事件循环上。进程内重启 lifespan 时
+    # （测试里的多个 TestClient、热重载）池中可能残留属于已关闭循环的连接，
+    # 后台 worker 拿到就会报 "attached to a different loop"。启动时先清空。
+    await engine.dispose()
+    # 同理，_AI_CLIENTS 里的 httpx client 持有绑定在创建循环上的 keep-alive socket。
+    # 这些 client 可能是在任何 lifespan 之外建的（例如直接用 ASGITransport 的测试），
+    # 本次 lifespan 并不拥有它们，关闭阶段 await close() 会报 "Event loop is closed"。
+    # 已关闭的循环上无法再关它的 socket，只能丢弃引用，交给 GC。
+    _AI_CLIENTS.clear()
     if hasattr(storage, "ensure_bucket"):
         try:
             await storage.ensure_bucket()
@@ -53,11 +67,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     stop_media_worker.set()
     await media_worker
     # ── shutdown ─────────────────────────────────────────────
-    from app.services.ai_service import _AI_CLIENTS
-
     for client in _AI_CLIENTS.values():
         await client.close()
     _AI_CLIENTS.clear()
+    # 连接池里的 asyncpg 连接绑定在当前事件循环上。不释放就退出，下一个
+    # 事件循环（进程内重启、测试里的第二个 TestClient）会拿到属于旧循环的连接，
+    # 报 "attached to a different loop"。
+    await engine.dispose()
 
 
 app = FastAPI(
@@ -103,8 +119,22 @@ app.include_router(memories.router, prefix="/api/v1")
 app.include_router(skills.router, prefix="/api/v1")
 app.include_router(knowledge.router, prefix="/api/v1")
 app.include_router(automations.router, prefix="/api/v1")
+app.include_router(webhooks.automation_router, prefix="/api/v1")
+app.include_router(webhooks.router, prefix="/api/v1")
 
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def metrics() -> str:
+    """Prometheus 抓取端点。
+
+    只暴露聚合计数与分布，标签全是低基数枚举（状态、模型、工具、方向、原因），
+    不含用户内容、原始用户标识或凭证，因此与 ``/health`` 一样不要求认证；
+    生产环境应在入口层把本路径限制为内网采集器可达。
+    """
+
+    return render_metrics()

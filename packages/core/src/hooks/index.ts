@@ -3,6 +3,7 @@ export type { StreamParams, TemporaryStreamParams, TemporaryChatMessage } from '
 export {
   useCurrentUser,
   useDesktopOAuthExchange,
+  useGoogleNativeLogin,
   useLogin,
   useLogout,
   useRegister,
@@ -38,6 +39,7 @@ export {
   type CreateMediaTaskInput,
 } from './useMediaGeneration'
 export { useModels } from './useModelsQuery'
+export { useChatModels } from './useChatModels'
 export {
   useShareLink,
   useCreateShareLink,
@@ -74,6 +76,7 @@ export {
 export {
   useCreateMemory,
   useDeleteMemory,
+  useExportMemories,
   useMemories,
   useSearchMemories,
   useUpdateMemory,
@@ -82,8 +85,10 @@ export {
   useActivateSkillVersion,
   useCreateSkill,
   useCreateSkillVersion,
+  useEvaluateSkillVersion,
   useRollbackSkillVersion,
   useSkills,
+  useSkillSuggestions,
   useUpdateSkillInstallation,
   useValidateSkillVersion,
 } from './useSkills'

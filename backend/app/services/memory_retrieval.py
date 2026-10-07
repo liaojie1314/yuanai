@@ -2,55 +2,100 @@
 
 from __future__ import annotations
 
-import math
-import re
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from openai import AsyncOpenAI, OpenAIError
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.models.memory import (
     Memory,
     MemorySensitivity,
     MemoryStatus,
     MemoryStorageLocation,
+    MemoryType,
 )
-from app.schemas.memory import MemoryContextItem, MemorySearchResult
+from app.schemas.memory import MemoryContextItem, MemorySearchOutcome, MemorySearchResult
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-_TOKEN_PATTERN = re.compile(r"[\w\u4e00-\u9fff]+", re.UNICODE)
-
-
-class EmbeddingUnavailableError(Exception):
-    """未配置或不可用的 embedding provider 不得降级到其他模型。"""
-
-
-async def embed_text(text: str) -> list[float]:
-    """调用已批准的 OpenAI embedding 模型；缺少密钥时显式失败。"""
-
-    if not settings.openai_api_key.strip():
-        raise EmbeddingUnavailableError("OPENAI_API_KEY 未配置")
-    try:
-        async with AsyncOpenAI(api_key=settings.openai_api_key) as client:
-            response = await client.embeddings.create(input=text, model=EMBEDDING_MODEL)
-    except OpenAIError as error:
-        raise EmbeddingUnavailableError("embedding provider 不可用") from error
-    if not response.data or not response.data[0].embedding:
-        raise EmbeddingUnavailableError("embedding provider 返回空向量")
-    return list(response.data[0].embedding)
+# RRF 的 k 决定名次的影响力。召回窗口只有 limit*_RECALL_MULTIPLIER（20~32）条，
+# k=60 时首名与末名只差 80/61≈1.31 倍，相邻名次只差 1.6%，
+# 而下面规则重排的乘子跨度是 1.15/0.27≈4.26 倍 —— 名次会被规则整个淹没，
+# 最终序等于 confidence×type_weight，召回名次沦为噪声。
+# k=5 把名次跨度抬到 25/6≈4.17 倍，与规则乘子同量级：
+# 规则仍能把垫底召回抬过榜首（0.040×1.15 > 0.1667×0.27），但翻不了十几个名次。
+RRF_K = 5
+_RECALL_MULTIPLIER = 4
+_HALF_LIFE_DAYS = 90.0
+_TYPE_WEIGHTS: dict[MemoryType, float] = {
+    MemoryType.profile: 1.15,
+    MemoryType.preference: 1.10,
+    MemoryType.semantic: 1.0,
+    MemoryType.episodic: 0.9,
+}
 
 
-async def maybe_embed_text(text: str) -> list[float] | None:
-    """仅使用已批准的 provider 生成向量；不可用时保留关键词检索。"""
+def accessible_filters(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    workspace_id: uuid.UUID | None,
+    current_time: datetime,
+    storage_location: MemoryStorageLocation = MemoryStorageLocation.cloud,
+) -> list[ColumnElement[bool]]:
+    """构造租户、助理、生命周期与时效的 SQL 过滤条件。
 
-    try:
-        return await embed_text(text)
-    except EmbeddingUnavailableError:
-        return None
+    权限过滤必须下推到 SQL：先跨租户召回再在应用层过滤是被明确禁止的。
+    ``storage_location`` 决定这组条件针对云端正文还是只存节点的记忆元数据。
+    """
+
+    filters: list[ColumnElement[bool]] = [
+        Memory.user_id == user_id,
+        Memory.assistant_id == assistant_id,
+        Memory.status == MemoryStatus.active,
+        Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
+        Memory.valid_from.is_(None) | (Memory.valid_from <= current_time),
+        Memory.valid_until.is_(None) | (Memory.valid_until > current_time),
+        Memory.storage_location == storage_location,
+    ]
+    if workspace_id is not None:
+        filters.append(or_(Memory.workspace_id == workspace_id, Memory.workspace_id.is_(None)))
+    else:
+        filters.append(Memory.workspace_id.is_(None))
+    return filters
+
+
+def fuse_rankings(*ranked_id_lists: Sequence[uuid.UUID], k: int = RRF_K) -> dict[uuid.UUID, float]:
+    """按 Reciprocal Rank Fusion 合并多路召回的排名。
+
+    RRF 只消费名次，因此关键词分数与向量距离这两种不可比的量纲永远不会混算。
+    """
+
+    fused: dict[uuid.UUID, float] = {}
+    for ranked in ranked_id_lists:
+        for rank, identifier in enumerate(ranked, start=1):
+            fused[identifier] = fused.get(identifier, 0.0) + 1.0 / (k + rank)
+    return fused
+
+
+def apply_rule_rerank(
+    scored: Sequence[tuple[float, Memory]], *, now: datetime
+) -> list[tuple[float, Memory]]:
+    """用置信度、新鲜度和记忆类型做确定性重排。
+
+    阶段文档禁止只按 embedding 距离排序；规则重排在不引入第二次模型调用的前提下满足该要求。
+    分数并列很常见（候选记忆的 confidence 默认 0.0），因此以 id 兜底，保证顺序可复现。
+    """
+
+    adjusted: list[tuple[float, Memory]] = []
+    for score, memory in scored:
+        reference = memory.last_used_at or memory.created_at
+        age_days = max((now - reference).total_seconds() / 86400.0, 0.0) if reference else 0.0
+        recency = 0.5 ** (age_days / _HALF_LIFE_DAYS)
+        confidence = 0.5 + 0.5 * max(0.0, min(1.0, memory.confidence))
+        weight = _TYPE_WEIGHTS.get(memory.memory_type, 1.0)
+        adjusted.append((score * confidence * weight * (0.6 + 0.4 * recency), memory))
+    return sorted(adjusted, key=lambda item: (-item[0], item[1].id))
 
 
 async def search_active_memories(
@@ -63,36 +108,175 @@ async def search_active_memories(
     query_embedding: Sequence[float] | None = None,
     limit: int = 8,
     now: datetime | None = None,
-) -> list[MemorySearchResult]:
-    """先过滤可访问 active 记忆，再融合关键词和向量分数。"""
+) -> MemorySearchOutcome:
+    """合并云端混合检索与桌面节点上的本地记忆，返回可进入上下文的记忆。
+
+    只有当该助理下确实存在 local_node 记忆时才会访问节点：没有本地记忆的用户
+    不该为一次云端检索付出节点往返的代价。
+    """
 
     if limit < 1:
-        return []
+        return MemorySearchOutcome(results=[], local_unavailable=False)
     current_time = now or datetime.now(UTC)
-    filters = [
-        Memory.user_id == user_id,
-        Memory.assistant_id == assistant_id,
-        Memory.status == MemoryStatus.active,
-        Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
-        (Memory.valid_from.is_(None) | (Memory.valid_from <= current_time)),
-        (Memory.valid_until.is_(None) | (Memory.valid_until > current_time)),
-        Memory.storage_location == MemoryStorageLocation.cloud,
+    cloud_results = await _cloud_results(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=query,
+        db=db,
+        workspace_id=workspace_id,
+        query_embedding=query_embedding,
+        limit=limit,
+        current_time=current_time,
+    )
+    local_results, local_unavailable = await _local_results(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=query,
+        db=db,
+        workspace_id=workspace_id,
+        limit=limit,
+        current_time=current_time,
+    )
+    if not local_results:
+        return MemorySearchOutcome(results=cloud_results, local_unavailable=local_unavailable)
+    # 节点回包的 score 是 1/(index+1)，节点侧注释也写明「云端按名次与元数据再做融合排序」：
+    # 那是名次的倒数，不是能与云端比较的相关度。云端分数经 RRF 融合与规则重排后上限 0.383、
+    # 典型值约 0.08，而节点首名恒为 1.0 —— 直接同表排序会让节点命中无条件吃满整个 limit
+    # （limit=8 实测 8/8），云端记忆被静默挤出上下文，且挤出与相关度毫无关系。
+    # 这个 score 还是不可信输入：节点报一个 9.0 就能霸榜，`_parse_node_hits` 不设上限。
+    # 云端与本地记忆按 storage_location 互斥，绝不会出现在同一条 RRF 里，
+    # 于是「把节点当第三路召回」退化成纯按名次给分，即 1/(RRF_K+r)，与云端单臂完全同口径。
+    local_by_rank = [
+        result.model_copy(update={"score": 1.0 / (RRF_K + rank)})
+        for rank, result in enumerate(local_results, start=1)
     ]
-    if workspace_id is not None:
-        filters.append(or_(Memory.workspace_id == workspace_id, Memory.workspace_id.is_(None)))
-    else:
-        filters.append(Memory.workspace_id.is_(None))
-    fts_query = func.plainto_tsquery("simple", query)
-    fts_match = Memory.search_vector.op("@@")(fts_query)
-    candidate_query = select(Memory).where(*filters)
-    if query_embedding is None:
-        candidate_query = candidate_query.where(or_(fts_match, Memory.content.ilike(f"%{query}%")))
-    # ponytail: in-process JSON-vector ranking; migrate to pgvector ANN/RRF as corpus grows.
-    candidates = list((await db.scalars(candidate_query)).all())
-    terms = _terms(query)
-    scored = [(_score(memory, terms, query_embedding), memory) for memory in candidates]
-    ranked = sorted(
-        (item for item in scored if item[0] > 0), key=lambda item: item[0], reverse=True
+    # ponytail: 云端分数是规则重排之后的（乘子 0.45~1.15），本地这一路没有重排，
+    # 因此默认 confidence（0.0）的云端命中在同名次上仍会输给节点命中，倍率约 2.2 倍；
+    # 彻底修法是两路都先出 RRF 名次分、再共用一次 apply_rule_rerank。
+    merged = sorted(cloud_results + local_by_rank, key=lambda result: (-result.score, result.id))
+    return MemorySearchOutcome(results=merged[:limit], local_unavailable=local_unavailable)
+
+
+async def _local_results(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    query: str,
+    db: AsyncSession,
+    workspace_id: uuid.UUID | None,
+    limit: int,
+    current_time: datetime,
+) -> tuple[list[MemorySearchResult], bool]:
+    """有本地记忆时才向节点发起检索，否则跳过并报告「可用」。"""
+
+    normalized = query.strip()
+    if not normalized:
+        return [], False
+    has_local = await db.scalar(
+        select(Memory.id)
+        .where(
+            *accessible_filters(
+                user_id=user_id,
+                assistant_id=assistant_id,
+                workspace_id=workspace_id,
+                current_time=current_time,
+                storage_location=MemoryStorageLocation.local_node,
+            )
+        )
+        .limit(1)
+    )
+    if has_local is None:
+        return [], False
+    # 延迟导入：memory_node 需要本模块的 accessible_filters，模块级互相导入会成环。
+    from app.services.memory_node import search_local_memories
+
+    return await search_local_memories(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        query=normalized,
+        limit=limit,
+        db=db,
+        workspace_id=workspace_id,
+    )
+
+
+async def _cloud_results(
+    *,
+    user_id: uuid.UUID,
+    assistant_id: uuid.UUID,
+    query: str,
+    db: AsyncSession,
+    workspace_id: uuid.UUID | None,
+    query_embedding: Sequence[float] | None,
+    limit: int,
+    current_time: datetime,
+) -> list[MemorySearchResult]:
+    """先过滤后召回，融合关键词与向量两路并重排，返回云端正文的检索结果。
+
+    查询为空白时关键词臂整个跳过：空白子串会匹配全部记忆，那不是检索而是全表扫描。
+    """
+
+    filters = accessible_filters(
+        user_id=user_id,
+        assistant_id=assistant_id,
+        workspace_id=workspace_id,
+        current_time=current_time,
+    )
+    recall = limit * _RECALL_MULTIPLIER
+
+    keyword_ids: list[uuid.UUID] = []
+    normalized = query.strip()
+    if normalized:
+        fts_query = func.plainto_tsquery("simple", normalized)
+        # LIKE 通配符必须转义：查询 "%" 原样拼进 pattern 会命中全部记忆，
+        # 并把这些记忆的 last_used_at 全部刷新，等于一次查询污染整个租户的新鲜度。
+        escaped = normalized.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # simple 配置不切分中文，整句只得到一个词元，中文查询实际全靠 ILIKE 子串匹配，
+        # 而 ts_rank 对中文恒为 0，排序会塌成 updated_at：召回预过滤等于「只留最近更新的，
+        # 其余静默丢弃」。改用 pg_trgm 的 word_similarity 给出真实相关度，
+        # 同一个三元组 GIN 索引也让子串匹配从顺序扫描变成索引扫描。
+        # ponytail: 三元组是字符三连而不是词，两字中文查询（如「中文」）只能靠补白三元组匹配，
+        # 既吃不到索引、相关度也恒为 0，召回仍弱于真正的分词；
+        # 升级路径是换成带中文分词的文本检索配置（zhparser / pg_jieba）。
+        relevance = func.word_similarity(normalized, func.coalesce(Memory.content, ""))
+        keyword_rows = await db.execute(
+            select(Memory.id)
+            .where(
+                *filters,
+                or_(
+                    Memory.search_vector.op("@@")(fts_query),
+                    Memory.content.ilike(f"%{escaped}%", escape="\\"),
+                ),
+            )
+            .order_by(relevance.desc(), Memory.updated_at.desc(), Memory.id)
+            .limit(recall)
+        )
+        keyword_ids = [row[0] for row in keyword_rows]
+
+    vector_ids: list[uuid.UUID] = []
+    if query_embedding is not None:
+        vector_rows = await db.execute(
+            select(Memory.id)
+            .where(*filters, Memory.embedding.is_not(None))
+            .order_by(Memory.embedding.cosine_distance(list(query_embedding)))
+            .limit(recall)
+        )
+        vector_ids = [row[0] for row in vector_rows]
+
+    fused = fuse_rankings(keyword_ids, vector_ids)
+    if not fused:
+        return []
+    memories = {
+        memory.id: memory
+        for memory in (await db.scalars(select(Memory).where(Memory.id.in_(list(fused))))).all()
+    }
+    ranked = apply_rule_rerank(
+        [
+            (score, memories[identifier])
+            for identifier, score in fused.items()
+            if identifier in memories
+        ],
+        now=current_time,
     )[:limit]
     for _, memory in ranked:
         memory.last_used_at = current_time
@@ -103,7 +287,7 @@ async def search_active_memories(
             assistant_id=memory.assistant_id,
             workspace_id=memory.workspace_id,
             memory_type=memory.memory_type,
-            content=memory.content,
+            content=memory.content or "",
             source_type=memory.source_type,
             source_id=memory.source_id,
             source_excerpt=memory.source_excerpt,
@@ -129,31 +313,3 @@ def to_context_items(results: Sequence[MemorySearchResult]) -> list[MemoryContex
         )
         for result in results
     ]
-
-
-def _score(memory: Memory, terms: set[str], query_embedding: Sequence[float] | None) -> float:
-    """合并关键词重叠和可用 embedding 的无状态分数。"""
-
-    content_terms = _terms(memory.content)
-    keyword_score = len(terms & content_terms) / max(len(terms), 1)
-    vector_score = _cosine_similarity(query_embedding, memory.embedding)
-    return (keyword_score + vector_score) / 2 if vector_score is not None else keyword_score
-
-
-def _terms(value: str) -> set[str]:
-    """保留词语并拆分中文字符，避免无空格文本无法命中关键词。"""
-
-    words = set(_TOKEN_PATTERN.findall(value.lower()))
-    return words | {
-        character for word in words for character in word if "\u4e00" <= character <= "\u9fff"
-    }
-
-
-def _cosine_similarity(left: Sequence[float] | None, right: Sequence[float] | None) -> float | None:
-    """计算同维向量的余弦相似度，异常数据不参与语义排序。"""
-
-    if left is None or right is None or len(left) != len(right) or not left:
-        return None
-    numerator = sum(a * b for a, b in zip(left, right, strict=True))
-    denominator = math.sqrt(sum(a * a for a in left)) * math.sqrt(sum(b * b for b in right))
-    return numerator / denominator if denominator else None

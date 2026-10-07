@@ -1,10 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { createElement, type Key, type ReactNode } from 'react'
+import { createElement, useMemo, type Key, type ReactNode } from 'react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { formatMsgTime } from '@yuanai/core/utils'
-import type { ToolCall } from '@yuanai/types'
+import { FALLBACK_CHAT_MODEL_ID, formatMsgTime, resolveChatModels } from '@yuanai/core/utils'
+import type { AIModel, ToolCall } from '@yuanai/types'
 
 const chat = vi.hoisted(() => ({
   conversations: [] as Array<{
@@ -17,6 +17,8 @@ const chat = vi.hoisted(() => ({
   }>,
   createConversation: vi.fn(),
   createMediaTask: vi.fn(),
+  /** 模型目录请求是否在飞；用例按需打开以验证加载态 */
+  modelsFetching: false,
   mediaTasks: [],
   createShareLink: vi.fn(),
   deleteConversation: vi.fn(),
@@ -57,7 +59,7 @@ const chat = vi.hoisted(() => ({
       contextLength: 128000,
       isDefault: false,
     },
-  ],
+  ] as AIModel[],
   send: vi.fn(),
   sendTemporary: vi.fn(),
   logout: vi.fn(),
@@ -205,6 +207,13 @@ vi.mock('@yuanai/core/hooks', () => ({
   useMessages: () => ({ data: chat.messages, isLoading: false }),
   useMediaTasks: () => ({ data: chat.mediaTasks, isLoading: false }),
   useModels: () => ({ data: chat.models }),
+  // 走真实的目录归一逻辑，测试断言的是 App 的渲染分支而不是这里的替身；
+  // useMemo 复刻真实 hook 的引用稳定性，否则依赖 models 的同步 effect 会每帧重跑
+  useChatModels: () => {
+    const models = chat.models
+    const isFetching = chat.modelsFetching
+    return useMemo(() => resolveChatModels(models, isFetching), [models, isFetching])
+  },
   useShareLink: () => ({ data: chat.shareLink, isLoading: false }),
   useCreateShareLink: () => ({ isPending: false, mutateAsync: chat.createShareLink }),
   useRevokeShareLink: () => ({ isPending: false, mutateAsync: chat.revokeShareLink }),
@@ -384,6 +393,7 @@ beforeEach(() => {
       isDefault: false,
     },
   ]
+  chat.modelsFetching = false
   chat.createConversation.mockResolvedValue({
     id: 'conversation-2',
     title: '新对话',
@@ -511,22 +521,61 @@ describe('desktop chat', () => {
     expect(screen.queryByRole('button', { name: '跳过此版本' })).not.toBeInTheDocument()
   })
 
-  it('uses all chat-model fallbacks and excludes media-only models until the API is available', async () => {
+  it('目录请求进行中时模型选择器显示加载态而不是任何模型名', async () => {
+    const user = userEvent.setup()
+    chat.models = []
+    chat.modelsFetching = true
+    render(<App />)
+
+    const trigger = screen.getByRole('button', { name: '选择模型：模型加载中…' })
+    await user.click(trigger)
+
+    expect(screen.getAllByText('模型加载中…').length).toBeGreaterThan(0)
+    expect(screen.queryAllByRole('option')).toHaveLength(0)
+    expect(screen.queryByText(FALLBACK_CHAT_MODEL_ID)).not.toBeInTheDocument()
+  })
+
+  it('目录请求失败后退回单条兜底模型，选择器仍然可用', async () => {
     const user = userEvent.setup()
     chat.models = []
     render(<App />)
 
-    expect(
-      screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' })
-    ).toBeInTheDocument()
+    const trigger = screen.getByRole('button', { name: `选择模型：${FALLBACK_CHAT_MODEL_ID}` })
+    await user.click(trigger)
 
-    await user.click(screen.getByRole('button', { name: '选择模型：DeepSeek V4 Flash-0731' }))
+    const options = screen.getAllByRole('option')
+    expect(options).toHaveLength(1)
+    expect(options[0]).toHaveAccessibleName(`选择 ${FALLBACK_CHAT_MODEL_ID}`)
+    expect(screen.getByText('暂时取不到模型列表，先用这个默认模型')).toBeInTheDocument()
+    expect(screen.queryByText('模型加载中…')).not.toBeInTheDocument()
+  })
 
-    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Flash-0731' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '选择 DeepSeek V4 Pro-0813' })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: '选择 Agnes 2.5 Flash' })).toBeInTheDocument()
-    expect(screen.queryByText('Agnes Image 2.1 Flash')).not.toBeInTheDocument()
-    expect(screen.queryByText('Agnes Video V2.0')).not.toBeInTheDocument()
+  it('目录到达后只展示后端返回的聊天模型，媒体模型不进选择器', async () => {
+    const user = userEvent.setup()
+    chat.models = [
+      ...chat.models,
+      {
+        id: 'agnes-image-2.1-flash',
+        name: 'Agnes Image 2.1 Flash',
+        provider: 'agnes',
+        description: '图片生成模型',
+        supportsVision: true,
+        supportsFiles: true,
+        contextLength: 0,
+        isDefault: false,
+        capability: 'image_generation',
+      },
+    ]
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: '选择模型：GPT-4o' }))
+
+    const options = screen.getAllByRole('option')
+    expect(options.map((option) => option.getAttribute('aria-label'))).toEqual([
+      '选择 GPT-4o',
+      '选择 GPT-4.1 mini',
+    ])
+    expect(screen.queryByText(FALLBACK_CHAT_MODEL_ID)).not.toBeInTheDocument()
   })
 
   it('shows the welcome state instead of a false streaming response when no conversation is active', () => {

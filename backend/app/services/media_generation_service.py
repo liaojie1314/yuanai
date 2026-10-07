@@ -30,11 +30,15 @@ from app.models.media_generation_task import (
 from app.models.message import Message, MessageRole
 from app.schemas.media_generation import CreateMediaGenerationRequest
 from app.services.ai_service import (
+    AGNES_VIDEO_FLASH_MODEL,
+    PROVIDER_CONFIG,
+    AgnesVideoValidationError,
     MediaLyricsGenerationError,
     MediaLyricsProviderUnavailableError,
     MediaProviderError,
     MediaProviderUnavailableError,
     create_agnes_video,
+    create_agnes_video_flash,
     generate_ace_step_music,
     generate_agnes_image,
     generate_elevenlabs_music,
@@ -83,6 +87,11 @@ _MEDIA_EXTENSIONS = {
     "audio/mpeg": "mp3",
 }
 _VIDEO_POSTER_MIME_TYPE = "image/jpeg"
+# 只有这两类任务允许调用方显式指定模型，音乐模型由是否填写歌词决定。
+_SELECTABLE_MODEL_KINDS: dict[MediaGenerationType, str] = {
+    MediaGenerationType.image: "image",
+    MediaGenerationType.video: "video",
+}
 
 
 class MediaGenerationConversationNotFoundError(LookupError):
@@ -105,8 +114,20 @@ class MediaGenerationOutputError(RuntimeError):
     """provider 返回的结果无法安全复制到 YuanAI 对象存储。"""
 
 
-def _task_model(kind: MediaGenerationType, options: Mapping[str, object] | None = None) -> str:
-    """返回只允许由专用任务 API 调用的媒体模型 ID。"""
+def _task_model(
+    kind: MediaGenerationType,
+    options: Mapping[str, object] | None = None,
+    requested_model: str | None = None,
+) -> str:
+    """返回媒体任务使用的模型 ID，调用方可显式指定同类的已注册媒体模型。"""
+    if requested_model is not None:
+        expected_kind = _SELECTABLE_MODEL_KINDS.get(kind)
+        if (
+            expected_kind is None
+            or PROVIDER_CONFIG.get(requested_model, {}).get("kind") != expected_kind
+        ):
+            raise MediaGenerationValidationError("生成模型不受支持")
+        return requested_model
     if kind is MediaGenerationType.image:
         return "agnes-image-2.1-flash"
     if kind is MediaGenerationType.music:
@@ -207,6 +228,15 @@ def _video_provider_options(task: MediaGenerationTask) -> tuple[int, int, int, i
     return width, height, num_frames, 24
 
 
+def _video_flash_provider_options(task: MediaGenerationTask) -> tuple[str, str, str]:
+    """将受限的显示规格转换为 Agnes Video 2.5 Flash 的时长、尺寸与画面比例。"""
+    return (
+        str(_option_int(task, "durationSeconds")),
+        _option_string(task, "resolution").upper(),
+        _option_string(task, "aspectRatio"),
+    )
+
+
 async def _owned_conversation(
     db: AsyncSession, user_id: uuid.UUID, conversation_id: uuid.UUID
 ) -> Conversation:
@@ -285,6 +315,7 @@ async def create_media_task(
     """为用户拥有的会话原子创建 assistant 消息和排队媒体任务。"""
     conversation = await _owned_conversation(db, user_id, conversation_id)
     options = _normalized_options(request)
+    model = _task_model(request.type, options, request.model)
     source_file_ids = await _validate_source_files(db, user_id, request.source_file_ids)
     now = datetime.now(UTC)
     user_message = Message(
@@ -308,7 +339,7 @@ async def create_media_task(
         conv_id=conversation.id,
         role=MessageRole.assistant,
         content=_placeholder_content(request.type),
-        model=_task_model(request.type, options),
+        model=model,
         # 与用户提问明确错开，保证所有客户端都把任务卡渲染为该轮回复。
         created_at=now + timedelta(microseconds=1),
     )
@@ -321,7 +352,7 @@ async def create_media_task(
         message_id=assistant_message.id,
         source_message_id=user_message.id,
         kind=request.type,
-        model=_task_model(request.type, options),
+        model=model,
         prompt=request.prompt,
         request_options=cast(dict[str, object], options),
         source_file_ids=source_file_ids,
@@ -816,6 +847,7 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                     size=_option_string(task, "size"),
                     ratio=_option_string(task, "ratio"),
                     image_urls=image_urls,
+                    model=task.model,
                 )
                 await _persist_provider_output(task, result.url)
                 await _complete_task(db, task)
@@ -887,17 +919,34 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                 return
 
             if task.provider_video_id is None:
-                width, height, num_frames, frame_rate = _video_provider_options(task)
-                snapshot = await create_agnes_video(
-                    task.prompt,
-                    width=width,
-                    height=height,
-                    num_frames=num_frames,
-                    frame_rate=frame_rate,
-                    image_urls=await _source_image_urls(task, db),
-                )
+                image_urls = await _source_image_urls(task, db)
+                if task.model == AGNES_VIDEO_FLASH_MODEL:
+                    seconds, size, aspect_ratio = _video_flash_provider_options(task)
+                    snapshot = await create_agnes_video_flash(
+                        task.prompt,
+                        seconds=seconds,
+                        mode="keyframe" if image_urls else "text",
+                        size=size,
+                        aspect_ratio=aspect_ratio,
+                        image_urls=image_urls,
+                    )
+                else:
+                    width, height, num_frames, frame_rate = _video_provider_options(task)
+                    snapshot = await create_agnes_video(
+                        task.prompt,
+                        width=width,
+                        height=height,
+                        num_frames=num_frames,
+                        frame_rate=frame_rate,
+                        image_urls=image_urls,
+                    )
             else:
-                snapshot = await get_agnes_video(task.provider_video_id)
+                snapshot = await get_agnes_video(
+                    task.provider_video_id,
+                    model_name=(
+                        AGNES_VIDEO_FLASH_MODEL if task.model == AGNES_VIDEO_FLASH_MODEL else None
+                    ),
+                )
 
             if snapshot.provider_task_id is not None:
                 task.provider_task_id = snapshot.provider_task_id
@@ -943,7 +992,8 @@ async def _process_claimed_task(task_id: uuid.UUID) -> None:
                 await _fail_task(db, task, "MEDIA_PROVIDER_CREATE_FAILED")
         except MediaGenerationOutputError:
             await _fail_task(db, task, "MEDIA_OUTPUT_INVALID")
-        except MediaGenerationValidationError:
+        except (MediaGenerationValidationError, AgnesVideoValidationError):
+            # Flash 的本地校验在任何计费动作之前拦下，与参数非法同样处理
             await _fail_task(db, task, "MEDIA_TASK_INVALID")
 
 
@@ -1006,15 +1056,20 @@ async def run_media_generation_worker(stop_event: asyncio.Event) -> None:
     """循环认领并处理 durable 媒体任务，支持进程重启后的图片有限恢复。"""
     skipped_poster_backfills: set[uuid.UUID] = set()
     while not stop_event.is_set():
-        task_id = await _claim_next_task()
-        if task_id is not None:
-            await _process_claimed_task(task_id)
-            continue
-        poster_task_id = await _claim_next_missing_video_poster(skipped_poster_backfills)
-        if poster_task_id is not None:
-            if not await _backfill_video_poster(poster_task_id):
-                skipped_poster_backfills.add(poster_task_id)
-            continue
+        try:
+            task_id = await _claim_next_task()
+            if task_id is not None:
+                await _process_claimed_task(task_id)
+                continue
+            poster_task_id = await _claim_next_missing_video_poster(skipped_poster_backfills)
+            if poster_task_id is not None:
+                if not await _backfill_video_poster(poster_task_id):
+                    skipped_poster_backfills.add(poster_task_id)
+                continue
+        except Exception:
+            # 单轮失败（例如数据库瞬断）不能终结 worker：task 一旦异常退出，
+            # lifespan 关闭时的 ``await media_worker`` 会重新抛出它，整个关闭流程随之失败。
+            logger.exception("媒体任务 worker 本轮失败，退避后重试")
         try:
             await asyncio.wait_for(
                 stop_event.wait(), timeout=settings.media_worker_poll_interval_seconds

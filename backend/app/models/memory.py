@@ -6,11 +6,25 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from sqlalchemy import JSON, Computed, DateTime, Enum, ForeignKey, Index, String, Text, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Computed,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
+
+EMBEDDING_DIMENSIONS = 1536
 
 
 class MemoryType(StrEnum):
@@ -55,7 +69,23 @@ class Memory(Base):
     __table_args__ = (
         Index("ix_memories_user_assistant_status", "user_id", "assistant_id", "status"),
         Index("ix_memories_user_workspace_status", "user_id", "workspace_id", "status"),
+        # 游标分页的支撑索引，列序必须与 (user_id 等值, created_at DESC, id DESC) 一致：
+        # btree 可反向扫描，因此升序索引即可，无需再建一份降序的。
+        Index("ix_memories_user_created_id", "user_id", "created_at", "id"),
         Index("ix_memories_search_vector", "search_vector", postgresql_using="gin"),
+        # 本地记忆的隐私不变量。此前只靠每个写入点各自记得判断，漏一处就是静默泄漏，
+        # 而 structured_data 没有大小上限，整条正文都能塞进去。在这里作结构性保证。
+        # 注意不能写 `structured_data IS NULL`：SQLAlchemy 的 JSON 类型把 Python None
+        # 存成 JSON 字面量 null 而非 SQL NULL，那样写会把正常的本地记忆一并拒掉。
+        # 判空口径与应用层的真值判断保持一致，否则应用放行的会在库里炸成 500。
+        CheckConstraint(
+            "storage_location <> 'local_node' OR ("
+            " coalesce(content, '') = ''"
+            " AND coalesce(source_excerpt, '') = ''"
+            " AND coalesce(structured_data::jsonb, 'null'::jsonb)"
+            " IN ('null'::jsonb, '{}'::jsonb))",
+            name="ck_memories_local_node_keeps_no_cloud_text",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -69,7 +99,7 @@ class Memory(Base):
     memory_type: Mapped[MemoryType] = mapped_column(
         Enum(MemoryType, native_enum=False, length=16), nullable=False
     )
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
     structured_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     source_type: Mapped[str] = mapped_column(String(40), nullable=False)
     source_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -85,6 +115,9 @@ class Memory(Base):
         nullable=False,
         default=MemoryStorageLocation.cloud,
     )
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("execution_nodes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[MemoryStatus] = mapped_column(
         Enum(MemoryStatus, native_enum=False, length=16),
         nullable=False,
@@ -92,10 +125,12 @@ class Memory(Base):
     )
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    embedding: Mapped[list[float] | None] = mapped_column(JSON, nullable=True)
+    embedding: Mapped[list[float] | None] = mapped_column(
+        Vector(EMBEDDING_DIMENSIONS), nullable=True
+    )
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
-        Computed("to_tsvector('simple', content)", persisted=True),
+        Computed("to_tsvector('simple', coalesce(content, ''))", persisted=True),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

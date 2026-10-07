@@ -1,5 +1,7 @@
 """Desktop 本地文件工具的契约与入参校验测试。"""
 
+import uuid
+
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,13 +11,21 @@ from app.services.tool_runtime_service import ToolRuntimeError, ToolRuntimeServi
 from app.tools.builtin.desktop import (
     DESKTOP_BUILTINS,
     LIST_GRANTED_DIRECTORY_SPEC,
+    MEMORY_DELETE_SPEC,
+    MEMORY_SEARCH_SPEC,
+    MEMORY_WRITE_SPEC,
+    READ_CLIPBOARD_SPEC,
     READ_GRANTED_FILE_SPEC,
     WRITE_WORKSPACE_FILE_SPEC,
     list_granted_directory,
+    memory_delete,
+    memory_search,
+    memory_write,
+    read_clipboard,
     read_granted_file,
     write_workspace_file,
 )
-from app.tools.contracts import ToolContext, ToolError, ToolRisk
+from app.tools.contracts import SideEffect, ToolContext, ToolError, ToolRisk
 from app.tools.registry import ToolRegistry, validate_arguments_against_schema
 
 
@@ -33,13 +43,17 @@ async def test_desktop_file_tools_fail_closed_in_api_process() -> None:
 
 
 def test_desktop_file_tools_share_node_only_execution_location() -> None:
-    """三个文件工具都只允许 desktop 执行位置，并带正确风险级别。"""
+    """全部桌面工具都只允许 desktop 执行位置，并带正确风险级别。"""
 
     assert [spec.name for spec, _handler in DESKTOP_BUILTINS] == [
         "browser_open_url",
         "read_granted_file",
         "list_granted_directory",
         "write_workspace_file",
+        "read_clipboard",
+        "memory.search",
+        "memory.write",
+        "memory.delete",
     ]
     for spec, _handler in DESKTOP_BUILTINS:
         assert spec.execution_location == "desktop"
@@ -47,6 +61,79 @@ def test_desktop_file_tools_share_node_only_execution_location() -> None:
     assert READ_GRANTED_FILE_SPEC.risk_level is ToolRisk.read
     assert LIST_GRANTED_DIRECTORY_SPEC.risk_level is ToolRisk.read
     assert WRITE_WORKSPACE_FILE_SPEC.risk_level is ToolRisk.local_write
+
+
+def test_memory_search_is_a_read_risk_tool() -> None:
+    """只读检索才允许节点侧自动接受，风险等级必须是 read。"""
+
+    assert MEMORY_SEARCH_SPEC.risk_level is ToolRisk.read
+
+
+def test_read_clipboard_is_never_auto_accepted() -> None:
+    """phase-6 §9.4 要求剪贴板每次确认；Python 侧等级必须让策略关掉自动放行。
+
+    节点侧的 AUTO_ACCEPT_TOOLS 只含 memory.search，这里锁住云端这一半：
+    风险等级若被降回 read，PolicyEngine 会直接放行，用户再也看不到确认卡。
+    """
+
+    assert READ_CLIPBOARD_SPEC.risk_level is not ToolRisk.read
+    assert READ_CLIPBOARD_SPEC.risk_level is not ToolRisk.low
+    # 真实副作用仍为 none：读取不改变任何状态
+    assert READ_CLIPBOARD_SPEC.side_effect is SideEffect.none
+
+
+@pytest.mark.parametrize("spec", [MEMORY_WRITE_SPEC, MEMORY_DELETE_SPEC])
+def test_memory_mutation_tools_are_not_read_risk(spec: object) -> None:
+    """写入与删除不得被自动接受，风险等级必须高于 read。"""
+
+    assert spec.risk_level is not ToolRisk.read  # type: ignore[attr-defined]
+
+
+async def test_memory_tools_fail_closed_in_api_process() -> None:
+    """记忆作业同样禁止在 API 进程执行，正文只允许节点接触。"""
+
+    context = ToolContext()
+    for handler, arguments in (
+        (memory_search, {"query": "记忆内容A", "limit": 8}),
+        (
+            memory_write,
+            {"memoryId": str(uuid.uuid4()), "content": "正文A", "memoryType": "profile"},
+        ),
+        (memory_delete, {"memoryId": str(uuid.uuid4())}),
+        (read_clipboard, {}),
+    ):
+        with pytest.raises(ToolError, match="DESKTOP_TOOL_REQUIRES_NODE"):
+            await handler(arguments, context)
+
+
+@pytest.mark.parametrize(
+    ("spec", "arguments"),
+    [
+        (MEMORY_SEARCH_SPEC, {"query": "记忆内容A"}),
+        (MEMORY_SEARCH_SPEC, {"query": "", "limit": 8}),
+        (MEMORY_SEARCH_SPEC, {"query": "记忆内容A", "limit": 0}),
+        (MEMORY_SEARCH_SPEC, {"query": "记忆内容A", "limit": 51}),
+        (
+            MEMORY_WRITE_SPEC,
+            {"memoryId": "not-a-uuid", "content": "正文A", "memoryType": "profile"},
+        ),
+        (MEMORY_WRITE_SPEC, {"memoryId": str(uuid.uuid4()), "content": "正文A"}),
+        (
+            MEMORY_WRITE_SPEC,
+            {"memoryId": str(uuid.uuid4()), "content": "正文A", "memoryType": "unknown"},
+        ),
+        (MEMORY_DELETE_SPEC, {"memoryId": "42"}),
+    ],
+)
+def test_memory_tool_schemas_reject_invalid_input(
+    spec: object, arguments: dict[str, object]
+) -> None:
+    """记忆作业的 schema 边界必须把非法 id、越界 limit 和未知类型全部挡下。"""
+
+    from app.tools.registry import ToolValidationError
+
+    with pytest.raises(ToolValidationError):
+        validate_arguments_against_schema(arguments, spec.input_schema)  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize(
