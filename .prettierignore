@@ -1,5 +1,7 @@
 node_modules/
 .codex/
+# Agent 会话的本地草稿目录，git 已整体忽略，不应参与格式门禁。
+.superpowers/
 dist/
 .next/
 out/
