@@ -40,6 +40,7 @@ from app.services.agent.approval_service import (
 )
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import AgentQueue
+from app.services.assistant_service import ensure_default_assistant
 from app.services.secret_store import TenantSecretStore
 from app.services.tool_runtime_service import ToolRuntimeService
 from app.tools.builtin import build_phase6_registry
@@ -88,6 +89,10 @@ async def create_assistant(
 
 @router.get("/assistants", response_model=list[AssistantResponse])
 async def list_assistants(current_user: CurrentUser, db: DB) -> list[Assistant]:
+    # 懒建一处覆盖全部建用户路径（注册 / OAuth / 扫码）与存量用户，
+    # 新用户据此开箱即有助理，而不是对着空列表无从下手。
+    await ensure_default_assistant(user_id=current_user.id, db=db)
+    await db.commit()
     return list(
         (
             await db.scalars(
