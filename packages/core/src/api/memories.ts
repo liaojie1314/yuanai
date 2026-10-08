@@ -3,6 +3,7 @@ import type {
   MemoryCreateCandidate,
   MemoryExport,
   MemoryPage,
+  MemoryScope,
   MemorySearchOutcome,
   MemoryUpdate,
 } from '@yuanai/types'
@@ -36,6 +37,20 @@ export async function updateMemory(id: string, input: MemoryUpdate): Promise<Mem
 /** 删除记忆及其派生检索数据。 */
 export async function deleteMemory(id: string): Promise<void> {
   await apiClient.delete(`/memories/${id}`)
+}
+
+/**
+ * 把记忆提升为用户级共享或降回助理私有。
+ * @param id 记忆 ID
+ * @param scope `user` 为全部助理共享，`assistant` 为单个助理私有
+ * @param assistantId 降为助理私有时必填，指明归属哪个助理
+ */
+export async function updateMemoryScope(
+  id: string,
+  scope: MemoryScope,
+  assistantId?: string
+): Promise<Memory> {
+  return (await apiClient.patch<Memory>(`/memories/${id}/scope`, { scope, assistantId })).data
 }
 
 /** 按当前任务检索可注入上下文的记忆，并带出本地节点可用性。 */
