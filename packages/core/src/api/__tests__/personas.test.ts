@@ -98,6 +98,17 @@ describe('人格 API', () => {
     expect(JSON.parse(String(requests[1]?.data))).toEqual({ tone: 'lively' })
   })
 
+  it('预览带上未保存的草稿，数组用重复键而不是带下标的键', async () => {
+    await expect(
+      getPersonaPreview('a1', { tone: 'lively', forbiddenTopics: ['赌博', '算命'] })
+    ).resolves.toEqual(preview)
+
+    // 预览不先保存就要能反映表单，草稿必须真的发出去；
+    // 带下标的 forbiddenTopics[0] 后端的 list[str] 读不到，会静默退回已保存的人格
+    expect(requests[0]?.params).toEqual({ tone: 'lively', forbiddenTopics: ['赌博', '算命'] })
+    expect(requests[0]?.paramsSerializer).toEqual({ indexes: null })
+  })
+
   it('候选收件箱按状态筛选，采用与忽略各走一条路径', async () => {
     await expect(listPersonaCandidates('pending')).resolves.toEqual([candidate])
     await expect(acceptPersonaCandidate('c1')).resolves.toEqual({

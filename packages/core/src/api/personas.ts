@@ -39,10 +39,20 @@ export async function rollbackPersona(assistantId: string, version: number): Pro
  * 取后端真实装配出的人格片段。
  *
  * 预览故意走后端：前端自己拼就要复制一份截断规则，两边一旦漂移预览就在对用户撒谎。
+ * @param assistantId 助理 ID
+ * @param draft 编辑器里尚未保存的草稿；省略则预览当前已保存的人格。
+ *   草稿按查询参数发送（数组用重复键），预览因此不需要先保存就能反映表单。
  */
-export async function getPersonaPreview(assistantId: string): Promise<PersonaPreview> {
-  return (await apiClient.get<PersonaPreview>(`/agent/assistants/${assistantId}/persona/preview`))
-    .data
+export async function getPersonaPreview(
+  assistantId: string,
+  draft?: PersonaInput
+): Promise<PersonaPreview> {
+  return (
+    await apiClient.get<PersonaPreview>(`/agent/assistants/${assistantId}/persona/preview`, {
+      params: draft,
+      paramsSerializer: { indexes: null },
+    })
+  ).data
 }
 
 /** 列出人格候选项；传 `status` 只看该状态，省略则返回全部。 */
