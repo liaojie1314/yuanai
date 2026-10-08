@@ -61,10 +61,18 @@ test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullP
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 _TRUNCATE_SQL = text(
+    # 清单必须显式列全：任何不以 users 为外键根的新表都会在用例之间静默串状态（S27）。
     "TRUNCATE TABLE qr_login_events, qr_login_challenges, message_files, messages, "
-    "file_upload_sessions, files, "
+    "file_upload_sessions, files, media_generation_tasks, push_subscriptions, "
+    "expo_push_tokens, "
     "conversation_shares, conversations, tool_executions, artifacts, resource_grants, "
-    "execution_nodes, mcp_servers, tool_connections, secret_records, users "
+    "execution_nodes, mcp_servers, tool_connections, secret_records, "
+    "persona_candidates, assistant_persona_versions, assistant_personas, "
+    "memory_relations, memories, knowledge_chunks, knowledge_documents, "
+    "knowledge_sources, knowledge_base_members, knowledge_bases, ingestion_jobs, "
+    "skill_evaluations, skill_installations, skill_versions, skills, "
+    "automation_runs, automation_triggers, automations, webhook_endpoints, "
+    "agent_events, agent_steps, approval_requests, agent_runs, assistants, users "
     "RESTART IDENTITY CASCADE"
 )
 

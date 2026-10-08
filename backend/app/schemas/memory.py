@@ -60,11 +60,14 @@ class MemoryUpdate(MemorySchema):
 
 
 class MemoryResponse(MemorySchema):
-    """记忆管理接口返回的完整资源表示。"""
+    """记忆管理接口返回的完整资源表示。
+
+    ``assistant_id`` 为空表示用户级共享记忆，该用户的每个助理都能检索到。
+    """
 
     id: uuid.UUID
     user_id: uuid.UUID
-    assistant_id: uuid.UUID
+    assistant_id: uuid.UUID | None
     workspace_id: uuid.UUID | None
     memory_type: MemoryType
     content: str | None
@@ -107,10 +110,13 @@ class MemoryExport(MemorySchema):
 
 
 class MemorySearchResult(MemorySchema):
-    """用于管理界面或上下文组装的检索结果。"""
+    """用于管理界面或上下文组装的检索结果。
+
+    ``assistant_id`` 为空表示用户级共享记忆。
+    """
 
     id: uuid.UUID
-    assistant_id: uuid.UUID
+    assistant_id: uuid.UUID | None
     workspace_id: uuid.UUID | None
     memory_type: MemoryType
     content: str
