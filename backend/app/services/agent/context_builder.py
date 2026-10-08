@@ -24,13 +24,16 @@ class AgentContextBuilder:
         *,
         goal: str,
         user_instructions: str = "",
+        persona_fragment: str = "",
         history: Sequence[ModelMessage] = (),
         memories: Sequence[MemoryContextItem] = (),
         knowledge: Sequence[KnowledgeCitation] = (),
     ) -> list[ModelMessage]:
         """构建初始上下文；历史内容保持原角色，不会进入系统指令。"""
 
-        messages = list(self._policy.build_system_messages(user_instructions))
+        messages = list(
+            self._policy.build_system_messages(user_instructions, persona_fragment=persona_fragment)
+        )
         memory_content = _memory_content(memories)
         if memory_content:
             messages.append({"role": "user", "content": memory_content})

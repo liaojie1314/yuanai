@@ -354,7 +354,7 @@ async def test_worker_execution_uses_controlled_tool_registry(
         assistant_id=uuid.uuid4(),
         status=AgentRunStatus.succeeded,
     )
-    assistant = SimpleNamespace(instructions="使用受控工具")
+    assistant = SimpleNamespace(id=run.assistant_id, instructions="使用受控工具")
     expected_registry = object()
     captured: dict[str, object] = {}
 
@@ -362,7 +362,8 @@ async def test_worker_execution_uses_controlled_tool_registry(
         """为 Worker 路径提供最小数据库会话。"""
 
         def __init__(self) -> None:
-            self._results = iter((run, assistant, None))
+            # 依次对应 Run、助理、已批准审批、助理人格四次查询。
+            self._results = iter((run, assistant, None, None))
 
         async def __aenter__(self) -> FakeSession:
             return self
@@ -385,6 +386,7 @@ async def test_worker_execution_uses_controlled_tool_registry(
 
         async def run(self, *_args: object, **kwargs: object) -> None:
             captured["approval_id"] = kwargs["approval_id"]
+            captured["persona_fragment"] = kwargs["persona_fragment"]
 
     monkeypatch.setattr(agent_worker_module, "AsyncSessionLocal", lambda: FakeSession())
     monkeypatch.setattr(agent_worker_module, "AgentCoordinator", FakeCoordinator)
@@ -409,6 +411,8 @@ async def test_worker_execution_uses_controlled_tool_registry(
 
     assert captured["registry"] is expected_registry
     assert captured["approval_id"] is None
+    # 助理没有人格行时必须传空串，调用方据此不插入空 system 消息。
+    assert captured["persona_fragment"] == ""
     assert captured["committed"] is True
     assert captured["enqueued"] == (tenant_id, run_id)
     assert captured["enqueued_after_commit"] is True
