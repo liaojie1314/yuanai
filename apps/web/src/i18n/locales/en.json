@@ -563,7 +563,6 @@
     "reject": "Reject",
     "delete": "Delete",
     "confirmDelete": "Delete this memory?",
-    "actionFailed": "Action failed. Please try again.",
     "loadMore": "Load more",
     "localUnavailable": "Some memories live on your local node; only their metadata is shown here.",
     "export": "Export memories",
@@ -701,5 +700,16 @@
     "history": "Run history",
     "noHistory": "No runs yet",
     "waiting": "Waiting: {reason}"
+  },
+  "errors": {
+    "generic": "Action failed. Please try again.",
+    "ASSISTANT_NOT_FOUND": "That assistant no longer exists.",
+    "LOCAL_MEMORY_APPROVAL_TIMEOUT": "The local node did not confirm in time, so the action was cancelled.",
+    "LOCAL_MEMORY_NODE_UNAVAILABLE": "The local node is unreachable right now. View the content on that machine.",
+    "MEMORY_NOT_FOUND": "That memory no longer exists.",
+    "MEMORY_SCOPE_DUPLICATE": "A user-level memory with the same content already exists.",
+    "PERSONA_CANDIDATE_ALREADY_DECIDED": "That suggestion has already been handled.",
+    "PERSONA_FIELD_NOT_EDITABLE": "That field cannot be edited.",
+    "PERSONA_VALUE_INVALID": "The value does not meet the requirements. Check it and try again."
   }
 }

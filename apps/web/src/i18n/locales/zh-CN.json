@@ -563,7 +563,6 @@
     "reject": "拒绝",
     "delete": "删除",
     "confirmDelete": "确定删除这条记忆？",
-    "actionFailed": "操作失败，请重试",
     "loadMore": "加载更多",
     "localUnavailable": "部分记忆存储在本机节点，此处只显示摘要信息，内容需在本机查看",
     "export": "导出记忆",
@@ -701,5 +700,16 @@
     "history": "运行历史",
     "noHistory": "还没有运行记录",
     "waiting": "等待：{reason}"
+  },
+  "errors": {
+    "generic": "操作失败，请重试",
+    "ASSISTANT_NOT_FOUND": "助理不存在或已被删除",
+    "LOCAL_MEMORY_APPROVAL_TIMEOUT": "本机节点未在限定时间内确认，操作已取消",
+    "LOCAL_MEMORY_NODE_UNAVAILABLE": "本机节点当前不可达，内容需要在本机查看",
+    "MEMORY_NOT_FOUND": "这条记忆不存在或已被删除",
+    "MEMORY_SCOPE_DUPLICATE": "已有一条内容相同的用户级记忆，无需重复提升",
+    "PERSONA_CANDIDATE_ALREADY_DECIDED": "这条建议已经处理过了",
+    "PERSONA_FIELD_NOT_EDITABLE": "这个字段不支持修改",
+    "PERSONA_VALUE_INVALID": "填写的内容不符合要求，请检查后重试"
   }
 }
