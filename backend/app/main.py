@@ -19,6 +19,7 @@ from app.api.v1 import (
     memories,
     models,
     notifications,
+    personas,
     qr_login,
     share,
     skills,
@@ -113,6 +114,7 @@ app.include_router(share.router, prefix="/api/v1")
 app.include_router(files_router.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(agent.router, prefix="/api/v1")
+app.include_router(personas.router, prefix="/api/v1")
 app.include_router(admin_agent.router, prefix="/api/v1")
 app.include_router(tools.router, prefix="/api/v1")
 app.include_router(memories.router, prefix="/api/v1")

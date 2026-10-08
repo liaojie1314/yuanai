@@ -1,8 +1,19 @@
-"""人格片段装配：主聊天与 Agent 两条链路共用的唯一真源。"""
+"""人格片段装配与持久化：主聊天与 Agent 两条链路共用的唯一真源。"""
 
 from __future__ import annotations
 
-from app.models.persona import AssistantPersona, PersonaTone, PersonaVerbosity
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.persona import (
+    AssistantPersona,
+    AssistantPersonaVersion,
+    PersonaTone,
+    PersonaVerbosity,
+)
 
 PERSONA_CHARACTER_BUDGET = 1_200
 
@@ -123,3 +134,161 @@ def _fragment_lines(persona: AssistantPersona, dropped: set[str]) -> list[str]:
     if persona.forbidden_topics:
         lines.append("禁止话题：" + "、".join(persona.forbidden_topics))
     return lines
+
+
+class PersonaVersionNotFoundError(LookupError):
+    """请求的人格版本在该助理下不存在。"""
+
+
+class PersonaFieldError(ValueError):
+    """字段不在用户可编辑白名单内。"""
+
+
+def coerce_persona_value(field: str, value: object) -> object:
+    """把外部来的字符串值转成人格字段的实际类型，非法值抛 ``ValueError``。
+
+    回滚载荷与人格候选项共用这一处转换：枚举列直接 ``setattr`` 一个裸字符串，
+    会把类型错误推迟到落库时才炸。
+    """
+
+    if field == "tone":
+        return PersonaTone(str(value))
+    if field == "verbosity":
+        return PersonaVerbosity(str(value))
+    if field == "forbidden_topics":
+        return [str(item) for item in value] if isinstance(value, list) else []
+    return str(value)
+
+
+def unsaved_default_persona(assistant_id: uuid.UUID) -> AssistantPersona:
+    """构造一份不落库的默认人格，供「还没编辑过」的读取与预览使用。
+
+    读接口不落库：一次 GET 不该在库里留下行，否则「从未配置过」这个事实就丢了。
+    ``version`` 与两个时间戳只有 INSERT 时才会被数据库填上，所以这里显式给值。
+    """
+
+    now = datetime.now(UTC)
+    return AssistantPersona(
+        assistant_id=assistant_id,
+        address_user="",
+        self_name="",
+        tone=PersonaTone.concise,
+        verbosity=PersonaVerbosity.balanced,
+        greeting="",
+        refusal_style="",
+        forbidden_topics=[],
+        language="",
+        version=1,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+async def load_persona(*, assistant_id: uuid.UUID, db: AsyncSession) -> AssistantPersona | None:
+    """读取助理当前生效的人格；从未保存过时返回 ``None``。"""
+
+    persona: AssistantPersona | None = await db.scalar(
+        select(AssistantPersona).where(AssistantPersona.assistant_id == assistant_id)
+    )
+    return persona
+
+
+async def list_persona_versions(
+    *, assistant_id: uuid.UUID, db: AsyncSession
+) -> list[AssistantPersonaVersion]:
+    """按版本号倒序列出历史快照，最新的在前。"""
+
+    rows = await db.scalars(
+        select(AssistantPersonaVersion)
+        .where(AssistantPersonaVersion.assistant_id == assistant_id)
+        .order_by(AssistantPersonaVersion.version.desc())
+    )
+    return list(rows.all())
+
+
+async def save_persona(
+    *, assistant_id: uuid.UUID, changes: dict[str, object], db: AsyncSession
+) -> AssistantPersona:
+    """保存人格并生成一个新版本；``changes`` 里没有的字段保持原值。"""
+
+    persona = await _persona_for_write(assistant_id=assistant_id, db=db)
+    for field, value in changes.items():
+        if field not in PERSONA_EDITABLE_FIELDS and field != "forbidden_topics":
+            raise PersonaFieldError(field)
+        setattr(persona, field, value)
+    await bump_version(persona=persona, change_reason="manual", db=db)
+    return persona
+
+
+async def rollback_persona(
+    *, assistant_id: uuid.UUID, version: int, db: AsyncSession
+) -> AssistantPersona:
+    """用指定版本的快照内容生成一个新版本。
+
+    版本号继续递增而不复用旧号：复用会撞 ``uq_persona_version``，
+    也会把「发生过一次回滚」这个事实从历史里抹掉。
+    """
+
+    snapshot = await db.scalar(
+        select(AssistantPersonaVersion).where(
+            AssistantPersonaVersion.assistant_id == assistant_id,
+            AssistantPersonaVersion.version == version,
+        )
+    )
+    if snapshot is None:
+        raise PersonaVersionNotFoundError(version)
+    persona = await _persona_for_write(assistant_id=assistant_id, db=db)
+    for field, value in snapshot.payload.items():
+        if field in PERSONA_EDITABLE_FIELDS or field == "forbidden_topics":
+            setattr(persona, field, coerce_persona_value(field, value))
+    await bump_version(persona=persona, change_reason=f"rollback:{version}", db=db)
+    return persona
+
+
+async def bump_version(
+    *, persona: AssistantPersona, change_reason: str, db: AsyncSession
+) -> AssistantPersonaVersion:
+    """递增版本号并归档当前全量内容。"""
+
+    persona.version += 1
+    snapshot = AssistantPersonaVersion(
+        assistant_id=persona.assistant_id,
+        version=persona.version,
+        payload=persona_snapshot(persona),
+        change_reason=change_reason,
+    )
+    db.add(snapshot)
+    await db.flush()
+    return snapshot
+
+
+async def _persona_for_write(*, assistant_id: uuid.UUID, db: AsyncSession) -> AssistantPersona:
+    """取出可写的人格行，并保证当前版本在历史里有对应快照。
+
+    补写基线快照是为了让首次保存之后仍能回滚到初始态 ——
+    少了它，历史里最早的一条就是「改完之后」，回滚到 1 无路可走。
+    """
+
+    persona = await load_persona(assistant_id=assistant_id, db=db)
+    if persona is None:
+        persona = AssistantPersona(assistant_id=assistant_id)
+        db.add(persona)
+        await db.flush()
+        await db.refresh(persona)
+    existing = await db.scalar(
+        select(AssistantPersonaVersion.id).where(
+            AssistantPersonaVersion.assistant_id == assistant_id,
+            AssistantPersonaVersion.version == persona.version,
+        )
+    )
+    if existing is None:
+        db.add(
+            AssistantPersonaVersion(
+                assistant_id=assistant_id,
+                version=persona.version,
+                payload=persona_snapshot(persona),
+                change_reason="manual",
+            )
+        )
+        await db.flush()
+    return persona
