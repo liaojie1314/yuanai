@@ -39,19 +39,18 @@ export async function rollbackPersona(assistantId: string, version: number): Pro
  * 取后端真实装配出的人格片段。
  *
  * 预览故意走后端：前端自己拼就要复制一份截断规则，两边一旦漂移预览就在对用户撒谎。
+ * 用 POST 而不是 GET：草稿含两段自由文本与最多 20 条禁止话题，放查询串既可能超出
+ * URL 长度上限，又会把人格内容写进访问日志。
  * @param assistantId 助理 ID
- * @param draft 编辑器里尚未保存的草稿；省略则预览当前已保存的人格。
- *   草稿按查询参数发送（数组用重复键），预览因此不需要先保存就能反映表单。
+ * @param draft 编辑器里尚未保存的草稿，走请求体；省略则预览当前已保存的人格。
+ *   带上草稿时预览不需要先保存就能反映表单。
  */
 export async function getPersonaPreview(
   assistantId: string,
   draft?: PersonaInput
 ): Promise<PersonaPreview> {
   return (
-    await apiClient.get<PersonaPreview>(`/agent/assistants/${assistantId}/persona/preview`, {
-      params: draft,
-      paramsSerializer: { indexes: null },
-    })
+    await apiClient.post<PersonaPreview>(`/agent/assistants/${assistantId}/persona/preview`, draft)
   ).data
 }
 
