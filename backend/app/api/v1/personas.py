@@ -9,12 +9,21 @@ from sqlalchemy import select
 
 from app.api.deps import DB, CurrentUser
 from app.models.assistant import Assistant
-from app.models.persona import AssistantPersona
+from app.models.persona import AssistantPersona, PersonaCandidate, PersonaCandidateStatus
 from app.schemas.persona import (
+    PersonaCandidateResponse,
     PersonaPreviewResponse,
     PersonaResponse,
     PersonaUpdateRequest,
     PersonaVersionResponse,
+)
+from app.services.persona_candidate_service import (
+    PersonaCandidateDecidedError,
+    PersonaCandidateFieldError,
+    accept_candidate,
+    list_candidates,
+    owned_candidate,
+    reject_candidate,
 )
 from app.services.persona_service import (
     PERSONA_CHARACTER_BUDGET,
@@ -29,6 +38,65 @@ from app.services.persona_service import (
 )
 
 router = APIRouter(prefix="/agent/assistants", tags=["persona"])
+# 候选项不挂在某个助理之下：收件箱是「用户的待确认事项」，跨助理一起看。
+candidates_router = APIRouter(prefix="/agent/persona-candidates", tags=["persona"])
+
+
+@candidates_router.get("", response_model=list[PersonaCandidateResponse])
+async def get_persona_candidates(
+    current_user: CurrentUser,
+    db: DB,
+    status: PersonaCandidateStatus = PersonaCandidateStatus.pending,
+) -> list[PersonaCandidateResponse]:
+    """列出当前用户的人格候选项，默认只看待确认的。"""
+
+    candidates = await list_candidates(user_id=current_user.id, status=status, db=db)
+    return [PersonaCandidateResponse.model_validate(item) for item in candidates]
+
+
+@candidates_router.post("/{candidate_id}/accept", response_model=PersonaResponse)
+async def accept_persona_candidate(
+    candidate_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> AssistantPersona:
+    """确认候选项：写入人格并生成新版本。"""
+
+    candidate = await _owned_candidate(candidate_id, current_user.id, db)
+    try:
+        persona = await accept_candidate(candidate=candidate, db=db)
+    except PersonaCandidateDecidedError as error:
+        raise HTTPException(status_code=409, detail="PERSONA_CANDIDATE_ALREADY_DECIDED") from error
+    except PersonaCandidateFieldError as error:
+        raise HTTPException(status_code=400, detail="PERSONA_FIELD_NOT_EDITABLE") from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="PERSONA_VALUE_INVALID") from error
+    await db.commit()
+    await db.refresh(persona)
+    return persona
+
+
+@candidates_router.post("/{candidate_id}/reject", response_model=PersonaCandidateResponse)
+async def reject_persona_candidate(
+    candidate_id: uuid.UUID, current_user: CurrentUser, db: DB
+) -> PersonaCandidate:
+    """拒绝候选项：人格不变，只记下这次决策。"""
+
+    candidate = await _owned_candidate(candidate_id, current_user.id, db)
+    try:
+        rejected = await reject_candidate(candidate=candidate, db=db)
+    except PersonaCandidateDecidedError as error:
+        raise HTTPException(status_code=409, detail="PERSONA_CANDIDATE_ALREADY_DECIDED") from error
+    await db.commit()
+    await db.refresh(rejected)
+    return rejected
+
+
+async def _owned_candidate(candidate_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> PersonaCandidate:
+    """校验候选项归属；不存在与属于别人一律同一个 404。"""
+
+    candidate = await owned_candidate(candidate_id=candidate_id, user_id=user_id, db=db)
+    if candidate is None:
+        raise HTTPException(status_code=404, detail="PERSONA_CANDIDATE_NOT_FOUND")
+    return candidate
 
 
 async def _owned_assistant(assistant_id: uuid.UUID, user_id: uuid.UUID, db: DB) -> Assistant:

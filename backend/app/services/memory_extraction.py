@@ -20,6 +20,7 @@ from app.models.memory import (
     MemoryType,
 )
 from app.models.message import Message
+from app.models.persona import PersonaCandidate, PersonaCandidateSource
 from app.services.ai_service import (
     ExtractedMemory,
     extract_memory_candidates,
@@ -192,6 +193,20 @@ async def extract_from_run(
     now = datetime.now(UTC)
     created: list[Memory] = []
     for candidate in candidates:
+        if candidate.persona_field is not None:
+            # 表达方式纠正是人格建议而不是一条事实：落候选表，等用户确认才生效。
+            db.add(
+                PersonaCandidate(
+                    user_id=user_id,
+                    assistant_id=assistant.id,
+                    field=candidate.persona_field,
+                    suggested_value=candidate.suggested_value,
+                    evidence=candidate.content[:2000],
+                    source_type=PersonaCandidateSource.run,
+                    source_id=run.id,
+                )
+            )
+            continue
         if await find_duplicate(
             user_id=user_id, assistant_id=assistant.id, content=candidate.content, db=db
         ):

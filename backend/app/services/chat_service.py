@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
+from redis.exceptions import RedisError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,8 +28,12 @@ from app.schemas.chat import SendMessageRequest
 from app.services.assistant_service import resolve_conversation_assistant
 from app.services.conversation_title_service import ConversationTitleResult, fallback_title
 from app.services.file_extract_service import extract_preview, preview_context
+from app.services.memory_queue import enqueue_persona_candidate
+from app.services.persona_candidate_service import looks_like_style_correction
 from app.services.persona_service import build_chat_system_messages
 from app.services.storage_service import StorageService, storage
+
+logger = logging.getLogger(__name__)
 
 
 async def get_user_conversation(
@@ -233,6 +239,16 @@ async def stream_chat_response(
     )
     openai_messages = await build_openai_messages(history, files_by_message_id, persona=persona)
     await db.commit()
+    if looks_like_style_correction(req.message.content):
+        # 命中线索词才入队；抽取是模型调用，每轮聊天都调一次不可接受。
+        # 投递在 commit 之后：人格候选项是旁路能力，失败不能回滚或拖慢聊天。
+        try:
+            await enqueue_persona_candidate(
+                user_id=user_id, assistant_id=assistant.id, text=req.message.content
+            )
+        except (OSError, RedisError):
+            # Redis 不可用时静默跳过：少一条待确认建议，不该让这轮对话发不出去。
+            logger.warning("人格候选项入队失败，本轮跳过", exc_info=True)
     return StreamingResponse(
         sse_generator(
             openai_messages,

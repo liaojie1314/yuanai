@@ -11,7 +11,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.core.database import AsyncSessionLocal
 from app.services.memory_extraction import extract_from_run
-from app.services.memory_queue import dequeue_extraction
+from app.services.memory_queue import dequeue_extraction, dequeue_persona_candidate
+from app.services.persona_candidate_service import extract_from_chat
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,18 @@ class MemoryWorker:
         self._poll_timeout = poll_timeout
 
     async def run_once(self) -> bool:
-        """处理至多一条任务，返回是否取到了任务。"""
+        """处理至多一条任务，返回是否取到了任务。
+
+        两条队列依次探一次：记忆抽取是主路径，人格候选项是旁路，
+        后者空队列时不该让前者多等一个轮询周期。
+        """
+
+        if await self._run_extraction_once():
+            return True
+        return await self._run_persona_candidate_once()
+
+    async def _run_extraction_once(self) -> bool:
+        """消费一条 Run 记忆抽取任务。"""
 
         item = await dequeue_extraction(client=self._client, timeout=self._poll_timeout)
         if item is None:
@@ -38,6 +50,24 @@ class MemoryWorker:
         except (OSError, RuntimeError, SQLAlchemyError, ValueError):
             # 单条任务失败不能毒死 worker 进程；记录后继续消费后续任务。
             logger.exception("Run %s 的记忆抽取失败", run_id)
+        return True
+
+    async def _run_persona_candidate_once(self) -> bool:
+        """消费一条聊天侧的人格候选项抽取任务。"""
+
+        item = await dequeue_persona_candidate(client=self._client, timeout=self._poll_timeout)
+        if item is None:
+            return False
+        user_id, assistant_id, text = item
+        try:
+            async with AsyncSessionLocal() as db:
+                created = await extract_from_chat(
+                    user_id=user_id, assistant_id=assistant_id, text=text, db=db
+                )
+                await db.commit()
+            logger.info("助理 %s 抽出 %d 条人格候选项", assistant_id, len(created))
+        except (OSError, RuntimeError, SQLAlchemyError, ValueError):
+            logger.exception("助理 %s 的人格候选项抽取失败", assistant_id)
         return True
 
     async def run(self, stop_event: asyncio.Event | None = None) -> None:

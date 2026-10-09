@@ -1469,14 +1469,28 @@ MEMORY_EXTRACTION_PROMPT = (
     "（profile/preference/semantic/episodic 之一）、content（一句中文陈述）、"
     "subject（该事实所描述的对象，用于冲突检测）、confidence（0 到 1）、"
     "explicit（用户是否明确说过）、stable（是否长期稳定而非临时状态）。"
+    "若某条是用户在纠正助理的表达方式（语气、称呼、回答长度、拒绝措辞等），"
+    "则该项另外给出 personaField"
+    "（tone/verbosity/address_user/self_name/greeting/refusal_style/language 之一）"
+    "与 suggestedValue；tone 取 concise/patient/lively/rigorous，"
+    "verbosity 取 brief/balanced/detailed。"
     '没有值得记住的内容时输出 {"memories": []}。不要输出解释。'
 )
 MEMORY_EXTRACTION_TYPES = frozenset({"profile", "preference", "semantic", "episodic"})
+# 表达方式纠正只允许落到人格白名单里的字段。模型输出是不可信输入，
+# 这里先筛一层，确认环节还会再过一次白名单（见 persona_candidate_service）。
+PERSONA_FIELD_SUGGESTIONS = frozenset(
+    {"tone", "verbosity", "address_user", "self_name", "greeting", "refusal_style", "language"}
+)
 
 
 @dataclass(frozen=True)
 class ExtractedMemory:
-    """模型抽取出的单条候选记忆。"""
+    """模型抽取出的单条候选记忆。
+
+    ``persona_field`` 非空时这一条是「表达方式纠正」，调用方应分流进人格候选项
+    而不是记忆表 —— 人格是身份，不该被当成一条事实悄悄记下来。
+    """
 
     memory_type: str
     content: str
@@ -1484,6 +1498,8 @@ class ExtractedMemory:
     confidence: float
     explicit: bool
     stable: bool
+    persona_field: str | None = None
+    suggested_value: str = ""
 
 
 def _parse_extracted_memories(content: str) -> list[ExtractedMemory] | None:
@@ -1510,6 +1526,8 @@ def _parse_extracted_memories(content: str) -> list[ExtractedMemory] | None:
             continue
         subject = item.get("subject")
         confidence = item.get("confidence")
+        persona_field = item.get("personaField")
+        suggested_value = item.get("suggestedValue")
         parsed.append(
             ExtractedMemory(
                 memory_type=str(memory_type),
@@ -1526,6 +1544,17 @@ def _parse_extracted_memories(content: str) -> list[ExtractedMemory] | None:
                 ),
                 explicit=bool(item.get("explicit")),
                 stable=bool(item.get("stable")),
+                persona_field=(
+                    persona_field
+                    if isinstance(persona_field, str)
+                    and persona_field in PERSONA_FIELD_SUGGESTIONS
+                    and isinstance(suggested_value, str)
+                    and suggested_value.strip()
+                    else None
+                ),
+                suggested_value=(
+                    suggested_value.strip() if isinstance(suggested_value, str) else ""
+                ),
             )
         )
     return parsed
