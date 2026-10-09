@@ -30,6 +30,7 @@ from app.schemas.chat import (
 )
 from app.schemas.media_generation import MediaGenerationTaskResponse
 from app.services.ai_service import ModelVisionUnsupportedError, stream_chat
+from app.services.assistant_service import ensure_default_assistant, owned_assistant
 from app.services.chat_service import stream_chat_response
 from app.services.conversation_title_service import (
     ConversationTitleResult,
@@ -56,11 +57,30 @@ async def get_chat_capabilities(_current_user: CurrentUser) -> ChatCapabilitiesR
     )
 
 
+async def _resolve_assistant_id(
+    requested: uuid.UUID | None, user_id: uuid.UUID, db: DB
+) -> uuid.UUID:
+    """校验请求指定的助理归属，未指定时取用户的默认助理。
+
+    指定了别人的助理一律 404 —— 与人格接口同一套语义，不区分「不存在」与「别人的」。
+    """
+
+    if requested is None:
+        return (await ensure_default_assistant(user_id=user_id, db=db)).id
+    assistant = await owned_assistant(assistant_id=requested, user_id=user_id, db=db)
+    if assistant is None:
+        raise HTTPException(404, {"code": "ASSISTANT_NOT_FOUND", "message": "助理不存在"})
+    return assistant.id
+
+
 @router.post("/conversations", response_model=ConversationResponse, status_code=201)
 async def create_conversation(
     req: CreateConversationRequest, current_user: CurrentUser, db: DB
 ) -> ConversationResponse:
-    conv = Conversation(user_id=current_user.id, model=req.model, title=req.title)
+    assistant_id = await _resolve_assistant_id(req.assistant_id, current_user.id, db)
+    conv = Conversation(
+        user_id=current_user.id, model=req.model, title=req.title, assistant_id=assistant_id
+    )
     db.add(conv)
     await db.commit()
     await db.refresh(conv)
@@ -100,6 +120,13 @@ async def update_conversation(
         conv.model = req.model
     if req.is_pinned is not None:
         conv.is_pinned = req.is_pinned
+    # 看 model_fields_set 而不是值：显式传 null 是「解绑」，不传是「别动它」。
+    if "assistant_id" in req.model_fields_set:
+        conv.assistant_id = (
+            await _resolve_assistant_id(req.assistant_id, current_user.id, db)
+            if req.assistant_id is not None
+            else None
+        )
     await db.commit()
     await db.refresh(conv)
     return ConversationResponse.model_validate(conv)

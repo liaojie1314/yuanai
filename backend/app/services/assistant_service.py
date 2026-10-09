@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assistant import Assistant
+from app.models.conversation import Conversation
 
 DEFAULT_ASSISTANT_NAME = "我的助理"
 # 必须是 ai_service.PROVIDER_CONFIG 的键，否则这个助理一开口就路由不到供应商。
@@ -41,6 +42,38 @@ async def ensure_default_assistant(*, user_id: uuid.UUID, db: AsyncSession) -> A
         if raced is None:
             raise
         return raced
+    return assistant
+
+
+async def owned_assistant(
+    *, assistant_id: uuid.UUID, user_id: uuid.UUID, db: AsyncSession
+) -> Assistant | None:
+    """按归属取助理；不存在与属于别人一律返回 ``None``。
+
+    调用方据此一律回同一个 404：区分开等于把助理 id 变成存在性探针。
+    """
+
+    assistant: Assistant | None = await db.scalar(
+        select(Assistant).where(Assistant.id == assistant_id, Assistant.user_id == user_id)
+    )
+    return assistant
+
+
+async def resolve_conversation_assistant(
+    conv: Conversation, *, user_id: uuid.UUID, db: AsyncSession
+) -> Assistant:
+    """取会话绑定的助理；未绑定或助理已被删时退回默认助理并回写绑定。
+
+    助理被删后 ``conversations.assistant_id`` 被置 ``NULL``，此时用户可能一个助理都
+    不剩 —— 必须现建一个而不是抛错，否则一条旧会话会永久无法继续对话。
+    """
+
+    if conv.assistant_id is not None:
+        bound = await owned_assistant(assistant_id=conv.assistant_id, user_id=user_id, db=db)
+        if bound is not None:
+            return bound
+    assistant = await ensure_default_assistant(user_id=user_id, db=db)
+    conv.assistant_id = assistant.id
     return assistant
 
 

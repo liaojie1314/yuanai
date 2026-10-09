@@ -21,9 +21,12 @@ from app.core.config import settings
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
 from app.models.message import Message, MessageRole
+from app.models.persona import AssistantPersona
 from app.schemas.chat import SendMessageRequest
+from app.services.assistant_service import resolve_conversation_assistant
 from app.services.conversation_title_service import ConversationTitleResult, fallback_title
 from app.services.file_extract_service import extract_preview, preview_context
+from app.services.persona_service import build_chat_system_messages
 from app.services.storage_service import StorageService, storage
 
 
@@ -45,9 +48,14 @@ async def build_openai_messages(
     files_by_message_id: dict[uuid.UUID, list[File]],
     *,
     storage_service: StorageService = storage,
+    persona: AssistantPersona | None = None,
 ) -> list[dict[str, object]]:
-    """把消息历史和附件转换为 provider-neutral 的 OpenAI 消息结构。"""
-    result: list[dict[str, object]] = []
+    """把消息历史和附件转换为 provider-neutral 的 OpenAI 消息结构。
+
+    开头恒有一条聊天安全前置；``persona`` 有内容时紧随其后，为空时整条跳过 ——
+    插入空 system 消息会被部分 provider 判为非法请求。
+    """
+    result: list[dict[str, object]] = build_chat_system_messages(persona)
     for message in history:
         message_files = files_by_message_id.get(message.id, [])
         if not message_files:
@@ -218,7 +226,13 @@ async def stream_chat_response(
         )
         for message_file, attached_file in file_rows.all():
             files_by_message_id.setdefault(message_file.message_id, []).append(attached_file)
-    openai_messages = await build_openai_messages(history, files_by_message_id)
+    # 人格在两条链路一致生效：助理按「会话绑定 → 用户默认」解析，解析不出就现建。
+    assistant = await resolve_conversation_assistant(conv, user_id=user_id, db=db)
+    persona = await db.scalar(
+        select(AssistantPersona).where(AssistantPersona.assistant_id == assistant.id)
+    )
+    openai_messages = await build_openai_messages(history, files_by_message_id, persona=persona)
+    await db.commit()
     return StreamingResponse(
         sse_generator(
             openai_messages,
