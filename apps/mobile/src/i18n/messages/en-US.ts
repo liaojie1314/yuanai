@@ -170,6 +170,10 @@ export const enUS: MobileMessages = {
     selectModel: 'Select model',
     defaultModel: 'Default',
     contextK: '{{n}} context',
+    assistant: {
+      current: 'Current assistant',
+      switch: 'Switch assistant',
+    },
     welcomeTitle: 'Hi, I am YuanAI',
     welcomeSubtitle: 'How can I help?',
     prevVersion: 'Previous version',

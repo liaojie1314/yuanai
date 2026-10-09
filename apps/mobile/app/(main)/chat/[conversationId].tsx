@@ -19,6 +19,7 @@ import {
   FALLBACK_CHAT_MODEL_ID,
   TABLET_MIN_WIDTH,
   filterChatModels,
+  useAssistants,
   useConversations,
   useChatCapabilities,
   useCreateMediaTask,
@@ -34,6 +35,7 @@ import type { AIModel, MediaGenerationOptions, MediaGenerationType } from '@yuan
 import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
+import { AssistantSwitcher } from '@/components/chat/AssistantSwitcher'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { ShareSheet } from '@/components/chat/ShareSheet'
@@ -84,6 +86,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
   const dialog = useDialog()
 
   const { data: conversations = [] } = useConversations()
+  const { data: assistants = [] } = useAssistants()
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
@@ -158,6 +161,24 @@ export default function ChatConversationScreen(): React.JSX.Element {
       )
     },
     [conversationId, conv?.model, updateConv, toast, dialog, t]
+  )
+
+  // 把会话绑到另一个助理；绑定后下一次发言就用新助理的人格
+  const handleSelectAssistant = useCallback(
+    (assistantId: string) => {
+      if (!conversationId) return
+      updateConv.mutate(
+        { id: conversationId, assistantId },
+        {
+          onError: (err) =>
+            void dialog.alert({
+              title: t('chat.switchFailed'),
+              message: err instanceof Error ? err.message : t('common.retryLater'),
+            }),
+        }
+      )
+    },
+    [conversationId, updateConv, dialog, t]
   )
 
   const openDrawer = useCallback(() => {
@@ -349,6 +370,11 @@ export default function ChatConversationScreen(): React.JSX.Element {
             <Text style={[styles.topTitle, { color: theme.text.primary }]} numberOfLines={1}>
               {conv?.title ?? t('chat.conversation')}
             </Text>
+            <AssistantSwitcher
+              activeAssistantId={conv?.assistantId ?? null}
+              assistants={assistants}
+              onSelect={handleSelectAssistant}
+            />
             {models.length > 0 ? (
               <Pressable
                 onPress={openModelSheet}
