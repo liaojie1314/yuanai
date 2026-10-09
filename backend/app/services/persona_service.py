@@ -240,7 +240,7 @@ async def save_persona(
 ) -> AssistantPersona:
     """保存人格并生成一个新版本；``changes`` 里没有的字段保持原值。"""
 
-    persona = await _persona_for_write(assistant_id=assistant_id, db=db)
+    persona = await persona_for_write(assistant_id=assistant_id, db=db)
     for field, value in changes.items():
         if field not in PERSONA_EDITABLE_FIELDS and field != "forbidden_topics":
             raise PersonaFieldError(field)
@@ -266,7 +266,7 @@ async def rollback_persona(
     )
     if snapshot is None:
         raise PersonaVersionNotFoundError(version)
-    persona = await _persona_for_write(assistant_id=assistant_id, db=db)
+    persona = await persona_for_write(assistant_id=assistant_id, db=db)
     for field, value in snapshot.payload.items():
         if field in PERSONA_EDITABLE_FIELDS or field == "forbidden_topics":
             setattr(persona, field, coerce_persona_value(field, value))
@@ -291,7 +291,7 @@ async def bump_version(
     return snapshot
 
 
-async def _persona_for_write(*, assistant_id: uuid.UUID, db: AsyncSession) -> AssistantPersona:
+async def persona_for_write(*, assistant_id: uuid.UUID, db: AsyncSession) -> AssistantPersona:
     """取出可写的人格行，并保证当前版本在历史里有对应快照。
 
     补写基线快照是为了让首次保存之后仍能回滚到初始态 ——
