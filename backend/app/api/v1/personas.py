@@ -28,7 +28,7 @@ from app.services.persona_candidate_service import (
 from app.services.persona_service import (
     PERSONA_CHARACTER_BUDGET,
     PersonaVersionNotFoundError,
-    build_persona_fragment,
+    assemble_persona_fragment,
     list_persona_versions,
     load_persona,
     persona_with_overrides,
@@ -186,10 +186,9 @@ async def post_persona_preview(
     )
     if draft is not None:
         persona = persona_with_overrides(persona, draft.model_dump(exclude_unset=True))
-    fragment = build_persona_fragment(persona)
-    greeting = persona.greeting.strip()
+    fragment, truncated = assemble_persona_fragment(persona)
     return PersonaPreviewResponse(
         fragment=fragment,
-        truncated=bool(greeting) and greeting not in fragment,
+        truncated=truncated,
         character_budget=PERSONA_CHARACTER_BUDGET,
     )

@@ -47,6 +47,28 @@ _VERBOSITY_TEXT = {
 _TRUNCATABLE_FIELDS = ("greeting", "tone", "verbosity")
 
 
+def assemble_persona_fragment(persona: AssistantPersona | None) -> tuple[str, bool]:
+    """装配人格片段，并返回是否因为超预算丢弃过内容。
+
+    截断规则只写在这一处：预览需要「有没有被裁」这个事实，但不能为此复制一份
+    丢弃顺序 —— 两份一旦漂移，预览给出的就是另一套装配结果。
+    """
+
+    if persona is None:
+        return "", False
+    dropped: set[str] = set()
+    while True:
+        text = "\n".join(_fragment_lines(persona, dropped))
+        if len(text) <= PERSONA_CHARACTER_BUDGET:
+            # 只有超预算才会进入丢弃分支，所以 dropped 非空就一定真的裁掉了内容。
+            return text, bool(dropped)
+        nxt = next((field for field in _TRUNCATABLE_FIELDS if field not in dropped), None)
+        if nxt is None:
+            # 不可截断部分自身就超预算：硬截，保证调用方拿到的长度始终可控。
+            return text[:PERSONA_CHARACTER_BUDGET], True
+        dropped.add(nxt)
+
+
 def build_persona_fragment(persona: AssistantPersona | None) -> str:
     """把人格装配成一段非提权提示词；超预算时按约定顺序丢弃可选项。
 
@@ -54,18 +76,7 @@ def build_persona_fragment(persona: AssistantPersona | None) -> str:
     插入空消息会被部分 provider 判为非法请求。
     """
 
-    if persona is None:
-        return ""
-    dropped: set[str] = set()
-    while True:
-        text = "\n".join(_fragment_lines(persona, dropped))
-        if len(text) <= PERSONA_CHARACTER_BUDGET:
-            return text
-        nxt = next((field for field in _TRUNCATABLE_FIELDS if field not in dropped), None)
-        if nxt is None:
-            # 不可截断部分自身就超预算：硬截，保证调用方拿到的长度始终可控。
-            return text[:PERSONA_CHARACTER_BUDGET]
-        dropped.add(nxt)
+    return assemble_persona_fragment(persona)[0]
 
 
 def build_chat_system_messages(persona: AssistantPersona | None) -> list[dict[str, object]]:

@@ -215,6 +215,27 @@ async def test_preview_of_other_users_assistant_is_404(
 
 
 @pytest.mark.asyncio
+async def test_preview_reports_truncation_without_a_greeting(
+    client: AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    """超预算但没有开场白时，预览仍须报 truncated=true。
+
+    限制类字段加满就能顶爆预算（拒绝话术 500 字 + 20 条 40 字禁止话题），
+    此时被丢掉的是语气与长度偏好。预览若报「没截断」，用户会以为自己写的全都生效了。
+    """
+
+    aid = await _assistant_id(client, auth_headers)
+    response = await client.post(
+        f"/api/v1/agent/assistants/{aid}/persona/preview",
+        headers=auth_headers,
+        json={"refusalStyle": "拒" * 500, "forbiddenTopics": ["禁" * 40] * 20},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["truncated"] is True
+    assert "语气：" not in response.json()["fragment"]
+
+
+@pytest.mark.asyncio
 async def test_forbidden_topics_are_capped(
     client: AsyncClient, auth_headers: dict[str, str]
 ) -> None:

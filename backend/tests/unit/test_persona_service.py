@@ -4,6 +4,7 @@ from app.models.persona import AssistantPersona, PersonaTone, PersonaVerbosity
 from app.services.persona_service import (
     CHAT_SYSTEM_POLICY,
     PERSONA_CHARACTER_BUDGET,
+    assemble_persona_fragment,
     build_chat_system_messages,
     build_persona_fragment,
 )
@@ -73,6 +74,33 @@ def test_refusal_style_and_forbidden_topics_never_truncated() -> None:
     fragment = build_persona_fragment(persona)
     assert "必须明确拒绝" in fragment
     assert "赌博" in fragment
+
+
+def test_truncation_is_reported_even_without_a_greeting() -> None:
+    """没有开场白也会丢语气与长度偏好，``truncated`` 必须照实说。
+
+    预览全靠这个标记告诉用户「内容被裁过」。只看开场白还在不在，
+    就会在一份没有开场白的人格上永远报「没截断」—— 预览又对用户撒谎一次。
+    """
+
+    persona = _persona(
+        greeting="",
+        refusal_style="拒" * 500,
+        forbidden_topics=["禁" * 40] * 20,
+    )
+    fragment, truncated = assemble_persona_fragment(persona)
+    assert truncated is True
+    assert "语气：" not in fragment
+    assert len(fragment) <= PERSONA_CHARACTER_BUDGET
+
+
+def test_unconfigured_persona_is_not_reported_as_truncated() -> None:
+    """装得下就不能报截断，否则标记恒为真等于没有标记。"""
+
+    fragment, truncated = assemble_persona_fragment(_persona(greeting="早上好"))
+    assert truncated is False
+    assert "早上好" in fragment
+    assert assemble_persona_fragment(None) == ("", False)
 
 
 def test_chat_system_messages_put_policy_first() -> None:
