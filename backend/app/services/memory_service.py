@@ -21,9 +21,11 @@ from app.schemas.memory import (
     MemoryCreateCandidate,
     MemoryPage,
     MemoryResponse,
+    MemoryScopeRequest,
     MemoryUpdate,
 )
 from app.services.ai_service import maybe_embed_text
+from app.services.memory_extraction import find_duplicate
 from app.services.memory_node import drop_local_memory, push_local_memory
 from app.services.tool_runtime_service import select_fresh_node
 
@@ -137,6 +139,39 @@ async def update_memory(
         changes["embedding"] = None
     for field, value in changes.items():
         setattr(memory, field, value)
+    await db.flush()
+    return memory
+
+
+class MemoryScopeConflictError(Exception):
+    """提升为用户级时撞上已有的用户级同内容。"""
+
+
+async def change_memory_scope(
+    *, memory_id: uuid.UUID, user_id: uuid.UUID, request: MemoryScopeRequest, db: AsyncSession
+) -> Memory:
+    """在「用户级共享」与「助理私有」之间切换一条记忆的可见范围（phase-7 §8.5.3）。"""
+
+    memory = await _owned_memory(memory_id=memory_id, user_id=user_id, db=db)
+    if request.scope == "user":
+        if memory.assistant_id is not None:
+            duplicate = await find_duplicate(
+                user_id=user_id, assistant_id=None, content=memory.content or "", db=db
+            )
+            if duplicate is not None:
+                # 不拦住就会出现用户级与助理级两份同一事实，而两份都会被同一次检索召回。
+                raise MemoryScopeConflictError(str(duplicate.id))
+        memory.assistant_id = None
+        await db.flush()
+        return memory
+    if request.assistant_id is None:
+        raise MemoryPolicyError("MEMORY_SCOPE_ASSISTANT_REQUIRED")
+    owner = await db.scalar(
+        select(Assistant).where(Assistant.id == request.assistant_id, Assistant.user_id == user_id)
+    )
+    if owner is None:
+        raise MemoryNotFoundError
+    memory.assistant_id = owner.id
     await db.flush()
     return memory
 

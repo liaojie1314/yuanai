@@ -6,8 +6,9 @@ import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models.memory import (
     Memory,
@@ -51,7 +52,8 @@ def accessible_filters(
 
     filters: list[ColumnElement[bool]] = [
         Memory.user_id == user_id,
-        Memory.assistant_id == assistant_id,
+        # 为空的 assistant_id 是用户级共享记忆，对该用户的每个助理都可见（phase-7 §8.5.3）。
+        or_(Memory.assistant_id == assistant_id, Memory.assistant_id.is_(None)),
         Memory.status == MemoryStatus.active,
         Memory.sensitivity.not_in((MemorySensitivity.sensitive, MemorySensitivity.restricted)),
         Memory.valid_from.is_(None) | (Memory.valid_from <= current_time),
@@ -278,9 +280,19 @@ async def _cloud_results(
         ],
         now=current_time,
     )[:limit]
-    for _, memory in ranked:
-        memory.last_used_at = current_time
-    await db.flush()
+    if ranked:
+        # ORM 赋值会触发 updated_at 的 onupdate，把「只读了一下」写成「刚修改」，
+        # 并污染关键词臂以 updated_at 为次级键的新鲜度排序（S16）。
+        # 用 Core UPDATE 显式写回原值压掉它，再用 set_committed_value 同步内存态，
+        # 这样对象不会变脏、不会二次触发 onupdate。
+        await db.execute(
+            update(Memory)
+            .where(Memory.id.in_([memory.id for _, memory in ranked]))
+            .values(last_used_at=current_time, updated_at=Memory.updated_at)
+            .execution_options(synchronize_session=False)
+        )
+        for _, memory in ranked:
+            set_committed_value(memory, "last_used_at", current_time)
     return [
         MemorySearchResult(
             id=memory.id,

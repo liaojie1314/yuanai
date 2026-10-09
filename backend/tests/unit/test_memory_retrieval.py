@@ -238,3 +238,63 @@ async def test_blank_query_recalls_nothing(db, test_user: User) -> None:
     )
     assert outcome.results == []
     assert memory.last_used_at is None
+
+
+@pytest.mark.asyncio
+async def test_user_level_memory_is_accessible_to_every_assistant(db, test_user: User) -> None:
+    """assistant_id 为空的记忆对该用户的任一助理都可检索（phase-7 §8.5.3）。"""
+
+    assistant = Assistant(user_id=test_user.id, name="记忆", default_model="test-model")
+    db.add(assistant)
+    await db.flush()
+    db.add_all(
+        [
+            _memory(None, test_user.id, content="用户级共享事实"),
+            _memory(assistant.id, test_user.id, content="助理私有事实"),
+        ]
+    )
+    await db.flush()
+
+    outcome = await search_active_memories(
+        user_id=test_user.id, assistant_id=assistant.id, query="事实", db=db
+    )
+    assert {result.content for result in outcome.results} == {"用户级共享事实", "助理私有事实"}
+
+    other = Assistant(user_id=test_user.id, name="第二个", default_model="test-model")
+    db.add(other)
+    await db.flush()
+    second = await search_active_memories(
+        user_id=test_user.id, assistant_id=other.id, query="事实", db=db
+    )
+    assert [result.content for result in second.results] == ["用户级共享事实"]
+
+
+@pytest.mark.asyncio
+async def test_search_does_not_bump_updated_at(db, test_user: User) -> None:
+    """检索只刷新 last_used_at，不得顶 updated_at（S16）。
+
+    updated_at 被顶会同时造成两个后果：响应里「刚修改」是假的，
+    且关键词臂以 updated_at 为次级排序键，会把上一次的赢家钉在队首反复召回。
+    """
+
+    assistant = Assistant(user_id=test_user.id, name="记忆", default_model="test-model")
+    db.add(assistant)
+    await db.flush()
+    memory = _memory(
+        assistant.id,
+        test_user.id,
+        content="我在东八区",
+        sensitivity=MemorySensitivity.personal,
+    )
+    db.add(memory)
+    await db.commit()
+    before = memory.updated_at
+
+    await search_active_memories(
+        user_id=test_user.id, assistant_id=assistant.id, query="东八区", db=db, limit=5
+    )
+    await db.commit()
+    await db.refresh(memory)
+
+    assert memory.updated_at == before
+    assert memory.last_used_at is not None

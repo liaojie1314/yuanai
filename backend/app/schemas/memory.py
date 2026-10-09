@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -85,6 +86,17 @@ class MemoryResponse(MemorySchema):
     last_used_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class MemoryScopeRequest(MemorySchema):
+    """把记忆提升为用户级或降级为助理私有。
+
+    ``scope="assistant"`` 必须带上 ``assistant_id``：一条已经是用户级的记忆没有
+    「原来属于谁」这个信息，降级时不指明就无从落地。
+    """
+
+    scope: Literal["user", "assistant"]
+    assistant_id: uuid.UUID | None = None
 
 
 class MemoryPage(MemorySchema):

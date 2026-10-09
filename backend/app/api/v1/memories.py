@@ -15,6 +15,7 @@ from app.schemas.memory import (
     MemoryExport,
     MemoryPage,
     MemoryResponse,
+    MemoryScopeRequest,
     MemorySearchOutcome,
     MemoryUpdate,
 )
@@ -24,6 +25,8 @@ from app.services.memory_retrieval import search_active_memories
 from app.services.memory_service import (
     MemoryNotFoundError,
     MemoryPolicyError,
+    MemoryScopeConflictError,
+    change_memory_scope,
     create_candidate,
     delete_memory,
     list_memories,
@@ -140,6 +143,27 @@ async def patch_memory(
         raise HTTPException(status_code=422, detail=str(error)) from error
     except LocalMemoryUnavailableError as error:
         raise _local_memory_failure(error) from error
+    await db.commit()
+    await db.refresh(memory)
+    return memory
+
+
+@router.patch("/{memory_id}/scope", response_model=MemoryResponse)
+async def patch_memory_scope(
+    memory_id: uuid.UUID, request: MemoryScopeRequest, current_user: CurrentUser, db: DB
+) -> Memory:
+    """把记忆提升为用户级共享，或降级为某个助理的私有记忆。"""
+
+    try:
+        memory = await change_memory_scope(
+            memory_id=memory_id, user_id=current_user.id, request=request, db=db
+        )
+    except MemoryNotFoundError as error:
+        raise HTTPException(status_code=404, detail="MEMORY_NOT_FOUND") from error
+    except MemoryScopeConflictError as error:
+        raise HTTPException(status_code=409, detail="MEMORY_SCOPE_DUPLICATE") from error
+    except MemoryPolicyError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     await db.commit()
     await db.refresh(memory)
     return memory
