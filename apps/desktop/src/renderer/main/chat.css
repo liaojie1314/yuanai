@@ -805,6 +805,44 @@ textarea:focus-visible {
   font-weight: 650;
 }
 
+/* 当前助理标签与切换器：颜色一律走主题 token，
+   明色专用的近白色在暗色下会铺成白块把文字吃掉（见 S39） */
+.desktop-chat__assistant {
+  display: inline-flex;
+  max-width: min(220px, 30vw);
+  height: 34px;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--desktop-brand-border);
+  border-radius: 17px;
+  color: var(--desktop-fg-subtle);
+  background: var(--desktop-surface);
+  font-size: 12px;
+}
+
+.desktop-chat__assistant > svg {
+  flex-shrink: 0;
+  color: var(--desktop-brand);
+}
+
+.desktop-chat__assistant select {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  color: var(--desktop-fg);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.desktop-chat__assistant-name {
+  overflow: hidden;
+  color: var(--desktop-fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .desktop-chat__model-trigger:hover,
 .desktop-chat__model-trigger[aria-expanded='true'] {
   border-color: var(--desktop-brand-border);

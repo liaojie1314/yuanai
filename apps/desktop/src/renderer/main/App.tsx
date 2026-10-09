@@ -55,6 +55,7 @@ import {
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from 'react-i18next'
 import {
+  useAssistants,
   useConversations,
   useChatCapabilities,
   useCreateMediaTask,
@@ -92,6 +93,7 @@ import type {
   DesktopUpdateStatus,
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
+import { AssistantSwitcher } from './AssistantSwitcher'
 import { MessageList } from './MessageList'
 import { useVoiceInput } from './useVoiceInput'
 import '../shared/i18n'
@@ -1154,6 +1156,7 @@ function ConversationItem({
 /** 提供桌面端的会话列表、消息历史和 SSE 流式聊天体验。 */
 export function App(): ReactElement {
   const { t } = useTranslation()
+  const assistantsQuery = useAssistants()
   const conversationsQuery = useConversations()
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
@@ -1958,6 +1961,17 @@ export function App(): ReactElement {
     setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)))
   }
 
+  /** 把当前会话绑到另一个助理；绑定后下一次聊天就用新助理的人格。 */
+  async function handleSelectAssistant(assistantId: string): Promise<void> {
+    if (!activeConversation) return
+    setActionError('')
+    try {
+      await updateConversation.mutateAsync({ id: activeConversation.id, assistantId })
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法切换助理，请稍后重试'))
+    }
+  }
+
   /** 通过真实会话更新 API 切换置顶状态。 */
   async function handleToggleConversationPin(conversation: Conversation): Promise<void> {
     setConversationMenu(null)
@@ -2470,6 +2484,11 @@ export function App(): ReactElement {
               )}
             </button>
           </div>
+          <AssistantSwitcher
+            activeAssistantId={activeConversation?.assistantId ?? null}
+            assistants={assistantsQuery.data ?? []}
+            onSelect={(assistantId) => void handleSelectAssistant(assistantId)}
+          />
           <button
             className="desktop-chat__model-trigger"
             type="button"
