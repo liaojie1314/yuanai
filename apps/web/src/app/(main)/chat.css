@@ -143,6 +143,7 @@
 }
 .ch-app.sb-col .ch-sb-lbl,
 .ch-app.sb-col .ch-sb-search,
+.ch-app.sb-col .ch-sb-assistant,
 .ch-app.sb-col .ch-sb-uinfo,
 .ch-app.sb-col .ch-sb-uset,
 .ch-app.sb-col .ch-multi-bar {
@@ -274,6 +275,48 @@
   padding: 10px 10px 6px;
   flex-shrink: 0;
 }
+/* Current assistant label + switcher */
+.ch-sb-assistant {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 0 10px 8px;
+  font-size: 12px;
+  color: var(--fg2);
+}
+.ch-sb-assistant svg {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+.ch-sb-assistant select {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--brand-b);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.ch-sb-assistant-name {
+  flex: 1;
+  overflow: hidden;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-sb-assistant-manage {
+  flex-shrink: 0;
+  color: var(--brand);
+  text-decoration: none;
+}
+.ch-sb-assistant-manage:hover {
+  text-decoration: underline;
+}
+
 .ch-s-wrap {
   display: flex;
   align-items: center;

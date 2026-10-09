@@ -427,6 +427,7 @@ export default function AgentWorkspace({
   const [goal, setGoal] = useState('')
   const [selectedRunId, setSelectedRunId] = useState(initialRunId ?? '')
   const toolsT = useTranslations('tools')
+  const assistantsT = useTranslations('assistants')
   const runs = mode === 'admin' ? (adminQuery.data ?? []) : (runsQuery.data ?? [])
   const selected = selectedRunId || runs[0]?.id || ''
   const approvals = approvalQuery.data ?? []
@@ -463,6 +464,9 @@ export default function AgentWorkspace({
           </p>
         </div>
         <div className="agent-header-side">
+          <Link className="agent-btn" href="/agent/assistants">
+            {assistantsT('title')}
+          </Link>
           <Link className="agent-btn" href="/agent/tools">
             {toolsT('title')}
           </Link>

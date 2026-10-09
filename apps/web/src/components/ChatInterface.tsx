@@ -20,6 +20,7 @@ import { MessageList } from '@/components/chat/MessageList'
 import { MessageOutline } from '@/components/chat/MessageOutline'
 import { ArtifactPanel } from '@/components/chat/ArtifactPanel'
 import { ShareDialog } from '@/components/chat/ShareDialog'
+import { AssistantSwitcher } from '@/components/chat/AssistantSwitcher'
 import {
   apiConvToMock,
   apiMsgToMock,
@@ -348,6 +349,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
     isFallback: modelsFallback,
   } = useChatModels()
   const assistantsQuery = useQuery({ queryKey: ['assistants'], queryFn: listAssistants })
+  // 侧栏的助理标签读会话真实绑定值，不能读 apiConvToMock 之后的视图模型
+  const activeApiConv = apiConversations.find((item) => item.id === activeConv)
   const chatCapabilitiesQuery = useChatCapabilities()
   const webSearchCapability = chatCapabilitiesQuery.data?.webSearch
   const webSearchAvailable = webSearchCapability?.enabled === true
@@ -1354,6 +1357,15 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
             />
           </div>
         </div>
+
+        {/* Current assistant label + switcher */}
+        <AssistantSwitcher
+          activeAssistantId={activeApiConv?.assistantId ?? null}
+          assistants={assistantsQuery.data ?? []}
+          onSelect={(assistantId) => {
+            if (activeConv) updateConv({ id: activeConv, assistantId })
+          }}
+        />
 
         {/* Multi-select bar */}
         {multiSel && (
