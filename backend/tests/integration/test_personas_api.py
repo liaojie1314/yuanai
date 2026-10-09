@@ -136,7 +136,7 @@ async def test_rollback_of_other_users_assistant_is_404(
 async def test_preview_returns_assembled_fragment(
     client: AsyncClient, auth_headers: dict[str, str]
 ) -> None:
-    """预览返回后端真实装配结果，和注入链路同一份逻辑。"""
+    """不带草稿时预览已保存的人格，和注入链路同一份逻辑。"""
 
     aid = await _assistant_id(client, auth_headers)
     await client.put(
@@ -144,13 +144,74 @@ async def test_preview_returns_assembled_fragment(
         headers=auth_headers,
         json={"greeting": "早上好", "addressUser": "老板"},
     )
-    response = await client.get(
+    response = await client.post(
         f"/api/v1/agent/assistants/{aid}/persona/preview", headers=auth_headers
     )
     assert response.status_code == 200, response.text
     assert "早上好" in response.json()["fragment"]
     assert "老板" in response.json()["fragment"]
     assert response.json()["truncated"] is False
+
+
+@pytest.mark.asyncio
+async def test_preview_reflects_unsaved_draft(
+    client: AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    """带草稿时预览反映草稿而不是已存值，否则编辑器改字段预览不动。"""
+
+    aid = await _assistant_id(client, auth_headers)
+    await client.put(
+        f"/api/v1/agent/assistants/{aid}/persona",
+        headers=auth_headers,
+        json={"greeting": "早上好", "addressUser": "老板"},
+    )
+    response = await client.post(
+        f"/api/v1/agent/assistants/{aid}/persona/preview",
+        headers=auth_headers,
+        json={"greeting": "晚上好", "tone": "lively"},
+    )
+    assert response.status_code == 200, response.text
+    fragment = response.json()["fragment"]
+    assert "晚上好" in fragment
+    assert "早上好" not in fragment
+    # 草稿里没动的字段仍取已保存值。
+    assert "老板" in fragment
+    assert "轻松活泼" in fragment
+
+    # 草稿不得落库：再读一次人格必须还是保存时的内容。
+    saved = await client.get(f"/api/v1/agent/assistants/{aid}/persona", headers=auth_headers)
+    assert saved.json()["greeting"] == "早上好"
+    assert saved.json()["tone"] == "concise"
+
+
+@pytest.mark.asyncio
+async def test_preview_rejects_invalid_draft(
+    client: AsyncClient, auth_headers: dict[str, str]
+) -> None:
+    """草稿同样受 schema 约束，超限返回 422 而不是静默忽略。"""
+
+    aid = await _assistant_id(client, auth_headers)
+    response = await client.post(
+        f"/api/v1/agent/assistants/{aid}/persona/preview",
+        headers=auth_headers,
+        json={"forbiddenTopics": [f"话题{i}" for i in range(50)]},
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_preview_of_other_users_assistant_is_404(
+    client: AsyncClient, auth_headers: dict[str, str], other_auth_headers: dict[str, str]
+) -> None:
+    """预览别人的助理一律 404，草稿不能当成绕过归属校验的入口。"""
+
+    aid = await _assistant_id(client, auth_headers)
+    response = await client.post(
+        f"/api/v1/agent/assistants/{aid}/persona/preview",
+        headers=other_auth_headers,
+        json={"greeting": "早上好"},
+    )
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

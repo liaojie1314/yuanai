@@ -184,6 +184,35 @@ def unsaved_default_persona(assistant_id: uuid.UUID) -> AssistantPersona:
     )
 
 
+def persona_with_overrides(
+    persona: AssistantPersona, overrides: dict[str, object]
+) -> AssistantPersona:
+    """把草稿字段叠在给定人格之上，产出一个**不落库**的实例。
+
+    预览必须用瞬时副本而不是 ``setattr`` 已加载的那一行：对持久化对象赋值会把它标脏，
+    之后同一个 session 里任何一次 autoflush 都会把「只是预览」写进库里。
+    """
+
+    draft = AssistantPersona(
+        assistant_id=persona.assistant_id,
+        address_user=persona.address_user,
+        self_name=persona.self_name,
+        tone=persona.tone,
+        verbosity=persona.verbosity,
+        greeting=persona.greeting,
+        refusal_style=persona.refusal_style,
+        forbidden_topics=list(persona.forbidden_topics),
+        language=persona.language,
+        version=persona.version,
+        created_at=persona.created_at,
+        updated_at=persona.updated_at,
+    )
+    for field, value in overrides.items():
+        if field in PERSONA_EDITABLE_FIELDS or field == "forbidden_topics":
+            setattr(draft, field, coerce_persona_value(field, value))
+    return draft
+
+
 async def load_persona(*, assistant_id: uuid.UUID, db: AsyncSession) -> AssistantPersona | None:
     """读取助理当前生效的人格；从未保存过时返回 ``None``。"""
 

@@ -22,6 +22,7 @@ from app.services.persona_service import (
     build_persona_fragment,
     list_persona_versions,
     load_persona,
+    persona_with_overrides,
     rollback_persona,
     save_persona,
     unsaved_default_persona,
@@ -97,19 +98,26 @@ async def post_persona_rollback(
     return persona
 
 
-@router.get("/{assistant_id}/persona/preview", response_model=PersonaPreviewResponse)
-async def get_persona_preview(
-    assistant_id: uuid.UUID, current_user: CurrentUser, db: DB
+@router.post("/{assistant_id}/persona/preview", response_model=PersonaPreviewResponse)
+async def post_persona_preview(
+    assistant_id: uuid.UUID,
+    current_user: CurrentUser,
+    db: DB,
+    draft: PersonaUpdateRequest | None = None,
 ) -> PersonaPreviewResponse:
-    """返回后端真实装配出的人格片段。
+    """返回后端真实装配出的人格片段，可带未保存草稿。
 
     预览故意走后端：前端自己拼就要复制一份截断逻辑，两边一旦漂移预览就会对用户撒谎。
+    草稿走请求体而不是查询参数 —— 开场白与拒绝话术是自由文本，放 URL 既可能超长，
+    也会把人格内容写进访问日志。草稿只影响这一次装配，不落库。
     """
 
     await _owned_assistant(assistant_id, current_user.id, db)
     persona = await load_persona(assistant_id=assistant_id, db=db) or unsaved_default_persona(
         assistant_id
     )
+    if draft is not None:
+        persona = persona_with_overrides(persona, draft.model_dump(exclude_unset=True))
     fragment = build_persona_fragment(persona)
     greeting = persona.greeting.strip()
     return PersonaPreviewResponse(
