@@ -640,15 +640,21 @@
       "candidatesHint": "Wording suggestions extracted from your chats; they only apply once you accept them",
       "accept": "Accept",
       "reject": "Ignore",
-      "tone.concise": "Concise and direct",
-      "tone.patient": "Patient and thorough",
-      "tone.lively": "Light and lively",
-      "tone.rigorous": "Rigorous and restrained",
-      "verbosity.brief": "Brief",
-      "verbosity.balanced": "Balanced",
-      "verbosity.detailed": "Detailed",
-      "language.zh-CN": "简体中文",
-      "language.en": "English"
+      "toneOptions": {
+        "concise": "Concise and direct",
+        "patient": "Patient and thorough",
+        "lively": "Light and lively",
+        "rigorous": "Rigorous and restrained"
+      },
+      "verbosityOptions": {
+        "brief": "Brief",
+        "balanced": "Balanced",
+        "detailed": "Detailed"
+      },
+      "languageOptions": {
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
     }
   },
   "skills": {

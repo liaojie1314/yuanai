@@ -214,7 +214,7 @@ export default function PersonaEditor({ assistantId }: { assistantId: string }):
             >
               {TONES.map((tone) => (
                 <option key={tone} value={tone}>
-                  {t(`tone.${tone}`)}
+                  {t(`toneOptions.${tone}`)}
                 </option>
               ))}
             </select>
@@ -227,7 +227,7 @@ export default function PersonaEditor({ assistantId }: { assistantId: string }):
             >
               {VERBOSITIES.map((verbosity) => (
                 <option key={verbosity} value={verbosity}>
-                  {t(`verbosity.${verbosity}`)}
+                  {t(`verbosityOptions.${verbosity}`)}
                 </option>
               ))}
             </select>
@@ -240,7 +240,7 @@ export default function PersonaEditor({ assistantId }: { assistantId: string }):
             >
               {LANGUAGES.map((language) => (
                 <option key={language} value={language}>
-                  {t(`language.${language}`)}
+                  {t(`languageOptions.${language}`)}
                 </option>
               ))}
             </select>

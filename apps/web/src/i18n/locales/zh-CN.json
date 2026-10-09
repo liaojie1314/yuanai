@@ -640,15 +640,21 @@
       "candidatesHint": "从对话里抽出的表达方式建议，确认后才会生效",
       "accept": "采用",
       "reject": "忽略",
-      "tone.concise": "简洁直接",
-      "tone.patient": "耐心细致",
-      "tone.lively": "轻松活泼",
-      "tone.rigorous": "严谨克制",
-      "verbosity.brief": "简短",
-      "verbosity.balanced": "适中",
-      "verbosity.detailed": "详细",
-      "language.zh-CN": "简体中文",
-      "language.en": "English"
+      "toneOptions": {
+        "concise": "简洁直接",
+        "patient": "耐心细致",
+        "lively": "轻松活泼",
+        "rigorous": "严谨克制"
+      },
+      "verbosityOptions": {
+        "brief": "简短",
+        "balanced": "适中",
+        "detailed": "详细"
+      },
+      "languageOptions": {
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
     }
   },
   "skills": {

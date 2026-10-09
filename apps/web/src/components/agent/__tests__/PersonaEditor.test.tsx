@@ -280,6 +280,16 @@ describe('PersonaEditor', () => {
     expect(screen.queryByText('你能不能活泼一点')).not.toBeInTheDocument()
   })
 
+  it('语气、长度与语言的下拉选项都解析出语言包里的文案', async () => {
+    // 这几项用的是嵌套键（toneOptions.concise）。写成扁平的 "tone.concise" 时
+    // next-intl 解析不到，界面上会出现一排原始键名，而所有断言标签的用例照样全绿
+    renderEditor()
+    expect(await screen.findByRole('option', { name: '简洁直接' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '轻松活泼' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '适中' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: '简体中文' })).toBeInTheDocument()
+  })
+
   it('英文资源下关键控件文案来自 i18n 而非硬编码', async () => {
     renderEditor('en')
     expect(await screen.findByRole('button', { name: 'Save persona' })).toBeInTheDocument()
