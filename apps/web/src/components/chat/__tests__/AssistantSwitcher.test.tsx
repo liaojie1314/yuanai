@@ -27,11 +27,12 @@ function renderSwitcher(
   props: {
     assistants: readonly Assistant[]
     activeAssistantId: string | null
-    onSelect?: (assistantId: string) => void
+    /** 传 false 模拟「当前没有可绑定的会话」 */
+    bindable?: boolean
   },
   locale: 'zh-CN' | 'en' = 'zh-CN'
 ): { onSelect: (assistantId: string) => void } {
-  const onSelect = props.onSelect ?? vi.fn()
+  const onSelect = vi.fn()
   render(
     <NextIntlClientProvider
       locale={locale}
@@ -40,7 +41,7 @@ function renderSwitcher(
       <AssistantSwitcher
         assistants={props.assistants}
         activeAssistantId={props.activeAssistantId}
-        onSelect={onSelect}
+        {...(props.bindable === false ? {} : { onSelect })}
       />
     </NextIntlClientProvider>
   )
@@ -71,6 +72,12 @@ describe('AssistantSwitcher', () => {
       </NextIntlClientProvider>
     )
     expect(container).toBeEmptyDOMElement()
+  })
+
+  it('没有可绑定的会话时只显示标签，不给点了没反应的控件', () => {
+    renderSwitcher({ assistants: [work, life], activeAssistantId: null, bindable: false })
+    expect(screen.getByText('工作助理')).toBeInTheDocument()
+    expect(screen.queryByLabelText('切换助理')).not.toBeInTheDocument()
   })
 
   it('切换后把新助理 ID 交给调用方', async () => {

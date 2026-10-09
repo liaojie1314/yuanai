@@ -2487,7 +2487,9 @@ export function App(): ReactElement {
           <AssistantSwitcher
             activeAssistantId={activeConversation?.assistantId ?? null}
             assistants={assistantsQuery.data ?? []}
-            onSelect={(assistantId) => void handleSelectAssistant(assistantId)}
+            {...(activeConversation
+              ? { onSelect: (assistantId: string) => void handleSelectAssistant(assistantId) }
+              : {})}
           />
           <button
             className="desktop-chat__model-trigger"

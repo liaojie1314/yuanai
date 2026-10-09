@@ -1362,9 +1362,9 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         <AssistantSwitcher
           activeAssistantId={activeApiConv?.assistantId ?? null}
           assistants={assistantsQuery.data ?? []}
-          onSelect={(assistantId) => {
-            if (activeConv) updateConv({ id: activeConv, assistantId })
-          }}
+          {...(activeConv
+            ? { onSelect: (assistantId: string) => updateConv({ id: activeConv, assistantId }) }
+            : {})}
         />
 
         {/* Multi-select bar */}

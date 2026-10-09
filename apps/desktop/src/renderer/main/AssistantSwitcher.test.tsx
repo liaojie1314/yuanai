@@ -26,7 +26,9 @@ const life: Assistant = { ...base, id: 'assistant-2', name: '生活助理', isDe
 
 function renderSwitcher(
   assistants: readonly Assistant[],
-  activeAssistantId: string | null
+  activeAssistantId: string | null,
+  /** 传 false 模拟「当前没有可绑定的会话」 */
+  bindable = true
 ): { onSelect: (assistantId: string) => void; container: HTMLElement } {
   const onSelect = vi.fn()
   const { container } = render(
@@ -34,7 +36,7 @@ function renderSwitcher(
       <AssistantSwitcher
         assistants={assistants}
         activeAssistantId={activeAssistantId}
-        onSelect={onSelect}
+        {...(bindable ? { onSelect } : {})}
       />
     </DesktopI18nProvider>
   )
@@ -66,6 +68,12 @@ describe('AssistantSwitcher', () => {
   it('一个助理都没有时整块不渲染', () => {
     const { container } = renderSwitcher([], null)
     expect(container.innerHTML).toBe('')
+  })
+
+  it('没有可绑定的会话时只显示标签，不给点了没反应的控件', () => {
+    renderSwitcher([work, life], null, false)
+    expect(screen.getByText('工作助理')).toBeTruthy()
+    expect(screen.queryByLabelText('切换助理')).toBeNull()
   })
 
   it('切换后把新助理 ID 交给调用方', async () => {

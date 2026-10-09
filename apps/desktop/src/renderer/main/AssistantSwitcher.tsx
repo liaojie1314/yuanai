@@ -9,8 +9,11 @@ interface AssistantSwitcherProps {
   assistants: readonly Assistant[]
   /** 会话已绑定的助理；`null` 表示未绑定，按后端顺序回落到默认助理 */
   activeAssistantId: string | null
-  /** 选了另一个助理，由调用方负责把会话绑过去 */
-  onSelect: (assistantId: string) => void
+  /**
+   * 选了另一个助理，由调用方负责把会话绑过去。
+   * 省略表示当前没有可绑定的会话，此时只显示标签 —— 点了没反应的控件比没有控件更糟。
+   */
+  onSelect?: (assistantId: string) => void
 }
 
 /**
@@ -36,7 +39,7 @@ export function AssistantSwitcher({
   return (
     <div className="desktop-chat__assistant">
       <Bot size={15} aria-hidden="true" />
-      {assistants.length > 1 ? (
+      {assistants.length > 1 && onSelect ? (
         <select
           aria-label={t('chat.assistant.switch')}
           onChange={(event) => {
