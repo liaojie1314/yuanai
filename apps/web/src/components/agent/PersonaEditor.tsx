@@ -159,7 +159,11 @@ export default function PersonaEditor({ assistantId }: { assistantId: string }):
     (candidate) => candidate.assistantId === assistantId
   )
 
-  if (!form) return <p className="persona-muted">{t('loading')}</p>
+  // 表单属于哪个助理：换助理后新人格到达前，form 里还是上一个助理的值，
+  // 直接渲染会让界面谎称在编辑新助理，这期间按保存就把旧值写到新助理上
+  const formBelongsToAssistant = loadedRef.current.startsWith(`${assistantId}:`)
+
+  if (!form || !formBelongsToAssistant) return <p className="persona-muted">{t('loading')}</p>
 
   const topics = parseForbiddenTopics(form.forbiddenTopicsText)
   const topicError =

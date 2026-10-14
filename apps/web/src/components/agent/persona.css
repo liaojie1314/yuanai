@@ -4,12 +4,14 @@
   background: var(--bg);
   color: var(--fg);
 }
-.persona-header,
-.persona-panel,
-.persona-list,
-.persona-empty,
-.persona-editor,
-.persona-alert {
+/* 页面列宽只约束 shell 的直接子元素：不加子选择器时，
+   人格编辑器里复用 .persona-list 的版本历史也会吃到 auto 边距而被收窄居中 */
+.persona-shell > .persona-header,
+.persona-shell > .persona-panel,
+.persona-shell > .persona-list,
+.persona-shell > .persona-empty,
+.persona-shell > .persona-editor,
+.persona-shell > .persona-alert {
   max-width: 1180px;
   margin-left: auto;
   margin-right: auto;
@@ -95,7 +97,7 @@
 .persona-list {
   display: grid;
   gap: 12px;
-  margin: 0 auto 18px;
+  margin: 0 0 18px;
   padding: 0;
   list-style: none;
 }
@@ -164,7 +166,7 @@
   opacity: 0.55;
 }
 .persona-alert {
-  margin: 0 auto 14px;
+  margin: 0 0 14px;
   padding: 8px 12px;
   border-radius: 6px;
   background: var(--danger-b, rgba(239, 68, 68, 0.14));
@@ -188,6 +190,8 @@
 }
 .persona-editor-body {
   display: grid;
+  /* 不写 start 时预览卡片会被拉到和左侧表单等高，底部一大片空白像内容丢了 */
+  align-items: start;
   gap: 18px;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
 }

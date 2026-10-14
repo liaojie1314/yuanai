@@ -295,4 +295,45 @@ describe('PersonaEditor', () => {
     expect(await screen.findByRole('button', { name: 'Save persona' })).toBeInTheDocument()
     expect(screen.getByLabelText('Tone')).toBeInTheDocument()
   })
+
+  it('换助理后新人格到达前不渲染上一个助理的表单', async () => {
+    // 换助理时 persona 查询换了 key、data 变 undefined，而 form 里还是上一个助理的值。
+    // 照常渲染会让界面谎称在编辑新助理，这期间按保存就把旧助理的人格写到新助理上。
+    server.use(
+      http.get(`${API_BASE_URL}/agent/assistants/assistant-2/persona`, async () => {
+        await delay(200)
+        return HttpResponse.json({ ...persona, assistantId: 'assistant-2', selfName: '阿元' })
+      }),
+      http.get(`${API_BASE_URL}/agent/assistants/assistant-2/persona/versions`, () =>
+        HttpResponse.json([])
+      ),
+      http.post(`${API_BASE_URL}/agent/assistants/assistant-2/persona/preview`, () =>
+        HttpResponse.json({ fragment: '自称：阿元', truncated: false, characterBudget: 1200 })
+      )
+    )
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const view = render(
+      <NextIntlClientProvider locale="zh-CN" messages={zhCN as unknown as Record<string, string>}>
+        <QueryClientProvider client={queryClient}>
+          <PersonaEditor assistantId="assistant-1" />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
+    )
+    expect(await screen.findByDisplayValue('小元')).toBeInTheDocument()
+
+    view.rerender(
+      <NextIntlClientProvider locale="zh-CN" messages={zhCN as unknown as Record<string, string>}>
+        <QueryClientProvider client={queryClient}>
+          <PersonaEditor assistantId="assistant-2" />
+        </QueryClientProvider>
+      </NextIntlClientProvider>
+    )
+
+    expect(screen.getByText('正在加载人格…')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('小元')).not.toBeInTheDocument()
+    expect(await screen.findByDisplayValue('阿元')).toBeInTheDocument()
+  })
 })
