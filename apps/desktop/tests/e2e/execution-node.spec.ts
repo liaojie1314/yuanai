@@ -7,6 +7,7 @@
  * 依赖服务端投递过期重投与节点身份持久化在重启后恢复同一任务且恰好完成一次；
  * 还覆盖只存节点的本地记忆：节点拒绝写入时云端不留孤儿元数据，节点在线时检索取回
  * 只存在于本机的正文，节点不告而别后检索明确报告本地不可用而不是空等满作业超时。
+ * 另覆盖会话头部的当前助理标签与切换：选了另一个助理后会话真的被绑过去。
  * 运行前提：真实后端运行在 YUANAI_API_URL（默认 http://localhost:8000/api/v1），
  * 且后端允许创建测试账号。
  */
@@ -668,6 +669,69 @@ test.describe('desktop execution node', () => {
       expect(elapsedMs).toBeLessThan(LOCAL_UNAVAILABLE_BUDGET_MS)
       // 本地记忆此刻读不到，但必须是「暂不可用」而不是被当作不存在。
       expect(outcome?.results).toEqual([])
+    } finally {
+      await app.close().catch(() => {})
+      await api(user.token, 'DELETE', '/auth/me')
+      rmSync(userDataDir, { recursive: true, force: true })
+    }
+  })
+
+  test('会话头部显示当前助理，多助理时切换会把会话绑到新助理', async () => {
+    test.setTimeout(180_000)
+    const user = await createTestUser()
+    // 懒建默认助理：这一次 GET 之后用户才有第一个助理
+    const assistants = (await api(user.token, 'GET', '/agent/assistants')) as unknown as Array<
+      Record<string, unknown>
+    >
+    const first = assistants[0]
+    if (!first) throw new Error('默认助理没有被懒建出来')
+    const second = await api(user.token, 'POST', '/agent/assistants', {
+      name: '桌面第二助理',
+      defaultModel: String(first['defaultModel']),
+    })
+    const conversation = await api(user.token, 'POST', '/chat/conversations', {
+      model: String(first['defaultModel']),
+      assistantId: String(first['id']),
+    })
+
+    const { app, userDataDir } = await launchApp()
+    try {
+      await app.firstWindow()
+      const storageState = await app.evaluate(({ safeStorage }) => ({
+        available: safeStorage.isEncryptionAvailable(),
+      }))
+      test.skip(!storageState.available, 'safeStorage 不可用时应用停在登录页，跳过而不是伪造验收')
+      await login(app, user)
+      const mainWindow = app.windows().find((window) => !window.url().includes('login'))
+      if (!mainWindow) throw new Error('main window not found')
+
+      // 头部要先有助理标签：没有会话时只显示名字，点了没反应的控件比没有控件更糟
+      await mainWindow.locator('.desktop-chat__conversation').first().click()
+      const switcher = mainWindow.getByLabel('切换助理')
+      await expect(switcher).toBeVisible({ timeout: 20_000 })
+      await expect(switcher).toHaveText(new RegExp(String(first['name'])))
+
+      // 选单与模型选择器同款自绘面板，不是原生 select
+      await switcher.click()
+      await mainWindow.getByRole('option', { name: String(second['name']) }).click()
+      await expect
+        .poll(
+          async () => {
+            // 后端没有单条会话的 GET，只能从分页列表里取这一行
+            const page = await api(user.token, 'GET', '/chat/conversations')
+            const rows = (page['conversations'] ?? []) as Array<Record<string, unknown>>
+            return rows.find((row) => row['id'] === conversation['id'])?.['assistantId']
+          },
+          { message: '切换助理后会话没有被绑到新助理', timeout: 20_000 }
+        )
+        .toBe(String(second['id']))
+
+      // 顺带留 README 的界面证据：助理标签只在会话头部出现，
+      // 10-07 那批桌面截图拍在这个控件存在之前，不重拍就是在用过期图当证据
+      await mainWindow.screenshot({
+        path: '../../docs/assets/screenshots/desktop-assistant-switch.png',
+        fullPage: true,
+      })
     } finally {
       await app.close().catch(() => {})
       await api(user.token, 'DELETE', '/auth/me')

@@ -11,9 +11,22 @@ export async function listConversations(): Promise<Conversation[]> {
   return res.data.conversations
 }
 
-/** 创建新会话 */
-export async function createConversation(model: string, title?: string): Promise<Conversation> {
-  const res = await apiClient.post<Conversation>('/chat/conversations', { model, title })
+/**
+ * 创建新会话。
+ *
+ * `assistantId` 省略时由后端绑定默认助理；传值表示用户在空态屏先挑了助理
+ * —— 新会话还不存在，没法走 `updateConversation`，所以必须在创建时带上。
+ */
+export async function createConversation(
+  model: string,
+  title?: string,
+  assistantId?: string
+): Promise<Conversation> {
+  const res = await apiClient.post<Conversation>('/chat/conversations', {
+    model,
+    title,
+    ...(assistantId !== undefined ? { assistantId } : {}),
+  })
   return res.data
 }
 

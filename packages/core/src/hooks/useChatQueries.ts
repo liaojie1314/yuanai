@@ -46,8 +46,15 @@ export function useChatCapabilities() {
 export function useCreateConversation() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ model, title }: { model: string; title?: string }) =>
-      createConversation(model, title),
+    mutationFn: ({
+      model,
+      title,
+      assistantId,
+    }: {
+      model: string
+      title?: string
+      assistantId?: string
+    }) => createConversation(model, title, assistantId),
     onSuccess: (newConv: Conversation) => {
       qc.setQueryData<Conversation[]>(['conversations'], (prev) =>
         prev ? [newConv, ...prev] : [newConv]

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { NextIntlClientProvider } from 'next-intl'
@@ -27,8 +30,6 @@ function renderSwitcher(
   props: {
     assistants: readonly Assistant[]
     activeAssistantId: string | null
-    /** 传 false 模拟「当前没有可绑定的会话」 */
-    bindable?: boolean
   },
   locale: 'zh-CN' | 'en' = 'zh-CN'
 ): { onSelect: (assistantId: string) => void } {
@@ -41,7 +42,7 @@ function renderSwitcher(
       <AssistantSwitcher
         assistants={props.assistants}
         activeAssistantId={props.activeAssistantId}
-        {...(props.bindable === false ? {} : { onSelect })}
+        onSelect={onSelect}
       />
     </NextIntlClientProvider>
   )
@@ -51,18 +52,22 @@ function renderSwitcher(
 describe('AssistantSwitcher', () => {
   it('显示会话当前绑定的助理名', () => {
     renderSwitcher({ assistants: [work, life], activeAssistantId: 'assistant-2' })
-    expect(screen.getByLabelText('切换助理')).toHaveValue('assistant-2')
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('生活助理')
   })
 
   it('会话未绑定助理时显示默认助理，与后端的解析顺序一致', () => {
     renderSwitcher({ assistants: [life, work], activeAssistantId: null })
-    expect(screen.getByLabelText('切换助理')).toHaveValue('assistant-1')
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('工作助理')
   })
 
-  it('只有一个助理时不渲染切换控件', () => {
+  it('只有一个助理时也能点开，面板里留着管理入口', async () => {
+    // 退化成纯文字标签会把新用户堵死在默认助理上：增删改助理只有这一个入口
+    const user = userEvent.setup()
     renderSwitcher({ assistants: [work], activeAssistantId: 'assistant-1' })
-    expect(screen.getByText('工作助理')).toBeInTheDocument()
-    expect(screen.queryByLabelText('切换助理')).not.toBeInTheDocument()
+
+    await user.click(screen.getByLabelText('切换助理'))
+    expect(screen.getByRole('option', { name: '工作助理' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '管理助理' })).toBeInTheDocument()
   })
 
   it('一个助理都没有时整块不渲染', () => {
@@ -74,21 +79,34 @@ describe('AssistantSwitcher', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  it('没有可绑定的会话时只显示标签，不给点了没反应的控件', () => {
-    renderSwitcher({ assistants: [work, life], activeAssistantId: null, bindable: false })
-    expect(screen.getByText('工作助理')).toBeInTheDocument()
-    expect(screen.queryByLabelText('切换助理')).not.toBeInTheDocument()
+  it('选单与顶栏模型下拉同款：点开才出面板，当前项打勾', async () => {
+    const user = userEvent.setup()
+    renderSwitcher({ assistants: [work, life], activeAssistantId: 'assistant-1' })
+
+    // 同一界面里两个同类选择器用两种控件会让人以为是两种功能，所以这里必须是自绘面板
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
+    await user.click(screen.getByLabelText('切换助理'))
+    expect(screen.getByRole('option', { name: '工作助理' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(screen.getByRole('option', { name: '生活助理' })).toHaveAttribute(
+      'aria-selected',
+      'false'
+    )
   })
 
-  it('切换后把新助理 ID 交给调用方', async () => {
+  it('切换后把新助理 ID 交给调用方并收起面板', async () => {
     const user = userEvent.setup()
     const { onSelect } = renderSwitcher({
       assistants: [work, life],
       activeAssistantId: 'assistant-1',
     })
 
-    await user.selectOptions(screen.getByLabelText('切换助理'), 'assistant-2')
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
     expect(onSelect).toHaveBeenCalledWith('assistant-2')
+    expect(screen.queryByRole('option')).not.toBeInTheDocument()
   })
 
   it('选中当前助理不重复发请求', async () => {
@@ -98,12 +116,24 @@ describe('AssistantSwitcher', () => {
       activeAssistantId: 'assistant-1',
     })
 
-    await user.selectOptions(screen.getByLabelText('切换助理'), 'assistant-1')
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '工作助理' }))
     expect(onSelect).not.toHaveBeenCalled()
   })
 
-  it('提供通往助理管理页的入口，否则控制面对新用户不可达', () => {
+  it('助理数量无上限，所以面板必须能滚', () => {
+    // 选项多到一屏装不下时，不可滚的面板会让后面的助理永远选不到
+    const css = readFileSync(resolve(process.cwd(), 'src/app/(main)/chat.css'), 'utf8')
+    const rule = /\.ch-asw-list\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(rule).toMatch(/max-height/)
+    expect(rule).toMatch(/overflow-y:\s*auto/)
+  })
+
+  it('提供通往助理管理页的入口，否则控制面对新用户不可达', async () => {
+    const user = userEvent.setup()
     renderSwitcher({ assistants: [work], activeAssistantId: 'assistant-1' })
+
+    await user.click(screen.getByLabelText('切换助理'))
     expect(screen.getByRole('link', { name: '管理助理' })).toHaveAttribute(
       'href',
       '/agent/assistants'

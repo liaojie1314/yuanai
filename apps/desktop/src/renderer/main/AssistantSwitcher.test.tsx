@@ -26,9 +26,7 @@ const life: Assistant = { ...base, id: 'assistant-2', name: '生活助理', isDe
 
 function renderSwitcher(
   assistants: readonly Assistant[],
-  activeAssistantId: string | null,
-  /** 传 false 模拟「当前没有可绑定的会话」 */
-  bindable = true
+  activeAssistantId: string | null
 ): { onSelect: (assistantId: string) => void; container: HTMLElement } {
   const onSelect = vi.fn()
   const { container } = render(
@@ -36,7 +34,7 @@ function renderSwitcher(
       <AssistantSwitcher
         assistants={assistants}
         activeAssistantId={activeAssistantId}
-        {...(bindable ? { onSelect } : {})}
+        onSelect={onSelect}
       />
     </DesktopI18nProvider>
   )
@@ -51,12 +49,12 @@ afterEach(async () => {
 describe('AssistantSwitcher', () => {
   it('会话头部显示当前助理名', () => {
     renderSwitcher([work, life], 'assistant-2')
-    expect(screen.getByLabelText('切换助理')).toHaveValue('assistant-2')
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('生活助理')
   })
 
   it('会话未绑定助理时显示默认助理', () => {
     renderSwitcher([life, work], null)
-    expect(screen.getByLabelText('切换助理')).toHaveValue('assistant-1')
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('工作助理')
   })
 
   it('只有一个助理时不渲染切换控件', () => {
@@ -70,26 +68,50 @@ describe('AssistantSwitcher', () => {
     expect(container.innerHTML).toBe('')
   })
 
-  it('没有可绑定的会话时只显示标签，不给点了没反应的控件', () => {
-    renderSwitcher([work, life], null, false)
-    expect(screen.getByText('工作助理')).toBeTruthy()
-    expect(screen.queryByLabelText('切换助理')).toBeNull()
+  it('选单与模型选择器同款：点开才出面板，当前项打勾', async () => {
+    const user = userEvent.setup()
+    renderSwitcher([work, life], 'assistant-1')
+
+    // 同一条头部里两个同类选择器用两种控件会让人以为是两种功能
+    expect(screen.queryByRole('option')).toBeNull()
+    await user.click(screen.getByLabelText('切换助理'))
+    expect(screen.getByRole('option', { name: '工作助理' }).getAttribute('aria-selected')).toBe(
+      'true'
+    )
+    expect(screen.getByRole('option', { name: '生活助理' }).getAttribute('aria-selected')).toBe(
+      'false'
+    )
   })
 
-  it('切换后把新助理 ID 交给调用方', async () => {
+  it('切换后把新助理 ID 交给调用方并收起面板', async () => {
     const user = userEvent.setup()
     const { onSelect } = renderSwitcher([work, life], 'assistant-1')
 
-    await user.selectOptions(screen.getByLabelText('切换助理'), 'assistant-2')
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
     expect(onSelect).toHaveBeenCalledWith('assistant-2')
+    expect(screen.queryByRole('option')).toBeNull()
   })
 
   it('选中当前助理不重复发请求', async () => {
     const user = userEvent.setup()
     const { onSelect } = renderSwitcher([work, life], 'assistant-1')
 
-    await user.selectOptions(screen.getByLabelText('切换助理'), 'assistant-1')
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '工作助理' }))
     expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('助理数量无上限，所以面板必须能滚', () => {
+    // 选项多到一屏装不下时，不可滚的面板会让后面的助理永远选不到
+    const css = readFileSync(resolve(process.cwd(), 'src/renderer/main/chat.css'), 'utf8')
+    const rule =
+      /\.desktop-chat__assistant-menu\s*\{([^}]*)\}|,\s*\.desktop-chat__assistant-menu\s*\{([^}]*)\}/.exec(
+        css
+      )
+    const body = (rule?.[1] ?? rule?.[2] ?? '').toString()
+    expect(body).toMatch(/max-height/)
+    expect(body).toMatch(/overflow-y:\s*auto/)
   })
 
   it('英文界面下文案来自 i18n 而非硬编码', async () => {

@@ -340,6 +340,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const conversations = apiConversations.map(apiConvToMock)
 
   const { mutateAsync: createConvAsync } = useCreateConversation()
+  // 空态屏选的助理（会话尚未创建，暂存本地；创建时作为 assistantId 带出）
+  const [pickedAssistantId, setPickedAssistantId] = useState<string | null>(null)
   const { mutate: deleteConv } = useDeleteConversation()
   const { mutate: deleteConvs } = useDeleteConversations()
   const { mutate: updateConv } = useUpdateConversation()
@@ -904,6 +906,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
         const newConv = await createConvAsync({
           model: activeModel.id,
           title: text.slice(0, 30) + (text.length > 30 ? '…' : ''),
+          ...(pickedAssistantId ? { assistantId: pickedAssistantId } : {}),
         })
         convId = newConv.id
         setActiveConv(convId)
@@ -1358,15 +1361,6 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
           </div>
         </div>
 
-        {/* Current assistant label + switcher */}
-        <AssistantSwitcher
-          activeAssistantId={activeApiConv?.assistantId ?? null}
-          assistants={assistantsQuery.data ?? []}
-          {...(activeConv
-            ? { onSelect: (assistantId: string) => updateConv({ id: activeConv, assistantId }) }
-            : {})}
-        />
-
         {/* Multi-select bar */}
         {multiSel && (
           <div className="ch-multi-bar">
@@ -1630,6 +1624,19 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               ))}
           </div>
           <div className="ch-tb-c">
+            {/* 助理与模型并排：两个同类选择器分居侧栏和头部会让人以为是两种功能 */}
+            <AssistantSwitcher
+              activeAssistantId={
+                activeConv ? (activeApiConv?.assistantId ?? null) : pickedAssistantId
+              }
+              assistants={assistantsQuery.data ?? []}
+              onSelect={(assistantId: string) => {
+                // 新会话还不存在，没法 PATCH：先记住选择，建会话时作为 assistantId 带出，
+                // 否则从空态屏开始的对话永远只能用默认助理
+                if (activeConv) updateConv({ id: activeConv, assistantId })
+                else setPickedAssistantId(assistantId)
+              }}
+            />
             <button className="ch-model-btn" ref={modelBtnRef} onClick={toggleModelDrop}>
               <div
                 className="ch-m-dot"
@@ -2349,6 +2356,7 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
               >
                 <User size={16} /> {t('sidebar.profile')}
               </div>
+              <div className="ch-up-sep" />
               <div className="ch-up-sep" />
               <div
                 className="ch-up-row danger"

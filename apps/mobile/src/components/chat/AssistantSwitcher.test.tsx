@@ -1,14 +1,12 @@
 import { createElement } from 'react'
 import * as React from 'react'
-import { act, create } from 'react-test-renderer'
+import { create } from 'react-test-renderer'
 import type { ReactTestInstance } from 'react-test-renderer'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import type { Assistant } from '@yuanai/types'
 
 import { zhCN } from '@/i18n/messages/zh-CN'
-
-const dialog = vi.hoisted(() => ({ actionSheet: vi.fn() }))
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable',
@@ -17,7 +15,6 @@ vi.mock('react-native', () => ({
   View: 'View',
 }))
 vi.mock('lucide-react-native', () => ({ Bot: 'Bot', ChevronDown: 'ChevronDown' }))
-vi.mock('@/components/ui/Dialog', () => ({ useDialog: () => dialog }))
 vi.mock('@/theme/tokens', () => ({ radius: { sm: 6 }, spacing: { xs: 4, sm: 8, md: 12 } }))
 vi.mock('@/theme/useTheme', () => ({
   useTheme: () => ({ text: { primary: '#111827', secondary: '#6b7280' } }),
@@ -59,16 +56,20 @@ const base = {
 const work: Assistant = { ...base, id: 'assistant-1', name: '工作助理', isDefault: true }
 const life: Assistant = { ...base, id: 'assistant-2', name: '生活助理', isDefault: false }
 
-/** 渲染切换器并返回根实例与 onSelect 替身。 */
+/** 渲染切换器并返回根实例与 onPress 替身。 */
 function renderSwitcher(
   assistants: readonly Assistant[],
   activeAssistantId: string | null
-): { root: ReactTestInstance; onSelect: ReturnType<typeof vi.fn>; json: unknown } {
-  const onSelect = vi.fn()
+): { root: ReactTestInstance; onPress: ReturnType<typeof vi.fn>; json: unknown } {
+  const onPress = vi.fn()
   const renderer = create(
-    createElement(AssistantSwitcher, { assistants, activeAssistantId, onSelect })
+    createElement(AssistantSwitcher, {
+      assistants,
+      activeAssistantId,
+      onPress,
+    })
   )
-  return { root: renderer.root, onSelect, json: renderer.toJSON() }
+  return { root: renderer.root, onPress, json: renderer.toJSON() }
 }
 
 /** 取出渲染树里的全部文本节点。 */
@@ -81,10 +82,6 @@ function texts(root: ReactTestInstance): string[] {
 const SWITCH_LABEL = zhCN.chat.assistant.switch
 
 describe('AssistantSwitcher', () => {
-  beforeEach(() => {
-    dialog.actionSheet.mockReset()
-  })
-
   it('会话头部显示当前助理名', () => {
     const { root } = renderSwitcher([work, life], 'assistant-2')
     expect(texts(root)).toContain('生活助理')
@@ -106,38 +103,15 @@ describe('AssistantSwitcher', () => {
     expect(json).toBeNull()
   })
 
-  it('从选单里选另一个助理后把它的 ID 交给调用方', async () => {
-    dialog.actionSheet.mockResolvedValue(1)
-    const { root, onSelect } = renderSwitcher([work, life], 'assistant-1')
+  it('点击把选单交给调用方弹 BottomSheet，自己不再弹居中卡片', () => {
+    // 选单改用与模型选择器同款的 BottomSheet：同一条头部里两种控件会让人以为是两种功能，
+    // 而且原来的居中 ActionSheet 不可滚，助理一多就选不到后面的
+    const { root, onPress } = renderSwitcher([work, life], 'assistant-1')
 
     const press = root.findByProps({ accessibilityLabel: SWITCH_LABEL }).props['onPress']
     if (typeof press !== 'function') throw new Error('切换器没有挂 onPress')
-    await act(async () => {
-      await (press as () => Promise<void>)()
-    })
+    press()
 
-    expect(dialog.actionSheet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actions: [{ label: '工作助理' }, { label: '生活助理' }],
-      })
-    )
-    expect(onSelect).toHaveBeenCalledWith('assistant-2')
-  })
-
-  it('取消选单或选回当前助理都不发请求', async () => {
-    dialog.actionSheet.mockResolvedValueOnce(-1).mockResolvedValueOnce(0)
-    const { root, onSelect } = renderSwitcher([work, life], 'assistant-1')
-    const press = root.findByProps({ accessibilityLabel: SWITCH_LABEL }).props['onPress'] as
-      (() => Promise<void>) | undefined
-    if (!press) throw new Error('切换器没有挂 onPress')
-
-    await act(async () => {
-      await press()
-    })
-    await act(async () => {
-      await press()
-    })
-
-    expect(onSelect).not.toHaveBeenCalled()
+    expect(onPress).toHaveBeenCalledTimes(1)
   })
 })

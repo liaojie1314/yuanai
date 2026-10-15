@@ -30,11 +30,12 @@ import {
   useUpdateConversation,
 } from '@yuanai/core'
 import { selectConversationStream, useChatStore, usePrefsStore } from '@yuanai/core/stores'
-import type { AIModel, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
+import type { AIModel, Assistant, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
 
 import type { FeedbackType } from '@/components/chat/AIMessageActions'
 import { ChatInput } from '@/components/chat/ChatInput'
 import { ArtifactSurface } from '@/components/chat/ArtifactSurface'
+import { AssistantSelectorSheet } from '@/components/chat/AssistantSelectorSheet'
 import { AssistantSwitcher } from '@/components/chat/AssistantSwitcher'
 import { MessageList, type MessageListHandle } from '@/components/chat/MessageList'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
@@ -102,6 +103,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
 
   const listRef = useRef<MessageListHandle>(null)
   const modelSheetRef = useRef<BottomSheetModal>(null)
+  const assistantSheetRef = useRef<BottomSheetModal>(null)
   const shareSheetRef = useRef<BottomSheetModal>(null)
 
   // ── 消息交互状态 ────────────────────────────────────────────
@@ -163,12 +165,17 @@ export default function ChatConversationScreen(): React.JSX.Element {
     [conversationId, conv?.model, updateConv, toast, dialog, t]
   )
 
+  const openAssistantSheet = useCallback(() => {
+    assistantSheetRef.current?.present()
+  }, [])
+
   // 把会话绑到另一个助理；绑定后下一次发言就用新助理的人格
   const handleSelectAssistant = useCallback(
-    (assistantId: string) => {
-      if (!conversationId) return
+    (assistant: Assistant) => {
+      assistantSheetRef.current?.dismiss()
+      if (!conversationId || conv?.assistantId === assistant.id) return
       updateConv.mutate(
-        { id: conversationId, assistantId },
+        { id: conversationId, assistantId: assistant.id },
         {
           onError: (err) =>
             void dialog.alert({
@@ -178,7 +185,7 @@ export default function ChatConversationScreen(): React.JSX.Element {
         }
       )
     },
-    [conversationId, updateConv, dialog, t]
+    [conversationId, conv?.assistantId, updateConv, dialog, t]
   )
 
   const openDrawer = useCallback(() => {
@@ -370,28 +377,34 @@ export default function ChatConversationScreen(): React.JSX.Element {
             <Text style={[styles.topTitle, { color: theme.text.primary }]} numberOfLines={1}>
               {conv?.title ?? t('chat.conversation')}
             </Text>
-            <AssistantSwitcher
-              activeAssistantId={conv?.assistantId ?? null}
-              assistants={assistants}
-              onSelect={handleSelectAssistant}
-            />
-            {models.length > 0 ? (
-              <Pressable
-                onPress={openModelSheet}
-                hitSlop={4}
-                style={styles.modelChip}
-                accessibilityRole="button"
-                accessibilityLabel={`当前模型 ${currentModelInfo?.name ?? currentModel}，点击切换`}
-              >
-                <Text
-                  style={[styles.modelChipText, { color: theme.text.secondary }]}
-                  numberOfLines={1}
-                >
-                  {currentModelInfo?.name ?? currentModel}
-                </Text>
-                <ChevronDown size={12} color={theme.text.secondary} />
-              </Pressable>
-            ) : null}
+            {/* 助理与模型并排一行：各占一行会把头部堆成三层，标题被挤到只剩一行高 */}
+            <View style={styles.topMeta}>
+              <AssistantSwitcher
+                activeAssistantId={conv?.assistantId ?? null}
+                assistants={assistants}
+                onPress={openAssistantSheet}
+              />
+              {models.length > 0 ? (
+                <>
+                  <Text style={[styles.topMetaDot, { color: theme.text.secondary }]}>·</Text>
+                  <Pressable
+                    onPress={openModelSheet}
+                    hitSlop={4}
+                    style={styles.modelChip}
+                    accessibilityRole="button"
+                    accessibilityLabel={`当前模型 ${currentModelInfo?.name ?? currentModel}，点击切换`}
+                  >
+                    <Text
+                      style={[styles.modelChipText, { color: theme.text.secondary }]}
+                      numberOfLines={1}
+                    >
+                      {currentModelInfo?.name ?? currentModel}
+                    </Text>
+                    <ChevronDown size={12} color={theme.text.secondary} />
+                  </Pressable>
+                </>
+              ) : null}
+            </View>
           </View>
           <Pressable
             onPress={() => shareSheetRef.current?.present()}
@@ -458,6 +471,12 @@ export default function ChatConversationScreen(): React.JSX.Element {
         currentId={currentModel}
         onSelect={handleSelectModel}
       />
+      <AssistantSelectorSheet
+        ref={assistantSheetRef}
+        assistants={assistants}
+        currentId={conv?.assistantId ?? ''}
+        onSelect={handleSelectAssistant}
+      />
     </KeyboardAvoidingView>
   )
 }
@@ -474,7 +493,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  topCenter: { flex: 1, alignItems: 'center', gap: 2 },
+  topCenter: { flex: 1, alignItems: 'center', gap: 1 },
+  topMeta: { flexDirection: 'row', alignItems: 'center', gap: 2, maxWidth: '100%' },
+  topMetaDot: { fontSize: 11 },
   topTitle: { fontSize: 15, fontWeight: '600', maxWidth: '90%' },
   modelChip: {
     flexDirection: 'row',

@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import type { Assistant } from '@yuanai/types'
 
-import { useDialog } from '@/components/ui/Dialog'
 import { spacing } from '@/theme/tokens'
 import { useTheme } from '@/theme/useTheme'
 
@@ -13,25 +12,25 @@ interface AssistantSwitcherProps {
   assistants: readonly Assistant[]
   /** 会话已绑定的助理；`null` 表示未绑定，按后端顺序回落到默认助理 */
   activeAssistantId: string | null
-  /** 选了另一个助理，由调用方负责把会话绑过去 */
-  onSelect: (assistantId: string) => void
+  /** 点开选单，由调用方弹 `AssistantSelectorSheet`；新会话屏也必须能选，所以不接受省略 */
+  onPress: () => void
 }
 
 /**
- * 会话头部的当前助理标签与切换器。
+ * 会话头部的当前助理标签与切换入口。
  *
- * 移动端本轮只做标签与切换，助理增删改与人格编辑器仍只在 Web 端。
- * 选单复用 `components/ui/Dialog` 的 ActionSheet，不新引依赖；
+ * 选单用 `AssistantSelectorSheet`（BottomSheet），与模型选择器同款控件：
+ * 原先复用 `Dialog` 的居中 ActionSheet，和旁边的模型选择器不是一种交互，
+ * 而且那张卡片不可滚，助理一多就选不到后面的。
  * 只有一个助理时退化成纯文字标签，唯一选项的选单是纯噪音。
  */
 export function AssistantSwitcher({
   assistants,
   activeAssistantId,
-  onSelect,
+  onPress,
 }: AssistantSwitcherProps): React.JSX.Element | null {
   const { t } = useTranslation()
   const theme = useTheme()
-  const dialog = useDialog()
   if (assistants.length === 0) return null
   // 与后端解析默认助理的顺序一致：先看会话绑定，再看 isDefault，最后退回第一个
   const active =
@@ -39,17 +38,6 @@ export function AssistantSwitcher({
     assistants.find((item) => item.isDefault) ??
     assistants[0]
   if (!active) return null
-
-  const open = async (): Promise<void> => {
-    const choice = await dialog.actionSheet({
-      title: t('chat.assistant.switch'),
-      actions: assistants.map((item) => ({ label: item.name })),
-    })
-    const picked = assistants[choice]
-    // 取消返回 -1；选回当前助理不必白跑一次 PATCH
-    if (!picked || picked.id === active.id) return
-    onSelect(picked.id)
-  }
 
   if (assistants.length === 1) {
     return (
@@ -71,7 +59,7 @@ export function AssistantSwitcher({
       accessibilityLabel={t('chat.assistant.switch')}
       accessibilityRole="button"
       hitSlop={4}
-      onPress={() => void open()}
+      onPress={onPress}
       style={styles.chip}
     >
       <Bot size={12} color={theme.text.secondary} />
@@ -88,6 +76,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+    // 与模型选择器并排一行，助理名长时让它先缩，别把模型挤出屏幕
+    flexShrink: 1,
     maxWidth: '100%',
     paddingHorizontal: spacing.xs,
     paddingVertical: 1,

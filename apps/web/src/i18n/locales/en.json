@@ -386,7 +386,8 @@
     "assistant": {
       "current": "Current assistant",
       "switch": "Switch assistant",
-      "manage": "Manage assistants"
+      "manage": "Manage assistants",
+      "close": "Close assistant menu"
     }
   },
   "tools": {

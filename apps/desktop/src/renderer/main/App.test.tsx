@@ -608,7 +608,8 @@ describe('desktop chat', () => {
     chat.updateConversation.mockResolvedValue(undefined)
     render(<App />)
 
-    await user.selectOptions(screen.getByLabelText('切换助理'), 'assistant-2')
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
 
     await waitFor(() =>
       expect(chat.updateConversation).toHaveBeenCalledWith({
@@ -616,6 +617,34 @@ describe('desktop chat', () => {
         assistantId: 'assistant-2',
       })
     )
+  })
+
+  it('空态屏先选助理，建会话时把它带上', async () => {
+    const user = userEvent.setup()
+    chat.assistants = [
+      { id: 'assistant-1', name: '工作助理', isDefault: true },
+      { id: 'assistant-2', name: '生活助理', isDefault: false },
+    ]
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    // 会话还不存在，没法 PATCH；控件照样要能选，否则空态屏开始的对话只能用默认助理
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
+    expect(chat.updateConversation).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('生活助理')
+
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '你好')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await waitFor(() => {
+      expect(chat.createConversation).toHaveBeenCalledWith({
+        model: 'gpt-4o',
+        title: '你好',
+        assistantId: 'assistant-2',
+      })
+    })
   })
 
   it('does not expose cached conversations while signed out', () => {

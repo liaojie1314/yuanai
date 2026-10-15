@@ -173,6 +173,7 @@ export const enUS: MobileMessages = {
     assistant: {
       current: 'Current assistant',
       switch: 'Switch assistant',
+      default: 'Default',
     },
     welcomeTitle: 'Hi, I am YuanAI',
     welcomeSubtitle: 'How can I help?',

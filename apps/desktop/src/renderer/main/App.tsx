@@ -1185,6 +1185,8 @@ export function App(): ReactElement {
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  // 空态屏选的助理（会话尚未创建，暂存本地；创建时作为 assistantId 带出）
+  const [pickedAssistantId, setPickedAssistantId] = useState<string | null>(null)
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false)
   const [isThinkingEnabled, setIsThinkingEnabled] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
@@ -2126,6 +2128,7 @@ export function App(): ReactElement {
         const conversation = await createConversation.mutateAsync({
           model: selectedModel.id,
           title: content.slice(0, 30),
+          ...(pickedAssistantId ? { assistantId: pickedAssistantId } : {}),
         })
         conversationId = conversation.id
         setActiveConversationId(conversationId)
@@ -2484,27 +2487,35 @@ export function App(): ReactElement {
               )}
             </button>
           </div>
-          <AssistantSwitcher
-            activeAssistantId={activeConversation?.assistantId ?? null}
-            assistants={assistantsQuery.data ?? []}
-            {...(activeConversation
-              ? { onSelect: (assistantId: string) => void handleSelectAssistant(assistantId) }
-              : {})}
-          />
-          <button
-            className="desktop-chat__model-trigger"
-            type="button"
-            aria-label={t('desktop.chat.selectModel', { name: modelTriggerLabel })}
-            aria-expanded={isModelMenuOpen}
-            aria-haspopup="listbox"
-            onClick={() => setIsModelMenuOpen((value) => !value)}
-          >
-            <span className="desktop-chat__model-mark" aria-hidden="true">
-              {getModelInitial(selectedModel)}
-            </span>
-            <span className="desktop-chat__model-trigger-label">{modelTriggerLabel}</span>
-            <ChevronDown size={15} aria-hidden="true" />
-          </button>
+          {/* 助理与模型同占头部的中间一格：头部是三列网格（左按钮 / 中 / 右动作），
+              把它们当成两个格子放进去会把右侧动作挤到第二行 */}
+          <div className="desktop-chat__header-center">
+            <AssistantSwitcher
+              activeAssistantId={
+                activeConversation ? (activeConversation.assistantId ?? null) : pickedAssistantId
+              }
+              assistants={assistantsQuery.data ?? []}
+              onSelect={(assistantId: string) => {
+                // 新会话还不存在，没法 PATCH：先记住选择，建会话时作为 assistantId 带出
+                if (activeConversation) void handleSelectAssistant(assistantId)
+                else setPickedAssistantId(assistantId)
+              }}
+            />
+            <button
+              className="desktop-chat__model-trigger"
+              type="button"
+              aria-label={t('desktop.chat.selectModel', { name: modelTriggerLabel })}
+              aria-expanded={isModelMenuOpen}
+              aria-haspopup="listbox"
+              onClick={() => setIsModelMenuOpen((value) => !value)}
+            >
+              <span className="desktop-chat__model-mark" aria-hidden="true">
+                {getModelInitial(selectedModel)}
+              </span>
+              <span className="desktop-chat__model-trigger-label">{modelTriggerLabel}</span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </button>
+          </div>
           <div className="desktop-chat__header-side desktop-chat__header-side--end">
             <button
               className="desktop-chat__header-action"

@@ -790,6 +790,14 @@ textarea:focus-visible {
   justify-content: flex-end;
 }
 
+.desktop-chat__header-center {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  /* 助理与模型是两个独立控件，挨在一起会被看成一个 */
+  gap: 10px;
+}
+
 .desktop-chat__model-trigger {
   display: inline-flex;
   max-width: min(280px, 40vw);
@@ -826,14 +834,49 @@ textarea:focus-visible {
   color: var(--desktop-brand);
 }
 
-.desktop-chat__assistant select {
+.desktop-chat__assistant-trigger {
+  display: inline-flex;
   min-width: 0;
   flex: 1;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
   border: 0;
   color: var(--desktop-fg);
   background: transparent;
   font: inherit;
   cursor: pointer;
+}
+
+.desktop-chat__assistant-trigger > svg {
+  flex-shrink: 0;
+  color: var(--desktop-fg-subtle);
+}
+
+.desktop-chat__assistant-menu button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--desktop-fg);
+  background: transparent;
+  text-align: left;
+}
+
+.desktop-chat__assistant-menu button:hover,
+.desktop-chat__assistant-menu button.is-selected {
+  background: var(--desktop-brand-light);
+}
+
+.desktop-chat__assistant-menu-copy {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .desktop-chat__assistant-name {
@@ -885,7 +928,8 @@ textarea:focus-visible {
   background: transparent;
 }
 
-.desktop-chat__model-menu {
+.desktop-chat__model-menu,
+.desktop-chat__assistant-menu {
   position: absolute;
   z-index: 3;
   top: 48px;

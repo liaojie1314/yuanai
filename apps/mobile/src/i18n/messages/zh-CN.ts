@@ -173,6 +173,7 @@ export const zhCN = {
     assistant: {
       current: '当前助理',
       switch: '切换助理',
+      default: '默认',
     },
     welcomeTitle: '你好，我是元AI',
     welcomeSubtitle: '有什么可以帮你的？',
