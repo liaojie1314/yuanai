@@ -38,14 +38,20 @@ export function getRuntimeProblems({ nodeVersion, pnpmVersion }) {
  * @returns {string | null} pnpm 版本或 null
  */
 export function getPnpmVersion() {
-  try {
-    const invokingPnpm = process.env.npm_execpath
-    if (invokingPnpm?.includes('pnpm')) {
+  const invokingPnpm = process.env.npm_execpath
+  if (invokingPnpm?.includes('pnpm')) {
+    try {
       return execFileSync(process.execPath, [invokingPnpm, '--version'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
       })
+      // npm_execpath 不一定是 JS 文件：fnm / asdf 这类版本管理器给的是 shell 垫片，
+      // 交给 node 执行必然抛错。这里只能继续走 PATH 兜底，不能当成「没装 pnpm」
+    } catch {
+      /* 落到下面的 PATH 探测 */
     }
+  }
+  try {
     const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
     return execFileSync(command, ['--version'], {
       encoding: 'utf8',
