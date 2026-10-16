@@ -10,6 +10,7 @@
     "edit": "Edit",
     "close": "Close",
     "back": "Back",
+    "backToChat": "Back to chat",
     "next": "Next",
     "submit": "Submit",
     "send": "Send",
@@ -291,7 +292,10 @@
       "darkMode": "Dark Mode",
       "profile": "Profile Settings",
       "logout": "Log Out",
-      "login": "Log In"
+      "login": "Log In",
+      "agentSection": "Agent",
+      "agentRuns": "Agent tasks",
+      "agentApprovals": "Approvals"
     },
     "toolbar": {
       "share": "Share conversation",

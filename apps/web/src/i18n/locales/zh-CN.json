@@ -10,6 +10,7 @@
     "edit": "编辑",
     "close": "关闭",
     "back": "返回",
+    "backToChat": "返回对话",
     "next": "下一步",
     "submit": "提交",
     "send": "发送",
@@ -291,7 +292,10 @@
       "darkMode": "深色模式",
       "profile": "个人设置",
       "logout": "退出登录",
-      "login": "去登录"
+      "login": "去登录",
+      "agentSection": "Agent 能力",
+      "agentRuns": "Agent 任务",
+      "agentApprovals": "审批中心"
     },
     "toolbar": {
       "share": "分享对话",

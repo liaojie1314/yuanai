@@ -21,6 +21,7 @@ import { MessageOutline } from '@/components/chat/MessageOutline'
 import { ArtifactPanel } from '@/components/chat/ArtifactPanel'
 import { ShareDialog } from '@/components/chat/ShareDialog'
 import { AssistantSwitcher } from '@/components/chat/AssistantSwitcher'
+import { AGENT_CENTERS } from '@/components/chat/agentCenters'
 import {
   apiConvToMock,
   apiMsgToMock,
@@ -300,6 +301,8 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
   const router = useRouter()
   const t = useTranslations('chat')
   const tCommon = useTranslations('common')
+  // Agent 入口的文案散在各中心自己的命名空间里，这里按完整键取
+  const tRoot = useTranslations()
 
   // ── Auth ──
   const user = useAuthStore((s) => s.user)
@@ -2357,6 +2360,20 @@ export default function ChatInterface({ initialConvId }: ChatInterfaceProps): JS
                 <User size={16} /> {t('sidebar.profile')}
               </div>
               <div className="ch-up-sep" />
+              {/* Agent 各中心的唯一入口：这些页面此前只有直接敲 URL 才进得去 */}
+              <div className="ch-up-lbl">{t('sidebar.agentSection')}</div>
+              {AGENT_CENTERS.map((item) => (
+                <div
+                  className="ch-up-row"
+                  key={item.href}
+                  onClick={() => {
+                    setUserPanelOpen(false)
+                    router.push(item.href)
+                  }}
+                >
+                  <item.icon size={16} /> {tRoot(item.labelKey)}
+                </div>
+              ))}
               <div className="ch-up-sep" />
               <div
                 className="ch-up-row danger"
