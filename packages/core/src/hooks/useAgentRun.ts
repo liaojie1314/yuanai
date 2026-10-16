@@ -8,11 +8,28 @@ import {
   getAgentRun,
   listAgentEvents,
   listAgentSteps,
+  listAssistants,
   openAgentEventStream,
   submitAgentInput,
   type AgentEventHandlers,
   type AgentRunInput,
 } from '../api/agent.js'
+import { useAuthStore } from '../stores/auth.store.js'
+
+/**
+ * 查询当前用户的助理列表。
+ *
+ * 三端的助理标签与切换器都读这一个查询键，键名与 Agent 控制面各处的
+ * `['assistants']` 一致，切换助理后不必分别失效。
+ */
+export function useAssistants() {
+  const accessToken = useAuthStore((state) => state.accessToken)
+  return useQuery({
+    queryKey: ['assistants'],
+    queryFn: listAssistants,
+    enabled: Boolean(accessToken),
+  })
+}
 
 /** 查询单个 Agent Run，并在刷新后恢复服务端状态。 */
 export function useAgentRun(id: string | undefined) {

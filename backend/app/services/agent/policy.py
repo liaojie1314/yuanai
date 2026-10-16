@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.services.persona_service import PERSONA_PREFIX
 from app.tools.contracts import SideEffect, ToolRisk, ToolSpec
 
 SYSTEM_POLICY = (
@@ -36,10 +37,24 @@ class PolicyEngine:
             return PolicyDecision(True)
         return PolicyDecision(False, "TOOL_APPROVAL_REQUIRED")
 
-    def build_system_messages(self, user_instructions: str = "") -> list[dict[str, object]]:
-        """将平台规则放在用户级指令之前，并保持为独立 system 消息。"""
+    def build_system_messages(
+        self, user_instructions: str = "", persona_fragment: str = ""
+    ) -> list[dict[str, object]]:
+        """将平台规则放在用户级指令之前，并保持为独立 system 消息。
+
+        人格排在安全策略之后、助理指令之前：人格是身份，指令是任务指导，身份先定；
+        而两者都只在不违反平台策略时适用。人格片段为空时整条消息跳过 ——
+        空 system 消息会被部分 provider 判为非法请求。
+        """
 
         messages: list[dict[str, object]] = [{"role": "system", "content": self.system_policy}]
+        if persona_fragment.strip():
+            messages.append(
+                {
+                    "role": "system",
+                    "content": PERSONA_PREFIX + persona_fragment.strip(),
+                }
+            )
         if user_instructions.strip():
             messages.append(
                 {

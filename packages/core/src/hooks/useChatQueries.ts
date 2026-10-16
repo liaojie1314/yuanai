@@ -46,8 +46,15 @@ export function useChatCapabilities() {
 export function useCreateConversation() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ model, title }: { model: string; title?: string }) =>
-      createConversation(model, title),
+    mutationFn: ({
+      model,
+      title,
+      assistantId,
+    }: {
+      model: string
+      title?: string
+      assistantId?: string
+    }) => createConversation(model, title, assistantId),
     onSuccess: (newConv: Conversation) => {
       qc.setQueryData<Conversation[]>(['conversations'], (prev) =>
         prev ? [newConv, ...prev] : [newConv]
@@ -58,7 +65,7 @@ export function useCreateConversation() {
   })
 }
 
-/** 更新会话（标题、置顶等）mutation */
+/** 更新会话（标题、置顶、绑定助理等）mutation */
 export function useUpdateConversation() {
   const qc = useQueryClient()
   return useMutation({
@@ -70,6 +77,8 @@ export function useUpdateConversation() {
       title?: string
       model?: string
       isPinned?: boolean
+      /** 绑定到哪个助理；`null` 为解绑，下一次聊天退回默认助理解析。 */
+      assistantId?: string | null
     }) => updateConversation(id, data),
     onSuccess: (updated: Conversation) => {
       qc.setQueryData<Conversation[]>(['conversations'], (prev) =>

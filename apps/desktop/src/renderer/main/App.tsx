@@ -55,6 +55,7 @@ import {
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { useTranslation } from 'react-i18next'
 import {
+  useAssistants,
   useConversations,
   useChatCapabilities,
   useCreateMediaTask,
@@ -92,6 +93,7 @@ import type {
   DesktopUpdateStatus,
 } from '../../shared/ipc-contract'
 import { copyText } from '../shared/clipboard'
+import { AssistantSwitcher } from './AssistantSwitcher'
 import { MessageList } from './MessageList'
 import { useVoiceInput } from './useVoiceInput'
 import '../shared/i18n'
@@ -1154,6 +1156,7 @@ function ConversationItem({
 /** 提供桌面端的会话列表、消息历史和 SSE 流式聊天体验。 */
 export function App(): ReactElement {
   const { t } = useTranslation()
+  const assistantsQuery = useAssistants()
   const conversationsQuery = useConversations()
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
@@ -1182,6 +1185,8 @@ export function App(): ReactElement {
   const [temporaryMessages, setTemporaryMessages] = useState<Message[]>([])
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  // 空态屏选的助理（会话尚未创建，暂存本地；创建时作为 assistantId 带出）
+  const [pickedAssistantId, setPickedAssistantId] = useState<string | null>(null)
   const [isWebSearchEnabled, setIsWebSearchEnabled] = useState(false)
   const [isThinkingEnabled, setIsThinkingEnabled] = useState(false)
   const [composerMode, setComposerMode] = useState<ComposerMode>('chat')
@@ -1958,6 +1963,17 @@ export function App(): ReactElement {
     setSelectedConversationIds(new Set(conversations.map((conversation) => conversation.id)))
   }
 
+  /** 把当前会话绑到另一个助理；绑定后下一次聊天就用新助理的人格。 */
+  async function handleSelectAssistant(assistantId: string): Promise<void> {
+    if (!activeConversation) return
+    setActionError('')
+    try {
+      await updateConversation.mutateAsync({ id: activeConversation.id, assistantId })
+    } catch (error: unknown) {
+      setActionError(getErrorMessage(error, '无法切换助理，请稍后重试'))
+    }
+  }
+
   /** 通过真实会话更新 API 切换置顶状态。 */
   async function handleToggleConversationPin(conversation: Conversation): Promise<void> {
     setConversationMenu(null)
@@ -2112,6 +2128,7 @@ export function App(): ReactElement {
         const conversation = await createConversation.mutateAsync({
           model: selectedModel.id,
           title: content.slice(0, 30),
+          ...(pickedAssistantId ? { assistantId: pickedAssistantId } : {}),
         })
         conversationId = conversation.id
         setActiveConversationId(conversationId)
@@ -2470,20 +2487,35 @@ export function App(): ReactElement {
               )}
             </button>
           </div>
-          <button
-            className="desktop-chat__model-trigger"
-            type="button"
-            aria-label={t('desktop.chat.selectModel', { name: modelTriggerLabel })}
-            aria-expanded={isModelMenuOpen}
-            aria-haspopup="listbox"
-            onClick={() => setIsModelMenuOpen((value) => !value)}
-          >
-            <span className="desktop-chat__model-mark" aria-hidden="true">
-              {getModelInitial(selectedModel)}
-            </span>
-            <span className="desktop-chat__model-trigger-label">{modelTriggerLabel}</span>
-            <ChevronDown size={15} aria-hidden="true" />
-          </button>
+          {/* 助理与模型同占头部的中间一格：头部是三列网格（左按钮 / 中 / 右动作），
+              把它们当成两个格子放进去会把右侧动作挤到第二行 */}
+          <div className="desktop-chat__header-center">
+            <AssistantSwitcher
+              activeAssistantId={
+                activeConversation ? (activeConversation.assistantId ?? null) : pickedAssistantId
+              }
+              assistants={assistantsQuery.data ?? []}
+              onSelect={(assistantId: string) => {
+                // 新会话还不存在，没法 PATCH：先记住选择，建会话时作为 assistantId 带出
+                if (activeConversation) void handleSelectAssistant(assistantId)
+                else setPickedAssistantId(assistantId)
+              }}
+            />
+            <button
+              className="desktop-chat__model-trigger"
+              type="button"
+              aria-label={t('desktop.chat.selectModel', { name: modelTriggerLabel })}
+              aria-expanded={isModelMenuOpen}
+              aria-haspopup="listbox"
+              onClick={() => setIsModelMenuOpen((value) => !value)}
+            >
+              <span className="desktop-chat__model-mark" aria-hidden="true">
+                {getModelInitial(selectedModel)}
+              </span>
+              <span className="desktop-chat__model-trigger-label">{modelTriggerLabel}</span>
+              <ChevronDown size={15} aria-hidden="true" />
+            </button>
+          </div>
           <div className="desktop-chat__header-side desktop-chat__header-side--end">
             <button
               className="desktop-chat__header-action"

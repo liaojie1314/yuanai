@@ -10,6 +10,7 @@
     "edit": "Edit",
     "close": "Close",
     "back": "Back",
+    "backToChat": "Back to chat",
     "next": "Next",
     "submit": "Submit",
     "send": "Send",
@@ -291,7 +292,10 @@
       "darkMode": "Dark Mode",
       "profile": "Profile Settings",
       "logout": "Log Out",
-      "login": "Log In"
+      "login": "Log In",
+      "agentSection": "Agent",
+      "agentRuns": "Agent tasks",
+      "agentApprovals": "Approvals"
     },
     "toolbar": {
       "share": "Share conversation",
@@ -382,6 +386,12 @@
       "pauseMusic": "Pause music",
       "musicPlaybackProgress": "Music playback progress",
       "downloadMusic": "Download music"
+    },
+    "assistant": {
+      "current": "Current assistant",
+      "switch": "Switch assistant",
+      "manage": "Manage assistants",
+      "close": "Close assistant menu"
     }
   },
   "tools": {
@@ -563,7 +573,6 @@
     "reject": "Reject",
     "delete": "Delete",
     "confirmDelete": "Delete this memory?",
-    "actionFailed": "Action failed. Please try again.",
     "loadMore": "Load more",
     "localUnavailable": "Some memories live on your local node; only their metadata is shown here.",
     "export": "Export memories",
@@ -577,6 +586,81 @@
     "statusSection": "Filter by status",
     "statusAll": "All",
     "emptyHint": "Your assistant records what is worth keeping as you chat, or add one above"
+  },
+  "assistants": {
+    "agent": "Agent",
+    "title": "Assistants & persona",
+    "subtitle": "Manage your assistants and shape how each one speaks",
+    "loading": "Loading assistants…",
+    "createSection": "New assistant",
+    "name": "Assistant name",
+    "namePlaceholder": "For example: Work assistant",
+    "defaultModel": "Default model",
+    "create": "Create assistant",
+    "creating": "Creating…",
+    "listSection": "My assistants",
+    "empty": "No assistants yet",
+    "emptyHint": "Create one and you can set how it addresses you, its tone and its greeting",
+    "isDefault": "Default",
+    "setDefault": "Make default",
+    "setDefaultOf": "Make {name} the default",
+    "edit": "Edit persona",
+    "editOf": "Edit the persona of {name}",
+    "editing": "Editing",
+    "delete": "Delete",
+    "deleteOf": "Delete {name}",
+    "deleteTitle": "Delete assistant",
+    "deleteMessage": "Deleting it also deletes its persona and private memories. User-level memories are kept.",
+    "persona": {
+      "title": "Persona",
+      "subtitle": "It only shapes wording, never relaxes safety or refusal boundaries",
+      "loading": "Loading persona…",
+      "addressUser": "Calls you",
+      "selfName": "Calls itself",
+      "tone": "Tone",
+      "verbosity": "Answer length",
+      "greeting": "Greeting",
+      "refusalStyle": "How it refuses",
+      "language": "Reply language",
+      "forbiddenTopics": "Forbidden topics",
+      "forbiddenTopicsHint": "One per line, at most 20 topics of 40 characters each",
+      "forbiddenTopicsTooMany": "At most 20 forbidden topics",
+      "forbiddenTopicsTooLong": "At most 40 characters per forbidden topic",
+      "save": "Save persona",
+      "saving": "Saving…",
+      "saved": "Saved as version {version}",
+      "preview": "Prompt preview",
+      "previewHint": "The real fragment assembled by the backend, identical to what the model receives",
+      "previewEmpty": "The persona is all defaults, so nothing is added to the prompt",
+      "previewLoading": "Assembling preview…",
+      "truncated": "The fragment exceeded the {budget}-character budget and was truncated, so some fields never reached the prompt",
+      "budget": "Budget {budget} characters",
+      "versions": "Version history",
+      "versionsEmpty": "The persona has never been saved",
+      "version": "Version {version}",
+      "rollback": "Roll back",
+      "rollbackTo": "Roll back to version {version}",
+      "candidates": "Suggestions to confirm",
+      "candidatesEmpty": "No suggestions",
+      "candidatesHint": "Wording suggestions extracted from your chats; they only apply once you accept them",
+      "accept": "Accept",
+      "reject": "Ignore",
+      "toneOptions": {
+        "concise": "Concise and direct",
+        "patient": "Patient and thorough",
+        "lively": "Light and lively",
+        "rigorous": "Rigorous and restrained"
+      },
+      "verbosityOptions": {
+        "brief": "Brief",
+        "balanced": "Balanced",
+        "detailed": "Detailed"
+      },
+      "languageOptions": {
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
+    }
   },
   "skills": {
     "agent": "Agent",
@@ -701,5 +785,16 @@
     "history": "Run history",
     "noHistory": "No runs yet",
     "waiting": "Waiting: {reason}"
+  },
+  "errors": {
+    "generic": "Action failed. Please try again.",
+    "ASSISTANT_NOT_FOUND": "That assistant no longer exists.",
+    "LOCAL_MEMORY_APPROVAL_TIMEOUT": "The local node did not confirm in time, so the action was cancelled.",
+    "LOCAL_MEMORY_NODE_UNAVAILABLE": "The local node is unreachable right now. View the content on that machine.",
+    "MEMORY_NOT_FOUND": "That memory no longer exists.",
+    "MEMORY_SCOPE_DUPLICATE": "A user-level memory with the same content already exists.",
+    "PERSONA_CANDIDATE_ALREADY_DECIDED": "That suggestion has already been handled.",
+    "PERSONA_FIELD_NOT_EDITABLE": "That field cannot be edited.",
+    "PERSONA_VALUE_INVALID": "The value does not meet the requirements. Check it and try again."
   }
 }

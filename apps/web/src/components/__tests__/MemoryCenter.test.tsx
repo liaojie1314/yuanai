@@ -86,8 +86,10 @@ function readBlob(blob: Blob): Promise<string> {
   })
 }
 
+let queryClient: QueryClient
+
 function renderCenter(locale: 'zh-CN' | 'en' = 'zh-CN'): ReturnType<typeof render> {
-  const queryClient = new QueryClient({
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
@@ -228,17 +230,103 @@ describe('MemoryCenter', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('操作失败，请重试')
   })
 
-  it('记忆类型开关更新失败时显示失败提示', async () => {
+  it('记忆类型开关更新失败时显示后端给出的具体原因', async () => {
     const user = userEvent.setup()
     server.use(
-      http.patch(
-        `${API_BASE_URL}/agent/assistants/assistant-1`,
-        () => new HttpResponse(null, { status: 500 })
+      http.patch(`${API_BASE_URL}/agent/assistants/assistant-1`, () =>
+        HttpResponse.json({ detail: 'ASSISTANT_NOT_FOUND' }, { status: 404 })
       )
     )
     renderCenter()
     await user.click(await screen.findByRole('button', { name: /偏好/ }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('操作失败，请重试')
+    expect(await screen.findByRole('alert')).toHaveTextContent('助理不存在或已被删除')
+  })
+
+  it('后端返回未知 detail 码时退回通用文案而不是把码丢给用户', async () => {
+    const user = userEvent.setup()
+    server.use(
+      http.patch(`${API_BASE_URL}/agent/assistants/assistant-1`, () =>
+        HttpResponse.json({ detail: 'SOMETHING_NEW' }, { status: 500 })
+      )
+    )
+    renderCenter()
+    await user.click(await screen.findByRole('button', { name: /偏好/ }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('操作失败，请重试')
+    expect(alert).not.toHaveTextContent('SOMETHING_NEW')
+  })
+
+  it('没有任何助理时记忆类型开关与添加按钮都禁用', async () => {
+    server.use(
+      http.get(`${API_BASE_URL}/agent/assistants`, () => HttpResponse.json([])),
+      pagedMemories({ first: { items: [], nextCursor: null } })
+    )
+    renderCenter()
+    expect(await screen.findByText('还没有记忆')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '添加记忆' })).toBeDisabled()
+    for (const button of screen.getAllByRole('button', { name: /记录中|已关闭/ })) {
+      expect(button).toBeDisabled()
+    }
+  })
+
+  it('列表为空时渲染空态而不是一直停在加载中', async () => {
+    server.use(pagedMemories({ first: { items: [], nextCursor: null } }))
+    renderCenter()
+    expect(await screen.findByText('还没有记忆')).toBeInTheDocument()
+    expect(screen.queryByText('正在加载记忆…')).not.toBeInTheDocument()
+  })
+
+  it('状态筛选把 status 透传给接口，并按状态分开缓存', async () => {
+    const user = userEvent.setup()
+    const statuses: (string | null)[] = []
+    server.use(
+      http.get(`${API_BASE_URL}/memories`, ({ request }) => {
+        statuses.push(new URL(request.url).searchParams.get('status'))
+        return HttpResponse.json({
+          items: [firstMemory],
+          nextCursor: null,
+          localUnavailable: false,
+        })
+      })
+    )
+    renderCenter()
+    expect(await screen.findByText('记忆内容A')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '待确认' }))
+    await waitFor(() => expect(statuses).toContain('candidate'))
+    expect(statuses[0]).toBeNull()
+
+    // hook 层：查询键按 status 分桶，切筛选不会污染上一个状态的缓存
+    const keys = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((query) => JSON.stringify(query.queryKey))
+    expect(keys).toContain('["memories",null]')
+    expect(keys).toContain('["memories","candidate"]')
+  })
+
+  it('确认候选记忆后失效记忆列表，重新拉到最新状态', async () => {
+    const user = userEvent.setup()
+    let listed = 0
+    server.use(
+      http.get(`${API_BASE_URL}/memories`, () => {
+        listed += 1
+        return HttpResponse.json({
+          items: [listed === 1 ? candidateMemory : { ...candidateMemory, status: 'active' }],
+          nextCursor: null,
+          localUnavailable: false,
+        })
+      }),
+      http.patch(`${API_BASE_URL}/memories/memory-3`, () =>
+        HttpResponse.json({ ...candidateMemory, status: 'active' })
+      )
+    )
+    renderCenter()
+    await user.click(await screen.findByRole('button', { name: '确认记住' }))
+    await waitFor(() => expect(listed).toBeGreaterThan(1))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: '确认记住' })).not.toBeInTheDocument()
+    )
   })
 
   it('英文资源下关键控件文案来自 i18n 而非硬编码', async () => {

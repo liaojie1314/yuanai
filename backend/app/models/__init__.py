@@ -43,6 +43,15 @@ from app.models.memory import (
     MemoryType,
 )
 from app.models.message import Message
+from app.models.persona import (
+    AssistantPersona,
+    AssistantPersonaVersion,
+    PersonaCandidate,
+    PersonaCandidateSource,
+    PersonaCandidateStatus,
+    PersonaTone,
+    PersonaVerbosity,
+)
 from app.models.push_subscription import PushSubscription
 from app.models.qr_login import QRLoginChallenge, QRLoginEvent
 from app.models.share import ConversationShare
@@ -114,6 +123,13 @@ __all__ = [
     "QRLoginEvent",
     "Assistant",
     "AssistantAutonomyLevel",
+    "AssistantPersona",
+    "AssistantPersonaVersion",
+    "PersonaCandidate",
+    "PersonaCandidateSource",
+    "PersonaCandidateStatus",
+    "PersonaTone",
+    "PersonaVerbosity",
     "Automation",
     "AutomationStatus",
     "AutomationTrigger",

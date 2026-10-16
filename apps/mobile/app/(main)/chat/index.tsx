@@ -12,13 +12,16 @@ import {
   TABLET_MIN_WIDTH,
   filterChatModels,
   useChatCapabilities,
+  useAssistants,
   useCreateConversation,
   useCreateMediaTask,
   useModels,
 } from '@yuanai/core'
-import type { AIModel, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
+import type { AIModel, Assistant, MediaGenerationOptions, MediaGenerationType } from '@yuanai/types'
 
 import { ChatInput } from '@/components/chat/ChatInput'
+import { AssistantSelectorSheet } from '@/components/chat/AssistantSelectorSheet'
+import { AssistantSwitcher } from '@/components/chat/AssistantSwitcher'
 import { ModelSelectorSheet } from '@/components/chat/ModelSelectorSheet'
 import { useDialog } from '@/components/ui/Dialog'
 import { brand, spacing } from '@/theme/tokens'
@@ -54,10 +57,14 @@ export default function ChatNewScreen(): React.JSX.Element {
   const webSearchAvailable = chatCapabilitiesQuery.data?.webSearch.enabled === true
   const { data: availableModels = [] } = useModels()
   const models = useMemo(() => filterChatModels(availableModels), [availableModels])
+  const { data: assistants = [] } = useAssistants()
   const [submitting, setSubmitting] = useState(false)
   // 用户在空态屏选的模型（会话尚未创建，暂存本地；创建时作为 model 参数带出）
   const [pickedModelId, setPickedModelId] = useState<string | null>(null)
+  // 用户在空态屏选的助理（会话尚未创建，暂存本地；创建时作为 assistantId 带出）
+  const [pickedAssistantId, setPickedAssistantId] = useState<string | null>(null)
   const modelSheetRef = useRef<BottomSheetModal>(null)
+  const assistantSheetRef = useRef<BottomSheetModal>(null)
   // 防抖：创建 + 跳转有异步窗口，避免连点发送创建多个会话
   const busyRef = useRef(false)
 
@@ -91,6 +98,23 @@ export default function ChatNewScreen(): React.JSX.Element {
     modelSheetRef.current?.dismiss()
   }, [])
 
+  // 已选或默认或列表首个，与后端解析默认助理的顺序一致
+  const activeAssistantId = useMemo(() => {
+    if (pickedAssistantId && assistants.some((item) => item.id === pickedAssistantId)) {
+      return pickedAssistantId
+    }
+    return assistants.find((item) => item.isDefault)?.id ?? assistants[0]?.id ?? null
+  }, [pickedAssistantId, assistants])
+
+  const openAssistantSheet = useCallback(() => {
+    assistantSheetRef.current?.present()
+  }, [])
+
+  const handleSelectAssistant = useCallback((assistant: Assistant) => {
+    setPickedAssistantId(assistant.id)
+    assistantSheetRef.current?.dismiss()
+  }, [])
+
   const openDrawer = useCallback(() => {
     const nav = navigation as unknown as { openDrawer?: () => void }
     nav.openDrawer?.()
@@ -104,7 +128,11 @@ export default function ChatNewScreen(): React.JSX.Element {
       void (async () => {
         try {
           const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
-          const conv = await createConv.mutateAsync({ model: activeModelId, title })
+          const conv = await createConv.mutateAsync({
+            model: activeModelId,
+            title,
+            ...(activeAssistantId ? { assistantId: activeAssistantId } : {}),
+          })
           // 首条消息和附件 fileIds 作为 params 带到会话页，由其自动发送
           router.replace({
             pathname: '/(main)/chat/[conversationId]',
@@ -126,7 +154,7 @@ export default function ChatNewScreen(): React.JSX.Element {
         // 成功后不复位 busyRef：本屏即将被 replace 卸载
       })()
     },
-    [createConv, activeModelId, router, dialog, t]
+    [createConv, activeModelId, activeAssistantId, router, dialog, t]
   )
 
   /**
@@ -154,7 +182,11 @@ export default function ChatNewScreen(): React.JSX.Element {
       setSubmitting(true)
       try {
         const title = content.slice(0, 30) + (content.length > 30 ? '…' : '')
-        const conv = await createConv.mutateAsync({ model: activeModelId, title })
+        const conv = await createConv.mutateAsync({
+          model: activeModelId,
+          title,
+          ...(activeAssistantId ? { assistantId: activeAssistantId } : {}),
+        })
         await createMediaTask.mutateAsync({
           conversationId: conv.id,
           type,
@@ -178,7 +210,7 @@ export default function ChatNewScreen(): React.JSX.Element {
         return false
       }
     },
-    [createConv, createMediaTask, activeModelId, router, dialog, t]
+    [createConv, createMediaTask, activeModelId, activeAssistantId, router, dialog, t]
   )
 
   return (
@@ -200,23 +232,36 @@ export default function ChatNewScreen(): React.JSX.Element {
             </Pressable>
             <View style={styles.topCenter}>
               <Text style={[styles.topTitle, { color: theme.text.primary }]}>元AI</Text>
-              {models.length > 0 ? (
-                <Pressable
-                  onPress={openModelSheet}
-                  hitSlop={4}
-                  style={styles.modelChip}
-                  accessibilityRole="button"
-                  accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
-                >
-                  <Text
-                    style={[styles.modelChipText, { color: theme.text.secondary }]}
-                    numberOfLines={1}
-                  >
-                    {activeModel?.name ?? activeModelId}
-                  </Text>
-                  <ChevronDown size={12} color={theme.text.secondary} />
-                </Pressable>
-              ) : null}
+              {/* 助理与模型并排一行：各占一行会把头部堆成三层，标题被挤到只剩一行高 */}
+              <View style={styles.topMeta}>
+                <AssistantSwitcher
+                  activeAssistantId={activeAssistantId}
+                  assistants={assistants}
+                  onPress={openAssistantSheet}
+                />
+                {models.length > 0 ? (
+                  <>
+                    {assistants.length > 0 ? (
+                      <Text style={[styles.topMetaDot, { color: theme.text.secondary }]}>·</Text>
+                    ) : null}
+                    <Pressable
+                      onPress={openModelSheet}
+                      hitSlop={4}
+                      style={styles.modelChip}
+                      accessibilityRole="button"
+                      accessibilityLabel={`当前模型 ${activeModel?.name ?? activeModelId}，点击切换`}
+                    >
+                      <Text
+                        style={[styles.modelChipText, { color: theme.text.secondary }]}
+                        numberOfLines={1}
+                      >
+                        {activeModel?.name ?? activeModelId}
+                      </Text>
+                      <ChevronDown size={12} color={theme.text.secondary} />
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
             </View>
             <View style={styles.topBtn} />
           </View>
@@ -243,6 +288,12 @@ export default function ChatNewScreen(): React.JSX.Element {
         />
       </View>
 
+      <AssistantSelectorSheet
+        ref={assistantSheetRef}
+        assistants={assistants}
+        currentId={activeAssistantId ?? ''}
+        onSelect={handleSelectAssistant}
+      />
       <ModelSelectorSheet
         ref={modelSheetRef}
         models={models}
@@ -264,6 +315,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   topBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  topMeta: { flexDirection: 'row', alignItems: 'center', gap: 2, maxWidth: '100%' },
+  topMetaDot: { fontSize: 11 },
   topCenter: { flex: 1, alignItems: 'center', gap: 2 },
   topTitle: { fontSize: 15, fontWeight: '600' },
   modelChip: {

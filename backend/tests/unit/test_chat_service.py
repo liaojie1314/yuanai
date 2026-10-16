@@ -8,6 +8,7 @@ import pytest
 
 from app.models.message import MessageRole
 from app.services.chat_service import build_openai_messages
+from app.services.persona_service import CHAT_SYSTEM_POLICY
 
 
 @pytest.mark.asyncio
@@ -29,7 +30,9 @@ async def test_build_openai_messages_preserves_history_file_context() -> None:
         storage_service=storage,
     )
 
-    assert [message["role"] for message in messages] == ["user", "assistant"]
-    assert messages[0]["content"][0]["text"] == "请总结附件"
-    assert "关键内容" in messages[0]["content"][1]["text"]
+    # 开头恒有一条聊天安全前置，历史从下标 1 开始。
+    assert [message["role"] for message in messages] == ["system", "user", "assistant"]
+    assert messages[0]["content"] == CHAT_SYSTEM_POLICY
+    assert messages[1]["content"][0]["text"] == "请总结附件"
+    assert "关键内容" in messages[1]["content"][1]["text"]
     storage.get_object.assert_awaited_once_with("files/notes.txt")

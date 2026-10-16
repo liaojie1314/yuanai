@@ -1,3 +1,42 @@
+/* 返回对话入口：`/agent/*` 八个页面都是独立路由，自己不带导航 —— 桌面端壳里
+   连浏览器后退键都没有，进来就出不去。粘在顶部，滚动时也在。 */
+.agent-backbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 clamp(18px, 5vw, 72px);
+  background: var(--bg);
+}
+.agent-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 5px 8px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--fg2);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 0.13s,
+    background 0.13s,
+    color 0.13s;
+}
+.agent-back:hover {
+  border-color: var(--brand);
+  background: var(--brand-light);
+  color: var(--brand);
+}
+/* 返回条吃掉 44px，各中心页的 100vh 外壳跟着缩，否则每页都凭空多一条滚动 */
+.agent-backbar ~ * {
+  min-height: calc(100vh - 44px) !important;
+}
+
 .agent-shell {
   min-height: 100vh;
   padding: 38px clamp(18px, 5vw, 72px) 64px;

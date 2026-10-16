@@ -170,6 +170,8 @@ export interface Conversation {
   titleGeneratedAt: string | null
   /** 当前会话绑定的 AI 模型 ID */
   model: string
+  /** 会话绑定的助理；为 `null` 表示尚未绑定，下一次聊天时解析默认助理。 */
+  assistantId: string | null
   isPinned: boolean
   /** 最后一条消息的时间；尚无消息时为 null */
   lastMessageAt: string | null
@@ -912,7 +914,8 @@ export interface MemoryCreateCandidate {
 export interface Memory {
   id: string
   userId: string
-  assistantId: string
+  /** 为 `null` 表示用户级共享记忆，该用户的所有助理都能检索到。 */
+  assistantId: string | null
   workspaceId: string | null
   memoryType: MemoryType
   /** 落在本地节点且节点当前不可达时为 `null`。 */
@@ -965,7 +968,8 @@ export interface MemoryUpdate {
 /** 记忆检索结果，保留排序分数和来源信息。 */
 export interface MemorySearchResult {
   id: string
-  assistantId: string
+  /** 为 `null` 表示用户级共享记忆。 */
+  assistantId: string | null
   workspaceId: string | null
   memoryType: MemoryType
   content: string
@@ -992,6 +996,81 @@ export interface MemoryContextItem {
   sourceType: string
   sourceId: string | null
   score: number
+}
+
+/** 记忆的可见范围：`user` 为同一用户的所有助理共享，`assistant` 为单个助理私有。 */
+export type MemoryScope = 'user' | 'assistant'
+
+// ============ 助手人格 ============
+
+/** 助手人格语气。 */
+export type PersonaTone = 'concise' | 'patient' | 'lively' | 'rigorous'
+
+/** 回答长度偏好。 */
+export type PersonaVerbosity = 'brief' | 'balanced' | 'detailed'
+
+/** 助手人格当前内容。 */
+export interface Persona {
+  assistantId: string
+  addressUser: string
+  selfName: string
+  tone: PersonaTone
+  verbosity: PersonaVerbosity
+  greeting: string
+  refusalStyle: string
+  forbiddenTopics: string[]
+  language: string
+  version: number
+  updatedAt: string
+}
+
+/** 保存人格的输入；省略的字段保持原值，一次保存生成一个新版本。 */
+export interface PersonaInput {
+  addressUser?: string
+  selfName?: string
+  tone?: PersonaTone
+  verbosity?: PersonaVerbosity
+  greeting?: string
+  refusalStyle?: string
+  /** 禁止话题最多 20 条、单条最多 40 字，与后端 422 阈值一致。 */
+  forbiddenTopics?: string[]
+  language?: string
+}
+
+/** 人格历史版本条目，`payload` 是该版本的全量人格快照。 */
+export interface PersonaVersion {
+  version: number
+  /** 变更来源，取 `manual`、`rollback:{version}` 或 `candidate:{id}`。 */
+  changeReason: string
+  payload: Record<string, unknown>
+  createdAt: string
+}
+
+/** 后端真实装配出的人格片段；前端只渲染不重拼，避免预览与实际注入漂移。 */
+export interface PersonaPreview {
+  fragment: string
+  /** 为 `true` 时片段已被预算截断，部分字段没能进入提示词。 */
+  truncated: boolean
+  characterBudget: number
+}
+
+/** 人格候选项的处理状态。 */
+export type PersonaCandidateStatus = 'pending' | 'accepted' | 'rejected'
+
+/** 人格候选项的产生来源。 */
+export type PersonaCandidateSource = 'run' | 'chat'
+
+/** 从对话或 Run 中抽出的人格修改建议；不经用户确认不生效。 */
+export interface PersonaCandidate {
+  id: string
+  assistantId: string
+  /** 建议修改的人格字段名，由模型输出，后端按白名单校验后才落库。 */
+  field: string
+  suggestedValue: string
+  evidence: string
+  sourceType: PersonaCandidateSource
+  status: PersonaCandidateStatus
+  createdAt: string
 }
 
 /** Skill 版本从草稿到活动的生命周期状态。 */

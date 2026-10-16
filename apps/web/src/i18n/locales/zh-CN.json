@@ -10,6 +10,7 @@
     "edit": "编辑",
     "close": "关闭",
     "back": "返回",
+    "backToChat": "返回对话",
     "next": "下一步",
     "submit": "提交",
     "send": "发送",
@@ -291,7 +292,10 @@
       "darkMode": "深色模式",
       "profile": "个人设置",
       "logout": "退出登录",
-      "login": "去登录"
+      "login": "去登录",
+      "agentSection": "Agent 能力",
+      "agentRuns": "Agent 任务",
+      "agentApprovals": "审批中心"
     },
     "toolbar": {
       "share": "分享对话",
@@ -382,6 +386,12 @@
       "pauseMusic": "暂停音乐",
       "musicPlaybackProgress": "音乐播放进度",
       "downloadMusic": "下载音乐"
+    },
+    "assistant": {
+      "current": "当前助理",
+      "switch": "切换助理",
+      "manage": "管理助理",
+      "close": "关闭助理选单"
     }
   },
   "tools": {
@@ -563,7 +573,6 @@
     "reject": "拒绝",
     "delete": "删除",
     "confirmDelete": "确定删除这条记忆？",
-    "actionFailed": "操作失败，请重试",
     "loadMore": "加载更多",
     "localUnavailable": "部分记忆存储在本机节点，此处只显示摘要信息，内容需在本机查看",
     "export": "导出记忆",
@@ -577,6 +586,81 @@
     "statusSection": "按状态筛选",
     "statusAll": "全部",
     "emptyHint": "助理会在对话中自动记录值得长期记住的内容，也可以在上方手动添加一条"
+  },
+  "assistants": {
+    "agent": "Agent",
+    "title": "助理与人格",
+    "subtitle": "管理你的助理，并为每个助理设定说话方式",
+    "loading": "正在加载助理…",
+    "createSection": "新建助理",
+    "name": "助理名称",
+    "namePlaceholder": "例如：工作助理",
+    "defaultModel": "默认模型",
+    "create": "创建助理",
+    "creating": "正在创建…",
+    "listSection": "我的助理",
+    "empty": "还没有助理",
+    "emptyHint": "新建一个助理，就可以为它设定称呼、语气和开场白",
+    "isDefault": "默认",
+    "setDefault": "设为默认",
+    "setDefaultOf": "把{name}设为默认",
+    "edit": "编辑人格",
+    "editOf": "编辑{name}的人格",
+    "editing": "正在编辑",
+    "delete": "删除",
+    "deleteOf": "删除{name}",
+    "deleteTitle": "删除助理",
+    "deleteMessage": "删除后这个助理的人格与私有记忆都会一并删除，用户级记忆仍然保留。",
+    "persona": {
+      "title": "人格",
+      "subtitle": "只影响表达方式，不会放宽安全与拒绝边界",
+      "loading": "正在加载人格…",
+      "addressUser": "称呼你",
+      "selfName": "自称",
+      "tone": "语气",
+      "verbosity": "回答长度",
+      "greeting": "开场白",
+      "refusalStyle": "拒绝方式",
+      "language": "回复语言",
+      "forbiddenTopics": "禁止话题",
+      "forbiddenTopicsHint": "每行一条，最多 20 条、单条 40 字",
+      "forbiddenTopicsTooMany": "禁止话题最多 20 条",
+      "forbiddenTopicsTooLong": "每条禁止话题最多 40 字",
+      "save": "保存人格",
+      "saving": "正在保存…",
+      "saved": "已保存为第 {version} 版",
+      "preview": "提示词预览",
+      "previewHint": "后端装配出的真实片段，与注入模型的内容完全一致",
+      "previewEmpty": "人格全是默认值，不会向模型注入任何内容",
+      "previewLoading": "正在装配预览…",
+      "truncated": "片段超出 {budget} 字预算，已被截断，部分字段没能进入提示词",
+      "budget": "预算 {budget} 字",
+      "versions": "版本历史",
+      "versionsEmpty": "还没有保存过人格",
+      "version": "第 {version} 版",
+      "rollback": "回滚",
+      "rollbackTo": "回滚到第 {version} 版",
+      "candidates": "待确认的建议",
+      "candidatesEmpty": "暂无建议",
+      "candidatesHint": "从对话里抽出的表达方式建议，确认后才会生效",
+      "accept": "采用",
+      "reject": "忽略",
+      "toneOptions": {
+        "concise": "简洁直接",
+        "patient": "耐心细致",
+        "lively": "轻松活泼",
+        "rigorous": "严谨克制"
+      },
+      "verbosityOptions": {
+        "brief": "简短",
+        "balanced": "适中",
+        "detailed": "详细"
+      },
+      "languageOptions": {
+        "zh-CN": "简体中文",
+        "en": "English"
+      }
+    }
   },
   "skills": {
     "agent": "Agent",
@@ -701,5 +785,16 @@
     "history": "运行历史",
     "noHistory": "还没有运行记录",
     "waiting": "等待：{reason}"
+  },
+  "errors": {
+    "generic": "操作失败，请重试",
+    "ASSISTANT_NOT_FOUND": "助理不存在或已被删除",
+    "LOCAL_MEMORY_APPROVAL_TIMEOUT": "本机节点未在限定时间内确认，操作已取消",
+    "LOCAL_MEMORY_NODE_UNAVAILABLE": "本机节点当前不可达，内容需要在本机查看",
+    "MEMORY_NOT_FOUND": "这条记忆不存在或已被删除",
+    "MEMORY_SCOPE_DUPLICATE": "已有一条内容相同的用户级记忆，无需重复提升",
+    "PERSONA_CANDIDATE_ALREADY_DECIDED": "这条建议已经处理过了",
+    "PERSONA_FIELD_NOT_EDITABLE": "这个字段不支持修改",
+    "PERSONA_VALUE_INVALID": "填写的内容不符合要求，请检查后重试"
   }
 }

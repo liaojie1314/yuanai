@@ -16,6 +16,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import create_access_token
 
 
+def _first_non_system(messages: list[dict[str, object]]) -> dict[str, object]:
+    """取第一条非 system 消息。
+
+    聊天链路开头恒有安全前置、可能还有人格，按下标取历史会随前置条数漂移。
+    """
+
+    return next(message for message in messages if message["role"] != "system")
+
+
 class TestConversation:
     async def test_create_conversation(
         self, client: AsyncClient, auth_headers: dict[str, str]
@@ -413,7 +422,9 @@ class TestStream:
                     async for _ in response.aiter_lines():
                         pass
 
-        prior_content = captured_messages[-1][0]["content"]
+        # 消息数组开头是聊天安全前置，历史从第一条非 system 消息开始。
+        assert captured_messages[-1][0]["role"] == "system"
+        prior_content = _first_non_system(captured_messages[-1])["content"]
         assert isinstance(prior_content, list)
         assert any(
             part.get("type") == "text" and "yuanai file context" in str(part.get("text"))
@@ -455,7 +466,8 @@ class TestStream:
                 async for _ in response.aiter_lines():
                     pass
 
-        content = captured_messages[0][0]["content"]
+        assert captured_messages[0][0]["role"] == "system"
+        content = _first_non_system(captured_messages[0])["content"]
         assert isinstance(content, list)
         assert any(
             part.get("type") == "image_url"

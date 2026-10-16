@@ -9,18 +9,29 @@ from app.schemas.media_generation import MediaGenerationTaskResponse
 
 
 class CreateConversationRequest(BaseModel):
+    """创建会话；``assistant_id`` 省略时绑定用户的默认助理。"""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     model: str
     title: str = "新对话"
+    assistant_id: uuid.UUID | None = None
 
 
 class UpdateConversationRequest(BaseModel):
-    """接受 camelCase（前端）或 snake_case（测试/curl）请求体"""
+    """接受 camelCase（前端）或 snake_case（测试/curl）请求体
+
+    ``assistant_id`` 显式传 ``null`` 表示解绑（下次聊天退回默认助理解析），
+    与「不传该字段」是两件事，后者意为「别动它」，因此读取时必须看
+    ``model_fields_set`` 而不是值是否为 ``None``。
+    """
 
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     title: str | None = None
     model: str | None = None
     is_pinned: bool | None = None
+    assistant_id: uuid.UUID | None = None
 
 
 class ConversationResponse(BaseModel):
@@ -37,6 +48,8 @@ class ConversationResponse(BaseModel):
     title_source: str
     title_generated_at: datetime | None = None
     model: str
+    # 为空表示还没绑定助理，聊天时退回用户的默认助理。
+    assistant_id: uuid.UUID | None = None
     is_pinned: bool
     last_message_at: datetime | None = None
     created_at: datetime

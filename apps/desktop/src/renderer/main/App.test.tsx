@@ -7,11 +7,13 @@ import { FALLBACK_CHAT_MODEL_ID, formatMsgTime, resolveChatModels } from '@yuana
 import type { AIModel, ToolCall } from '@yuanai/types'
 
 const chat = vi.hoisted(() => ({
+  assistants: [] as Array<{ id: string; name: string; isDefault: boolean }>,
   conversations: [] as Array<{
     id: string
     title: string
     model: string
     isPinned: boolean
+    assistantId: string | null
     lastMessageAt: string | null
     createdAt: string
   }>,
@@ -190,6 +192,7 @@ vi.mock('react-virtuoso', async () => {
 })
 
 vi.mock('@yuanai/core/hooks', () => ({
+  useAssistants: () => ({ data: chat.assistants, isLoading: false }),
   useConversations: () => ({ data: chat.conversations, isLoading: false }),
   useCreateConversation: () => ({ isPending: false, mutateAsync: chat.createConversation }),
   useCreateMediaTask: () => ({
@@ -352,12 +355,14 @@ beforeEach(() => {
     avatarUrl: null,
     createdAt: '2026-08-10T08:00:00.000Z',
   }
+  chat.assistants = [{ id: 'assistant-1', name: '工作助理', isDefault: true }]
   chat.conversations = [
     {
       id: 'conversation-1',
       title: '测试会话',
       model: 'gpt-4o',
       isPinned: false,
+      assistantId: 'assistant-1',
       lastMessageAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     },
@@ -585,6 +590,61 @@ describe('desktop chat', () => {
 
     expect(screen.getByRole('heading', { name: '你好，我是元AI' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '停止生成' })).not.toBeInTheDocument()
+  })
+
+  it('会话头部显示当前助理，只有一个助理时不渲染切换控件', () => {
+    render(<App />)
+
+    expect(screen.getByText('工作助理')).toBeInTheDocument()
+    expect(screen.queryByLabelText('切换助理')).not.toBeInTheDocument()
+  })
+
+  it('切换助理后把会话绑到新助理', async () => {
+    const user = userEvent.setup()
+    chat.assistants = [
+      { id: 'assistant-1', name: '工作助理', isDefault: true },
+      { id: 'assistant-2', name: '生活助理', isDefault: false },
+    ]
+    chat.updateConversation.mockResolvedValue(undefined)
+    render(<App />)
+
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
+
+    await waitFor(() =>
+      expect(chat.updateConversation).toHaveBeenCalledWith({
+        id: 'conversation-1',
+        assistantId: 'assistant-2',
+      })
+    )
+  })
+
+  it('空态屏先选助理，建会话时把它带上', async () => {
+    const user = userEvent.setup()
+    chat.assistants = [
+      { id: 'assistant-1', name: '工作助理', isDefault: true },
+      { id: 'assistant-2', name: '生活助理', isDefault: false },
+    ]
+    chat.conversations = []
+    chat.messages = []
+    render(<App />)
+
+    // 会话还不存在，没法 PATCH；控件照样要能选，否则空态屏开始的对话只能用默认助理
+    await user.click(screen.getByLabelText('切换助理'))
+    await user.click(screen.getByRole('option', { name: '生活助理' }))
+    expect(chat.updateConversation).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('切换助理')).toHaveTextContent('生活助理')
+
+    await user.type(screen.getByRole('textbox', { name: '输入消息' }), '你好')
+    await user.click(screen.getByRole('button', { name: '发送消息' }))
+
+    await waitFor(() => {
+      expect(chat.createConversation).toHaveBeenCalledWith({
+        model: 'gpt-4o',
+        title: '你好',
+        assistantId: 'assistant-2',
+      })
+    })
   })
 
   it('does not expose cached conversations while signed out', () => {
@@ -1203,6 +1263,7 @@ describe('desktop chat', () => {
       title: '快速模型会话',
       model: 'gpt-4.1-mini',
       isPinned: false,
+      assistantId: 'assistant-1',
       lastMessageAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     })
@@ -1240,6 +1301,7 @@ describe('desktop chat', () => {
       title: '第二个会话',
       model: 'gpt-4o',
       isPinned: false,
+      assistantId: 'assistant-1',
       lastMessageAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     })
@@ -1348,6 +1410,7 @@ describe('desktop chat', () => {
         title: '新对话',
         model: 'gpt-4o',
         isPinned: false,
+        assistantId: 'assistant-1',
         lastMessageAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       },
@@ -1392,6 +1455,7 @@ describe('desktop chat', () => {
         title: 'Yesterday conversation',
         model: 'gpt-4o',
         isPinned: false,
+        assistantId: 'assistant-1',
         lastMessageAt: yesterday.toISOString(),
         createdAt: yesterday.toISOString(),
       },

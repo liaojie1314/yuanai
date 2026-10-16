@@ -7,7 +7,7 @@ import re
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -20,6 +20,7 @@ from app.models.memory import (
     MemoryType,
 )
 from app.models.message import Message
+from app.models.persona import PersonaCandidate, PersonaCandidateSource
 from app.services.ai_service import (
     ExtractedMemory,
     extract_memory_candidates,
@@ -56,22 +57,36 @@ def _normalize(content: str) -> str:
     return _PUNCTUATION.sub("", content).lower()
 
 
+def _scope_filter(assistant_id: uuid.UUID | None) -> ColumnElement[bool]:
+    """按记忆范围构造 assistant_id 过滤条件。
+
+    去重与冲突检测必须与检索同口径放宽：否则「提升为用户级」会直接造出
+    用户级与助理级两份同一事实，而两份都会被同一次检索召回。
+    助理私有一侧要连用户级一起看，用户级一侧只看用户级 ——
+    一条用户级事实不该因为某个助理手里有同样内容就被判成重复。
+    """
+
+    if assistant_id is None:
+        return Memory.assistant_id.is_(None)
+    return or_(Memory.assistant_id == assistant_id, Memory.assistant_id.is_(None))
+
+
 async def find_duplicate(
-    *, user_id: uuid.UUID, assistant_id: uuid.UUID, content: str, db: AsyncSession
+    *, user_id: uuid.UUID, assistant_id: uuid.UUID | None, content: str, db: AsyncSession
 ) -> Memory | None:
-    """查找同一助理下内容实质相同的记忆，避免反复写入同一事实。
+    """查找该范围内内容实质相同的记忆，避免反复写入同一事实。
 
     归一化比较在 Python 侧完成：``to_tsvector('simple', …)`` 会把整句中文压成单个
     lexeme，数据库全文匹配无法判断中文子串是否相同，因此这里不走 ``search_vector``。
     """
 
-    # ponytail: 逐条拉取同助理的 active/candidate 记忆做归一化比较，
+    # ponytail: 逐条拉取同范围的 active/candidate 记忆做归一化比较，
     # 单助理记忆量级上千后需改为落库归一化列 + 唯一索引。
     target = _normalize(content)
     existing = await db.scalars(
         select(Memory).where(
             Memory.user_id == user_id,
-            Memory.assistant_id == assistant_id,
+            _scope_filter(assistant_id),
             Memory.status.in_((MemoryStatus.active, MemoryStatus.candidate)),
         )
     )
@@ -82,9 +97,9 @@ async def find_duplicate(
 
 
 async def find_conflict(
-    *, user_id: uuid.UUID, assistant_id: uuid.UUID, subject: str, db: AsyncSession
+    *, user_id: uuid.UUID, assistant_id: uuid.UUID | None, subject: str, db: AsyncSession
 ) -> Memory | None:
-    """查找同一主题上已生效的记忆，作为新事实的被取代对象。
+    """查找该范围内同一主题上已生效的记忆，作为新事实的被取代对象。
 
     按 ``structured_data['subject']`` 做精确相等匹配，不依赖全文检索，
     因此中文主题同样可靠。
@@ -96,7 +111,7 @@ async def find_conflict(
         select(Memory)
         .where(
             Memory.user_id == user_id,
-            Memory.assistant_id == assistant_id,
+            _scope_filter(assistant_id),
             Memory.status == MemoryStatus.active,
             Memory.structured_data["subject"].as_string() == subject,
         )
@@ -178,6 +193,20 @@ async def extract_from_run(
     now = datetime.now(UTC)
     created: list[Memory] = []
     for candidate in candidates:
+        if candidate.persona_field is not None:
+            # 表达方式纠正是人格建议而不是一条事实：落候选表，等用户确认才生效。
+            db.add(
+                PersonaCandidate(
+                    user_id=user_id,
+                    assistant_id=assistant.id,
+                    field=candidate.persona_field,
+                    suggested_value=candidate.suggested_value,
+                    evidence=candidate.content[:2000],
+                    source_type=PersonaCandidateSource.run,
+                    source_id=run.id,
+                )
+            )
+            continue
         if await find_duplicate(
             user_id=user_id, assistant_id=assistant.id, content=candidate.content, db=db
         ):

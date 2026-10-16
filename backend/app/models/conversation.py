@@ -12,6 +12,10 @@ class Conversation(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    # 为空表示还没绑定助理，聊天时退回用户的默认助理。
+    assistant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assistants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     title: Mapped[str] = mapped_column(String(200), nullable=False, default="新对话")
     # default: 尚未发送首问；fallback: 已写入首问截断标题；ai/manual: 最终标题来源。
     title_source: Mapped[str] = mapped_column(String(16), nullable=False, default="default")

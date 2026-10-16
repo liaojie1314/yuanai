@@ -13,6 +13,7 @@ import {
   useUpdateMemory,
 } from '@yuanai/core/hooks'
 import { useTranslations } from '@/i18n/client'
+import { resolveApiErrorMessage } from '@/lib/apiError'
 import { downloadBlob } from '@/lib/fileDownload'
 import './memories.css'
 
@@ -37,6 +38,8 @@ function downloadExport(payload: MemoryExport): void {
 /** 展示并管理当前用户的记忆及其生命周期。 */
 export default function MemoryCenter(): JSX.Element {
   const t = useTranslations('memories')
+  // 错误文案挂在语言包根的 errors 命名空间，与人格编辑器共用一份
+  const tRoot = useTranslations()
   const [status, setStatus] = useState<Memory['status'] | undefined>()
   const [content, setContent] = useState('')
   const queryClient = useQueryClient()
@@ -57,6 +60,11 @@ export default function MemoryCenter(): JSX.Element {
       updateAssistant(assistant?.id ?? '', { disabledMemoryTypes }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['assistants'] }),
   })
+
+  // 任何一次写操作失败都要出现在同一处提示里；此前只盯住导出与类型开关，
+  // 手动添加、确认与删除失败时用户点完没有任何反馈
+  const failure =
+    exportAll.error ?? patchAssistant.error ?? create.error ?? update.error ?? remove.error
 
   const toggleType = (type: MemoryType): void => {
     if (!assistant) return
@@ -167,9 +175,9 @@ export default function MemoryCenter(): JSX.Element {
           </nav>
         </section>
       </div>
-      {exportAll.isError || patchAssistant.isError ? (
+      {failure ? (
         <p className="memory-alert" role="alert">
-          {t('actionFailed')}
+          {resolveApiErrorMessage(failure, tRoot)}
         </p>
       ) : null}
       {memories.isLoading ? <p className="memory-muted">{t('loading')}</p> : null}

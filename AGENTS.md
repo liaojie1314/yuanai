@@ -229,13 +229,25 @@ yuanai/
 
 ```bash
 cd backend && uv run pytest tests/unit -q
-cd backend && uv run pytest tests/integration -q  # 需先 docker compose up -d postgres
+# 集成测试要 Postgres 和 Redis 两个容器：test_agent_runtime_drills / test_webhooks /
+# test_oauth* 直连 6379，Redis 没起时是硬报错而不是 skip，看起来像业务代码坏了
+docker compose up -d postgres redis
+cd backend && uv run pytest tests/integration -q
 ```
+
+后端测试可能因为本机的全局环境变量而在插件加载阶段或流式用例上失败，**这类失败不是业务问题**；
+已知情况与绕法记在 `.codex/environment-issues.md`（该目录不入仓）。
 
 E2E 需先安装浏览器 `npx playwright install chromium webkit`：
 
 ```bash
 pnpm --filter @yuanai/web test:e2e
+```
+
+人格链路的 E2E 打**真实后端**，默认跳过，需要显式开启（先 `pnpm dev:real`）：
+
+```bash
+E2E_REAL_BACKEND=1 pnpm --filter @yuanai/web test:e2e persona --project=chromium
 ```
 
 覆盖率阈值是**防退化棘轮**（取当前实测值，不是目标值），跑 `pnpm test:coverage` 校验；

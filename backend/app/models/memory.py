@@ -92,8 +92,9 @@ class Memory(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    assistant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("assistants.id", ondelete="CASCADE"), nullable=False, index=True
+    # 为空表示用户级共享记忆，所有助理都能检索到（phase-7 §8.5.3）。
+    assistant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("assistants.id", ondelete="CASCADE"), nullable=True, index=True
     )
     workspace_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     memory_type: Mapped[MemoryType] = mapped_column(

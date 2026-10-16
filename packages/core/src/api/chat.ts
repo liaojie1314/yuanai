@@ -11,16 +11,34 @@ export async function listConversations(): Promise<Conversation[]> {
   return res.data.conversations
 }
 
-/** 创建新会话 */
-export async function createConversation(model: string, title?: string): Promise<Conversation> {
-  const res = await apiClient.post<Conversation>('/chat/conversations', { model, title })
+/**
+ * 创建新会话。
+ *
+ * `assistantId` 省略时由后端绑定默认助理；传值表示用户在空态屏先挑了助理
+ * —— 新会话还不存在，没法走 `updateConversation`，所以必须在创建时带上。
+ */
+export async function createConversation(
+  model: string,
+  title?: string,
+  assistantId?: string
+): Promise<Conversation> {
+  const res = await apiClient.post<Conversation>('/chat/conversations', {
+    model,
+    title,
+    ...(assistantId !== undefined ? { assistantId } : {}),
+  })
   return res.data
 }
 
-/** 更新会话（标题、模型、置顶状态） */
+/**
+ * 更新会话（标题、模型、置顶状态、绑定助理）。
+ *
+ * `assistantId` 传 `null` 表示解绑，下一次聊天由后端重新解析默认助理；
+ * 这里是三端助理切换器共用的唯一出口，不要在各端自己发请求。
+ */
 export async function updateConversation(
   id: string,
-  data: { title?: string; model?: string; isPinned?: boolean }
+  data: { title?: string; model?: string; isPinned?: boolean; assistantId?: string | null }
 ): Promise<Conversation> {
   const res = await apiClient.patch<Conversation>(`/chat/conversations/${id}`, data)
   return res.data

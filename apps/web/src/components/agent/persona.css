@@ -1,0 +1,256 @@
+.persona-shell {
+  min-height: 100vh;
+  padding: 38px clamp(18px, 5vw, 72px) 64px;
+  background: var(--bg);
+  color: var(--fg);
+}
+/* 页面列宽只约束 shell 的直接子元素：不加子选择器时，
+   人格编辑器里复用 .persona-list 的版本历史也会吃到 auto 边距而被收窄居中 */
+.persona-shell > .persona-header,
+.persona-shell > .persona-panel,
+.persona-shell > .persona-list,
+.persona-shell > .persona-empty,
+.persona-shell > .persona-editor,
+.persona-shell > .persona-alert {
+  max-width: 1180px;
+  margin-left: auto;
+  margin-right: auto;
+}
+.persona-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.persona-header h1 {
+  margin: 4px 0 6px;
+  font-size: 26px;
+}
+.persona-header svg {
+  color: var(--brand);
+}
+.persona-eyebrow {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.persona-muted,
+.persona-field-hint {
+  color: var(--fg2);
+}
+.persona-field-hint {
+  margin: 0;
+  font-size: 13px;
+}
+.persona-panel {
+  display: grid;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.persona-section {
+  display: grid;
+  gap: 8px;
+}
+.persona-section h2,
+.persona-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.persona-create {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.persona-create input {
+  min-width: 200px;
+  flex: 1;
+}
+.persona-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 44px 18px;
+  border: 1px dashed var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--fg2);
+  text-align: center;
+}
+.persona-empty svg {
+  color: var(--brand);
+}
+.persona-empty-title {
+  margin: 0;
+  color: var(--fg);
+  font-weight: 600;
+}
+.persona-empty p {
+  margin: 0;
+}
+.persona-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+}
+.persona-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.persona-card.is-active {
+  border-color: var(--brand);
+}
+.persona-card--row {
+  grid-auto-flow: column;
+  align-items: center;
+  justify-content: start;
+}
+.persona-card p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.persona-card-head,
+.persona-card-actions,
+.persona-form-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.persona-badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand-b);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+.persona-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--brand-b);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.persona-btn.is-active {
+  border-color: var(--brand);
+  color: var(--brand);
+  font-weight: 600;
+}
+.persona-btn--primary {
+  border-color: var(--brand);
+  background: var(--brand);
+  color: var(--brand-fg, #fff);
+  font-weight: 600;
+}
+.persona-btn--danger {
+  color: var(--danger, #dc2626);
+}
+.persona-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.persona-alert {
+  margin: 0 0 14px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--danger-b, rgba(239, 68, 68, 0.14));
+  color: var(--danger, #dc2626);
+  font-size: 13px;
+}
+.persona-editor {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.persona-editor-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+.persona-editor-head p {
+  margin: 0;
+}
+.persona-editor-body {
+  display: grid;
+  /* 不写 start 时预览卡片会被拉到和左侧表单等高，底部一大片空白像内容丢了 */
+  align-items: start;
+  gap: 18px;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+}
+.persona-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.persona-field {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.persona-field--wide,
+.persona-form-actions {
+  grid-column: 1 / -1;
+}
+.persona-field input,
+.persona-field select,
+.persona-field textarea,
+.persona-create input,
+.persona-create select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--brand-b);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+.persona-field textarea {
+  resize: vertical;
+}
+.persona-preview {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--brand-b);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+.persona-preview h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.persona-fragment {
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@media (max-width: 900px) {
+  .persona-editor-body,
+  .persona-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

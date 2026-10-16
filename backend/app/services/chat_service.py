@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import uuid
 from collections.abc import AsyncIterable, Awaitable, Callable, Sequence
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
+from redis.exceptions import RedisError
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +23,17 @@ from app.core.config import settings
 from app.models.conversation import Conversation
 from app.models.file import File, MessageFile
 from app.models.message import Message, MessageRole
+from app.models.persona import AssistantPersona
 from app.schemas.chat import SendMessageRequest
+from app.services.assistant_service import resolve_conversation_assistant
 from app.services.conversation_title_service import ConversationTitleResult, fallback_title
 from app.services.file_extract_service import extract_preview, preview_context
+from app.services.memory_queue import enqueue_persona_candidate
+from app.services.persona_candidate_service import looks_like_style_correction
+from app.services.persona_service import build_chat_system_messages
 from app.services.storage_service import StorageService, storage
+
+logger = logging.getLogger(__name__)
 
 
 async def get_user_conversation(
@@ -45,9 +54,14 @@ async def build_openai_messages(
     files_by_message_id: dict[uuid.UUID, list[File]],
     *,
     storage_service: StorageService = storage,
+    persona: AssistantPersona | None = None,
 ) -> list[dict[str, object]]:
-    """把消息历史和附件转换为 provider-neutral 的 OpenAI 消息结构。"""
-    result: list[dict[str, object]] = []
+    """把消息历史和附件转换为 provider-neutral 的 OpenAI 消息结构。
+
+    开头恒有一条聊天安全前置；``persona`` 有内容时紧随其后，为空时整条跳过 ——
+    插入空 system 消息会被部分 provider 判为非法请求。
+    """
+    result: list[dict[str, object]] = build_chat_system_messages(persona)
     for message in history:
         message_files = files_by_message_id.get(message.id, [])
         if not message_files:
@@ -218,7 +232,23 @@ async def stream_chat_response(
         )
         for message_file, attached_file in file_rows.all():
             files_by_message_id.setdefault(message_file.message_id, []).append(attached_file)
-    openai_messages = await build_openai_messages(history, files_by_message_id)
+    # 人格在两条链路一致生效：助理按「会话绑定 → 用户默认」解析，解析不出就现建。
+    assistant = await resolve_conversation_assistant(conv, user_id=user_id, db=db)
+    persona = await db.scalar(
+        select(AssistantPersona).where(AssistantPersona.assistant_id == assistant.id)
+    )
+    openai_messages = await build_openai_messages(history, files_by_message_id, persona=persona)
+    await db.commit()
+    if looks_like_style_correction(req.message.content):
+        # 命中线索词才入队；抽取是模型调用，每轮聊天都调一次不可接受。
+        # 投递在 commit 之后：人格候选项是旁路能力，失败不能回滚或拖慢聊天。
+        try:
+            await enqueue_persona_candidate(
+                user_id=user_id, assistant_id=assistant.id, text=req.message.content
+            )
+        except (OSError, RedisError):
+            # Redis 不可用时静默跳过：少一条待确认建议，不该让这轮对话发不出去。
+            logger.warning("人格候选项入队失败，本轮跳过", exc_info=True)
     return StreamingResponse(
         sse_generator(
             openai_messages,

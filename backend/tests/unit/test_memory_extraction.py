@@ -7,15 +7,23 @@
 import uuid
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.assistant import Assistant
 from app.models.memory import Memory, MemorySensitivity, MemoryStatus, MemoryType
+from app.models.persona import (
+    PersonaCandidate,
+    PersonaCandidateSource,
+    PersonaCandidateStatus,
+)
 from app.models.user import User
 from app.services.ai_service import ExtractedMemory
 from app.services.memory_extraction import (
     classify_sensitivity,
     decide_status,
+    extract_from_run,
     find_conflict,
     find_duplicate,
 )
@@ -168,3 +176,60 @@ async def test_find_conflict_only_looks_at_active_memories_on_the_same_subject(
     )
     assert conflict is not None
     assert conflict.content == "偏好过道座位"
+
+
+@pytest.mark.asyncio
+async def test_run_extraction_routes_style_corrections_to_persona_candidates(
+    db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """带 personaField 的条目进候选表而不是记忆表 —— 人格是身份，不是一条事实。"""
+
+    user = User(
+        email=f"{uuid.uuid4()}@example.com", username=str(uuid.uuid4())[:12], hashed_password="x"
+    )
+    db.add(user)
+    await db.flush()
+    assistant = Assistant(user_id=user.id, name="助理", default_model="test-model")
+    db.add(assistant)
+    await db.flush()
+    run = AgentRun(
+        user_id=user.id,
+        assistant_id=assistant.id,
+        goal="帮我改一下说话方式",
+        model="test-model",
+        status=AgentRunStatus.succeeded,
+    )
+    db.add(run)
+    await db.flush()
+
+    async def _extract(**_: object) -> list[ExtractedMemory]:
+        return [
+            _candidate(content="偏好靠窗座位"),
+            _candidate(
+                content="用户希望回答更简短",
+                persona_field="verbosity",
+                suggested_value="brief",
+            ),
+        ]
+
+    monkeypatch.setattr("app.services.memory_extraction.extract_memory_candidates", _extract)
+    monkeypatch.setattr("app.services.memory_extraction.maybe_embed_text", _no_embedding)
+
+    created = await extract_from_run(run_id=run.id, user_id=user.id, db=db)
+
+    assert [memory.content for memory in created] == ["偏好靠窗座位"]
+    candidates = (
+        await db.scalars(
+            select(PersonaCandidate).where(PersonaCandidate.assistant_id == assistant.id)
+        )
+    ).all()
+    assert [(item.field, item.suggested_value) for item in candidates] == [("verbosity", "brief")]
+    assert candidates[0].source_type is PersonaCandidateSource.run
+    assert candidates[0].source_id == run.id
+    assert candidates[0].status is PersonaCandidateStatus.pending
+
+
+async def _no_embedding(_text: str) -> None:
+    """抽取测试不触达 embedding provider。"""
+
+    return None

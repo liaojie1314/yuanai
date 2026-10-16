@@ -16,6 +16,7 @@ from app.core.redis import redis_client
 from app.models.agent_run import AgentRun, AgentRunStatus
 from app.models.approval import ApprovalRequest, ApprovalStatus
 from app.models.assistant import Assistant
+from app.models.persona import AssistantPersona
 from app.services.agent.coordinator import AgentCoordinator
 from app.services.agent.event_service import EventStore
 from app.services.agent.queue import (
@@ -24,6 +25,7 @@ from app.services.agent.queue import (
     QueueItem,
 )
 from app.services.memory_queue import enqueue_extraction
+from app.services.persona_service import build_persona_fragment
 from app.tools.builtin import build_phase6_registry
 
 logger = logging.getLogger(__name__)
@@ -107,10 +109,14 @@ async def execute_agent_run(item: QueueItem, token: CancellationToken) -> None:
             )
             .order_by(ApprovalRequest.decided_at.desc())
         )
+        persona = await db.scalar(
+            select(AssistantPersona).where(AssistantPersona.assistant_id == assistant.id)
+        )
         await coordinator.run(
             run,
             db=db,
             user_instructions=assistant.instructions,
+            persona_fragment=build_persona_fragment(persona),
             cancellation=token.is_cancelled,
             approval_id=approval.id if approval is not None else None,
         )
