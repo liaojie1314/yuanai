@@ -29,6 +29,7 @@ build/
 # 工具目录
 .claude/
 .design/
+.mimosa/
 
 # 系统
 .DS_Store
